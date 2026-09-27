@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { doctorHandler } from "./commands/doctor.ts";
+import { generateHandler } from "./commands/generate.ts";
+import { initHandler } from "./commands/init.ts";
 import { statusHandler } from "./commands/status.ts";
 import { createDiagnostic, createResult, type CommandResult } from "./result.ts";
 import { CliPathError, resolveCoreRoot, resolveProjectRoot } from "./paths.ts";
@@ -13,6 +15,7 @@ export interface CliFlags {
   readonly adapters: readonly string[];
   readonly dryRun: boolean;
   readonly json: boolean;
+  readonly noGenerate: boolean;
   readonly project?: string;
 }
 
@@ -44,6 +47,7 @@ export interface DispatchOptions {
 interface CommandRule {
   readonly adapters: boolean;
   readonly dryRun: boolean;
+  readonly noGenerate: boolean;
   readonly selectors: boolean;
 }
 
@@ -63,12 +67,12 @@ const COMMANDS = new Set<string>(COMMAND_NAMES);
 const COMMON_VALUE_FLAGS = new Set(["--project"]);
 const COMMON_BOOLEAN_FLAGS = new Set(["--json"]);
 const COMMAND_RULES: Record<CommandName, CommandRule> = {
-  init: { adapters: true, dryRun: true, selectors: false },
-  update: { adapters: true, dryRun: true, selectors: false },
-  generate: { adapters: true, dryRun: true, selectors: true },
-  verify: { adapters: true, dryRun: false, selectors: true },
-  status: { adapters: true, dryRun: false, selectors: false },
-  doctor: { adapters: true, dryRun: false, selectors: false },
+  init: { adapters: true, dryRun: true, noGenerate: true, selectors: false },
+  update: { adapters: true, dryRun: true, noGenerate: false, selectors: false },
+  generate: { adapters: true, dryRun: true, noGenerate: false, selectors: true },
+  verify: { adapters: true, dryRun: false, noGenerate: false, selectors: false },
+  status: { adapters: true, dryRun: false, noGenerate: false, selectors: false },
+  doctor: { adapters: true, dryRun: false, noGenerate: false, selectors: false },
 };
 
 function usage(command: string, message: string, remediation = "Run paved --help to see supported commands and flags."): CommandResult {
@@ -145,6 +149,7 @@ function commandUsage(command: CommandName | undefined): string {
     "Command options:",
     "  --adapter <id>   Select an adapter; repeatable.",
     "  --dry-run        Plan without writes for init, update, and generate.",
+    "  --no-generate    Initialize without running generators (init only).",
   ].join("\n");
 }
 
@@ -185,6 +190,7 @@ function parse(argv: readonly string[]): Parsed {
   let project: string | undefined;
   let json = false;
   let dryRun = false;
+  let noGenerate = false;
   const adapters: string[] = [];
   const selectors: string[] = [];
 
@@ -238,6 +244,17 @@ function parse(argv: readonly string[]): Parsed {
       continue;
     }
 
+    if (token === "--no-generate") {
+      if (command === undefined) {
+        return { kind: "error", result: usage("cli", "Flag --no-generate must appear after init.") };
+      }
+      if (!COMMAND_RULES[command].noGenerate) {
+        return { kind: "error", result: usage(command, `Unknown flag for ${command}: --no-generate.`) };
+      }
+      noGenerate = true;
+      continue;
+    }
+
     if (token.startsWith("-")) {
       return { kind: "error", result: usage(command ?? "cli", `Unknown flag: ${token}.`) };
     }
@@ -266,8 +283,8 @@ function parse(argv: readonly string[]): Parsed {
   }
 
   const flags = project === undefined
-    ? { adapters, dryRun, json }
-    : { adapters, dryRun, json, project };
+    ? { adapters, dryRun, json, noGenerate }
+    : { adapters, dryRun, json, noGenerate, project };
 
   return {
     kind: "command",
@@ -299,12 +316,15 @@ function defaultHandler(invocation: CommandInvocation): CommandResult {
       coreRoot: invocation.paths.coreRoot,
       adapters: invocation.flags.adapters,
       dryRun: invocation.flags.dryRun,
+      noGenerate: invocation.flags.noGenerate,
     },
   });
 }
 
 const DEFAULT_HANDLERS: CommandHandlers = {
   doctor: doctorHandler,
+  generate: generateHandler,
+  init: initHandler,
   status: statusHandler,
 };
 
