@@ -1,0 +1,18 @@
+apiVersion: paved/v1
+kind: GardenerObservation
+id: observation-0123456789abcdef0123
+consumer: sample
+category: verification-failure
+subject: project.check.boundary
+state: enforced
+pattern: 'check:project.check.boundary:failed'
+first_observed: '2026-01-01T00:00:00Z'
+last_observed: '2026-01-02T00:00:00Z'
+occurrences: 2
+evidence:
+  - { record: .paved/generated/evidence/one.yaml, item: check-one }
+  - { record: .paved/generated/evidence/two.yaml, item: check-two }
+provenance:
+  sources:
+    - { type: file, location: .paved/generated/evidence/one.yaml, sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }
+confidence: high

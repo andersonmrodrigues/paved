@@ -1,0 +1,42 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:gardener-observation:v1
+title: Gardener observation
+type: object
+additionalProperties: false
+required: [apiVersion, kind, id, consumer, category, subject, state, pattern, first_observed, last_observed, occurrences, evidence, provenance, confidence]
+properties:
+  apiVersion: { const: paved/v1 }
+  kind: { const: GardenerObservation }
+  id: { type: string, pattern: '^observation-[a-f0-9]{20}$' }
+  consumer: { $ref: 'urn:paved:schema:common:v1#/$defs/nonEmptyString' }
+  category: { enum: [verification-failure, rule-violation, missing-verification, generator-conflict, generator-unknown, implementation-pattern] }
+  subject: { $ref: 'urn:paved:schema:common:v1#/$defs/nonEmptyString' }
+  state: { enum: [observed, documented, enforced, inferred, unknown] }
+  pattern: { $ref: 'urn:paved:schema:common:v1#/$defs/nonEmptyString' }
+  first_observed: { type: string }
+  last_observed: { type: string }
+  occurrences: { type: integer, minimum: 1 }
+  evidence:
+    type: array
+    minItems: 1
+    items: { $ref: '#/$defs/evidenceRef' }
+  provenance: { $ref: '#/$defs/provenance' }
+  confidence: { enum: [high, medium, low, unknown] }
+$defs:
+  evidenceRef:
+    type: object
+    additionalProperties: false
+    required: [record, item]
+    properties:
+      record: { $ref: 'urn:paved:schema:common:v1#/$defs/relativePath' }
+      item: { type: string }
+      revision: { type: string }
+  provenance:
+    type: object
+    additionalProperties: false
+    required: [sources]
+    properties:
+      sources:
+        type: array
+        minItems: 1
+        items: { $ref: 'urn:paved:schema:provenance:v1#/$defs/source' }

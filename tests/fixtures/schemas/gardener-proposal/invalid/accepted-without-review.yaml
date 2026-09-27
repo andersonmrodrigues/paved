@@ -1,0 +1,23 @@
+# expect-error: must have required property 'review'
+apiVersion: paved/v1
+kind: GardenerProposal
+id: proposal-0123456789abcdef0123
+scope: { consumer: sample, target: consumer }
+status: ACCEPTED
+problem: A check failed twice.
+observation: observation-0123456789abcdef0123
+evidence:
+  - { record: .paved/generated/evidence/one.yaml, item: one }
+  - { record: .paved/generated/evidence/two.yaml, item: two }
+evidence_sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+root_cause: Unknown.
+root_cause_state: unknown
+recommended_layer: architecture
+layer_rationale: Review design.
+proposed_change: Investigate.
+expected_impact: Prevent recurrence.
+affected_components: [check]
+uncertainty: Intent unknown.
+provenance:
+  sources:
+    - { type: file, location: .paved/generated/evidence/one.yaml }

@@ -1,0 +1,22 @@
+apiVersion: paved/v1
+kind: CoreImprovementCandidate
+id: core-candidate-0123456789abcdef0123
+status: CANDIDATE
+pattern: 'check:project.check.boundary:failed'
+consumers: [alpha, beta]
+observations:
+  - consumer: alpha
+    observation: observation-0123456789abcdef0123
+    evidence:
+      - { record: .paved/generated/evidence/one.yaml, item: one }
+      - { record: .paved/generated/evidence/two.yaml, item: two }
+  - consumer: beta
+    observation: observation-abcdef0123456789abcd
+    evidence:
+      - { record: .paved/generated/evidence/one.yaml, item: one }
+      - { record: .paved/generated/evidence/two.yaml, item: two }
+generality: unknown
+technology_independence: unknown
+approval_required: true
+problem: The same problem recurred.
+uncertainty: Core ownership is unproven.

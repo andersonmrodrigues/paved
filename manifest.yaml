@@ -27,6 +27,10 @@ schemas:
   Overrides: schemas/override.schema.yaml
   Generator: schemas/generator.schema.yaml
   GeneratedArtifact: schemas/generated-artifact.schema.yaml
+  GardenerObservation: schemas/gardener-observation.schema.yaml
+  GardenerProposal: schemas/gardener-proposal.schema.yaml
+  GardenerReviews: schemas/gardener-review.schema.yaml
+  CoreImprovementCandidate: schemas/core-improvement-candidate.schema.yaml
 
 # Schemas that define shared structures, not a document kind.
 schema_definitions:
@@ -201,6 +205,12 @@ consumer_layout:
     description: >
       Regenerable output: generator proposals, generation state and evidence records.
       Core cache materialization is planned. Safe to delete.
+  - path: .paved/gardener/
+    ownership: human-owned
+    required: false
+    committed: true
+    schema: GardenerReviews
+    description: Optional human review decisions for advisory Gardener proposals.
   - path: .paved/generated/runs/
     ownership: disposable
     required: false

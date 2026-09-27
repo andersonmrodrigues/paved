@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { doctorHandler } from "./commands/doctor.ts";
 import { generateHandler } from "./commands/generate.ts";
+import { gardenerHandler } from "./commands/gardener.ts";
 import { initHandler } from "./commands/init.ts";
 import { statusHandler } from "./commands/status.ts";
 import { updateHandler } from "./commands/update.ts";
@@ -10,7 +11,7 @@ import { verifyHandler } from "./commands/verify.ts";
 import { createDiagnostic, createResult, type CommandResult } from "./result.ts";
 import { CliPathError, resolveCoreRoot, resolveProjectRoot } from "./paths.ts";
 
-export const COMMAND_NAMES = ["init", "update", "generate", "verify", "status", "doctor"] as const;
+export const COMMAND_NAMES = ["init", "update", "generate", "verify", "status", "doctor", "gardener"] as const;
 export type CommandName = (typeof COMMAND_NAMES)[number];
 
 export interface CliFlags {
@@ -75,6 +76,7 @@ const COMMAND_RULES: Record<CommandName, CommandRule> = {
   verify: { adapters: true, dryRun: false, noGenerate: false, selectors: false },
   status: { adapters: true, dryRun: false, noGenerate: false, selectors: false },
   doctor: { adapters: true, dryRun: false, noGenerate: false, selectors: false },
+  gardener: { adapters: false, dryRun: true, noGenerate: false, selectors: false },
 };
 
 function usage(command: string, message: string, remediation = "Run paved --help to see supported commands and flags."): CommandResult {
@@ -342,6 +344,7 @@ function defaultHandler(invocation: CommandInvocation): CommandResult {
 const DEFAULT_HANDLERS: CommandHandlers = {
   doctor: doctorHandler,
   generate: generateHandler,
+  gardener: gardenerHandler,
   init: initHandler,
   status: statusHandler,
   update: updateHandler,

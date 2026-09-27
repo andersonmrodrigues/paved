@@ -1,65 +1,25 @@
 # Gardener
 
-The Gardener is Paved's feedback loop: it notices where the paved path is failing and
-proposes a structural fix. The procedure an agent follows is the `gardener` skill
-(`core/skills/gardener/gardener/SKILL.md`); this document describes the architecture
-around it.
+Phase 12 (`PAVED-P12-48371`) adds a local, read-only analysis service and `paved gardener` command. It reads one consumer's existing Evidence records from `.paved/generated/evidence/` and `.paved/verification/evidence/`, plus the last Generator Runtime run in `.paved/generated/state/last-run.json`. It does not run verification or generators. The existing Gardener skill remains the procedure for deeper human-led diagnosis.
 
-## Signals
+## Observation and evidence
 
-Each signal is something Paved already records. The Gardener reads records; it does not
-rely on anyone's impression.
+The service validates Evidence against the existing schema. Failed/error checks, violated rules, and missing required verification become observations. Generator conflicts and unknowns become observations from the existing run state. A check may also record an `implementation-pattern` fact; Gardener observes its fingerprint but never proposes a rule from its repetition alone. It never scans source code for frequent patterns or treats current code as desired architecture. It does not read raw check logs or copy summaries, commands, environment values, or unknown text into output. Each observation includes a stable id, consumer scope, category, subject, knowledge state, confidence, occurrence count, first and last recorded time, record/item references, and repository-relative provenance sources with content hashes. The `GardenerObservation` schema reuses the existing provenance source definition.
 
-| Signal | Source | Suggests |
-|---|---|---|
-| The same human correction twice | Review comments, evidence `rules` notes, incident reports | A missing rule, skill step or check |
-| A rule repeatedly `violated` or overridden | Evidence records; overrides with reasons | The rule is wrong, too broad, or weakly enforced |
-| The same Core rule relaxed in many repositories | Overrides across consumers | The Core rule is wrong for a class of repositories |
-| Recurring gaps for a check type | Evidence `gaps` | The project lacks a check it keeps needing |
-| Claims supported only by `agent` recordings | Evidence `recorded_by` | Checks should move into the runner or CI |
-| Stale or conflicting context | Source hashes; `conflicts` | Context needs regeneration or a human decision |
-| Many `unknowns` on the same topic | Context documents | Missing documentation or an owner to ask |
-| Overrides flagged *needs review* | `target_sha256` mismatch | The exception may no longer be needed |
-| Tool implementation unavailable, incompatible or ambiguous | Tool resolution result | An adapter/project binding is missing, stale or duplicated |
-| Repeated Tool failures or malformed outputs | Sanitized Tool execution records and evidence | A capability contract, implementation or environment needs repair |
-| Unsafe or overly broad Tool policy | Tool contract and override records | Restrict the policy or add a stronger permission/approval boundary |
-| Rules at layer `rule`, `skill` or `documentation` | `enforcement.layer` | Promotion to a stronger layer |
+Observed, documented, enforced, inferred, and unknown remain distinct. A failed configured check is `enforced`; a violated Rule or missing required verification is `documented`; a generator conflict is `observed`; a generator unknown stays `unknown`. These labels describe the evidence source, not the cause. Current state, desired state, and enforced state are never inferred from repository repetition alone.
 
-## Enforcement order
+## Aggregation and diagnosis
 
-Every proposal tries the layers in this order and stops at the first that can hold the
-fix:
+Grouping uses the consumer name and stable check, Rule, verification type, or generator identity. Two distinct evidence items are required for a candidate; repeated command runs against unchanged input return the same ids and ordering. A retained Evidence copy and its generated original count once. A single generator run cannot establish historical recurrence. Proposals contain the supporting observation and evidence references, a cautious root-cause statement, layer recommendation and rationale, expected effect, and explicit uncertainty. A failing check alone does not prove a structural root cause; the proposal asks reviewers to investigate that possibility.
 
-```text
-1 Architecture → 2 Static analysis → 3 CI → 4 Rule → 5 Skill → 6 Documentation
-```
+## Review lifecycle
 
-A stronger layer catches the mistake earlier, needs nobody to remember it, and applies
-to humans and agents alike. A proposal that settles on a weaker layer says why the
-stronger ones do not work. The detailed table is in the skill's
-`references/enforcement-layers.md`.
+The command writes nothing. It returns observations and candidate proposals in structured JSON or human output. Optional human-owned `.paved/gardener/reviews.yaml` records review events by proposal id: `UNDER_REVIEW`, `ACCEPTED`, `IMPLEMENTED`, `REJECTED`, `DEFERRED`, and `SUPERSEDED`. `IMPLEMENTED` requires an earlier `ACCEPTED` event; supersession requires a replacement id. Review metadata includes reviewer, time, reason, and the proposal's `evidence_sha256`. Rejection applies to that evidence set: new evidence reopens the candidate while keeping the historical rejection in the human-owned review file. A human applies approved changes separately through the existing ownership and lifecycle mechanisms. The review file is never written by Gardener.
 
-## Ownership of the fix
+The current command never creates active Rules, Skills, Workflows, architecture, verification policies, tool contracts, adapters, or generator changes. It never modifies Core, application source, the lock, or human-owned `.paved/` files. `--dry-run` is accepted for CLI consistency and has the same read-only behavior. Exit code 0 means analysis with no new candidates, 1 means candidates, 4 means invalid input, and 9 means an unexpected runtime failure. `--json` exposes typed observations and proposals.
 
-| Where it holds | Owner | Where the change goes |
-|---|---|---|
-| Every repository | Core | A Core change, reviewed by Core maintainers |
-| Every repository using a technology | Adapter | The adapter |
-| This repository | The project | Its code, CI or `.paved/` |
+## Isolation and limits
 
-Most fixes belong to the project. A Core change needs evidence from more than one
-repository.
+Analysis always targets one consumer. A consumer pattern remains consumer-scoped even if another consumer has the same pattern. Core promotion needs separate human review with evidence from multiple consumers and a technology-neutral argument; The reusable `considerCoreCandidates` function can compare two or more explicitly supplied consumer results and return a review-only `CoreImprovementCandidate`; the consumer CLI never calls it. Generality and technology independence remain unknown until human review. Technology-specific interpretation remains in adapters and existing check definitions. This implementation does not retain Gardener artifacts in generated state, inspect unstructured agent corrections, infer architecture from code, or aggregate across consumers. Historical observations are limited by the Evidence records a consumer retains and by Generator Runtime's last-run state. Proposal ids are stable for a pattern; new evidence updates the proposal's evidence list without changing its id.
 
-## Boundaries
-
-- The Gardener **proposes; humans decide.** It never edits rules, skills, the Core or
-  project architecture on its own.
-- It needs at least two concrete incidents. One incident is recorded, not generalized.
-- Its proposals are evidence-backed like any change: they name a check that would have
-  caught the original incidents.
-
-## Not yet built
-
-Signals are recorded today, but nothing aggregates them. A future `paved garden`
-command (or a CI job) could scan evidence and overrides and open proposals. That is
-listed as future work in the [architecture review](../getting-started/architecture-review.md).
+No remote analysis or learning is used. The command reads local metadata and returns only relative record paths and hashes; the consumer controls evidence retention and access. Treat the human-owned review file as a decision record, not as an enforcement mechanism.
