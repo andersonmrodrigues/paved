@@ -18,6 +18,42 @@ export interface InspectConsumerInput {
   readonly adapterSelections?: readonly string[];
 }
 
+export interface PlanConsumerUpdateInput {
+  readonly projectRoot: string;
+  readonly coreRoot: string;
+  readonly manifestPath?: string;
+}
+
+export interface UpdateLockEntry {
+  readonly id?: string;
+  readonly version: string;
+  readonly source: string;
+  readonly sha256: string;
+}
+
+export interface UpdateLockDocument {
+  readonly apiVersion: "paved/v1";
+  readonly kind: "Lock";
+  readonly resolved_at: string;
+  readonly core: UpdateLockEntry;
+  readonly adapters?: readonly UpdateLockEntry[];
+  readonly generators?: readonly UpdateLockEntry[];
+}
+
+export interface ConsumerUpdatePlan {
+  readonly projectRoot: string;
+  readonly coreRoot: string;
+  readonly remoteResolution: "unsupported";
+  readonly changed: boolean;
+  readonly plannedWrites: readonly string[];
+  readonly plannedGeneratorIds: readonly string[];
+  readonly currentLock?: LockDocument;
+  readonly nextLock?: UpdateLockDocument;
+  readonly selectedAdapters: readonly string[];
+  readonly resolvedAdapters: readonly string[];
+  readonly diagnostics: readonly Diagnostic[];
+}
+
 export interface ConsumerInspection {
   readonly projectRoot: string;
   readonly coreRoot: string;
@@ -543,6 +579,187 @@ function lockHealthFromDiagnostics(initial: ConsumerInspection["lockHealth"], di
   if (initial === "missing") return "missing";
   if (diagnostics.some((item) => item.code.startsWith("PAVED_LOCK_"))) return "mismatch";
   return initial;
+}
+
+function entryChanged(previous: ResolvedLockEntry | undefined, next: UpdateLockEntry | undefined): boolean {
+  if (!previous || !next) return previous !== next;
+  return previous.version !== next.version || previous.source !== next.source || previous.sha256 !== next.sha256;
+}
+
+function entriesChanged(previous: readonly ResolvedLockEntry[] | undefined, next: readonly UpdateLockEntry[] | undefined): boolean {
+  const before = new Map((previous ?? []).filter((entry) => typeof entry.id === "string").map((entry) => [entry.id as string, entry]));
+  const after = new Map((next ?? []).filter((entry) => typeof entry.id === "string").map((entry) => [entry.id as string, entry]));
+  if (before.size !== after.size) return true;
+  for (const [id, entry] of after) {
+    if (entryChanged(before.get(id), entry)) return true;
+  }
+  return false;
+}
+
+function updateStatusDiagnostics(diagnostics: readonly Diagnostic[]): boolean {
+  return diagnostics.some((item) => item.category !== "findings");
+}
+
+function updateLockGenerators(
+  lock: LockDocument,
+  coreRoot: string,
+  generators: readonly GeneratorContract[],
+): { entries: UpdateLockEntry[]; changedIds: string[] } {
+  const lockedById = new Map((lock.generators ?? []).filter((entry) => typeof entry.id === "string").map((entry) => [entry.id as string, entry]));
+  const changedIds: string[] = [];
+  const entries = generators.map((local) => {
+    const next = {
+      id: local.id,
+      version: local.version,
+      source: "local-core",
+      sha256: hashLocalTree(coreRoot, [`generators/${local.id}`]),
+    };
+    const locked = lockedById.get(local.id);
+    if (locked !== undefined && entryChanged(locked, next)) changedIds.push(local.id);
+    return next;
+  });
+  return { entries, changedIds: changedIds.sort() };
+}
+
+export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpdatePlan {
+  const diagnostics: Diagnostic[] = [];
+  const registry = createRegistry(join(input.coreRoot, "schemas"), ["paved/v1"]);
+  const core = loadCoreManifest(input.coreRoot, registry, diagnostics);
+  const manifestPath = input.manifestPath ?? join(input.projectRoot, ".paved/manifest.yaml");
+  const manifest = existsSync(manifestPath)
+    ? readValidated<ProjectManifest>(registry, manifestPath, "PAVED_MANIFEST_INVALID", "consumer.manifest", diagnostics)
+    : undefined;
+  if (!existsSync(manifestPath)) {
+    diagnostics.push(diagnostic({
+      code: "PAVED_CONSUMER_UNINITIALIZED",
+      component: "consumer.manifest",
+      message: "This project is not initialized as a Paved consumer.",
+      remediation: "Run paved init before update.",
+    }));
+  }
+
+  const lockResult = readLock(registry, input.projectRoot, diagnostics);
+  if (lockResult.health === "missing") {
+    diagnostics.push(diagnostic({
+      code: "PAVED_UPDATE_LOCK_REQUIRED",
+      component: "consumer.lock",
+      message: "Update requires an existing valid .paved/paved.lock baseline.",
+      remediation: "Run paved init to create a lock before updating.",
+    }));
+  }
+  if (!lockResult.lock || !manifest || !core || updateStatusDiagnostics(diagnostics)) {
+    return {
+      projectRoot: input.projectRoot,
+      coreRoot: input.coreRoot,
+      remoteResolution: "unsupported",
+      changed: false,
+      plannedWrites: [],
+      plannedGeneratorIds: [],
+      selectedAdapters: manifest?.adapters?.map((adapter) => adapter.id).sort() ?? [],
+      resolvedAdapters: [],
+      diagnostics,
+    };
+  }
+
+  if (manifest.paved?.core && !compatible(core.version, manifest.paved.core)) {
+    diagnostics.push(diagnostic({
+      code: "PAVED_MANIFEST_CORE_INCOMPATIBLE",
+      component: "consumer.manifest",
+      message: `Manifest requires Core ${manifest.paved.core}, but local Core is ${core.version}.`,
+      remediation: "Use a compatible local Core. Remote Core resolution is not supported by this update command.",
+    }));
+  }
+
+  let resolvedAdapters: Detection[] = [];
+  try {
+    const sources = discoverSources(input.projectRoot);
+    const detectedAdapters = detectAdapters(input.projectRoot, loadAdapters(input.coreRoot), sources);
+    const selectedAdapters = (manifest.adapters ?? []).map((adapter) => ({ id: adapter.id, version: adapter.version }));
+    const resolved = resolveAdapters(detectedAdapters, selectedAdapters, core.version);
+    resolvedAdapters = resolved.adapters;
+    for (const item of resolved.diagnostics) {
+      const mapped = mapAdapterDiagnostic(item.code);
+      diagnostics.push(diagnostic({
+        code: mapped.code,
+        component: "consumer.adapters",
+        category: mapped.category,
+        message: item.message,
+        remediation: "Adjust .paved/manifest.yaml adapter ranges or provide the required local adapter before updating.",
+      }));
+    }
+  } catch (error) {
+    diagnostics.push(diagnostic({
+      code: "PAVED_UPDATE_PREFLIGHT_FAILED",
+      component: "cli.update",
+      category: "internal",
+      message: `Update preflight failed: ${messageOf(error)}`,
+      remediation: "Fix local Core adapter contracts before updating consumers.",
+    }));
+  }
+
+  const generators = discoverGenerators(input.coreRoot, registry, diagnostics);
+  if (updateStatusDiagnostics(diagnostics)) {
+    return {
+      projectRoot: input.projectRoot,
+      coreRoot: input.coreRoot,
+      remoteResolution: "unsupported",
+      changed: false,
+      plannedWrites: [],
+      plannedGeneratorIds: [],
+      currentLock: lockResult.lock,
+      selectedAdapters: manifest.adapters?.map((adapter) => adapter.id).sort() ?? [],
+      resolvedAdapters: resolvedAdapters.map((detection) => detection.adapter.id).sort(),
+      diagnostics,
+    };
+  }
+
+  const generatorPlan = updateLockGenerators(lockResult.lock, input.coreRoot, generators);
+  const nextLock: UpdateLockDocument = {
+    apiVersion: "paved/v1",
+    kind: "Lock",
+    resolved_at: new Date().toISOString(),
+    core: {
+      version: core.version,
+      source: "local-core",
+      sha256: hashLocalCore(input.coreRoot),
+    },
+    adapters: resolvedAdapters.map((detection) => ({
+      id: detection.adapter.id,
+      version: detection.adapter.version,
+      source: "local-core",
+      sha256: hashLocalTree(input.coreRoot, [`adapters/${detection.adapter.id}`]),
+    })),
+    ...(generatorPlan.entries === undefined ? {} : { generators: generatorPlan.entries }),
+  };
+
+  const validation = registry.validate(nextLock);
+  if (!validation.valid) {
+    diagnostics.push(diagnostic({
+      code: "PAVED_UPDATE_LOCK_INVALID",
+      component: "consumer.lock",
+      message: `Planned lock is invalid: ${validation.errors.join("; ")}`,
+      remediation: "Fix local Core metadata before updating the consumer lock.",
+    }));
+  }
+
+  const coreChanged = entryChanged(lockResult.lock.core, nextLock.core);
+  const adaptersChanged = entriesChanged(lockResult.lock.adapters, nextLock.adapters);
+  const generatorsChanged = entriesChanged(lockResult.lock.generators, nextLock.generators);
+  const changed = coreChanged || adaptersChanged || generatorsChanged;
+
+  return {
+    projectRoot: input.projectRoot,
+    coreRoot: input.coreRoot,
+    remoteResolution: "unsupported",
+    changed,
+    plannedWrites: changed ? [".paved/paved.lock"] : [],
+    plannedGeneratorIds: generatorPlan.changedIds,
+    currentLock: lockResult.lock,
+    nextLock,
+    selectedAdapters: manifest.adapters?.map((adapter) => adapter.id).sort() ?? [],
+    resolvedAdapters: resolvedAdapters.map((detection) => detection.adapter.id).sort(),
+    diagnostics,
+  };
 }
 
 export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection {

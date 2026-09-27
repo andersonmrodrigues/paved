@@ -5,6 +5,7 @@ import { doctorHandler } from "./commands/doctor.ts";
 import { generateHandler } from "./commands/generate.ts";
 import { initHandler } from "./commands/init.ts";
 import { statusHandler } from "./commands/status.ts";
+import { updateHandler } from "./commands/update.ts";
 import { createDiagnostic, createResult, type CommandResult } from "./result.ts";
 import { CliPathError, resolveCoreRoot, resolveProjectRoot } from "./paths.ts";
 
@@ -68,7 +69,7 @@ const COMMON_VALUE_FLAGS = new Set(["--project"]);
 const COMMON_BOOLEAN_FLAGS = new Set(["--json"]);
 const COMMAND_RULES: Record<CommandName, CommandRule> = {
   init: { adapters: true, dryRun: true, noGenerate: true, selectors: false },
-  update: { adapters: true, dryRun: true, noGenerate: false, selectors: false },
+  update: { adapters: false, dryRun: true, noGenerate: false, selectors: false },
   generate: { adapters: true, dryRun: true, noGenerate: false, selectors: true },
   verify: { adapters: true, dryRun: false, noGenerate: false, selectors: false },
   status: { adapters: true, dryRun: false, noGenerate: false, selectors: false },
@@ -326,6 +327,7 @@ const DEFAULT_HANDLERS: CommandHandlers = {
   generate: generateHandler,
   init: initHandler,
   status: statusHandler,
+  update: updateHandler,
 };
 
 export async function dispatchCli(options: DispatchOptions = {}): Promise<CommandResult> {

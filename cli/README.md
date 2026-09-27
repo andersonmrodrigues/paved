@@ -1,18 +1,16 @@
 # CLI
 
 `paved` is the command-line interface for installing, updating, generating, verifying
-and diagnosing Paved in a consumer repository. **The commands are specified, not
-implemented.** `cli/lib/` contains tested implementations for document and schema
-validation, reference resolution, provenance, skill and workflow assessment, Check and
-Evidence assessment, and Tool discovery, policy and capture. There is no command runner,
-consumer installation path or production execution boundary yet.
+and diagnosing Paved in a consumer repository. Current implemented commands cover local
+init, local-only update, generation, status and doctor behavior; verification and Tool
+subcommands remain contract work.
 
 ## Commands
 
 | Command | Purpose | Writes |
 |---|---|---|
 | [`paved init`](commands/init/README.md) | Set up Paved in a repository | `.paved/` skeleton, manifest, lock, AGENTS.md block |
-| [`paved update`](commands/update/README.md) | Move to a new Core or adapter version | lock, resolved Core cache, migrations (with confirmation) |
+| [`paved update`](commands/update/README.md) | Refresh the local lock after configured local Core, adapter or generator contract changes | `.paved/paved.lock`, safe generator outputs/proposals when needed |
 | [`paved generate`](commands/generate/README.md) | Run generators | `.paved/project/`, `.paved/generated/` |
 | [`paved verify`](commands/verify/README.md) | Run profile checks and validate evidence | `.paved/generated/evidence/` |
 | [`paved evidence`](commands/verify/README.md) | Validate, inspect and list evidence | nothing |

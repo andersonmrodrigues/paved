@@ -60,8 +60,38 @@ function currentLock(adapterIds = ["technology/java"]): LockDocument {
       source: "local-core",
       sha256: hashLocalTree(ROOT, [`adapters/${id}`]),
     })),
-    generators: [],
+    generators: localGeneratorEntries(),
   };
+}
+
+function localGeneratorEntries(root = ROOT): ResolvedLockEntry[] {
+  const generators: { id: string; version: string }[] = [];
+  function walk(dir: string): void {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== "runtime") walk(full);
+        continue;
+      }
+      if (entry.name === "generator.yaml") {
+        const contract = parse(readFileSync(full, "utf8")) as { id?: string; version?: string };
+        if (typeof contract.id === "string" && typeof contract.version === "string") {
+          generators.push({ id: contract.id, version: contract.version });
+        }
+      }
+    }
+  }
+  walk(join(root, "generators"));
+  return generators.sort((a, b) => a.id.localeCompare(b.id, "en")).map((generator) => ({
+    id: generator.id,
+    version: generator.version,
+    source: "local-core",
+    sha256: hashLocalTree(root, [`generators/${generator.id}`]),
+  }));
+}
+
+function localGeneratorIds(root = ROOT): string[] {
+  return localGeneratorEntries(root).map((entry) => entry.id).filter((id): id is string => typeof id === "string");
 }
 
 function writeCurrentLock(project: string, adapterIds?: string[]): void {
@@ -109,13 +139,222 @@ function freshConsumer(name: string): string {
   return dir;
 }
 
-async function run(projectRoot: string, command: "init" | "generate" | "status" | "doctor", extra: readonly string[] = []): Promise<CommandResult> {
+async function run(projectRoot: string, command: "init" | "update" | "generate" | "status" | "doctor", extra: readonly string[] = []): Promise<CommandResult> {
   return dispatchCli({
     argv: [command, "--project", projectRoot, ...extra],
     cwd: ROOT,
     executablePath: join(ROOT, "cli/index.ts"),
   });
 }
+
+  describe("update command", () => {
+    it("requires a valid existing lock before planning any write", async () => {
+      const missing = fixtureCopy("update-missing-lock");
+      const invalid = fixtureCopy("update-invalid-lock");
+      try {
+        rmSync(join(missing, ".paved/paved.lock"), { force: true });
+        writeFileSync(join(invalid, ".paved/paved.lock"), "apiVersion: paved/v1\nkind: Lock\ncore: bad\n");
+        const missingBefore = snapshotFiles(missing);
+        const invalidBefore = snapshotFiles(invalid);
+
+        const missingResult = await run(missing, "update");
+        const invalidResult = await run(invalid, "update");
+
+        assert.equal(primaryCategory(missingResult), "config");
+        assert.equal(primaryCategory(invalidResult), "config");
+        assertCode(missingResult, "PAVED_LOCK_MISSING");
+        assertCode(invalidResult, "PAVED_LOCK_INVALID");
+        assert.deepEqual(snapshotFiles(missing), missingBefore);
+        assert.deepEqual(snapshotFiles(invalid), invalidBefore);
+      } finally {
+        rmSync(missing, { recursive: true, force: true });
+        rmSync(invalid, { recursive: true, force: true });
+      }
+    });
+
+    it("rejects unsupported adapter override flags without mutating the project", async () => {
+      const project = fixtureCopy("update-adapter-flag");
+      try {
+        writeCurrentLock(project);
+        const before = snapshotFiles(project);
+
+        const result = await run(project, "update", ["--adapter", "technology/java"]);
+
+        assert.equal(primaryCategory(result), "usage");
+        assertCode(result, "PAVED_CLI_USAGE");
+        assert.deepEqual(snapshotFiles(project), before);
+      } finally {
+        rmSync(project, { recursive: true, force: true });
+      }
+    });
+
+    it("reports unchanged local Core and adapters as a no-op", async () => {
+      const project = fixtureCopy("update-unchanged");
+      try {
+        writeCurrentLock(project);
+        const before = snapshotFiles(project);
+
+        const result = await run(project, "update");
+        const data = dataOf(result) as { changed?: boolean; plannedWrites?: string[] };
+
+        assert.equal(exitCode(result), 0);
+        assert.equal(data.changed, false);
+        assert.deepEqual(data.plannedWrites, []);
+        assert.deepEqual(snapshotFiles(project), before);
+      } finally {
+        rmSync(project, { recursive: true, force: true });
+      }
+    });
+
+    it("preflights compatible manifest ranges and blocks incompatible Core or adapter ranges", async () => {
+      const incompatibleCore = fixtureCopy("update-incompatible-core");
+      const incompatibleAdapter = fixtureCopy("update-incompatible-adapter");
+      try {
+        writeCurrentLock(incompatibleCore);
+        writeCurrentLock(incompatibleAdapter);
+        writeManifest(incompatibleCore, {
+          apiVersion: "paved/v1",
+          kind: "Project",
+          project: { name: "incompatible-core" },
+          paved: { core: "^9.0.0" },
+          adapters: [{ id: "technology/java", version: "^0.1.0" }],
+        });
+        writeManifest(incompatibleAdapter, {
+          apiVersion: "paved/v1",
+          kind: "Project",
+          project: { name: "incompatible-adapter" },
+          paved: { core: "^0.2.0" },
+          adapters: [{ id: "technology/java", version: "^9.0.0" }],
+        });
+        const coreBefore = snapshotFiles(incompatibleCore);
+        const adapterBefore = snapshotFiles(incompatibleAdapter);
+
+        const coreResult = await run(incompatibleCore, "update");
+        const adapterResult = await run(incompatibleAdapter, "update");
+
+        assert.equal(primaryCategory(coreResult), "config");
+        assert.equal(primaryCategory(adapterResult), "resolution");
+        assertCode(coreResult, "PAVED_MANIFEST_CORE_INCOMPATIBLE");
+        assertCode(adapterResult, "PAVED_ADAPTER_INCOMPATIBLE");
+        assert.deepEqual(snapshotFiles(incompatibleCore), coreBefore);
+        assert.deepEqual(snapshotFiles(incompatibleAdapter), adapterBefore);
+      } finally {
+        rmSync(incompatibleCore, { recursive: true, force: true });
+        rmSync(incompatibleAdapter, { recursive: true, force: true });
+      }
+    });
+
+    it("plans local digest changes without network access and keeps dry-run immutable", async () => {
+      const project = fixtureCopy("update-digest-dry-run");
+      try {
+        const lock = currentLock();
+        lock.core.sha256 = "1".repeat(64);
+        lock.adapters![0]!.sha256 = "2".repeat(64);
+        lock.generators = [{ id: "project-context/architecture", version: "0.2.0", source: "local-core", sha256: "3".repeat(64) }];
+        writeFileSync(join(project, ".paved/paved.lock"), stringify(lock));
+        const before = snapshotFiles(project);
+
+        const result = await run(project, "update", ["--dry-run"]);
+        const data = dataOf(result) as { dryRun?: boolean; plannedWrites?: string[]; plannedGeneratorIds?: string[]; remoteResolution?: string };
+
+        assert.equal(exitCode(result), 0);
+        assert.equal(data.dryRun, true);
+        assert.equal(data.remoteResolution, "unsupported");
+        assert.ok(data.plannedWrites?.includes(".paved/paved.lock"));
+        assert.deepEqual(data.plannedGeneratorIds, ["project-context/architecture"]);
+        assert.deepEqual(snapshotFiles(project), before);
+      } finally {
+        rmSync(project, { recursive: true, force: true });
+      }
+    });
+
+    it("writes the lock only after successful preflight and safe generation", async () => {
+      const project = fixtureCopy("update-digest-apply");
+      try {
+        const lock = currentLock();
+        lock.core.sha256 = "4".repeat(64);
+        writeFileSync(join(project, ".paved/paved.lock"), stringify(lock));
+        const appBefore = snapshotApplicationFiles(project);
+
+        const result = await run(project, "update");
+        const updated = parse(readFileSync(join(project, ".paved/paved.lock"), "utf8")) as LockDocument;
+        const data = dataOf(result) as { changed?: boolean; plannedWrites?: string[] };
+
+        assert.equal(exitCode(result), 0);
+        assert.equal(data.changed, true);
+        assert.ok(data.plannedWrites?.includes(".paved/paved.lock"));
+        assert.equal(updated.core.sha256, hashLocalCore(ROOT));
+        assert.deepEqual(snapshotApplicationFiles(project), appBefore);
+      } finally {
+        rmSync(project, { recursive: true, force: true });
+      }
+    });
+
+    it("records every local generator contract when refreshing an older lock", async () => {
+      const project = fixtureCopy("update-generator-lock-fill");
+      try {
+        const lock = currentLock();
+        delete lock.generators;
+        lock.core.sha256 = "6".repeat(64);
+        writeFileSync(join(project, ".paved/paved.lock"), stringify(lock));
+
+        const result = await run(project, "update");
+        const updated = parse(readFileSync(join(project, ".paved/paved.lock"), "utf8")) as LockDocument;
+
+        assert.equal(exitCode(result), 0);
+        assert.deepEqual(updated.generators?.map((entry) => entry.id).sort(), localGeneratorIds());
+      } finally {
+        rmSync(project, { recursive: true, force: true });
+      }
+    });
+
+    it("turns human-edited generated output or untrusted baselines into conflicts and proposals", async () => {
+      const humanEdited = freshConsumer("update-human-edited");
+      const untrustedBaseline = freshConsumer("update-untrusted-baseline");
+      try {
+        for (const project of [humanEdited, untrustedBaseline]) {
+          initializeConsumer(ROOT, project, "update-conflict");
+          await run(project, "generate", ["project-context/architecture"]);
+          const lock = parse(readFileSync(join(project, ".paved/paved.lock"), "utf8")) as LockDocument;
+          lock.generators = [{ id: "project-context/architecture", version: "0.2.0", source: "local-core", sha256: "5".repeat(64) }];
+          writeFileSync(join(project, ".paved/paved.lock"), stringify(lock));
+        }
+
+        const humanOutput = join(humanEdited, ".paved/project/architecture/overview.md");
+        const humanContent = readFileSync(humanOutput, "utf8").replace("Implemented structure", "Human maintained structure");
+        writeFileSync(humanOutput, humanContent);
+
+        const baselinePath = join(untrustedBaseline, ".paved/generated/state/baselines", `${"0".repeat(64)}.json`);
+        mkdirSync(dirname(baselinePath), { recursive: true });
+        writeFileSync(baselinePath, stringify({ generator: "project-context/architecture", body: "tampered", sha256: "bad" }));
+        const untrustedOutput = join(untrustedBaseline, ".paved/project/architecture/overview.md");
+        const untrustedContent = readFileSync(untrustedOutput, "utf8").replace("Implemented structure", "Baseline changed structure");
+        writeFileSync(untrustedOutput, untrustedContent);
+
+        const humanBefore = snapshotApplicationFiles(humanEdited);
+        const untrustedBefore = snapshotApplicationFiles(untrustedBaseline);
+
+        const humanResult = await run(humanEdited, "update");
+        const untrustedResult = await run(untrustedBaseline, "update");
+        const humanData = dataOf(humanResult) as { conflicts?: string[]; proposals?: string[] };
+        const untrustedData = dataOf(untrustedResult) as { conflicts?: string[]; proposals?: string[] };
+
+        assert.equal(primaryCategory(humanResult), "conflict");
+        assert.equal(primaryCategory(untrustedResult), "conflict");
+        assert.deepEqual(humanData.conflicts, ["project-context/architecture"]);
+        assert.deepEqual(untrustedData.conflicts, ["project-context/architecture"]);
+        assert.ok(humanData.proposals?.includes(".paved/generated/proposals/project/architecture/overview.md"));
+        assert.ok(untrustedData.proposals?.includes(".paved/generated/proposals/project/architecture/overview.md"));
+        assert.equal(readFileSync(humanOutput, "utf8"), humanContent);
+        assert.equal(readFileSync(untrustedOutput, "utf8"), untrustedContent);
+        assert.deepEqual(snapshotApplicationFiles(humanEdited), humanBefore);
+        assert.deepEqual(snapshotApplicationFiles(untrustedBaseline), untrustedBefore);
+      } finally {
+        rmSync(humanEdited, { recursive: true, force: true });
+        rmSync(untrustedBaseline, { recursive: true, force: true });
+      }
+    });
+  });
 
 async function assertReadOnly(projectRoot: string, command: "status" | "doctor", extra: readonly string[] = []): Promise<CommandResult> {
   const before = snapshotFiles(projectRoot);
