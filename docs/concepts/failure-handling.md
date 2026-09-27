@@ -30,6 +30,22 @@ disable the rest.
 
 - **No partial success reported as success.** Every command reports what it did and
   what it did not do. `--json` output lists diagnostics and structured data.
+- **Persisted files are replaced atomically.** Locks, generated outputs and generator
+  state, verification logs and Evidence are written to a sibling temporary file before
+  replacement, so an interrupted write cannot expose a truncated destination. This
+  protects individual files; multi-file initialization is not a crash-atomic transaction.
+- **Interrupted update swaps require inspection.** If `.paved.update-backup` exists,
+  update refuses to proceed. If `.paved` is absent, restore the backup directory to
+  `.paved`; if both exist, inspect both and preserve the valid current state before
+  removing or restoring the backup. Do not discard the only valid copy. Abandoned
+  `.paved-update-*` staging directories are not authoritative and may be removed after
+  confirming no Paved process is still using them.
+- **Consumer mutations are serialized.** Generation, verification and update acquire
+  `.paved-operation-lock` before writing. A collision fails with
+  `PAVED_OPERATION_IN_PROGRESS`; a lock left by process termination is not removed
+  automatically. Inspect `owner.json` and confirm no Paved process remains before
+  manually removing a stale lock. Read-only status, doctor and Gardener operations do
+  not acquire the lock and may observe either side of an update swap.
 - **Isolate by unit.** An invalid feature document invalidates that document, not
   the whole feature map. An incompatible adapter disables that adapter, not the Core.
 - **Human knowledge is never the recovery path.** No failure mode overwrites a

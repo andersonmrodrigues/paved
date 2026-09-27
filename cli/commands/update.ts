@@ -1,10 +1,12 @@
-import { cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { stringify } from "yaml";
+import { atomicWriteFileSync } from "../lib/atomic-write.ts";
 import { generateData, diagnosticsForRun } from "./generate.ts";
 import { inspectConsumer, planConsumerUpdate, type ConsumerUpdatePlan } from "../lib/consumer-state.ts";
 import { runGenerators, type RunResult } from "../lib/generator-runtime.ts";
 import { applyConsumerUpdate } from "../lib/update-transaction.ts";
+import { ConsumerOperationLockedError } from "../lib/operation-lock.ts";
 import { createDiagnostic, createResult, type CommandResult, type Diagnostic, type ResultStatus } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
 
@@ -59,7 +61,7 @@ function updateData(plan: ConsumerUpdatePlan, dryRun: boolean, generation?: RunR
 
 function writeLock(projectRoot: string, plan: ConsumerUpdatePlan): void {
   if (!plan.nextLock || !plan.plannedWrites.includes(".paved/paved.lock")) return;
-  writeFileSync(join(projectRoot, ".paved/paved.lock"), stringify(plan.nextLock));
+  atomicWriteFileSync(join(projectRoot, ".paved/paved.lock"), stringify(plan.nextLock));
 }
 
 export function updateHandler(invocation: CommandInvocation): CommandResult {
@@ -130,6 +132,14 @@ export function updateHandler(invocation: CommandInvocation): CommandResult {
     const lifecycleState = inspectConsumer({ projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot }).lifecycleState;
     return createResult({ command: "update", status: statusFor(staged.diagnostics), data: updateData(plan, false, staged.generation, lifecycleState), diagnostics: staged.diagnostics });
   } catch (error) {
+    if (error instanceof ConsumerOperationLockedError) {
+      const diagnostic = createDiagnostic({
+        severity: "error", category: "conflict", code: "PAVED_OPERATION_IN_PROGRESS", component: "consumer.operation",
+        message: error.message,
+        remediation: "Wait for the active operation to finish. For a stale lock, confirm no Paved process is active before removing .paved-operation-lock.",
+      });
+      return createResult({ command: "update", status: "failed", data: updateData(plan, false), diagnostics: [...plan.diagnostics, diagnostic] });
+    }
     const diagnostic = createDiagnostic({
       severity: "error", category: "generation/update", code: "PAVED_UPDATE_TRANSACTION_FAILED", component: "cli.update",
       message: error instanceof Error ? error.message : "Update transaction failed.",

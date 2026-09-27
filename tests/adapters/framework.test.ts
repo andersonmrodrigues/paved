@@ -1,17 +1,18 @@
 import assert from 'node:assert/strict';
-import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { afterEach, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { loadAdapters, detectAdapters, resolveAdapters, resolveCapability, capabilityEvidence, collectEvidence, type AdapterContract } from '../../cli/lib/adapters.ts';
 import { discoverSources, initializeConsumer, runGenerators } from '../../cli/lib/generator-runtime.ts';
 import { createRegistry } from '../../cli/lib/schemas.ts';
 import { parse } from 'yaml';
+import { cleanupTemporaryDirectories, temporaryDirectory } from '../helpers.ts';
 const core = fileURLToPath(new URL('../..', import.meta.url));
 const fixtures = join(core, 'tests/fixtures/adapters');
 const adapters = loadAdapters(core);
-function inspect(name: string) { const root = mkdtempSync(join(tmpdir(), 'paved-fixture-')); cpSync(join(fixtures, name), root, { recursive: true }); if (existsSync(join(root, 'git-fixture.txt'))) { mkdirSync(join(root, '.git')); writeFileSync(join(root, '.git/HEAD'), 'ref: refs/heads/main\n'); } const sources = discoverSources(root); return { root, sources, detection: detectAdapters(root, adapters, sources) }; }
+afterEach(cleanupTemporaryDirectories);
+function inspect(name: string) { const root = temporaryDirectory('paved-fixture'); cpSync(join(fixtures, name), root, { recursive: true }); if (existsSync(join(root, 'git-fixture.txt'))) { mkdirSync(join(root, '.git')); writeFileSync(join(root, '.git/HEAD'), 'ref: refs/heads/main\n'); } const sources = discoverSources(root); return { root, sources, detection: detectAdapters(root, adapters, sources) }; }
 function detected(name: string, id: string) { return inspect(name).detection.find(d => d.adapter.id === id)!; }
 
 test('adapter contracts validate and maintain independent versions and compatibility', () => {
@@ -30,14 +31,14 @@ test('detection uses content evidence and preserves weak and unknown states', ()
   assert.equal(detected('postgresql-project', 'technology/postgresql').confidence, 'strong');
   assert.equal(detected('git-project', 'infrastructure/git').confidence, 'strong');
   assert.equal(detected('java-project', 'technology/angular').confidence, 'unknown');
-  const root = mkdtempSync(join(tmpdir(), 'paved-weak-'));
+  const root = temporaryDirectory('paved-weak');
   writeFileSync(join(root, 'pom.xml'), 'ambiguous file');
   const sources = discoverSources(root);
   assert.equal(detectAdapters(root, adapters, sources).find(d => d.adapter.id === 'technology/java')?.confidence, 'weak');
 });
 
 test('evidence globs with a recursive prefix include files at the repository root', () => {
-  const root = mkdtempSync(join(tmpdir(), 'paved-root-evidence-'));
+  const root = temporaryDirectory('paved-root-evidence');
   mkdirSync(join(root, 'angular-src'));
   writeFileSync(join(root, 'Sample.java'), 'package example; class Sample {}');
   writeFileSync(join(root, 'schema.sql'), 'CREATE TABLE root_items (id integer);');
@@ -55,7 +56,7 @@ test('evidence globs with a recursive prefix include files at the repository roo
 });
 
 test('Java adapter detects Kotlin DSL Gradle build files', () => {
-  const root = mkdtempSync(join(tmpdir(), 'paved-gradle-kts-'));
+  const root = temporaryDirectory('paved-gradle-kts');
   writeFileSync(join(root, 'build.gradle.kts'), 'plugins { java }');
   const sources = discoverSources(root);
 
@@ -63,7 +64,7 @@ test('Java adapter detects Kotlin DSL Gradle build files', () => {
 });
 
 test('adapter evidence rejects captured values that contain secret-like terms', () => {
-  const root = mkdtempSync(join(tmpdir(), 'paved-secret-capture-'));
+  const root = temporaryDirectory('paved-secret-capture');
   writeFileSync(join(root, 'secrets.txt'), 'credential=TOP_SECRET_VALUE');
   const source = discoverSources(root);
   const java = detected('java-project', 'technology/java');
@@ -95,7 +96,7 @@ test('adapter evidence rejects captured values that contain secret-like terms', 
 });
 
 test('Quarkus route evidence preserves parameterized path templates', () => {
-  const root = mkdtempSync(join(tmpdir(), 'paved-quarkus-routes-'));
+  const root = temporaryDirectory('paved-quarkus-routes');
   writeFileSync(join(root, 'pom.xml'), '<project><artifactId>quarkus-resteasy</artifactId></project>');
   writeFileSync(join(root, 'Resource.java'), '@Path("/items/{id}") class Resource {}');
   const sources = discoverSources(root);
@@ -107,7 +108,7 @@ test('Quarkus route evidence preserves parameterized path templates', () => {
 });
 
 test('adapter evidence deduplicates repeated matches without captured values', () => {
-  const root = mkdtempSync(join(tmpdir(), 'paved-deduplicated-evidence-'));
+  const root = temporaryDirectory('paved-deduplicated-evidence');
   writeFileSync(join(root, 'pom.xml'), '<project>testImplementation testImplementation useJUnitPlatform testImplementation</project>');
   const sources = discoverSources(root);
   const java = detected('java-project', 'technology/java');
@@ -132,7 +133,7 @@ test('adapter evidence deduplicates repeated matches without captured values', (
 });
 
 test('generator provenance does not inherit adapter attribution from another generator', () => {
-  const root = mkdtempSync(join(tmpdir(), 'paved-isolated-source-attribution-'));
+  const root = temporaryDirectory('paved-isolated-source-attribution');
   mkdirSync(join(root, 'src/main/java/example'), { recursive: true });
   mkdirSync(join(root, 'module'), { recursive: true });
   writeFileSync(join(root, 'README.md'), '# Sample\n');
@@ -168,7 +169,7 @@ test('generator provenance does not inherit adapter attribution from another gen
 });
 
 test('evidence-driven generators treat absent routes and integration settings as unknowns', () => {
-  const root = mkdtempSync(join(tmpdir(), 'paved-no-route-evidence-'));
+  const root = temporaryDirectory('paved-no-route-evidence');
   mkdirSync(join(root, 'src/main/java/example'), { recursive: true });
   writeFileSync(join(root, 'README.md'), '# Sample Java library\n');
   writeFileSync(join(root, 'pom.xml'), '<project><artifactId>sample</artifactId></project>');
@@ -223,7 +224,7 @@ test('resolution diagnoses missing, incompatible, cyclic and ambiguous providers
 });
 
 test('adapter evidence omits sensitive values and generators consume resolved evidence', () => {
-  const root = mkdtempSync(join(tmpdir(), 'paved-adapter-'));
+  const root = temporaryDirectory('paved-adapter');
   mkdirSync(join(root, 'frontend/src/app'), { recursive: true });
   writeFileSync(join(root, 'README.md'), '# Sample\n');
   writeFileSync(join(root, 'frontend/package.json'), '{"dependencies":{"@angular/core":"^19.2.15"},"scripts":{"test":"ng test"}}');
@@ -267,7 +268,7 @@ test('Core capability meanings are complete and technology neutral', () => {
 });
 
 test('repeated adapter provenance serializes without YAML alias exhaustion', () => {
-  const root = mkdtempSync(join(tmpdir(), 'paved-many-'));
+  const root = temporaryDirectory('paved-many');
   mkdirSync(join(root, 'src/main/java/example'), { recursive: true });
   writeFileSync(join(root, 'README.md'), '# Sample\n');
   writeFileSync(join(root, 'pom.xml'), '<project><artifactId>sample</artifactId></project>');
@@ -296,7 +297,7 @@ test('incompatible adapter dependency is diagnosed without selecting dependent a
 });
 
 test('Node scripts and CI files remain unmodeled without requiring adapters', () => {
-  const root = mkdtempSync(join(tmpdir(), 'paved-unmodeled-'));
+  const root = temporaryDirectory('paved-unmodeled');
   mkdirSync(join(root, '.github/workflows'), { recursive: true });
   writeFileSync(join(root, 'README.md'), '# Sample\n');
   writeFileSync(join(root, 'package.json'), '{"scripts":{"test":"node --test"}}');
