@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { parse as parseYaml, stringify } from "yaml";
 import { createDiagnostic, type Diagnostic } from "../result.ts";
@@ -14,6 +14,8 @@ import {
   type VerificationPolicy,
 } from "./evidence.ts";
 import { createRegistry, type SchemaRegistry } from "./schemas.ts";
+import { atomicWriteFileSync } from "./atomic-write.ts";
+import { acquireConsumerOperationLock } from "./operation-lock.ts";
 import {
   authorizeTool,
   buildArgv,
@@ -775,14 +777,14 @@ function writeValidatedEvidence(args: {
   for (const log of args.logs) {
     const target = safe(args.projectRoot, log.relativePath);
     mkdirSync(dirname(target), { recursive: true });
-    writeFileSync(target, log.content);
+    atomicWriteFileSync(target, log.content);
   }
   const evidenceFile = join(evidenceDir, `${(args.record as EvidenceRecord & { id: string }).id}.yaml`);
-  writeFileSync(evidenceFile, stringify(args.record));
+  atomicWriteFileSync(evidenceFile, stringify(args.record));
   return [evidenceFile];
 }
 
-export async function runVerification(input: VerificationRunInput): Promise<VerificationRunResult> {
+async function runVerificationUnlocked(input: VerificationRunInput): Promise<VerificationRunResult> {
   const diagnostics: Diagnostic[] = [];
   const schemaRegistry = registry(input.coreRoot);
   const profilePath = safe(input.projectRoot, ".paved/verification/profile.yaml");
@@ -945,4 +947,13 @@ export async function runVerification(input: VerificationRunInput): Promise<Veri
     evaluation: built.evaluation,
     checks: evidenceChecks.map((check) => ({ id: check.check, status: check.status, type: check.type })),
   };
+}
+
+export async function runVerification(input: VerificationRunInput): Promise<VerificationRunResult> {
+  const release = acquireConsumerOperationLock(input.projectRoot, "verify");
+  try {
+    return await runVerificationUnlocked(input);
+  } finally {
+    release();
+  }
 }

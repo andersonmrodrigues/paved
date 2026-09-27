@@ -1,21 +1,23 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import { describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse, stringify } from "yaml";
 import { copyProjectForInitDryRun, createInitDryRunWorkspace, initDryRunScratchPrefix } from "../../cli/commands/init.ts";
 import { hashLocalCore, hashLocalFile, hashLocalTree } from "../../cli/lib/local-core.ts";
 import { initializeConsumer } from "../../cli/lib/generator-runtime.ts";
+import { acquireConsumerOperationLock } from "../../cli/lib/operation-lock.ts";
 import { renderHuman, renderJson } from "../../cli/output.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
 import { exitCode, primaryCategory, type CommandResult } from "../../cli/result.ts";
+import { cleanupTemporaryDirectories, temporaryDirectory } from "../helpers.ts";
 
 const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const HEALTHY_FIXTURE = join(ROOT, "tests/cli/fixtures/healthy");
 const VERIFICATION_FIXTURE = join(ROOT, "tests/cli/fixtures/verification");
-let sandboxCounter = 0;
+afterEach(cleanupTemporaryDirectories);
 
 interface ResolvedLockEntry {
   id?: string;
@@ -34,10 +36,7 @@ interface LockDocument {
 }
 
 function sandbox(name: string): string {
-  const dir = join(ROOT, "tests/cli/.sandbox-commands", `${name}-${process.pid}-${++sandboxCounter}`);
-  rmSync(dir, { recursive: true, force: true });
-  mkdirSync(dir, { recursive: true });
-  return dir;
+  return temporaryDirectory(`paved-${name}`);
 }
 
 function fixtureCopy(name: string): string {
@@ -157,7 +156,7 @@ async function run(projectRoot: string, command: "init" | "update" | "generate" 
   });
 }
 
-async function runAny(projectRoot: string, command: "init" | "update" | "generate" | "verify" | "status" | "doctor", extra: readonly string[] = []): Promise<CommandResult> {
+async function runAny(projectRoot: string, command: "init" | "update" | "generate" | "verify" | "status" | "doctor" | "gardener", extra: readonly string[] = []): Promise<CommandResult> {
   return dispatchCli({
     argv: [command, "--project", projectRoot, ...extra],
     cwd: ROOT,
@@ -166,6 +165,37 @@ async function runAny(projectRoot: string, command: "init" | "update" | "generat
 }
 
 describe("command output, exit, and safety regressions", () => {
+  it("reports an in-progress consumer operation as a conflict for generation, verification, and update", async () => {
+    const project = freshConsumer("operation-lock-cli");
+    let release: (() => void) | undefined;
+    try {
+      initializeConsumer(ROOT, project, "operation-lock-cli");
+      const lockPath = join(project, ".paved/paved.lock");
+      const lock = parse(readFileSync(lockPath, "utf8")) as LockDocument;
+      lock.core.sha256 = "0".repeat(64);
+      writeFileSync(lockPath, stringify(lock));
+      release = acquireConsumerOperationLock(project, "fixture");
+      const before = snapshotFiles(project);
+
+      const generate = await run(project, "generate");
+      const verify = await runAny(project, "verify");
+      const update = await run(project, "update");
+      const secondGenerate = await run(project, "generate");
+      const secondUpdate = await run(project, "update");
+      const gardener = await runAny(project, "gardener");
+
+      for (const result of [generate, verify, update, secondGenerate, secondUpdate]) {
+        assert.equal(exitCode(result), 8);
+        assertCode(result, "PAVED_OPERATION_IN_PROGRESS");
+      }
+      assert.ok(exitCode(gardener) <= 1, JSON.stringify(gardener.diagnostics));
+      assert.deepEqual(snapshotFiles(project), before);
+    } finally {
+      release?.();
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
   it("keeps warning exit behavior and JSON/human parity for actual command results", async () => {
     const project = fixtureCopy("warning-parity");
     try {
@@ -921,7 +951,7 @@ describe("init and generate commands", () => {
 
       copyProjectForInitDryRun(project, copy);
 
-      assert.equal(execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: copy, encoding: "utf8" }).trim(), copy);
+      assert.equal(execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: copy, encoding: "utf8" }).trim(), realpathSync(copy));
       assert.throws(() => execFileSync("git", ["rev-parse", "HEAD"], {
         cwd: copy,
         encoding: "utf8",

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { cpSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse, stringify } from "yaml";
 import { inspectConsumer } from "../../cli/lib/consumer-state.ts";
@@ -11,17 +11,14 @@ import { applyConsumerUpdate } from "../../cli/lib/update-transaction.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
 import { hashLocalFile, hashLocalTree } from "../../cli/lib/local-core.ts";
 import { exitCode } from "../../cli/result.ts";
+import { cleanupTemporaryDirectories, temporaryDirectory, temporaryFixture } from "../helpers.ts";
 
 const core = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const fixtures = join(core, "tests/fixtures/consumers");
-const scratch = join(core, "tests/cli/.sandbox-lifecycle");
-let sequence = 0;
+afterEach(cleanupTemporaryDirectories);
+
 function consumer(name: string): string {
-  const path = join(scratch, `${name}-${process.pid}-${++sequence}`);
-  rmSync(path, { recursive: true, force: true });
-  mkdirSync(path, { recursive: true });
-  cpSync(join(fixtures, name), path, { recursive: true });
-  return path;
+  return temporaryFixture(join(fixtures, name), `paved-${name}`);
 }
 function state(path: string) { return inspectConsumer({ projectRoot: path, coreRoot: core }).lifecycleState; }
 
@@ -90,6 +87,85 @@ test("failed staged update keeps the original lock and generated state byte for 
     }), /staged validation failed/);
     assert.equal(readFileSync(join(a, ".paved/paved.lock")).equals(lock), true);
     assert.equal(readFileSync(join(a, ".paved/manifest.yaml")).equals(manifest), true);
+    assert.equal(existsSync(join(a, ".paved-operation-lock")), false);
+  } finally { rmSync(a, { recursive: true, force: true }); }
+});
+
+test("rejected staged update leaves authoritative state untouched and removes its workspace", () => {
+  const a = consumer("consumer-a");
+  try {
+    initializeConsumer(core, a, "consumer-a");
+    const before = hashLocalTree(a, [".paved"]);
+    let stagedRoot: string | undefined;
+    const result = applyConsumerUpdate(a, (staged) => {
+      stagedRoot = staged;
+      writeFileSync(join(staged, ".paved/paved.lock"), "staged change");
+      return "rejected";
+    }, {
+      commitIf: () => false,
+      onRejected: (staged, value) => {
+        assert.equal(staged, stagedRoot);
+        assert.equal(value, "rejected");
+      },
+    });
+
+    assert.equal(result, "rejected");
+    assert.equal(hashLocalTree(a, [".paved"]), before);
+    assert.equal(existsSync(join(a, ".paved-operation-lock")), false);
+    assert.ok(stagedRoot);
+    assert.equal(existsSync(stagedRoot), false);
+  } finally { rmSync(a, { recursive: true, force: true }); }
+});
+
+test("staged update refuses to overwrite consumer state changed before commit", () => {
+  const a = consumer("consumer-a");
+  try {
+    initializeConsumer(core, a, "consumer-a");
+    const manifestPath = join(a, ".paved/manifest.yaml");
+    const concurrentManifest = `${readFileSync(manifestPath, "utf8")}\n# concurrent edit\n`;
+
+    assert.throws(() => applyConsumerUpdate(a, (staged) => {
+      writeFileSync(join(staged, ".paved/paved.lock"), "staged change");
+      writeFileSync(manifestPath, concurrentManifest);
+      return "staged";
+    }), /Consumer state or repository evidence changed during update/);
+
+    assert.equal(readFileSync(manifestPath, "utf8"), concurrentManifest);
+  } finally { rmSync(a, { recursive: true, force: true }); }
+});
+
+test("failed directory swap restores the previous consumer state", () => {
+  const a = consumer("consumer-a");
+  try {
+    initializeConsumer(core, a, "consumer-a");
+    const original = hashLocalTree(a, [".paved"]);
+    let stagedRoot: string | undefined;
+
+    assert.throws(() => applyConsumerUpdate(a, (staged) => {
+      stagedRoot = staged;
+      rmSync(join(staged, ".paved"), { recursive: true });
+      return "commit";
+    }));
+
+    assert.equal(hashLocalTree(a, [".paved"]), original);
+    assert.equal(existsSync(join(a, ".paved.update-backup")), false);
+    assert.ok(stagedRoot);
+    assert.equal(existsSync(stagedRoot), false);
+  } finally { rmSync(a, { recursive: true, force: true }); }
+});
+
+test("unfinished update backup blocks another transaction without changing either state", () => {
+  const a = consumer("consumer-a");
+  try {
+    initializeConsumer(core, a, "consumer-a");
+    const original = hashLocalTree(a, [".paved"]);
+    mkdirSync(join(a, ".paved.update-backup"));
+    writeFileSync(join(a, ".paved.update-backup", "recovery-marker"), "preserve");
+
+    assert.throws(() => applyConsumerUpdate(a, () => "unused"), /unfinished update backup exists/);
+
+    assert.equal(hashLocalTree(a, [".paved"]), original);
+    assert.equal(readFileSync(join(a, ".paved.update-backup", "recovery-marker"), "utf8"), "preserve");
   } finally { rmSync(a, { recursive: true, force: true }); }
 });
 
@@ -217,7 +293,7 @@ test("lock stays portable and changed override digests require review", () => {
 
 test("transaction refuses symlinked consumer state before any staged write", () => {
   const a = consumer("consumer-a");
-  const outside = join(scratch, `outside-${process.pid}-${++sequence}`);
+  const outside = join(temporaryDirectory("paved-outside"), "outside");
   try {
     initializeConsumer(core, a, "consumer-a");
     writeFileSync(outside, "outside");
@@ -249,7 +325,7 @@ test("init reports the derived consumer lifecycle after creating a lock", async 
 
 test("moving a consumer keeps its portable lock and derived identity state", () => {
   const a = consumer("consumer-a");
-  const moved = join(scratch, `moved-${process.pid}-${++sequence}`);
+  const moved = join(temporaryDirectory("paved-moved"), "consumer");
   try {
     initializeConsumer(core, a, "consumer-a");
     cpSync(a, moved, { recursive: true });

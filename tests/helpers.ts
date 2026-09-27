@@ -1,10 +1,36 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
+import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { loadYaml } from "../cli/lib/documents.ts";
 import { createRegistry, type SchemaRegistry } from "../cli/lib/schemas.ts";
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+const temporaryDirectories = new Set<string>();
+
+export function temporaryDirectory(prefix = "paved-test", parent = tmpdir()): string {
+  mkdirSync(parent, { recursive: true });
+  const safePrefix = prefix.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 20) || "paved-test";
+  const path = join(parent, `${safePrefix}-${randomUUID()}`);
+  mkdirSync(path);
+  temporaryDirectories.add(path);
+  return path;
+}
+
+export function temporaryFixture(source: string, prefix = "paved-fixture", parent?: string): string {
+  const path = temporaryDirectory(prefix, parent);
+  cpSync(source, path, { recursive: true });
+  return path;
+}
+
+export function cleanupTemporaryDirectories(): void {
+  for (const path of temporaryDirectories) {
+    rmSync(path, { recursive: true, force: true });
+  }
+  temporaryDirectories.clear();
+}
 
 export const at = (...segments: string[]): string => join(ROOT, ...segments);
 

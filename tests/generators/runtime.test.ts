@@ -1,15 +1,17 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { afterEach, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { parse, stringify } from 'yaml';
 import { discoverSources, hashSource, initializeConsumer, runGenerators } from '../../cli/lib/generator-runtime.ts';
+import { cleanupTemporaryDirectories, temporaryDirectory } from '../helpers.ts';
 
 const core = fileURLToPath(new URL('../..', import.meta.url));
+afterEach(cleanupTemporaryDirectories);
+
 function fixture() {
-  const dir = mkdtempSync(join(tmpdir(), 'paved-generator-'));
+  const dir = temporaryDirectory('paved-generator');
   mkdirSync(join(dir, 'web', 'src'), { recursive: true });
   writeFileSync(join(dir, 'README.md'), '# Example\n');
   writeFileSync(join(dir, 'web', 'package.json'), JSON.stringify({ name: 'example', dependencies: { '@angular/core': '^19.2.15' }, scripts: { test: 'node --test' } }));
@@ -257,7 +259,7 @@ test('integration context never emits configuration values', () => {
 });
 
 test('missing source stops dependent generators and records the failure', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'paved-empty-'));
+  const dir = temporaryDirectory('paved-empty');
   initializeConsumer(core, dir, 'empty');
   const result = runGenerators(core, dir);
   assert.ok(result.errors.some(e => e.includes('Required repository source missing')));
