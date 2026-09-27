@@ -1,0 +1,9 @@
+apiVersion: paved/v1
+kind: Project
+project:
+  name: healthy
+paved:
+  core: ^0.2.0
+adapters:
+  - id: technology/java
+    version: ^0.1.0

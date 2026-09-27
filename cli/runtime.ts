@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { doctorHandler } from "./commands/doctor.ts";
+import { statusHandler } from "./commands/status.ts";
 import { createDiagnostic, createResult, type CommandResult } from "./result.ts";
 import { CliPathError, resolveCoreRoot, resolveProjectRoot } from "./paths.ts";
 
@@ -301,6 +303,11 @@ function defaultHandler(invocation: CommandInvocation): CommandResult {
   });
 }
 
+const DEFAULT_HANDLERS: CommandHandlers = {
+  doctor: doctorHandler,
+  status: statusHandler,
+};
+
 export async function dispatchCli(options: DispatchOptions = {}): Promise<CommandResult> {
   const argv = options.argv ?? [];
   const cwd = options.cwd ?? process.cwd();
@@ -333,7 +340,7 @@ export async function dispatchCli(options: DispatchOptions = {}): Promise<Comman
 
   try {
     const paths = pathsFor(parsed.state, cwd, executablePath);
-    const handler = options.handlers?.[parsed.state.command] ?? defaultHandler;
+    const handler = options.handlers?.[parsed.state.command] ?? DEFAULT_HANDLERS[parsed.state.command] ?? defaultHandler;
     return await handler({
       command: parsed.state.command,
       flags: parsed.state.flags,
