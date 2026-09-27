@@ -51,6 +51,7 @@ export interface CheckResult {
   measurement?: Measurement;
   attempts?: { status: string; summary?: string }[];
   flaky?: boolean;
+  observations?: { name: string; value: string | number | boolean }[];
 }
 
 interface Artifact {

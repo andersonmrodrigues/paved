@@ -1,0 +1,23 @@
+# expect-error: must be equal to constant
+apiVersion: paved/v1
+kind: CoreImprovementCandidate
+id: core-candidate-0123456789abcdef0123
+status: ACCEPTED
+pattern: repeated failure
+consumers: [alpha, beta]
+observations:
+  - consumer: alpha
+    observation: observation-0123456789abcdef0123
+    evidence:
+      - { record: .paved/generated/evidence/one.yaml, item: one }
+      - { record: .paved/generated/evidence/two.yaml, item: two }
+  - consumer: beta
+    observation: observation-abcdef0123456789abcd
+    evidence:
+      - { record: .paved/generated/evidence/one.yaml, item: one }
+      - { record: .paved/generated/evidence/two.yaml, item: two }
+generality: unknown
+technology_independence: unknown
+approval_required: true
+problem: Repeated failure.
+uncertainty: Unknown.

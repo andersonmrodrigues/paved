@@ -148,9 +148,9 @@ Inconsistencies found and fixed during the pass:
 - Hash-based freshness is good enough; semantic staleness (the code changed meaning
   without the cited lines changing) is not detected.
 
-## Future implementation work
+## Original implementation roadmap
 
-In order of enforcement gained per unit of work:
+This list records the initial architecture review. Current implementation status is in the root README and concept documents.
 
 1. **`paved doctor`:** schema validation of `.paved/`, composition checks (collisions,
    missing targets, non-overridable targets, duplicate overrides), override digests,
@@ -163,13 +163,10 @@ In order of enforcement gained per unit of work:
    and managed blocks.
 6. **One language and one framework adapter** from official sources.
 7. **A pilot consumer**, with every friction recorded as a Gardener input.
-8. **Gardener aggregation** across evidence and overrides.
+8. **Gardener aggregation** across evidence and overrides. Phase 12 implements local Evidence and Generator Runtime aggregation; override analysis remains future work.
 9. **CI for this repository** running `npm run check`.
 
-## Limitations
+## Current limitations
 
-- Composition, drift detection, freshness and the runner are specified, not built. The
-  tables in [enforcement candidates](../maintenance/enforcement-candidates.md) say which
-  guarantees exist today.
-- The architecture has not met a real repository. Expect contracts to change when it does.
-- This directory is still not a Git repository.
+- Distribution and CI integration remain future work. See [enforcement candidates](../maintenance/enforcement-candidates.md) for current guarantees.
+- Gardener does not inspect overrides or aggregate across consumers automatically.
