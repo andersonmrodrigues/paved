@@ -7,7 +7,6 @@ type: unit
 tool: project.tool.marker
 inputs:
   mode: timeout
-  secret: PAVED_VERIFY_SECRET
   literal: timeout
 expected:
   description: The marker exits successfully.

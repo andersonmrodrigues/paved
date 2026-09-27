@@ -7,7 +7,6 @@ type: unit
 tool: project.tool.marker
 inputs:
   mode: pass
-  secret: PAVED_VERIFY_SECRET
   literal: "$PAVED_VERIFY_SECRET;touch should-not-exist"
 expected:
   description: The marker exits successfully.

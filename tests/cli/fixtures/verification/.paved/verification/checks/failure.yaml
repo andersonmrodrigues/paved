@@ -7,7 +7,6 @@ type: unit
 tool: project.tool.marker
 inputs:
   mode: fail
-  secret: PAVED_VERIFY_SECRET
   literal: failure
 expected:
   description: The marker exits successfully.

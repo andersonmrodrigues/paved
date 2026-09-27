@@ -15,7 +15,7 @@ inputs:
     description: Fixture mode.
     type: string
     required: true
-    pattern: "^(pass|fail|timeout)$"
+    pattern: "^(pass|fail|timeout|json|yaml|none|malformed-json|malformed-yaml|json-secret|yaml-secret)$"
   - name: secret
     description: Sensitive sentinel to scrub.
     type: string
