@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { describe, it } from "node:test";
@@ -877,6 +878,76 @@ describe("init and generate commands", () => {
     }
   });
 
+  it("keeps git adapter selection consistent in init dry-run generation previews", async () => {
+    const project = freshConsumer("init-dry-run-git-adapter");
+    try {
+      execFileSync("git", ["init", "--quiet"], { cwd: project });
+      execFileSync("git", ["add", "."], { cwd: project });
+      execFileSync("git", ["-c", "user.name=Paved Test", "-c", "user.email=paved@example.invalid", "commit", "--quiet", "-m", "fixture"], { cwd: project });
+      execFileSync("git", ["switch", "--quiet", "-c", "build"], { cwd: project });
+
+      const result = await run(project, "init", ["--dry-run"]);
+      const data = dataOf(result) as {
+        selectedAdapters?: string[];
+        generation?: { selectedAdapters?: string[] };
+      };
+
+      assert.ok(data.selectedAdapters?.includes("infrastructure/git"));
+      assert.ok(data.generation?.selectedAdapters?.includes("infrastructure/git"));
+      const scratch = sandbox("init-dry-run-git-copy");
+      try {
+        const copy = join(scratch, "consumer");
+        copyProjectForInitDryRun(project, copy);
+        assert.equal(execFileSync("git", ["rev-parse", "HEAD"], { cwd: copy, encoding: "utf8" }).trim(), execFileSync("git", ["rev-parse", "HEAD"], { cwd: project, encoding: "utf8" }).trim());
+        assert.deepEqual(readdirSync(join(copy, ".git")).sort(), ["HEAD", "config", "objects", "refs"]);
+      } finally {
+        rmSync(scratch, { recursive: true, force: true });
+      }
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps unborn Git repositories isolated from an enclosing repository in init dry-run copies", () => {
+    const project = freshConsumer("init-dry-run-unborn-git");
+    const scratch = sandbox("init-dry-run-unborn-copy");
+    try {
+      execFileSync("git", ["init", "--quiet"], { cwd: project });
+      const copy = join(scratch, "consumer");
+
+      copyProjectForInitDryRun(project, copy);
+
+      assert.equal(execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: copy, encoding: "utf8" }).trim(), copy);
+      assert.throws(() => execFileSync("git", ["rev-parse", "HEAD"], {
+        cwd: copy,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }));
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves SHA-256 Git object format in init dry-run metadata", () => {
+    const project = freshConsumer("init-dry-run-sha256-git");
+    const scratch = sandbox("init-dry-run-sha256-copy");
+    try {
+      execFileSync("git", ["init", "--quiet", "--object-format=sha256"], { cwd: project });
+      execFileSync("git", ["add", "."], { cwd: project });
+      execFileSync("git", ["-c", "user.name=Paved Test", "-c", "user.email=paved@example.invalid", "commit", "--quiet", "-m", "fixture"], { cwd: project });
+      const copy = join(scratch, "consumer");
+
+      copyProjectForInitDryRun(project, copy);
+
+      assert.equal(execFileSync("git", ["rev-parse", "--show-object-format"], { cwd: copy, encoding: "utf8" }).trim(), "sha256");
+      assert.equal(execFileSync("git", ["rev-parse", "HEAD"], { cwd: copy, encoding: "utf8" }).trim(), execFileSync("git", ["rev-parse", "HEAD"], { cwd: project, encoding: "utf8" }).trim());
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
   it("rejects adapter override flags for init and generate instead of ignoring them", async () => {
     const initProject = freshConsumer("init-adapter-flag");
     const generateProject = freshConsumer("generate-adapter-flag");
@@ -1023,6 +1094,27 @@ describe("init and generate commands", () => {
       assert.equal(primaryCategory(result), "findings");
       assertCode(result, "PAVED_GENERATOR_PROPOSAL_CREATED");
       assert.equal(existsSync(join(project, ".paved/generated/proposals/verification/profile.yaml")), true);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps existing pending proposals visible after an unchanged generate run", async () => {
+    const project = freshConsumer("generate-proposal-persists");
+    try {
+      initializeConsumer(ROOT, project, "generate-proposal-persists");
+
+      const first = await run(project, "generate", ["verification"]);
+      const second = await run(project, "generate", ["verification"]);
+      const status = await assertReadOnly(project, "status");
+      const data = dataOf(status) as { proposals?: string[] };
+      const proposal = ".paved/generated/proposals/verification/profile.yaml";
+
+      assert.equal(exitCode(first), 1);
+      assert.equal(exitCode(second), 0);
+      assert.equal(existsSync(join(project, proposal)), true);
+      assertCode(status, "PAVED_GENERATOR_PROPOSALS_PENDING");
+      assert.ok(data.proposals?.includes(proposal));
     } finally {
       rmSync(project, { recursive: true, force: true });
     }

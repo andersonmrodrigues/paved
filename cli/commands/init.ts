@@ -1,5 +1,6 @@
-import { cpSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
 import { basename, join } from "node:path";
 import { loadYaml } from "../lib/documents.ts";
 import { initializeConsumer, isIgnoredSourceEntry, planConsumerInitialization, runGenerators } from "../lib/generator-runtime.ts";
@@ -80,11 +81,37 @@ function usage(message: string): CommandResult {
 export function copyProjectForInitDryRun(projectRoot: string, destination: string): void {
   cpSync(projectRoot, destination, {
     recursive: true,
-    filter: (source) => {
-      if (source === projectRoot) return true;
-      return !isIgnoredSourceEntry(basename(source));
-    },
+    filter: (source) => source === projectRoot || !isIgnoredSourceEntry(basename(source)),
   });
+  copyGitRevisionForInitDryRun(projectRoot, destination);
+}
+
+function copyGitRevisionForInitDryRun(projectRoot: string, destination: string): void {
+  if (!existsSync(join(projectRoot, ".git"))) return;
+  const gitDir = join(destination, ".git");
+  mkdirSync(join(gitDir, "objects"), { recursive: true });
+  mkdirSync(join(gitDir, "refs", "heads"), { recursive: true });
+  const objectFormatResult = spawnSync("git", ["rev-parse", "--show-object-format"], {
+    cwd: projectRoot,
+    encoding: "utf8",
+    shell: false,
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  const objectFormat = objectFormatResult.status === 0 && objectFormatResult.stdout.trim() === "sha256" ? "sha256" : "sha1";
+  const formatVersion = objectFormat === "sha256" ? 1 : 0;
+  const extensions = objectFormat === "sha256" ? "\n[extensions]\n\tobjectformat = sha256\n" : "";
+  writeFileSync(join(gitDir, "config"), `[core]\n\trepositoryformatversion = ${formatVersion}\n\tfilemode = true\n\tbare = false\n${extensions}`);
+  const revision = spawnSync("git", ["rev-parse", "HEAD"], {
+    cwd: projectRoot,
+    encoding: "utf8",
+    shell: false,
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  if (revision.status === 0 && revision.stdout.trim().length > 0) {
+    writeFileSync(join(gitDir, "HEAD"), `${revision.stdout.trim()}\n`);
+  } else {
+    writeFileSync(join(gitDir, "HEAD"), "ref: refs/heads/paved-dry-run-unborn\n");
+  }
 }
 
 export function initDryRunScratchPrefix(tempRoot = tmpdir()): string {

@@ -122,7 +122,11 @@ function integrityProblems(record: EvidenceRecord, definitions: ReadonlyMap<stri
   const artifacts = new Map((record.artifacts ?? []).map((artifact) => [artifact.id, artifact]));
 
   const seen = new Set<string>();
-  for (const id of [...record.claims.map((c) => c.id), ...checks.keys(), ...artifacts.keys()]) {
+  for (const id of [
+    ...record.claims.map((claim) => claim.id),
+    ...record.checks.map((check) => check.id),
+    ...(record.artifacts ?? []).map((artifact) => artifact.id),
+  ]) {
     if (seen.has(id)) problems.push(`duplicate id "${id}"`);
     seen.add(id);
   }

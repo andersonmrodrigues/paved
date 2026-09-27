@@ -18,7 +18,10 @@ Create the first local Paved state for a repository that does not already have a
   to the consumer. When generation planning needs a copy, the CLI creates a
   temporary `paved-init-dry-run-*` workspace under the OS temp directory and
   removes it before returning; it does not write scratch data under the consumer
-  or Core checkout.
+  or Core checkout. The temporary workspace retains only a resolved Git `HEAD`
+  marker when available, so adapter detection and generated provenance match a
+  real run without copying the repository's object database, configuration or
+  transient Git files.
 - `--no-generate`: create manifest/lock state without running generators.
 - `--json`: render the structured result.
 - `--help`: show command help.

@@ -388,11 +388,27 @@ function verificationProfile(
 
 function inspectLastRun(projectRoot: string, diagnostics: Diagnostic[]): ConsumerInspection["lastRun"] {
   const path = join(projectRoot, ".paved/generated/state/last-run.json");
-  if (!existsSync(path)) return undefined;
+  const proposalRoot = join(projectRoot, ".paved/generated/proposals");
+  const proposalsOnDisk: string[] = [];
+  walkFiles(proposalRoot, (full) => {
+    if (!full.endsWith(".paved.yaml")) proposalsOnDisk.push(relative(projectRoot, full).split(sep).join("/"));
+  });
+  proposalsOnDisk.sort();
+  if (!existsSync(path)) {
+    if (proposalsOnDisk.length === 0) return undefined;
+    diagnostics.push(diagnostic({
+      code: "PAVED_GENERATOR_PROPOSALS_PENDING",
+      component: "consumer.generated",
+      category: "findings",
+      message: `${proposalsOnDisk.length} generated proposal(s) are pending review.`,
+      remediation: "Review the proposal files and either adopt or discard them.",
+    }));
+    return { present: false, proposals: proposalsOnDisk, conflicts: [] };
+  }
   try {
     const parsed = JSON.parse(readFileSync(path, "utf8")) as { executions?: unknown };
     const executions = Array.isArray(parsed.executions) ? parsed.executions : [];
-    const proposals: string[] = [];
+    const proposals = [...proposalsOnDisk];
     const conflicts: string[] = [];
     for (const item of executions) {
       if (item === null || typeof item !== "object") continue;
@@ -404,12 +420,13 @@ function inspectLastRun(projectRoot: string, diagnostics: Diagnostic[]): Consume
         conflicts.push(execution.generator);
       }
     }
-    if (proposals.length > 0) {
+    const uniqueProposals = proposals.filter((proposal, index) => proposals.indexOf(proposal) === index);
+    if (uniqueProposals.length > 0) {
       diagnostics.push(diagnostic({
         code: "PAVED_GENERATOR_PROPOSALS_PENDING",
         component: "consumer.generated",
         category: "findings",
-        message: `${proposals.length} generated proposal(s) are pending review.`,
+        message: `${uniqueProposals.length} generated proposal(s) are pending review.`,
         remediation: "Review the proposal files and either adopt or discard them.",
       }));
     }
@@ -424,7 +441,7 @@ function inspectLastRun(projectRoot: string, diagnostics: Diagnostic[]): Consume
     }
     return {
       present: true,
-      proposals: proposals.filter((proposal, index) => proposals.indexOf(proposal) === index),
+      proposals: uniqueProposals,
       conflicts: conflicts.filter((conflict, index) => conflicts.indexOf(conflict) === index),
     };
   } catch (error) {
@@ -435,7 +452,7 @@ function inspectLastRun(projectRoot: string, diagnostics: Diagnostic[]): Consume
       message: `Generator state exists but could not be parsed: ${messageOf(error)}`,
       remediation: "Remove stale generated state or regenerate after resolving configuration issues.",
     }));
-    return { present: true, proposals: [], conflicts: [] };
+    return { present: true, proposals: proposalsOnDisk, conflicts: [] };
   }
 }
 
