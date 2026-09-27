@@ -72,11 +72,29 @@ export function createDiagnostic(input: DiagnosticInput): Diagnostic {
     : { ...diagnostic, remediation: input.remediation };
 }
 
+function hasBlockingDiagnostic(diagnostics: readonly Diagnostic[]): boolean {
+  return diagnostics.some((diagnostic) => diagnostic.category !== "findings");
+}
+
 export function createResult<TData = unknown>(input: ResultInput<TData>): CommandResult<TData> {
+  const diagnostics = input.diagnostics ?? [];
+  const normalizedDiagnostics = input.status === "failed" && !hasBlockingDiagnostic(diagnostics)
+    ? [
+        ...diagnostics,
+        createDiagnostic({
+          severity: "error",
+          category: "internal",
+          code: "PAVED_RESULT_MALFORMED_FAILURE",
+          component: "cli.result",
+          message: "Malformed failed result: failed status requires at least one blocking diagnostic.",
+          remediation: "Add a diagnostic category other than findings for failed command results.",
+        }),
+      ]
+    : diagnostics;
   const base = {
     command: input.command,
     status: input.status,
-    diagnostics: input.diagnostics ?? [],
+    diagnostics: normalizedDiagnostics,
   };
 
   return input.data === undefined ? base : { ...base, data: input.data };
