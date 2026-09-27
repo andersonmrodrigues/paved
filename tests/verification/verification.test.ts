@@ -73,6 +73,13 @@ describe("verification completion", () => {
     assert.equal(evaluateCompletion(record, registry).verification, "verified");
   });
 
+  it("rejects duplicate check ids in an evidence record", () => {
+    const record = copy();
+    record.checks.push(structuredClone(record.checks[0]!));
+
+    assert.match(assessEvidence(record, registry).join("\n"), /duplicate id/);
+  });
+
   it("does not complete when a required type has only an accepted gap", () => {
     const record = copy();
     record.plan.required.push("integration");
