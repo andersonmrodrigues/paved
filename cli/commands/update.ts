@@ -93,7 +93,7 @@ export function updateHandler(invocation: CommandInvocation): CommandResult {
         dryRun: invocation.flags.dryRun,
         generators: [...plan.plannedGeneratorIds],
       });
-  const diagnostics = generation === undefined ? plan.diagnostics : [...plan.diagnostics, ...diagnosticsForRun(generation)];
+  const diagnostics = generation === undefined ? plan.diagnostics : [...plan.diagnostics, ...diagnosticsForRun(generation, invocation.flags.dryRun)];
   if (diagnostics.some((diagnostic) => diagnostic.category !== "findings")) {
     return createResult({
       command: "update",

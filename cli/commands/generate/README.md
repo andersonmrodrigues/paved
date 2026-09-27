@@ -31,17 +31,21 @@ A non-dry run may write generated-reviewed or disposable paths under
 `.paved/generated/proposals/`, and `.paved/generated/state/last-run.json`.
 
 Human-edited generated files are not overwritten; the new output is written as a
-proposal and the command exits with a conflict category. Application source files
-are never modified.
+proposal and the command exits with a conflict category. New disposable proposals
+that do not involve an ownership conflict are reported as findings. Application
+source files are never modified.
 
 `--dry-run` writes nothing to the consumer.
 
 ## Exit codes
 
 - `0` when selected generation succeeds without findings.
-- `1` for non-blocking adapter/generator findings.
+- `1` for non-blocking adapter/generator findings or generated proposals
+  requiring human review.
 - `2` for invalid flags, arguments or generator selectors.
+- `3` for environment failures such as an inaccessible project path or
+  unresolved Core root.
 - `5` for adapter/capability resolution failures.
 - `6` for generator runtime failures.
-- `8` for generated-content conflicts and proposals.
+- `8` for generated-content ownership conflicts.
 - `9` for unexpected internal failures.

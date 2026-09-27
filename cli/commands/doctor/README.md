@@ -39,6 +39,8 @@ Nothing.
 - `0` for healthy initialized state with no findings.
 - `1` for warnings/non-blocking findings.
 - `2` for invalid invocation.
+- `3` for environment failures such as an inaccessible project path or
+  unresolved Core root.
 - `4` for invalid or missing required configuration/state.
 - `5` for adapter/capability resolution failures.
 - `8` for pending generated conflicts where applicable.
