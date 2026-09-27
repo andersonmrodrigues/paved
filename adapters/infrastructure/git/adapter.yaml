@@ -1,0 +1,27 @@
+apiVersion: paved/v1
+kind: Adapter
+id: infrastructure/git
+title: Git source control
+version: 0.1.0
+summary: Git bindings for Core repository inspection capabilities.
+requires:
+  core: ^0.2.0
+detect:
+  any_files:
+    - .git
+provides:
+  tool_implementations:
+    - tool-implementations/repository/status.yaml
+    - tool-implementations/repository/diff.yaml
+    - tool-implementations/repository/history.yaml
+sources:
+  - title: Git status documentation
+    url: https://git-scm.com/docs/git-status
+    retrieved_at: 2026-09-27
+  - title: Git diff documentation
+    url: https://git-scm.com/docs/git-diff
+    retrieved_at: 2026-09-27
+  - title: Git log documentation
+    url: https://git-scm.com/docs/git-log
+    retrieved_at: 2026-09-27
+reviewed_at: 2026-09-27

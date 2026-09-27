@@ -35,7 +35,7 @@ any. Useful: the feature map entry and the verification profile.
    appears only in a running environment, use `runtime-debugging` to observe it there.
 3. **Isolate.** Narrow the input and the code path until the defect's location is small.
    When the defect is a regression, compare against the last good revision with
-   `core.git.diff`, and use `core.git.log` to find the changes in between.
+   `core.repository.diff`, and use `core.repository.history` to find the changes in between.
 4. **Find the cause** with `root-cause-analysis`. Do not write a fix before the cause is
    confirmed.
 5. **Write the regression test** with `regression-testing`, and see it fail.
@@ -50,7 +50,7 @@ Keep a running log while investigating; the synthetic example in
 
 ## Tools
 
-`core.git.diff` to compare with a known-good revision; `core.git.log`, when available, to
+`core.repository.diff` to compare with a known-good revision; `core.repository.history`, when available, to
 list the changes between that revision and the failing one.
 
 ## Rules

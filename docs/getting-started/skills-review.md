@@ -1,10 +1,13 @@
 # Skills review
 
+This records the skills pass at that point in the roadmap. For the current
+implementation state and next milestone, see the [README](../../README.md).
+
 What the skills pass defined, which decisions it made, and what it left open. The
 skills are **well formed, small, generic and internally consistent**, and tests hold
 them to that. Nothing here shows they are *good*: no skill has been used by an agent on
 a real repository, and no measurement exists of whether following them produces better
-changes. Paved is still not production ready: there is no CLI, runner or generator, and
+changes. Paved is still not production ready: there are no CLI commands, runner or generator, and
 the effective set of a consumer is not yet assembled by any code.
 
 ## Starting point
@@ -37,7 +40,7 @@ one ([ADR 0014](../decisions/0014-skill-contract.md) amends [ADR 0007](../decisi
 - **Context resolution**: `context_areas` in the Core manifest.
 - **Generic behavior** in `core/instructions/AGENTS.md`: activation, loading order, a
   table of responses when a skill cannot proceed, and the search order for unknowns.
-- **Tool** `core.git.log`.
+- **Tool** `core.repository.history`.
 - **Library** `cli/lib/skills.ts`: quality checks, dependency cycles, duplicated
   sentences, unproving required checks, evidence against producer skills.
 - **Docs**: [skills](../concepts/skills.md), [skill discovery](../concepts/skill-discovery.md),
@@ -73,7 +76,7 @@ one ([ADR 0014](../decisions/0014-skill-contract.md) amends [ADR 0007](../decisi
 | 8 | Completion criteria machine-checkable? | Partly: required checks and evidence kinds are (`assessSkillEvidence`); the rest are observable conditions for review |
 | 9 | Dependencies acyclic and resolvable? | Yes; tested |
 | 10 | Duplicated knowledge? | No sentence of 12+ words repeats across skills (tested). Shorter overlaps and paraphrases are not detected |
-| 11 | Hidden assumptions? | Git is assumed (Core tools are Git tools). Skills assume a verification profile exists and say what to do without it |
+| 11 | Hidden assumptions at this pass? | Git was assumed by Core tools (corrected by ADR 0019). Skills assume a verification profile exists and say what to do without it |
 | 12 | Versioning and deprecation enforceable? | Schema ties status and version and requires migration info |
 | 13 | Docs match the implementation? | Concept pages, contracts, versioning, enforcement candidates and changelog updated; links tested |
 

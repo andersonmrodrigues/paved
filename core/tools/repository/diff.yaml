@@ -1,6 +1,6 @@
 apiVersion: paved/v1
 kind: Tool
-id: core.git.diff
+id: core.repository.diff
 title: Show changes
 purpose: >
   Inspect exactly what a change modifies, for self-review and to attach a diff
@@ -8,21 +8,21 @@ purpose: >
 safety: read-only
 inputs:
   - name: base
-    description: Revision to compare against. Omit to compare the working tree with
-      the index.
+    description: Base revision to compare with the current working state. Omit to inspect
+      working-file changes relative to the implementation's current change baseline.
     required: false
-    pattern: ^[A-Za-z0-9._/~^@{}-]+$
+    pattern: ^(?!-)[^\s]+$
     type: string
 outputs:
   format: text
-  description: Unified diff.
+  description: Textual representation of the change set.
 side_effects: []
 confirmation: none
 examples:
-  - description: Changes since the main branch.
-  - description: Unstaged changes.
+  - description: Changes since a baseline revision.
+  - description: Working-file changes.
 version: 0.1.0
-capability: git-diff
+capability: repository-diff
 permissions:
   - repository-read
 environments:
@@ -32,7 +32,7 @@ environments:
 preconditions:
   - id: precondition-1
     kind: repository
-    description: The working directory is inside a Git repository.
+    description: A source-controlled repository is available.
 idempotency: idempotent
 timeout_seconds: 60
 retry:

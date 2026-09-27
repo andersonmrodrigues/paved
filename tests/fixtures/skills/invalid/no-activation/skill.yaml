@@ -8,7 +8,7 @@ category: development
 context:
   required: []
 tools:
-  required: [core.git.diff]
+  required: [core.repository.diff]
 verification:
   required: [unit]
 evidence:

@@ -70,7 +70,8 @@ format. Completion remains the Evidence assessor's responsibility.
 Core defines generic capability contracts for repository, runtime/process, testing,
 database reads, observability, infrastructure and browser interaction. It does not bind
 language-, framework-, database-, cloud- or CI-specific commands. A small set of Core
-bindings supports generic Git inspection and Paved validation/diagnostics. Other
+bindings support Paved validation/diagnostics. Git inspection bindings now live in the
+`infrastructure/git` adapter; Core repository capabilities remain technology-neutral. Other
 capabilities remain planned or unavailable until an adapter/project supplies a binding.
 
 Schemas and synthetic tests cover contract validity, safety invariants, permissions,
@@ -95,6 +96,7 @@ documents. The repository's `npm run check` is the final suite.
 - Give Gardener access to aggregated missing-binding, incompatibility and recurring
   failure signals, with humans retaining decision authority.
 
-Phase 08 should implement the trusted runner and `paved tool` commands against these
-contracts before enabling consequential Tool execution. This review does not claim that
+The later CLI implementation should add the trusted runner and `paved tool` commands
+against these contracts before enabling consequential Tool execution. Phase 08 remains
+Generators. This review does not claim that
 the Tool system is production-ready.

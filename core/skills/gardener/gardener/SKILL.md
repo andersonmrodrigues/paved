@@ -45,7 +45,7 @@ Without at least two concrete incidents, record the observation and stop.
 
 ## Tools
 
-`core.git.diff` to cite the incidents precisely.
+`core.repository.diff` to cite the incidents precisely.
 
 ## Rules
 

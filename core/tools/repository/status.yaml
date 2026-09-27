@@ -1,21 +1,21 @@
 apiVersion: paved/v1
 kind: Tool
-id: core.git.status
+id: core.repository.status
 title: Working tree status
 purpose: >
-  See which files are modified, staged or untracked before and after a change,
+  See which files have pending or untracked changes before and after a change,
   to confirm the change touches only what was intended.
 safety: read-only
 inputs: []
 outputs:
   format: text
-  description: One line per changed path, prefixed by a two-letter status code.
+  description: Text describing pending and untracked changes by path.
 side_effects: []
 confirmation: none
 examples:
   - description: List changes in the working tree.
 version: 0.1.0
-capability: git-status
+capability: repository-status
 permissions:
   - repository-read
 environments:
@@ -25,7 +25,7 @@ environments:
 preconditions:
   - id: precondition-1
     kind: repository
-    description: The working directory is inside a Git repository.
+    description: A source-controlled repository is available.
 idempotency: idempotent
 timeout_seconds: 30
 retry:

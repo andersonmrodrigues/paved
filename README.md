@@ -7,9 +7,10 @@ This repository is the **Paved Core**: the universal knowledge, contracts and
 mechanisms. Repositories that use Paved (consumers) keep their own knowledge in a
 `.paved/` directory and reference a Core version; they never copy the Core.
 
-> Status: **architecture defined, not production ready (0.1.0 + unreleased changes)**.
-> Contracts, schemas, Core content and self-tests exist. The CLI and the generators are
-> specified but not implemented. See the
+> Status: **architecture defined, not production ready (0.2.0 unreleased)**.
+> Contracts, schemas, Core content and self-tests exist. Shared CLI libraries implement
+> validation, reference resolution, Tool policy and evidence assessment; CLI commands
+> and the generator runtime do not exist yet. See the
 > [bootstrap review](docs/getting-started/bootstrap-review.md), the
 > [architecture review](docs/getting-started/architecture-review.md), the
 > [schema review](docs/getting-started/schema-review.md), the
@@ -17,6 +18,10 @@ mechanisms. Repositories that use Paved (consumers) keep their own knowledge in 
 > [workflows review](docs/getting-started/workflows-review.md), and the
 > [verification review](docs/getting-started/verification-review.md) and
 > [Tools review](docs/getting-started/tools-review.md).
+
+Core skills use repository status, diff and history capabilities. The Git adapter binds
+those capabilities for Git repositories; other repositories need a compatible adapter
+binding. See [ADR 0019](docs/decisions/0019-source-control-boundary.md).
 
 ## 1. The problem
 
@@ -113,10 +118,10 @@ evidence → review → completion. See [lifecycle](core/instructions/lifecycle.
 │   ├── tools/          # <group>/<name>.yaml
 │   ├── tool-implementations/ # Core capability bindings
 │   └── templates/      # starting points for every document kind
-├── generators/         # generator contracts (not implemented)
-├── adapters/           # technology adapter contract (no adapters yet)
+├── generators/         # nine generator contracts; no runtime yet
+├── adapters/           # technology adapters; Git source-control bindings
 ├── schemas/            # JSON Schema (draft 2020-12, authored in YAML); see docs/concepts/schemas.md
-├── cli/                # command contracts + shared library (cli/lib)
+├── cli/                # command contracts + tested shared libraries (cli/lib)
 ├── docs/               # concepts, decisions (ADRs), getting started, maintenance
 └── tests/              # self-tests of every contract
 ```
@@ -166,17 +171,19 @@ npm run check   # strict type check + all tests
 
 See [tests/README.md](tests/README.md) for what the tests prove.
 
-## 10. Initial roadmap
+## 10. Roadmap
 
-1. **Validation CLI:** `paved doctor` and `paved verify --evidence` on top of `cli/lib`.
-2. **Distribution:** decide how consumers obtain a Core version (package, archive, Git
-   tag) and implement `paved init` and `paved update` with the lock file.
-3. **First adapters:** one language and one framework, with official sources, to
-   validate the adapter contract against reality.
-4. **First generators:** `verification` and `project-context/feature-map`, the most
-   deterministic, with the merge strategy.
-5. **Pilot:** integrate one real repository and feed what breaks back into the contracts.
-6. **CI** for this repository running `npm run check`.
+Phases 01–07 established and tested the architecture and shared libraries. **Phase 08 —
+Generators** is the next major implementation milestone. The `verification` generator
+can be implemented first; `project-context/feature-map` depends on the architecture and
+product generators, so those inputs must be available before it can run.
+Before a generated block can be replaced, the runtime must verify its previous content
+against a trusted baseline; otherwise it must write a proposal. See
+[ownership and regeneration](docs/concepts/ownership-and-regeneration.md).
+
+Subsequent milestones include CLI commands and distribution, further adapters, a consumer
+pilot and CI. The command contracts and reusable CLI libraries already exist; these
+milestones describe production delivery, not the first appearance of code.
 
 ## License
 

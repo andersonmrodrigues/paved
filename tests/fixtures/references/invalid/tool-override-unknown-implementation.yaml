@@ -2,7 +2,7 @@
 apiVersion: paved/v1
 kind: Overrides
 tools:
-  - target: core.git.status
+  - target: core.repository.status
     action: select-implementation
     implementation: project.git.missing
     owner: example-team

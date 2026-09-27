@@ -23,6 +23,7 @@ writing a new record that supersedes it, not by editing the old one.
 | [0016](0016-verification-check-and-completion.md) | Check definitions, revision-bound evidence and deterministic completion | Accepted |
 | [0017](0017-tool-capability-and-resolution.md) | Capability contracts and implementation resolution | Accepted |
 | [0018](0018-tool-safety-and-evidence.md) | Tool safety boundaries and evidence capture | Accepted |
+| [0019](0019-source-control-boundary.md) | Source-control capability ownership | Accepted |
 
 ## Format
 

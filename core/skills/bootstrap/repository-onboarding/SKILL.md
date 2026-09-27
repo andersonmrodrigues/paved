@@ -50,7 +50,7 @@ files. Everything you learn is a proposal until a human confirms it.
 
 ## Tools
 
-`core.git.status` before starting (clean tree) and after (only `.paved/` and `AGENTS.md`
+`core.repository.status` before starting (clean tree) and after (only `.paved/` and `AGENTS.md`
 changed).
 
 ## Rules

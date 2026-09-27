@@ -3,7 +3,7 @@
 apiVersion: paved/v1
 kind: Core
 name: paved-core
-version: 0.1.0
+version: 0.2.0
 supported_api_versions:
   - paved/v1
 
@@ -164,7 +164,7 @@ consumer_layout:
     schema: Evidence
     description: >
       Evidence records the project keeps (retention `release` or `audit`), copied from
-      .paved/generated/evidence/. Large artifacts stay outside Git and are referenced by
+      .paved/generated/evidence/. Large artifacts stay outside version control and are referenced by
       location and digest.
   - path: .paved/tools/
     ownership: project-owned

@@ -17,6 +17,7 @@ consumer-repository/
 │   │   ├── domain/
 │   │   ├── product/
 │   │   ├── integrations/
+│   │   ├── technology/
 │   │   └── feature-map/      # one Feature document per feature
 │   ├── rules/                # project-owned: project.* rules
 │   ├── verification/         # project-owned: profile.yaml and material

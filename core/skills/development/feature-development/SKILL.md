@@ -45,13 +45,13 @@ know which checks exist before promising any.
    collaborators, `e2e-testing` when the claim is a user-visible flow.
 6. **Run the fast checks** after each meaningful step and fix failures before going on.
 7. **Clean up** imports, parameters, files and flags the change left unused.
-8. **Self-review** the diff with `core.git.diff`, and confirm with `core.git.status` that
+8. **Self-review** the diff with `core.repository.diff`, and confirm with `core.repository.status` that
    no unintended file changed.
 9. **Verify and record** every required check, then hand over to the `verification` phase.
 
 ## Tools
 
-`core.git.diff` for self-review; `core.git.status` for unintended files. Build and test
+`core.repository.diff` for self-review; `core.repository.status` for unintended files. Build and test
 commands come from the Tools named by Checks in the verification profile.
 
 ## Rules

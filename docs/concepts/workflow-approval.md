@@ -45,7 +45,7 @@ The spec's "high-risk change" is `risk-acceptance`; a "breaking migration" is
 
 | Level | Examples | Allowed |
 |---|---|---|
-| Read-only | Reading code, `core.git.diff`, `core.git.log` | Autonomously |
+| Read-only | Reading code, `core.repository.diff`, `core.repository.history` | Autonomously |
 | Safe mutation | Editing files in the working tree, running local checks | Autonomously; reversible by the version control system |
 | Destructive | Deleting data, rewriting history, changing remote state | Only with the tool's own confirmation **and** an approval gate in the phase |
 | High-impact | Anything in the categories above | Only after the approval gate |

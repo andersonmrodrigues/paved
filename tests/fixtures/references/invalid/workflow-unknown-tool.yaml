@@ -1,4 +1,4 @@
-# expect-error: references unknown tool "core.git.push"
+# expect-error: references unknown tool "core.repository.push"
 apiVersion: paved/v1
 kind: Workflow
 id: project.sample
@@ -16,7 +16,7 @@ phases:
     goal: Locate the failure.
     skills: [core.debugging.root-cause-analysis]
     tools:
-      required: [core.git.push]
+      required: [core.repository.push]
   - phase: verification
     goal: Prove the fix.
     verification:

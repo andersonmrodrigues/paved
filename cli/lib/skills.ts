@@ -32,8 +32,7 @@ export const REFERENCE_MAX_LINES = 300;
 export const CHANGE_CATEGORIES = new Set(["development", "debugging", "testing", "performance"]);
 
 // Named technologies and products. A generic skill says "the project's test command";
-// adapters and project context supply the specifics. Git is the one assumption the Core
-// makes (its tools are Git tools).
+// adapters and project context supply the specifics.
 const TECHNOLOGY =
   /\b(maven|mvn|gradle|npm|yarn|pnpm|pip|poetry|pytest|jest|junit|mocha|vitest|cypress|playwright|selenium|docker|kubernetes|kubectl|helm|terraform|angular|vue|svelte|django|flask|laravel|spring boot|java|python|javascript|typescript|golang|ruby|php|kotlin|swift|dotnet|postgres(ql)?|mysql|mongodb|redis|kafka|rabbitmq|aws|azure|gcp|jenkins|github actions|gitlab ci)\b/i;
 

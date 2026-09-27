@@ -24,7 +24,7 @@ workflows:
     owner: example-team
     reason: Why the project needs the extra gate.
 tools:
-  - target: core.git.status
+  - target: core.repository.status
     action: select-implementation
     owner: team
     reason: Synthetic test

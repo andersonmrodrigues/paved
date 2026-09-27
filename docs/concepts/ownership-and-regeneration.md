@@ -37,7 +37,7 @@ generator writes a proposal under `.paved/generated/proposals/` and a human adop
 ## Traceability
 
 Every generated document records provenance (schema: `provenance.schema.yaml`):
-generator id and version, time, source revision, each source file with its hash, a hash
+generator id and version, time, available source revision and source hashes, a hash
 of the generated output, and review status (`unreviewed`, `reviewed`, `rejected`).
 Markdown documents carry it in their frontmatter (schema: `ContextDocument`); YAML
 documents under `provenance`. Output whose format has no place for it (a proposed
@@ -46,7 +46,7 @@ documents under `provenance`. Output whose format has no place for it (a propose
 
 This makes three things possible:
 
-- **Staleness:** a source hash that no longer matches means the document may be outdated.
+- **Staleness:** a recorded source hash that no longer matches means the document may be outdated.
 - **Edit detection:** an output hash that no longer matches means a human edited the file.
 - **Audit:** every generated statement points back to where it came from.
 
@@ -55,14 +55,19 @@ This makes three things possible:
 On regeneration of a `generated-reviewed` file:
 
 1. **File absent** → write it.
-2. **File unchanged since generation** (output hash matches) → overwrite.
+2. **File unchanged since generation** (output hash matches) and still under generator
+   management → overwrite. A reviewed file whose managed blocks were removed is
+   human-owned and receives a proposal instead.
 3. **File edited by a human:**
    - Markdown with managed blocks (`<!-- paved:begin generated id=... -->` …
-     `<!-- paved:end generated -->`): regenerate only blocks whose content still matches their
-     recorded hash. Text outside blocks, and blocks a human edited, are left alone.
+     `<!-- paved:end generated -->`): regenerate a block only when its previous content
+     matches a trusted baseline. Text outside blocks, and blocks a human edited, are left alone.
    - Otherwise: do not write. Store the new output as a proposal under
      `.paved/generated/proposals/<same path>` and report a **conflict**.
-4. Conflicts are shown by `paved generate` and `paved status` as a diff; a human
+4. If no trusted block baseline is available, write a proposal for edited blocks; the
+   marker itself contains no hash. Phase 08 must define baseline storage and matching
+   before implementing block replacement.
+5. Conflicts are shown by `paved generate` and `paved status` as a diff; a human
    resolves them. If `.paved/generated/state/` still has the previous generated output,
    the diff is three-way (previous, current, new).
 
@@ -71,7 +76,7 @@ setting its review status to `reviewed` and removing managed blocks.
 
 ## Open points
 
-The exact block hashing, how review status is updated (by hand, or via a
+The exact baseline format, how review status is updated (by hand, or via a
 `paved review` command), and whether `.paved/generated/state/` should be committed for
 teams that regenerate often, are listed as open decisions in the
 [bootstrap review](../getting-started/bootstrap-review.md).

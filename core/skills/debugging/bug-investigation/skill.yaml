@@ -1,15 +1,15 @@
 apiVersion: paved/v1
 kind: Skill
 id: core.debugging.bug-investigation
-version: 0.1.0
+version: 0.2.0
 status: experimental
 category: debugging
 context:
   required: []
   optional: [feature-map, verification]
 tools:
-  required: [core.git.diff]
-  optional: [core.git.log]
+  required: [core.repository.diff]
+  optional: [core.repository.history]
 rules:
   - core.testing.regression-test-for-bug-fix
   - core.quality.unknowns-stay-unknown

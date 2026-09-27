@@ -1,4 +1,4 @@
-# expect-problem: never mentions core.git.log
+# expect-problem: never mentions core.repository.history
 # expect-problem: never says when to use core.testing.unit-testing
 apiVersion: paved/v1
 kind: Skill
@@ -9,8 +9,8 @@ category: development
 context:
   required: []
 tools:
-  required: [core.git.diff]
-  optional: [core.git.log]
+  required: [core.repository.diff]
+  optional: [core.repository.history]
 depends_on:
   optional: [core.testing.unit-testing]
 verification:

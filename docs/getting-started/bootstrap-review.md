@@ -1,5 +1,8 @@
 # Bootstrap review (0.1.0)
 
+This records the bootstrap state and its then-open decisions. For the current
+implementation state and next milestone, see the [README](../../README.md).
+
 A short record of what the architectural bootstrap created, which decisions it made,
 which it left open, and what to do next. Paved is **not** production ready: nothing here
 has been used on a real consumer repository yet.
@@ -71,7 +74,7 @@ repository must not look like a consumer of itself. The ideas from its `AGENTS.m
 8. **Project workflows:** projects can adjust Core workflows but can't define new ones yet.
 9. **Tool execution runtime:** contracts describe commands only. Nothing enforces input patterns, timeouts or confirmation at runtime yet.
 10. **CLI surface details:** exit codes, `--json` and `--dry-run` are specified but provisional until an implementation tests them.
-11. **Git assumption:** the Core tools assume Git. Other version control systems would need tools from adapters.
+11. **Git assumption at bootstrap:** Core tools assumed Git. ADR 0019 moved Git bindings to an adapter.
 
 ## Limitations
 

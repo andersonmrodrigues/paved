@@ -16,7 +16,7 @@ category: debugging
 context:
   required: [manifest]
 tools:
-  required: [core.git.diff]
+  required: [core.repository.diff]
 rules: [core.security.no-secrets-in-source]
 verification:
   required: [unit]
@@ -41,7 +41,7 @@ phases:
     goal: Locate the failure.
     skills: [project.debugging.root-cause-analysis]
     tools:
-      required: [core.git.log]
+      required: [core.repository.history]
       optional: [project.git.absent]
   - phase: verification
     goal: Prove the fix.

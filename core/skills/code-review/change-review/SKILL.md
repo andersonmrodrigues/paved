@@ -24,7 +24,7 @@ Verification has run and an evidence record exists (it may be incomplete).
 
 ## Procedure
 
-Read the diff with `core.git.diff` top to bottom, confirm with `core.git.status` that
+Read the diff with `core.repository.diff` top to bottom, confirm with `core.repository.status` that
 nothing is left out, then go through each dimension. Stop at none; note findings as you
 go.
 
@@ -50,7 +50,7 @@ Fix findings in scope, then re-run the checks the fixes affect. Record the rest.
 
 ## Tools
 
-`core.git.diff` and `core.git.status`.
+`core.repository.diff` and `core.repository.status`.
 
 ## Rules
 

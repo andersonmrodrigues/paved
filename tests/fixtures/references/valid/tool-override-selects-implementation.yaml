@@ -1,7 +1,7 @@
 apiVersion: paved/v1
 kind: ToolImplementation
 id: project.git.status
-tool: core.git.status
+tool: core.repository.status
 version: 0.1.0
 contract: ^0.1.0
 source: project
@@ -12,7 +12,7 @@ availability: available
 apiVersion: paved/v1
 kind: Overrides
 tools:
-  - target: core.git.status
+  - target: core.repository.status
     action: select-implementation
     implementation: project.git.status
     owner: example-team

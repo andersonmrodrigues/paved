@@ -8,7 +8,7 @@ context:
   required: [manifest, verification]
   optional: [feature-map]
 tools:
-  required: [core.git.diff]
+  required: [core.repository.diff]
   optional: [project.testing.coverage]
 rules: [core.security.no-secrets-in-source]
 depends_on:

@@ -35,7 +35,7 @@ What must be true before starting. If a precondition fails, say what to do inste
 
 ## Tools
 
-When to use each tool listed in skill.yaml (for example `core.git.diff` to review the
+When to use each tool listed in skill.yaml (for example `core.repository.diff` to review the
 change), and what to do when an optional tool is absent.
 
 ## Rules
