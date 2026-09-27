@@ -1,20 +1,47 @@
 # `paved generate`
 
-Run generators to create or refresh Project Context and proposals.
+Run Paved generators against an initialized consumer, either all generators or a
+selected set plus their dependency closure.
 
-## Behavior
+## Inputs
 
-1. Resolve generators and their `depends_on` order. Run all, or those named as arguments.
-2. Skip generators whose outputs are fresh (no recorded source hash changed), unless `--force`.
-3. Write outputs following the merge strategy in `generators/README.md`: overwrite
-   untouched generated files, update managed blocks, and turn every other change into a
-   proposal under `.paved/generated/proposals/` with a reported conflict.
-4. Print a summary: written, unchanged, proposed, conflicts, new unknowns.
+- `.paved/manifest.yaml`
+- Local Core generator contracts
+- Local adapter detections and manifest-selected adapters
+- Repository files discovered by the generator runtime, excluding ignored source
+  entries such as `.git`, `.paved`, `.env*`, dependency/build output and agent
+  state directories
+- Existing generated baselines and last-run state
 
-## Options
+## Supported flags and arguments
 
-`[generator-id...]`, `--force`, `--dry-run`, `--json`.
+- `[generator-id...]`: optional generator selectors, for example
+  `project-context/feature-map`. Dependencies run first.
+- `--project <dir>`: select the consumer root.
+- `--dry-run`: compute outputs/proposals without writing them or `last-run.json`.
+- `--json`: render the structured result.
+- `--help`: show command help.
 
-## Writes
+`--adapter`, `--force` and unknown selectors are rejected.
 
-Only paths whose ownership is `generated-reviewed` or `disposable`.
+## Outputs and mutations
+
+A non-dry run may write generated-reviewed or disposable paths under
+`.paved/project/` and `.paved/generated/`, proposals under
+`.paved/generated/proposals/`, and `.paved/generated/state/last-run.json`.
+
+Human-edited generated files are not overwritten; the new output is written as a
+proposal and the command exits with a conflict category. Application source files
+are never modified.
+
+`--dry-run` writes nothing to the consumer.
+
+## Exit codes
+
+- `0` when selected generation succeeds without findings.
+- `1` for non-blocking adapter/generator findings.
+- `2` for invalid flags, arguments or generator selectors.
+- `5` for adapter/capability resolution failures.
+- `6` for generator runtime failures.
+- `8` for generated-content conflicts and proposals.
+- `9` for unexpected internal failures.

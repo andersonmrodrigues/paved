@@ -1,40 +1,50 @@
-# `paved verify` and `paved evidence`
+# `paved verify` and contract-only `paved evidence`
 
-These commands are contracts. The CLI runner is not implemented yet; `cli/lib/` already
-provides schema, reference, check and evidence assessment functions.
+`paved verify` is implemented as an explicit, shell-free local runner. It runs
+only the checks listed in `.paved/verification/profile.yaml` through declared Tool
+and ToolImplementation documents, then records sanitized evidence.
 
-## `paved verify`
+`paved evidence ...` remains **contract-only**. Evidence validation, show and list
+subcommands are described by contracts but are not executable CLI commands yet.
 
-- With no selector, resolve applicable workflow and skill requirements against the
-  verification profile, then run all required checks and relevant recommended checks.
-- `--check <id>` selects one check definition; `--workflow <id>` selects a workflow;
-  `--profile <path>` selects a profile. `--changed <path...>` may narrow checks whose
-  `applies_to` patterns do not match. Explicitly required checks cannot be silently
-  removed by this filter.
-- Resolve check → tool and validate tool safety, declared inputs, timeout and
-  preconditions before execution. Capture tool version, revision, working tree digest
-  when dirty, environment, status, observations, attempts and output artifact references.
-- Write the evidence record under `.paved/generated/evidence/`. A missing required
-  check becomes a gap and a nonzero completion result, not a pass. Preserve failed
-  results and bounded retry history.
-- `--evidence <file>` is a read-only compatibility alias for
-  `paved evidence validate <file>`.
+## Inputs
 
-## `paved evidence`
+- `.paved/verification/profile.yaml`
+- Check documents referenced by that profile from Core, selected adapters and the
+  project
+- Tool and ToolImplementation documents required by those Checks
+- The local repository revision/worktree state used for evidence metadata
 
-- `paved evidence validate <file>`: check schema, references, revision binding,
-  provenance and semantic consistency; recompute completion with the profile policy.
-  `--against completion|workflow|skills` narrows the reported assessment while still
-  validating the record's structure.
-- `paved evidence show <file>`: report checks, gaps, claim support, verification level,
-  blocking reasons, warnings and artifact locations.
-- `paved evidence list`: list records in the configured evidence locations by
-  revision and retention class.
-- A record whose stated completion exceeds the computed decision is invalid. A failed
-  result is kept for debugging. Artifact content hashes and external identities require
-  a future runner or CI integration to verify.
+The runner does not infer checks from package scripts, CI files or arbitrary CLI
+arguments.
 
-Both commands support `--json` and follow the [CLI exit codes](../../README.md):
-0 for successful validation or completed verification, 1 for verification or document
-problems, 2 for usage errors, 3 for environment errors. Writing commands support
-`--dry-run`.
+## Supported flags
+
+- `--project <dir>`: select the consumer root.
+- `--adapter <id>`: repeatable content-root selector for adapter checks/tools;
+  when omitted, adapters are read from the manifest.
+- `--json`: render the structured result.
+- `--help`: show command help.
+
+Selectors, `--check`, `--profile`, `--workflow`, `--changed`, `--dry-run` and raw
+shell commands are not supported by the current CLI.
+
+## Outputs and mutations
+
+Successful or failed configured verification writes sanitized logs and validated
+evidence under `.paved/generated/evidence/`. Output is bounded and sanitized; raw
+argv, environment values, stack traces and process error objects are not printed.
+
+Each approved ToolImplementation is invoked with `spawn(executable, argv, { shell:
+false })`. Unlisted executables or scripts are never scanned or run.
+
+## Exit codes
+
+- `0` when every configured required check completes and the evidence assessment
+  is verified.
+- `2` for unsupported flags or unexpected arguments.
+- `3` for environment launch failures, such as a missing executable.
+- `4` for invalid profiles, checks, tools, implementations or Tool inputs.
+- `7` for missing profiles, empty profiles, unresolved checks/tools,
+  unauthorized tools, failed/time-out checks or insufficient evidence.
+- `9` for unexpected internal failures.

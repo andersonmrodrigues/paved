@@ -1,37 +1,53 @@
 # `paved update`
 
-Refresh a consumer's local lock and generated output after the configured local Core or
-local adapters change. Remote version resolution is not supported yet; `update` only
-uses files available in this Core checkout.
+Refresh an initialized consumer's local lock and generated output against the
+Core checkout that is running the CLI. Remote version resolution, downloads,
+migrations and adapter override flags are not implemented.
+
+## Inputs
+
+- `.paved/manifest.yaml`
+- `.paved/paved.lock`
+- Local Core files and local adapter/generator contracts referenced by the
+  manifest/lock
+- Existing generated baselines and managed outputs when generator contracts changed
+
+## Supported flags
+
+- `--project <dir>`: select the consumer root.
+- `--dry-run`: compute the update plan without writing.
+- `--json`: render the structured result.
+- `--help`: show command help.
+
+`--adapter`, remote selectors such as `--to`, migration flags and positional
+arguments are rejected.
 
 ## Behavior
 
-1. **Preflight.** Validate `.paved/manifest.yaml` and require a valid existing
-   `.paved/paved.lock`.
-2. **Local compatibility check.** Confirm the local Core version satisfies `paved.core`
-   and all selected adapters resolve from the local Core with compatible ranges.
-3. **Plan local digest changes.** Compare the lock against the local Core, resolved
-   adapters, and locked generator contracts using the same digest inputs as init and
-   generation.
-4. **Safe generation.** If a locked generator contract changed, run that generator
-   through the safe generator runtime. Human-edited or untrusted generated output becomes
-   a proposal/conflict and is not overwritten.
-5. **Lock write.** Write `.paved/paved.lock` only after compatibility preflight and any
-   required safe generation complete without blocking diagnostics.
+1. Validate the manifest and require a valid existing lock.
+2. Confirm the local Core version satisfies `paved.core` and selected local
+   adapters satisfy manifest ranges.
+3. Compare local Core, adapter and generator contract digests with the lock.
+4. Run safe generation only for changed/new generator contracts.
+5. Write `.paved/paved.lock` only after compatibility checks and required safe
+   generation succeed.
 
-## Options
+## Outputs and mutations
 
-`--dry-run`, `--json`, `--project <dir>`.
+A non-dry run may write `.paved/paved.lock` and safe generator outputs/proposals
+under `.paved/project/` or `.paved/generated/`. It never changes the manifest,
+project-owned files, application source, override files, `AGENTS.md`, or paths
+outside the consumer `.paved/` layout.
 
-`--adapter`, remote selectors such as `--to`, migrations and override confirmation flags
-are not supported by the current local-only implementation.
+`--dry-run` writes nothing and reports planned lock/generator changes.
 
-## Writes
+## Exit codes
 
-`.paved/paved.lock` after successful preflight, plus `.paved/project/` and
-`.paved/generated/` only through the existing safe generator runtime when locked
-generator contracts changed. `--dry-run` writes nothing.
-
-`update` never changes `.paved/manifest.yaml`, project-owned files, application source,
-`AGENTS.md`, override files, or any path outside the configured consumer `.paved/`
-layout.
+- `0` when no changes are needed or the local update succeeds.
+- `1` for non-blocking findings.
+- `2` for unsupported flags or arguments.
+- `4` for missing/invalid manifest or lock, or incompatible Core range.
+- `5` for unavailable/incompatible adapters or capability resolution failures.
+- `6` for update/generation planning or application failures.
+- `8` for human-edited or untrusted generated output that becomes a proposal.
+- `9` for unexpected internal failures.
