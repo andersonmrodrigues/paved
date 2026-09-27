@@ -157,6 +157,37 @@ describe("Tool capabilities", () => {
     assert.equal(sanitizeToolOutput("api_key=abc123"), "api_key=[REDACTED]");
   });
 
+  it("redacts compound secret key patterns in strings and nested structured output", () => {
+    const sanitized = sanitizeToolOutput({
+      nested: {
+        access_token: "PAVED-NESTED-ACCESS",
+        child: { "client-secret": "PAVED-NESTED-CLIENT" },
+      },
+      json: "{\"access_token\":\"PAVED-JSON-ACCESS\",\"client_secret\":\"PAVED-JSON-CLIENT\"}",
+      yaml: "client_secret: PAVED-YAML-CLIENT\nsafe: visible",
+      log: "refresh-token=PAVED-HYPHEN-REFRESH",
+      prose: "The client secret rotation guide mentions access_token fields.",
+    }) as {
+      nested: { access_token: string; child: { "client-secret": string } };
+      json: string;
+      yaml: string;
+      log: string;
+      prose: string;
+    };
+
+    assert.equal(sanitized.nested.access_token, "[REDACTED]");
+    assert.equal(sanitized.nested.child["client-secret"], "[REDACTED]");
+    assert.equal(sanitized.json.includes("PAVED-JSON-ACCESS"), false);
+    assert.equal(sanitized.json.includes("PAVED-JSON-CLIENT"), false);
+    assert.match(sanitized.json, /"access_token":"\[REDACTED\]"/);
+    assert.match(sanitized.json, /"client_secret":"\[REDACTED\]"/);
+    assert.equal(sanitized.yaml.includes("PAVED-YAML-CLIENT"), false);
+    assert.match(sanitized.yaml, /client_secret: \[REDACTED\]/);
+    assert.equal(sanitized.log.includes("PAVED-HYPHEN-REFRESH"), false);
+    assert.equal(sanitized.log, "refresh-token=[REDACTED]");
+    assert.equal(sanitized.prose, "The client secret rotation guide mentions access_token fields.");
+  });
+
   it("rejects malformed structured output and records it as a failure", () => {
     assert.match(validateToolResult(tool, {other: 2}).join("\n"), /count/);
     const record = captureToolExecution({
