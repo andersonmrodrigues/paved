@@ -10,7 +10,7 @@ import { loadAdapters, detectAdapters, resolveAdapters, capabilityEvidence, type
 import { hashLocalCore, hashLocalTree } from './local-core.ts';
 
 export interface Source { path: string; kind: string; sha256: string; adapter?: string; adapterVersion?: string; capability?: string; detectionConfidence?: Detection['confidence']; detectionEvidence?: string[]; classification?: 'observed'; adapterEvidence?: { adapter: string; adapter_version: string; capability: string; detection_confidence: Detection['confidence']; classification: 'observed' }[] }
-export interface Execution { generator: string; version: string; status: 'written' | 'unchanged' | 'conflict' | 'proposed' | 'failed'; sources: Source[]; outputs: string[]; outputHashes: Record<string, string>; proposals: string[]; unknowns: string[]; warnings: string[]; errors: string[] }
+export interface Execution { generator: string; version: string; contractSha256?: string; engineSha256?: string; manifestSha256?: string; status: 'written' | 'unchanged' | 'conflict' | 'proposed' | 'failed'; sources: Source[]; outputs: string[]; outputHashes: Record<string, string>; proposals: string[]; unknowns: string[]; warnings: string[]; errors: string[] }
 export interface RunResult { executionId: string; timestamp: string; coreVersion: string; consumer: string; sourceRevision?: string; unmatchedTechnologies: string[]; unmodeledTechnologies: string[]; adapterWarnings: string[]; adapterDiagnostics: Diagnostic[]; detectedAdapters: { id: string; confidence: string; evidence: string[] }[]; selectedAdapters: string[]; capabilityResolutions: Record<string, string>; adapterEvidence: AdapterEvidence[]; executions: Execution[]; errors: string[] }
 export interface LockEntry { id?: string; version: string; source: string; sha256: string }
 export interface GenerationLock { core: LockEntry; adapters?: readonly LockEntry[]; generators?: readonly LockEntry[] }
@@ -106,13 +106,21 @@ const patterns: Record<string, RegExp> = {
   skills: /CONTRIBUTING|runbook|how-to|README|\/scripts\//i,
   tools: /package\.json$|pom\.xml$|\/scripts\/|Makefile|README/i,
 };
-function sourcesFor(id: string, all: Source[]): Source[] {
+export function sourcesFor(id: string, all: Source[]): Source[] {
   if (id === 'project-context/architecture') return all.filter(s => s.kind === 'manifest' || s.path === 'README.md').slice(0, 80);
   if (id === 'project-context/domain') return all.filter(s => s.path === 'README.md').slice(0, 20);
   if (id === 'project-context/product') return all.filter(s => /(^|\/)README\.md$/.test(s.path)).slice(0, 25);
   if (id === 'project-context/integrations') return all.filter(s => s.kind === 'configuration').slice(0, 30);
   if (id === 'project-context/feature-map') return [];
   return all.filter(s => patterns[id]?.test(s.path) ?? false).slice(0, 80);
+}
+export function relevantEvidenceFor(id: string, evidence: readonly AdapterEvidence[]): AdapterEvidence[] {
+  return evidence.filter(e => id.endsWith('/architecture') ? ['source.build','source.dependencies','application.runtime','application.modules','database.configuration'].includes(e.capability)
+    : id.endsWith('/domain') ? ['source.structure','database.migrations'].includes(e.capability)
+    : id.endsWith('/integrations') ? ['application.http-routes','application.ui-routes','database.configuration'].includes(e.capability)
+    : id.endsWith('/feature-map') ? ['application.ui-routes','application.http-routes'].includes(e.capability)
+    : id.endsWith('/product') ? e.capability === 'application.ui-routes'
+    : id === 'verification' ? e.capability === 'source.test' : false);
 }
 function provenance(contract: Contract, sources: Source[], at: string, rev: string | undefined, hash: string) { return { generator: contract.id, generator_version: contract.version, generated_at: at, ...(rev ? { source_revision: rev } : {}), sources: sources.map((s, i) => ({ id: `s${i + 1}`, type: 'file', location: s.path, sha256: s.sha256, ...(s.adapter ? { adapter: s.adapter, adapter_version: s.adapterVersion, capability: s.capability, detection_confidence: s.detectionConfidence, detection_evidence: [...(s.detectionEvidence ?? [])], classification: s.classification, adapter_evidence: s.adapterEvidence?.map(e => ({ ...e })) } : {}) })), output_sha256: hash, review: { status: 'unreviewed' } }; }
 function context(contract: Contract, sources: Source[], evidence: AdapterEvidence[], root: string, at: string, rev: string | undefined): { output: Output; unknowns: string[] } {
@@ -319,7 +327,7 @@ export function runGenerators(core: string, consumer: string, options: RunGenera
   const adapterWarnings = adapterDiagnostics.map(d => d.message);
   const selectedIds = new Set(resolved.adapters.map(d => d.adapter.id));
   const unmatched = unmatchedTechnologies(allSources);
-  const result: RunResult = { executionId: sha(`${sourceRevision ?? ''}:${timestamp}`).slice(0, 20), timestamp, coreVersion: info.version, consumer, ...(sourceRevision ? { sourceRevision } : {}), unmatchedTechnologies: unmatched, unmodeledTechnologies: unmatched, adapterWarnings, adapterDiagnostics, detectedAdapters: detected.filter(d => d.confidence !== 'unknown').map(d => ({ id: d.adapter.id, confidence: d.confidence, evidence: d.evidence })), selectedAdapters: [...selectedIds].sort(), capabilityResolutions: Object.fromEntries(Object.entries(capabilities.resolutions).map(([id, r]) => [id, r.status])), adapterEvidence: capabilities.evidence, executions: [], errors: [] };
+  const result: RunResult = { executionId: sha(`${sourceRevision ?? ''}:${timestamp}`).slice(0, 20), timestamp, coreVersion: info.version, consumer: String((manifest as { project?: { name?: string } }).project?.name ?? ''), ...(sourceRevision ? { sourceRevision } : {}), unmatchedTechnologies: unmatched, unmodeledTechnologies: unmatched, adapterWarnings, adapterDiagnostics, detectedAdapters: detected.filter(d => d.confidence !== 'unknown').map(d => ({ id: d.adapter.id, confidence: d.confidence, evidence: d.evidence })), selectedAdapters: [...selectedIds].sort(), capabilityResolutions: Object.fromEntries(Object.entries(capabilities.resolutions).map(([id, r]) => [id, r.status])), adapterEvidence: capabilities.evidence, executions: [], errors: [] };
   let contracts: Contract[];
   try {
     const orderedContracts = ordered(loadContracts(core, registry));
@@ -331,10 +339,14 @@ export function runGenerators(core: string, consumer: string, options: RunGenera
   if (result.errors.length) return result;
   const completed = new Set<string>();
   for (const contract of contracts) {
-    const entry: Execution = { generator: contract.id, version: contract.version, status: 'unchanged', sources: [], outputs: [], outputHashes: {}, proposals: [], unknowns: [], warnings: [], errors: [] }; result.executions.push(entry);
+    const entry: Execution = { generator: contract.id, version: contract.version,
+      contractSha256: hashLocalTree(core, [`generators/${contract.id}`]),
+      engineSha256: hashLocalTree(core, ['manifest.yaml', 'cli/lib/generator-runtime.ts', 'schemas/project-context.schema.yaml', 'schemas/feature.schema.yaml', 'schemas/provenance.schema.yaml']),
+      manifestSha256: hashSource(consumer, '.paved/manifest.yaml'),
+      status: 'unchanged', sources: [], outputs: [], outputHashes: {}, proposals: [], unknowns: [], warnings: [], errors: [] }; result.executions.push(entry);
     try {
       if ((contract.depends_on ?? []).some(d => !completed.has(d))) throw new Error('Required generator dependency failed');
-      const relevant = capabilities.evidence.filter(e => { const id = contract.id; return id.endsWith('/architecture') ? ['source.build','source.dependencies','application.runtime','application.modules','database.configuration'].includes(e.capability) : id.endsWith('/domain') ? ['source.structure','database.migrations'].includes(e.capability) : id.endsWith('/integrations') ? ['application.http-routes','application.ui-routes','database.configuration'].includes(e.capability) : id.endsWith('/feature-map') ? ['application.ui-routes','application.http-routes'].includes(e.capability) : id.endsWith('/product') ? e.capability === 'application.ui-routes' : id === 'verification' ? e.capability === 'source.test' : false; });
+      const relevant = relevantEvidenceFor(contract.id, capabilities.evidence);
       const sources = sourcesFor(contract.id, allSources).map(source => ({ ...source }));
       for (const item of relevant) if (!sources.some(s => s.path === item.source.path)) sources.push({ ...item.source });
       for (const source of sources) { const matches = relevant.filter(e => e.source.path === source.path); const item = matches[0]; if (item) Object.assign(source, { adapter: item.adapter, adapterVersion: item.adapterVersion, capability: item.capability, detectionConfidence: item.detectionConfidence, detectionEvidence: item.detectionEvidence, classification: item.classification, adapterEvidence: [...new Map(matches.map(e => [`${e.adapter}:${e.capability}`, { adapter: e.adapter, adapter_version: e.adapterVersion, capability: e.capability, detection_confidence: e.detectionConfidence, classification: e.classification }])).values()] }); }
@@ -380,7 +392,13 @@ export function runGenerators(core: string, consumer: string, options: RunGenera
     } catch (error) { entry.status = 'failed'; entry.errors.push(String(error)); result.errors.push(`${contract.id}: ${String(error)}`); }
   }
   if (options.dryRun !== true) {
-    const state = join(consumer, '.paved/generated/state'); mkdirSync(state, { recursive: true }); writeFileSync(join(state, 'last-run.json'), JSON.stringify(result, null, 2) + '\n');
+    const state = join(consumer, '.paved/generated/state'); mkdirSync(state, { recursive: true });
+    const path = join(state, 'last-run.json');
+    let prior: Execution[] = [];
+    if (existsSync(path)) { try { prior = (JSON.parse(readFileSync(path, 'utf8')) as { executions?: Execution[] }).executions ?? []; } catch { /* disposable state */ } }
+    const updated = new Set(result.executions.map(e => e.generator));
+    const stored = { ...result, executions: [...prior.filter(e => !updated.has(e.generator)), ...result.executions].sort((a, b) => a.generator.localeCompare(b.generator, 'en')) };
+    writeFileSync(path, JSON.stringify(stored, null, 2) + '\n');
   }
   return result;
 }

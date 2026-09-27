@@ -1,22 +1,22 @@
 # Integrating a repository
 
-The CLI is not implemented yet. Until it is, a repository can adopt Paved by hand; the
-steps below are what `paved init` will automate. An agent can perform them with the
+The local CLI implements `init`, `update`, `generate`, `verify`, `status` and `doctor`.
+The steps below explain what still needs human review after `paved init`. An agent
+can perform the project-owned steps with the
 [repository-onboarding skill](../../core/skills/bootstrap/repository-onboarding/SKILL.md)
 when a human asks it to.
 
 ## 1. Make the Core available
 
-Clone or check out this repository at a tagged version somewhere agents can read. For
-the manual flow, place a read-only copy at `.paved/generated/core/` in the consumer
-(and add `.paved/generated/` to the consumer's ignore file), or point the `AGENTS.md`
-block at wherever the Core lives. Do not edit that copy.
+Make a local Core checkout available to the CLI. `paved init --project <repo>` resolves
+that checkout and writes exact versions and digests to `.paved/paved.lock`. The local
+CLI does not materialize `.paved/generated/core/`; Core distribution is planned.
 
 ## 2. Create the manifest
 
-Copy [`core/templates/manifest.yaml`](../../core/templates/manifest.yaml) to
-`.paved/manifest.yaml`. Set the project name and the Core range. Leave `adapters` empty
-unless a matching adapter exists.
+`paved init` creates `.paved/manifest.yaml` from detected local adapters. Review its
+human-owned project name, Core range and adapter selections. For manual setup, use
+[`core/templates/manifest.yaml`](../../core/templates/manifest.yaml).
 
 ## 3. Declare verification
 
@@ -34,7 +34,7 @@ content outside the block.
 
 ## 5. Add context gradually
 
-Without generators, start with the feature map: one
+`paved generate` drafts Project Context. Review it, then add one
 [`feature.yaml`](../../core/templates/feature.yaml) per feature an agent is likely to
 work on, with `confidence: declared`. Add architecture notes under
 `.paved/project/architecture/` as they become necessary. Record gaps as `unknowns`.
@@ -48,6 +48,6 @@ workflow goes in `.paved/workflows/<name>/` under a name no Core workflow uses.
 
 ## 7. Validate
 
-Validate each YAML document against its schema, for example with a short script using
-this repository's `cli/lib/schemas.ts` (`createRegistry("<core>/schemas").validate(doc)`).
-`paved doctor` will do this once implemented.
+Run `paved doctor --project <repo>` to inspect the manifest, lock, selected adapters,
+generated provenance, overrides and verification profile. It is read-only. Project
+review remains necessary before treating generated context as declared knowledge.

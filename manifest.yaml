@@ -199,8 +199,8 @@ consumer_layout:
     required: false
     committed: false
     description: >
-      Regenerable output: resolved Core cache, generator proposals, generation state and
-      evidence records. Safe to delete.
+      Regenerable output: generator proposals, generation state and evidence records.
+      Core cache materialization is planned. Safe to delete.
   - path: .paved/generated/runs/
     ownership: disposable
     required: false

@@ -10,6 +10,7 @@ function statusFor(diagnostics: readonly Diagnostic[]): ResultStatus {
 export function statusData(inspection: ConsumerInspection): Record<string, unknown> {
   return {
     initialized: inspection.initialized,
+    lifecycleState: inspection.lifecycleState,
     projectRoot: inspection.projectRoot,
     coreRoot: inspection.coreRoot,
     projectName: inspection.projectName,

@@ -27,7 +27,7 @@ an explicit ownership value for every consumer path (declared in the Core manife
 | Project tools, skills, workflows | The project | `.paved/tools/`, `skills/`, `workflows/` | Proposed only | Yes | No | Yes | Humans |
 | Overrides | The project's humans | `.paved/overrides/` | No | Yes | — | Yes (inherited content applies again) | Humans; the CLI records `target_sha256` |
 | Lock | The CLI | Manifest ranges + distribution | Yes | No | No | Yes (re-resolved) | `paved init`, `paved update` |
-| Generated artifacts (cache, proposals, state) | Tools | Their inputs | Yes | No | No | Yes | Any run |
+| Generated artifacts (proposals, state) | Tools | Their inputs | Yes | No | No | Yes | Any run |
 | Evidence | The agent/runner that produced it | Observations of one change | Yes | No | No | Yes locally; the durable copy is with the review | `paved verify`, agents |
 
 Generators may write only `generated-reviewed` and `disposable` paths. A Core test

@@ -1,0 +1,6 @@
+apiVersion: paved/v1
+kind: Project
+project:
+  name: consumer-stale
+paved:
+  core: ^0.2.0

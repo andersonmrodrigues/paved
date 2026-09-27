@@ -111,9 +111,11 @@ back to the stricter behavior. Overrides written without a digest are applied, a
 | Override target changed since it was written | `target_sha256` | Needs review (see above) |
 | A project rule that contradicts an inherited rule | Not mechanically detectable | Both apply. Rules are conjunctive, so the stricter one wins in practice; review should catch the contradiction |
 
-Reference checks are implemented in `cli/lib/references.ts`; the other composition
-checks, and assembling a project's effective set, are specified for `paved doctor` and
-`paved update` but not implemented (see [enforcement candidates](../maintenance/enforcement-candidates.md)).
+Reference checks are implemented in `cli/lib/references.ts`. `paved doctor` and
+`paved update` validate override schema, target kind and identity, selected adapter
+availability, target digest, protected rules, duplicate targets and selected Tool
+implementations. Full effective-set composition and short-name collision checking
+remain contract-only (see [enforcement candidates](../maintenance/enforcement-candidates.md)).
 
 ## Precedence summary
 

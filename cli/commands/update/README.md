@@ -10,7 +10,7 @@ migrations and adapter override flags are not implemented.
 - `.paved/paved.lock`
 - Local Core files and local adapter/generator contracts referenced by the
   manifest/lock
-- Existing generated baselines and managed outputs when generator contracts changed
+- Existing generated baselines, source evidence and managed outputs
 
 ## Supported flags
 
@@ -27,10 +27,14 @@ arguments are rejected.
 1. Validate the manifest and require a valid existing lock.
 2. Confirm the local Core version satisfies `paved.core` and selected local
    adapters satisfy manifest ranges.
-3. Compare local Core, adapter and generator contract digests with the lock.
-4. Run safe generation only for changed/new generator contracts.
-5. Write `.paved/paved.lock` only after compatibility checks and required safe
-   generation succeed.
+3. Validate existing project documents and override targets; block unknown
+   compatibility and migrations requiring human-owned document edits.
+4. Compare local digests and recorded source inputs, then select affected
+   generators through their declared dependency graph.
+5. Stage generation in a temporary consumer copy, validate it, check for
+   concurrent consumer changes, and swap `.paved/` with a recoverable backup.
+   Write the new lock only in the successfully staged state. Source-only updates
+   preserve the existing lock bytes.
 
 ## Outputs and mutations
 
@@ -39,7 +43,10 @@ under `.paved/project/` or `.paved/generated/`. It never changes the manifest,
 project-owned files, application source, override files, `AGENTS.md`, or paths
 outside the consumer `.paved/` layout.
 
-`--dry-run` writes nothing and reports planned lock/generator changes.
+`--dry-run` writes nothing and reports planned lock/generator changes. A rejected
+update may publish disposable conflict proposals while keeping the prior lock and
+human-owned state authoritative. A process interruption during the swap can leave
+`.paved.update-backup` for recovery; a further update refuses to overwrite it.
 
 ## Exit codes
 
