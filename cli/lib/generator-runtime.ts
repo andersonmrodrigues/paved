@@ -12,6 +12,8 @@ import { hashLocalCore, hashLocalTree } from './local-core.ts';
 export interface Source { path: string; kind: string; sha256: string; adapter?: string; adapterVersion?: string; capability?: string; detectionConfidence?: Detection['confidence']; detectionEvidence?: string[]; classification?: 'observed'; adapterEvidence?: { adapter: string; adapter_version: string; capability: string; detection_confidence: Detection['confidence']; classification: 'observed' }[] }
 export interface Execution { generator: string; version: string; status: 'written' | 'unchanged' | 'conflict' | 'proposed' | 'failed'; sources: Source[]; outputs: string[]; outputHashes: Record<string, string>; proposals: string[]; unknowns: string[]; warnings: string[]; errors: string[] }
 export interface RunResult { executionId: string; timestamp: string; coreVersion: string; consumer: string; sourceRevision?: string; unmatchedTechnologies: string[]; unmodeledTechnologies: string[]; adapterWarnings: string[]; adapterDiagnostics: Diagnostic[]; detectedAdapters: { id: string; confidence: string; evidence: string[] }[]; selectedAdapters: string[]; capabilityResolutions: Record<string, string>; adapterEvidence: AdapterEvidence[]; executions: Execution[]; errors: string[] }
+export interface RunGeneratorOptions { dryRun?: boolean; generators?: string[] }
+export interface ConsumerInitializationPlan { manifest: Record<string, unknown>; lock: Record<string, unknown>; selectedAdapters: string[]; resolvedAdapters: string[]; adapterDiagnostics: Diagnostic[]; plannedWrites: string[] }
 type Registry = ReturnType<typeof createRegistry>;
 interface Contract { apiVersion: string; kind: 'Generator'; id: string; version: string; status: string; summary: string; depends_on?: string[]; inputs: unknown[]; outputs: { path: string; format: string; metadata: string; schema?: string }[]; change_detection: unknown }
 interface Output { path: string; content: string; schema: string }
@@ -44,6 +46,18 @@ function unmatchedTechnologies(sources: Source[]): string[] {
   if (paths.some(p => /\.gitlab-ci\.yml$/.test(p))) result.push('GitLab CI');
   if (paths.some(p => p.startsWith('.github/workflows/'))) result.push('GitHub Actions');
   return result;
+}
+export function planConsumerInitialization(core: string, consumer: string, name: string): ConsumerInitializationPlan {
+  const registry = createRegistry(join(core, 'schemas'), ['paved/v1']); const version = coreManifest(core).version;
+  const detected = detectAdapters(consumer, loadAdapters(core), discoverSources(consumer));
+  const adapters = detected.filter(d => d.confidence === 'strong' || (d.adapter.id === 'infrastructure/git' && d.confidence !== 'unknown')).map(d => d.adapter);
+  const manifest = { apiVersion: 'paved/v1', kind: 'Project', project: { name }, paved: { core: `^${version}` }, adapters: adapters.map(a => ({ id: a.id, version: `^${a.version}` })) };
+  validate(registry, manifest);
+  const selected = resolveAdapters(detected, manifest.adapters, version);
+  const generators = loadContracts(core, registry).map(c => ({ id: c.id, version: c.version, source: 'local-core', sha256: hashLocalTree(core, [`generators/${c.id}`]) }));
+  const lock = { apiVersion: 'paved/v1', kind: 'Lock', resolved_at: new Date().toISOString(), core: { version, source: 'local-core', sha256: hashLocalCore(core) }, adapters: selected.adapters.map(d => ({ id: d.adapter.id, version: d.adapter.version, source: 'local-core', sha256: hashLocalTree(core, [`adapters/${d.adapter.id}`]) })), generators };
+  validate(registry, lock);
+  return { manifest, lock, selectedAdapters: manifest.adapters.map(a => a.id).sort(), resolvedAdapters: selected.adapters.map(d => d.adapter.id).sort(), adapterDiagnostics: selected.diagnostics, plannedWrites: ['.paved/manifest.yaml', '.paved/paved.lock', '.paved/.gitignore'] };
 }
 export function initializeConsumer(core: string, consumer: string, name: string) {
   const registry = createRegistry(join(core, 'schemas'), ['paved/v1']); const version = coreManifest(core).version;
@@ -170,7 +184,7 @@ function ruleProposals(contract: Contract, sources: Source[], root: string, at: 
   }
   return outputs;
 }
-function writeOutput(root: string, output: Output, registry: Registry, info: ReturnType<typeof coreManifest>, generator: string): 'written' | 'unchanged' | 'conflict' | 'proposed' {
+function writeOutput(root: string, output: Output, registry: Registry, info: ReturnType<typeof coreManifest>, generator: string, dryRun = false): 'written' | 'unchanged' | 'conflict' | 'proposed' {
   const owner = [...info.consumer_layout].sort((a, b) => b.path.length - a.path.length).find(x => output.path.startsWith(x.path))?.ownership;
   if (owner !== 'generated-reviewed' && owner !== 'disposable') throw new Error(`Disallowed output ownership: ${output.path}`);
   const yaml = output.schema === 'ContextDocument' ? parse(output.content.slice(4, output.content.indexOf('\n---\n'))) : parse(output.content);
@@ -199,6 +213,7 @@ function writeOutput(root: string, output: Output, registry: Registry, info: Ret
         const p = old.provenance as { generator?: string; output_sha256?: string } | undefined;
         const semantic = { ...old }; delete semantic.provenance;
         if (!p || p.generator !== generator || p.output_sha256 !== sha(stringify(semantic))) return 'conflict';
+        if (dryRun) return 'written';
         mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, finalContent);
         return 'written';
       }
@@ -220,6 +235,7 @@ function writeOutput(root: string, output: Output, registry: Registry, info: Ret
       }
     }
   }
+  if (dryRun) return owner === 'disposable' ? 'proposed' : 'written';
   mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, finalContent);
   if (owner === 'generated-reviewed' && output.schema === 'ContextDocument') {
     const body = loadMarkdown(target).body; mkdirSync(dirname(baselinePath), { recursive: true });
@@ -227,7 +243,25 @@ function writeOutput(root: string, output: Output, registry: Registry, info: Ret
   }
   return owner === 'disposable' ? 'proposed' : 'written';
 }
-export function runGenerators(core: string, consumer: string): RunResult {
+function selectedContracts(contracts: Contract[], selectors: readonly string[] | undefined): { contracts: Contract[]; errors: string[] } {
+  if (!selectors?.length) return { contracts, errors: [] };
+  const byId = new Map(contracts.map(contract => [contract.id, contract]));
+  const selected = new Set<string>();
+  const errors: string[] = [];
+  function visit(id: string) {
+    const contract = byId.get(id);
+    if (!contract) {
+      errors.push(`Unknown generator selector: ${id}`);
+      return;
+    }
+    if (selected.has(id)) return;
+    for (const dependency of contract.depends_on ?? []) visit(dependency);
+    selected.add(id);
+  }
+  for (const id of selectors) visit(id);
+  return errors.length ? { contracts: [], errors } : { contracts: contracts.filter(contract => selected.has(contract.id)), errors: [] };
+}
+export function runGenerators(core: string, consumer: string, options: RunGeneratorOptions = {}): RunResult {
   const registry = createRegistry(join(core, 'schemas'), ['paved/v1']); const info = coreManifest(core);
   const manifest = parse(readFileSync(join(consumer, '.paved/manifest.yaml'), 'utf8')) as { adapters?: { id: string; version: string }[] }; validate(registry, manifest);
   const allSources = discoverSources(consumer); const timestamp = new Date().toISOString(); const sourceRevision = revision(consumer);
@@ -239,7 +273,14 @@ export function runGenerators(core: string, consumer: string): RunResult {
   const selectedIds = new Set(resolved.adapters.map(d => d.adapter.id));
   const unmatched = unmatchedTechnologies(allSources);
   const result: RunResult = { executionId: sha(`${sourceRevision ?? ''}:${timestamp}`).slice(0, 20), timestamp, coreVersion: info.version, consumer, ...(sourceRevision ? { sourceRevision } : {}), unmatchedTechnologies: unmatched, unmodeledTechnologies: unmatched, adapterWarnings, adapterDiagnostics, detectedAdapters: detected.filter(d => d.confidence !== 'unknown').map(d => ({ id: d.adapter.id, confidence: d.confidence, evidence: d.evidence })), selectedAdapters: [...selectedIds].sort(), capabilityResolutions: Object.fromEntries(Object.entries(capabilities.resolutions).map(([id, r]) => [id, r.status])), adapterEvidence: capabilities.evidence, executions: [], errors: [] };
-  let contracts: Contract[]; try { contracts = ordered(loadContracts(core, registry)); } catch (error) { result.errors.push(String(error)); return result; }
+  let contracts: Contract[];
+  try {
+    const orderedContracts = ordered(loadContracts(core, registry));
+    const selected = selectedContracts(orderedContracts, options.generators);
+    contracts = selected.contracts;
+    result.errors.push(...selected.errors);
+  } catch (error) { result.errors.push(String(error)); return result; }
+  if (result.errors.length && contracts.length === 0) return result;
   const completed = new Set<string>();
   for (const contract of contracts) {
     const entry: Execution = { generator: contract.id, version: contract.version, status: 'unchanged', sources: [], outputs: [], outputHashes: {}, proposals: [], unknowns: [], warnings: [], errors: [] }; result.executions.push(entry);
@@ -258,13 +299,26 @@ export function runGenerators(core: string, consumer: string): RunResult {
       else if (contract.id === 'rules') outputs.push(...ruleProposals(contract, sources, consumer, timestamp, sourceRevision));
       else entry.warnings.push('No explicit, schema-safe project policy was established; no proposal emitted.');
       for (const output of outputs) {
-        const status = writeOutput(consumer, output, registry, info, contract.id);
-        if (status === 'conflict') { const path = `.paved/generated/proposals/${output.path.replace(/^\.paved\//, '')}`; writeOutput(consumer, { ...output, path }, registry, info, contract.id); entry.proposals.push(path); entry.outputHashes[path] = hashSource(consumer, path); entry.status = 'conflict'; }
-        else { entry.outputs.push(output.path); entry.outputHashes[output.path] = hashSource(consumer, output.path); if (status === 'proposed') entry.proposals.push(output.path); if (entry.status !== 'conflict' && status !== 'unchanged') entry.status = status; }
+        const status = writeOutput(consumer, output, registry, info, contract.id, options.dryRun === true);
+        if (status === 'conflict') {
+          const path = `.paved/generated/proposals/${output.path.replace(/^\.paved\//, '')}`;
+          if (options.dryRun !== true) writeOutput(consumer, { ...output, path }, registry, info, contract.id);
+          entry.proposals.push(path);
+          entry.outputHashes[path] = options.dryRun === true ? sha(output.content) : hashSource(consumer, path);
+          entry.status = 'conflict';
+        }
+        else {
+          entry.outputs.push(output.path);
+          entry.outputHashes[output.path] = options.dryRun === true && status !== 'unchanged' ? sha(output.content) : hashSource(consumer, output.path);
+          if (status === 'proposed') entry.proposals.push(output.path);
+          if (entry.status !== 'conflict' && status !== 'unchanged') entry.status = status;
+        }
       }
       completed.add(contract.id);
     } catch (error) { entry.status = 'failed'; entry.errors.push(String(error)); result.errors.push(`${contract.id}: ${String(error)}`); }
   }
-  const state = join(consumer, '.paved/generated/state'); mkdirSync(state, { recursive: true }); writeFileSync(join(state, 'last-run.json'), JSON.stringify(result, null, 2) + '\n');
+  if (options.dryRun !== true) {
+    const state = join(consumer, '.paved/generated/state'); mkdirSync(state, { recursive: true }); writeFileSync(join(state, 'last-run.json'), JSON.stringify(result, null, 2) + '\n');
+  }
   return result;
 }
