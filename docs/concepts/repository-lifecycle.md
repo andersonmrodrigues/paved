@@ -1,83 +1,66 @@
 # Repository lifecycle
 
-How a consumer repository adopts Paved and keeps up with the Core. Commands are
-specified in [cli/](../../cli/README.md) and not implemented yet; the
-[integration guide](../getting-started/integrating-a-repository.md) describes the manual
-equivalent.
+The local CLI manages one consumer repository at a time. Its repository root and
+`.paved/manifest.yaml` identify the consumer for the current operation. The human-owned
+`project.name` is a display name, not a global identifier; moving or cloning a
+repository does not change its Paved identity. No absolute path or Git remote is
+written into the lock.
 
 ## Initialization
 
-```text
-paved init
-      ↓
-repository discovery          confirm repository root; refuse if already initialized
-      ↓
-technology detection          evaluate adapter `detect` signals
-      ↓
-adapter resolution            propose adapters → human confirms → versions locked
-      ↓
-project context generation    run generators → .paved/project/ (unreviewed)
-      ↓
-verification setup            propose a verification profile → human adopts it
-      ↓
-validation                    paved doctor: schemas, references, commands
-      ↓
-ready for agents              AGENTS.md block points agents at Paved
-```
+`paved init` discovers the selected repository root, refuses any existing `.paved/`
+state, detects supported technologies, resolves local adapters, writes the Project
+manifest and exact lock, then generates context unless `--no-generate` is set.
+`--dry-run` uses a temporary copy and leaves the consumer unchanged. Init does not
+configure a verification profile automatically and does not claim that generated
+context has been reviewed.
 
-"Ready" still means Project Context is unreviewed. Agents treat unreviewed context as
-`inferred` until humans review it; the repository state is reported by `paved status`.
+## States
 
-## Update
+`paved status --json` and `paved doctor --json` expose `data.lifecycleState`:
 
-```text
-paved update
-      ↓
-core update                   resolve newest Core within the manifest range (or --to)
-      ↓
-compatibility check           Core range, apiVersion, adapter requirements
-      ↓
-project context validation    validate .paved/ documents against the new schemas
-      ↓
-migration if necessary        dry run → confirmation → apply → validate again
-```
+| State | Repository evidence |
+|---|---|
+| `UNINITIALIZED` | No Project manifest. A stray `.paved/` does not count as initialized. |
+| `INITIALIZED` | Valid manifest, but the lock is missing or invalid. |
+| `RESOLVED` | Valid manifest and matching lock; no generated context. |
+| `GENERATED` | Generated context exists; an explicit valid verification profile is absent. |
+| `VALIDATED` | Profile exists, but conflicts, pending proposals or other blocking findings prevent readiness. |
+| `READY` | Matching lock, generated context, valid profile and no outstanding diagnostic preventing readiness. |
+| `STALE` | Content digests, generator inputs or relevant source evidence changed. |
+| `INCOMPATIBLE` | Manifest range or locked versions cannot use the available Core/adapters. |
+| `BROKEN` | Manifest, Core metadata or generated metadata is invalid. |
 
-Updates never modify human-owned files without per-file consent, and never write
-outside the paths their contract allows.
+Diagnostics and exit categories remain separate from lifecycle state. A stale
+consumer may also have a conflict, and a missing profile can be reported alongside
+other findings. The state is computed from files and digests; timestamps do not
+decide it.
 
-### What an update touches
+## Local update
 
-| Step | Reads | Writes |
-|---|---|---|
-| Resolve | Manifest ranges, available versions | Nothing yet |
-| Compatibility | New Core manifest, adapter `requires` | Nothing yet |
-| Validation | Every `.paved/` document against the new schemas | Nothing yet |
-| Override review | `target_sha256` of every override against the new targets | Nothing; reports overrides that need review |
-| Migration | Documents with an older `apiVersion` | Migrated documents, after confirmation |
-| Apply | | `.paved/paved.lock`, `.paved/generated/core/` |
-| Report | | A summary of changed Core content affecting this project: rules, skills and workflows it uses; new rules that now apply |
+`paved update` loads the existing valid lock, checks the manifest range and local
+adapters, validates project documents and override targets, and computes affected
+generators from their declared dependencies and recorded inputs. A Core move beyond
+a known compatible patch line is reported as unknown compatibility and blocked.
+Documents that fail the candidate schema require a human migration; the CLI does
+not rewrite them. Override targets that disappeared or changed digest require review.
 
-Every write happens after every check, so a failed update leaves the repository exactly
-as it was.
+For an applicable update, Paved copies the consumer into a temporary workspace,
+generates affected context there, validates the staged state, checks that the real
+consumer has not changed during staging, and swaps its `.paved/` directory. The
+previous directory is held at `.paved.update-backup` during the swap. A failure
+before commit leaves the old `.paved/` authoritative. A failed second rename
+restores it. If a process stops during the swap, the backup is recoverable and a
+subsequent update refuses to proceed while it exists. Human-owned files are copied
+into the stage and never rewritten by generators; conflicts produce disposable
+proposals. Application source files are read only.
 
-## Change impact
+`--dry-run` plans generation without publishing state. The Core and adapters must
+already be available locally. Remote resolution, automatic schema migrations,
+fleet-wide rollouts, and Core caches are planned rather than implemented.
 
-When the Core changes, the impact on a consumer is computed, not guessed:
-
-| Core change | Affected consumers | Detected by |
-|---|---|---|
-| Schema change | Those with documents of that kind | Validation against the new schema |
-| Rule change | Those where the rule's `applies_to` matches, or with an override on it | Rule diff + override digests |
-| Skill or workflow change | Those that use it and have not disabled it; those that extend it | Diff + override digests |
-| New rule | All, unless its `applies_to` excludes them | Composition |
-| Removed content | Those with overrides on it (error until removed) | Composition |
-
-The same mechanism applies to adapter updates.
-
-## Staying current
-
-- Generated context goes stale when its sources change. `paved status` reports stale
-  documents; `paved generate` refreshes them following the merge strategy in
-  [ownership and regeneration](ownership-and-regeneration.md).
-- Evidence and Gardener proposals feed back into rules, skills and verification. See the
-  [gardener skill](../../core/skills/gardener/gardener/SKILL.md).
+Generated context records source hashes and generator metadata. `status` detects
+changed or removed cited files, newly relevant source files, changed manifest and
+generator inputs, and changed locked Core or adapter content. A source-only change
+can be reconciled by `update` without rewriting an unchanged lock. Context review
+and an explicit verification profile remain human decisions.

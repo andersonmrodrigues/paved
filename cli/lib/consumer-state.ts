@@ -3,10 +3,11 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { stringify } from "yaml";
 import { createDiagnostic, type Diagnostic } from "../result.ts";
-import { capabilityEvidence, detectAdapters, loadAdapters, resolveAdapters, type Detection } from "./adapters.ts";
+import { capabilityEvidence, detectAdapters, loadAdapters, resolveAdapters, type AdapterEvidence, type Detection } from "./adapters.ts";
 import { loadYaml, loadMarkdown } from "./documents.ts";
-import { discoverSources } from "./generator-runtime.ts";
+import { discoverSources, relevantEvidenceFor, sourcesFor } from "./generator-runtime.ts";
 import { hashLocalCore, hashLocalTree } from "./local-core.ts";
+import { inspectOverrides } from "./override-safety.ts";
 import { assessProvenance } from "./provenance.ts";
 import { createRegistry, type SchemaRegistry } from "./schemas.ts";
 import { compatible } from "./tools.ts";
@@ -45,6 +46,7 @@ export interface ConsumerUpdatePlan {
   readonly coreRoot: string;
   readonly remoteResolution: "unsupported";
   readonly changed: boolean;
+  readonly compatibility?: "compatible" | "migration-required" | "incompatible" | "unknown";
   readonly plannedWrites: readonly string[];
   readonly plannedGeneratorIds: readonly string[];
   readonly currentLock?: LockDocument;
@@ -58,6 +60,7 @@ export interface ConsumerInspection {
   readonly projectRoot: string;
   readonly coreRoot: string;
   readonly initialized: boolean;
+  readonly lifecycleState: ConsumerLifecycleState;
   readonly projectName?: string;
   readonly core: {
     readonly localVersion?: string;
@@ -80,6 +83,37 @@ export interface ConsumerInspection {
   readonly diagnostics: readonly Diagnostic[];
 }
 
+export type ConsumerLifecycleState =
+  | "UNINITIALIZED" | "INITIALIZED" | "RESOLVED" | "GENERATED"
+  | "VALIDATED" | "READY" | "STALE" | "INCOMPATIBLE" | "BROKEN";
+
+function lifecycleState(input: {
+  hasManifest: boolean;
+  manifestValid: boolean;
+  lockHealth: ConsumerInspection["lockHealth"];
+  profile: ConsumerInspection["verificationProfile"];
+  generated: boolean;
+  diagnostics: readonly Diagnostic[];
+}): ConsumerLifecycleState {
+  if (!input.hasManifest) return "UNINITIALIZED";
+  if (!input.manifestValid || input.diagnostics.some((item) =>
+    item.code === "PAVED_CORE_MANIFEST_INVALID" || item.code === "PAVED_GENERATED_PROVENANCE_INVALID" ||
+    item.code === "PAVED_VERIFICATION_PROFILE_INVALID")) return "BROKEN";
+  if (input.diagnostics.some((item) => item.code === "PAVED_MANIFEST_CORE_INCOMPATIBLE" ||
+    item.code === "PAVED_LOCK_CORE_VERSION_MISMATCH" || item.code === "PAVED_ADAPTER_INCOMPATIBLE" ||
+    item.code === "PAVED_LOCK_ADAPTER_VERSION_MISMATCH")) return "INCOMPATIBLE";
+  if (input.diagnostics.some((item) => item.code === "PAVED_GENERATED_SOURCE_STALE" ||
+    item.code === "PAVED_GENERATOR_INPUTS_STALE" || item.code === "PAVED_GENERATOR_SOURCE_SET_STALE" ||
+    item.code === "PAVED_GENERATED_OUTPUT_MISSING" ||
+    item.code === "PAVED_LOCK_CORE_DIGEST_MISMATCH" || item.code === "PAVED_LOCK_ADAPTER_DIGEST_MISMATCH" ||
+    item.code === "PAVED_LOCK_GENERATOR_DIGEST_MISMATCH" || item.code === "PAVED_LOCK_GENERATOR_VERSION_MISMATCH")) return "STALE";
+  if (input.lockHealth !== "healthy") return "INITIALIZED";
+  if (!input.generated) return "RESOLVED";
+  if (input.profile !== "present") return "GENERATED";
+  if (input.diagnostics.some((item) => item.category !== "findings" || item.code === "PAVED_GENERATOR_PROPOSALS_PENDING")) return "VALIDATED";
+  return "READY";
+}
+
 interface CoreManifest {
   readonly version: string;
   readonly consumer_layout: readonly { path: string; required: boolean; ownership: string; schema?: string }[];
@@ -100,6 +134,7 @@ interface ResolvedLockEntry {
 }
 
 interface LockDocument {
+  readonly apiVersion?: string;
   readonly core?: ResolvedLockEntry;
   readonly adapters?: readonly ResolvedLockEntry[];
   readonly generators?: readonly ResolvedLockEntry[];
@@ -108,6 +143,50 @@ interface LockDocument {
 interface GeneratorContract {
   readonly id: string;
   readonly version: string;
+  readonly depends_on?: readonly string[];
+  readonly inputs?: readonly { kind: string }[];
+  readonly outputs?: readonly { path: string }[];
+}
+
+function impactedGenerators(
+  contracts: readonly GeneratorContract[],
+  changedIds: readonly string[],
+  changedAdapterIds: readonly string[],
+  projectRoot: string,
+): string[] {
+  const affected = new Set(changedIds);
+  if (changedAdapterIds.length > 0) {
+    const runPath = join(projectRoot, ".paved/generated/state/last-run.json");
+    let used = new Map<string, Set<string>>();
+    if (existsSync(runPath)) {
+      try {
+        const run = JSON.parse(readFileSync(runPath, "utf8")) as { executions?: {
+          generator?: string; sources?: { adapter?: string; adapterEvidence?: { adapter: string }[] }[];
+        }[] };
+        used = new Map((run.executions ?? []).filter((entry) => typeof entry.generator === "string").map((entry) => [
+          entry.generator as string,
+          new Set((entry.sources ?? []).flatMap((source) => [source.adapter, ...(source.adapterEvidence ?? []).map((e) => e.adapter)].filter((id): id is string => typeof id === "string"))),
+        ]));
+      } catch { /* Invalid run state is handled by inspection; assume adapter inputs need regeneration. */ }
+    }
+    for (const contract of contracts) {
+      if (!contract.inputs?.some((entry) => entry.kind === "adapter")) continue;
+      const previous = used.get(contract.id);
+      if (!previous || changedAdapterIds.some((id) => previous.has(id))) affected.add(contract.id);
+    }
+  }
+  let expanded = true;
+  while (expanded) {
+    expanded = false;
+    for (const contract of contracts) {
+      if (!affected.has(contract.id) && contract.depends_on?.some((id) => affected.has(id)) &&
+        contract.outputs?.some((output) => existsSync(safe(projectRoot, output.path)))) {
+        affected.add(contract.id);
+        expanded = true;
+      }
+    }
+  }
+  return [...affected].sort();
 }
 
 function diagnostic(input: {
@@ -249,6 +328,12 @@ function compareCoreLock(lock: LockDocument | undefined, core: CoreManifest | un
       }));
     }
   }
+  if (lock.core.source !== "local-core") {
+    matches = false;
+    diagnostics.push(diagnostic({ code: "PAVED_LOCK_SOURCE_UNAVAILABLE", component: "consumer.lock", category: "resolution",
+      message: `Locked Core source ${lock.core.source} cannot be verified by the local resolver.`,
+      remediation: "Use locally resolved Paved inputs before generating or updating." }));
+  }
   return matches;
 }
 
@@ -260,6 +345,13 @@ function compareAdapterLocks(
 ): void {
   if (!lock) return;
   const lockedById = new Map((lock.adapters ?? []).filter((entry) => typeof entry.id === "string").map((entry) => [entry.id as string, entry]));
+  const resolvedIds = new Set(resolved.map((item) => item.adapter.id));
+  for (const locked of lock.adapters ?? []) {
+    if (locked.id && !resolvedIds.has(locked.id)) diagnostics.push(diagnostic({ code: "PAVED_LOCK_ADAPTER_EXTRA",
+      component: "consumer.lock", message: `Lock includes unselected adapter ${locked.id}.`, remediation: "Refresh the lock after reviewing manifest selections." }));
+    if (locked.source !== "local-core") diagnostics.push(diagnostic({ code: "PAVED_LOCK_SOURCE_UNAVAILABLE", component: "consumer.lock", category: "resolution",
+      message: `Locked adapter ${locked.id ?? "unknown"} has a source the local resolver cannot verify.` }));
+  }
   for (const detection of resolved) {
     const locked = lockedById.get(detection.adapter.id);
     if (!locked) {
@@ -320,9 +412,13 @@ function compareGeneratorLocks(
   generators: readonly GeneratorContract[],
   diagnostics: Diagnostic[],
 ): void {
-  if (!lock?.generators?.length) return;
+  if (!lock) return;
   const localById = new Map(generators.map((generator) => [generator.id, generator]));
-  for (const locked of lock.generators) {
+  const lockedIds = new Set((lock.generators ?? []).map((entry) => entry.id));
+  for (const generator of generators) if (!lockedIds.has(generator.id)) diagnostics.push(diagnostic({
+    code: "PAVED_LOCK_GENERATOR_MISSING", component: "consumer.lock", message: `Generator ${generator.id} is missing from the lock.`,
+    remediation: "Refresh the lock before generating context." }));
+  for (const locked of lock.generators ?? []) {
     if (typeof locked.id !== "string") continue;
     const local = localById.get(locked.id);
     if (!local) {
@@ -353,6 +449,8 @@ function compareGeneratorLocks(
         }));
       }
     }
+    else diagnostics.push(diagnostic({ code: "PAVED_LOCK_SOURCE_UNAVAILABLE", component: "consumer.lock", category: "resolution",
+      message: `Locked generator ${locked.id} has a source the local resolver cannot verify.` }));
   }
 }
 
@@ -386,7 +484,7 @@ function verificationProfile(
   return diagnostics.length === before ? "present" : "invalid";
 }
 
-function inspectLastRun(projectRoot: string, diagnostics: Diagnostic[]): ConsumerInspection["lastRun"] {
+function inspectLastRun(projectRoot: string, coreRoot: string, evidence: readonly AdapterEvidence[], diagnostics: Diagnostic[]): ConsumerInspection["lastRun"] {
   const path = join(projectRoot, ".paved/generated/state/last-run.json");
   const proposalRoot = join(projectRoot, ".paved/generated/proposals");
   const proposalsOnDisk: string[] = [];
@@ -408,11 +506,36 @@ function inspectLastRun(projectRoot: string, diagnostics: Diagnostic[]): Consume
   try {
     const parsed = JSON.parse(readFileSync(path, "utf8")) as { executions?: unknown };
     const executions = Array.isArray(parsed.executions) ? parsed.executions : [];
+    const currentSources = discoverSources(projectRoot);
+    const engineDigest = hashLocalTree(coreRoot, ["manifest.yaml", "cli/lib/generator-runtime.ts", "schemas/project-context.schema.yaml", "schemas/feature.schema.yaml", "schemas/provenance.schema.yaml"]);
+    const manifestDigest = hashFile(join(projectRoot, ".paved/manifest.yaml"));
     const proposals = [...proposalsOnDisk];
     const conflicts: string[] = [];
     for (const item of executions) {
       if (item === null || typeof item !== "object") continue;
-      const execution = item as { generator?: unknown; status?: unknown; proposals?: unknown };
+      const execution = item as { generator?: unknown; status?: unknown; proposals?: unknown;
+        contractSha256?: unknown; engineSha256?: unknown; manifestSha256?: unknown;
+        sources?: { path?: string }[]; outputs?: string[] };
+      if (typeof execution.generator === "string" && (execution.outputs?.length ?? 0) > 0) {
+        if (execution.outputs?.some((output) => !existsSync(safe(projectRoot, output)))) {
+          diagnostics.push(diagnostic({ code: "PAVED_GENERATED_OUTPUT_MISSING", component: "consumer.generated", category: "findings",
+            message: `Generator ${execution.generator} has a missing recorded output.`, remediation: "Regenerate the affected context." }));
+        }
+        const contractDigest = hashLocalTree(coreRoot, [`generators/${execution.generator}`]);
+        if (execution.contractSha256 !== contractDigest || execution.engineSha256 !== engineDigest || execution.manifestSha256 !== manifestDigest) {
+          diagnostics.push(diagnostic({ code: "PAVED_GENERATOR_INPUTS_STALE", component: "consumer.generated", category: "findings",
+            message: `Generator ${execution.generator} no longer matches its recorded contract, engine, or manifest inputs.`,
+            remediation: "Review and regenerate the affected context." }));
+        }
+        const cited = new Set((execution.sources ?? []).map((source) => source.path));
+        const currentPaths = [...sourcesFor(execution.generator, currentSources).map((source) => source.path),
+          ...relevantEvidenceFor(execution.generator, evidence).map((item) => item.source.path)];
+        if (currentPaths.some((path) => !cited.has(path))) {
+          diagnostics.push(diagnostic({ code: "PAVED_GENERATOR_SOURCE_SET_STALE", component: "consumer.generated", category: "findings",
+            message: `Generator ${execution.generator} has new relevant source evidence.`,
+            remediation: "Review and regenerate the affected context." }));
+        }
+      }
       if (Array.isArray(execution.proposals)) {
         proposals.push(...execution.proposals.filter((proposal): proposal is string => typeof proposal === "string"));
       }
@@ -510,12 +633,12 @@ function inspectProvenanceObject(
     const entry = source as { type?: unknown; location?: unknown; sha256?: unknown };
     if (entry.type !== "file" || typeof entry.location !== "string" || typeof entry.sha256 !== "string") continue;
     const sourcePath = safe(projectRoot, entry.location);
-    if (existsSync(sourcePath) && hashFile(sourcePath) !== entry.sha256) {
+    if (!existsSync(sourcePath) || hashFile(sourcePath) !== entry.sha256) {
       diagnostics.push(diagnostic({
         code: "PAVED_GENERATED_SOURCE_STALE",
         component: "consumer.generated",
         category: "findings",
-        message: `${path} cites a source file whose digest has changed: ${entry.location}.`,
+        message: `${path} cites a source file that is missing or whose digest has changed: ${entry.location}.`,
         remediation: "Review whether the generated context is stale.",
       }));
     }
@@ -617,6 +740,38 @@ function updateStatusDiagnostics(diagnostics: readonly Diagnostic[]): boolean {
   return diagnostics.some((item) => item.category !== "findings");
 }
 
+function candidateCompatibility(previous: string | undefined, next: string): "compatible" | "unknown" {
+  if (!previous || previous === next) return "compatible";
+  const before = previous.split(".").map(Number);
+  const after = next.split(".").map(Number);
+  // For pre-1.0 Core, only patch movement within the same minor line has a
+  // compatibility claim. A broader move needs explicit migration evidence.
+  return before[0] === after[0] && before[1] === after[1] ? "compatible" : "unknown";
+}
+
+function validateConsumerDocuments(registry: SchemaRegistry, projectRoot: string): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+  for (const directory of ["project", "rules", "skills", "workflows", "tools", "tool-implementations", "verification/checks"]) {
+    walkFiles(join(projectRoot, ".paved", directory), (full) => {
+      if (!/\.(yaml|yml|md)$/.test(full)) return;
+      if (full.endsWith("SKILL.md") || full.endsWith("WORKFLOW.md")) return;
+      const path = relative(projectRoot, full).split(sep).join("/");
+      try {
+        const doc = full.endsWith(".md") ? loadMarkdown(full).frontmatter : loadYaml(full);
+        const validation = registry.validate(doc);
+        if (validation.valid) return;
+        diagnostics.push(diagnostic({ code: "PAVED_UPDATE_MIGRATION_REQUIRED", component: "consumer.documents", category: "config",
+          message: `${path} does not validate against the candidate Core: ${validation.errors.join("; ")}`,
+          remediation: "Review and migrate this project-owned document before updating; Paved will not rewrite it automatically." }));
+      } catch {
+        diagnostics.push(diagnostic({ code: "PAVED_UPDATE_MIGRATION_REQUIRED", component: "consumer.documents", category: "config",
+          message: `${path} cannot be parsed under the candidate Core.`, remediation: "Repair or migrate the document before updating." }));
+      }
+    });
+  }
+  return diagnostics;
+}
+
 function updateLockGenerators(
   lock: LockDocument,
   coreRoot: string,
@@ -636,6 +791,31 @@ function updateLockGenerators(
     return next;
   });
   return { entries, changedIds: changedIds.sort() };
+}
+
+function staleGeneratorIds(projectRoot: string, coreRoot: string, resolved: readonly Detection[], manifest: ProjectManifest): string[] {
+  const path = join(projectRoot, ".paved/generated/state/last-run.json");
+  if (!existsSync(path)) return [];
+  let executions: { generator?: string; outputs?: string[]; sources?: { path?: string; sha256?: string }[];
+    contractSha256?: string; engineSha256?: string; manifestSha256?: string }[];
+  try { executions = (JSON.parse(readFileSync(path, "utf8")) as { executions?: typeof executions }).executions ?? []; }
+  catch { return []; }
+  const sources = discoverSources(projectRoot);
+  const evidence = capabilityEvidence(projectRoot, sources, [...resolved], manifest.capability_providers).evidence;
+  const byPath = new Map(sources.map((source) => [source.path, source.sha256]));
+  const engineDigest = hashLocalTree(coreRoot, ["manifest.yaml", "cli/lib/generator-runtime.ts", "schemas/project-context.schema.yaml", "schemas/feature.schema.yaml", "schemas/provenance.schema.yaml"]);
+  const manifestDigest = hashFile(join(projectRoot, ".paved/manifest.yaml"));
+  return executions.filter((execution) => {
+    if (!execution.generator || !execution.outputs?.length) return false;
+    if (execution.outputs.some((output) => !existsSync(safe(projectRoot, output)))) return true;
+    if (execution.contractSha256 !== hashLocalTree(coreRoot, [`generators/${execution.generator}`]) ||
+      execution.engineSha256 !== engineDigest || execution.manifestSha256 !== manifestDigest) return true;
+    const cited = new Set((execution.sources ?? []).map((source) => source.path));
+    if ((execution.sources ?? []).some((source) => byPath.get(source.path ?? "") !== source.sha256)) return true;
+    const currentPaths = [...sourcesFor(execution.generator, sources).map((source) => source.path),
+      ...relevantEvidenceFor(execution.generator, evidence).map((item) => item.source.path)];
+    return currentPaths.some((path) => !cited.has(path));
+  }).map((execution) => execution.generator as string).sort();
 }
 
 export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpdatePlan {
@@ -678,6 +858,8 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
     };
   }
 
+  diagnostics.push(...inspectOverrides(input.projectRoot, input.coreRoot, manifest.adapters?.map((adapter) => adapter.id) ?? []));
+
   if (manifest.paved?.core && !compatible(core.version, manifest.paved.core)) {
     diagnostics.push(diagnostic({
       code: "PAVED_MANIFEST_CORE_INCOMPATIBLE",
@@ -686,6 +868,13 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
       remediation: "Use a compatible local Core. Remote Core resolution is not supported by this update command.",
     }));
   }
+
+  const compatibility = candidateCompatibility(lockResult.lock.core?.version, core.version);
+  if (compatibility === "unknown") diagnostics.push(diagnostic({ code: "PAVED_UPDATE_COMPATIBILITY_UNKNOWN",
+    component: "cli.update", category: "resolution",
+    message: `No local migration evidence proves Core ${lockResult.lock.core?.version} can update to ${core.version}.`,
+    remediation: "Use a compatible Core patch or provide an explicit migration before updating." }));
+  diagnostics.push(...validateConsumerDocuments(registry, input.projectRoot));
 
   let resolvedAdapters: Detection[] = [];
   try {
@@ -721,6 +910,9 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
       coreRoot: input.coreRoot,
       remoteResolution: "unsupported",
       changed: false,
+      compatibility: diagnostics.some((item) => item.code === "PAVED_UPDATE_MIGRATION_REQUIRED") ? "migration-required"
+        : diagnostics.some((item) => item.code === "PAVED_MANIFEST_CORE_INCOMPATIBLE" || item.code === "PAVED_ADAPTER_INCOMPATIBLE") ? "incompatible"
+        : compatibility,
       plannedWrites: [],
       plannedGeneratorIds: [],
       currentLock: lockResult.lock,
@@ -762,15 +954,25 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
   const coreChanged = entryChanged(lockResult.lock.core, nextLock.core);
   const adaptersChanged = entriesChanged(lockResult.lock.adapters, nextLock.adapters);
   const generatorsChanged = entriesChanged(lockResult.lock.generators, nextLock.generators);
-  const changed = coreChanged || adaptersChanged || generatorsChanged;
+  const lockChanged = coreChanged || adaptersChanged || generatorsChanged;
+  const staleIds = staleGeneratorIds(input.projectRoot, input.coreRoot, resolvedAdapters, manifest);
+  const priorAdapters = new Map((lockResult.lock.adapters ?? []).filter((entry) => entry.id).map((entry) => [entry.id as string, entry]));
+  const nextAdapters = new Map((nextLock.adapters ?? []).filter((entry) => entry.id).map((entry) => [entry.id as string, entry]));
+  const changedAdapterIds = [...new Set([...priorAdapters.keys(), ...nextAdapters.keys()])]
+    .filter((id) => entryChanged(priorAdapters.get(id), nextAdapters.get(id))).sort();
+  const plannedGeneratorIds = impactedGenerators(generators, [...generatorPlan.changedIds, ...staleIds], changedAdapterIds, input.projectRoot);
+  const changed = lockChanged || plannedGeneratorIds.length > 0;
 
   return {
     projectRoot: input.projectRoot,
     coreRoot: input.coreRoot,
     remoteResolution: "unsupported",
     changed,
-    plannedWrites: changed ? [".paved/paved.lock"] : [],
-    plannedGeneratorIds: generatorPlan.changedIds,
+    compatibility: diagnostics.some((item) => item.code === "PAVED_UPDATE_MIGRATION_REQUIRED") ? "migration-required"
+      : diagnostics.some((item) => item.code === "PAVED_MANIFEST_CORE_INCOMPATIBLE" || item.code === "PAVED_ADAPTER_INCOMPATIBLE") ? "incompatible"
+      : compatibility,
+    plannedWrites: lockChanged ? [".paved/paved.lock"] : [],
+    plannedGeneratorIds,
     currentLock: lockResult.lock,
     nextLock,
     selectedAdapters: manifest.adapters?.map((adapter) => adapter.id).sort() ?? [],
@@ -801,6 +1003,7 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
       projectRoot: input.projectRoot,
       coreRoot: input.coreRoot,
       initialized: false,
+      lifecycleState: "UNINITIALIZED",
       core: core?.version === undefined ? {} : { localVersion: core.version },
       lockHealth: "unknown",
       selectedAdapters: [],
@@ -816,7 +1019,8 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
     return {
       projectRoot: input.projectRoot,
       coreRoot: input.coreRoot,
-      initialized: true,
+      initialized: false,
+      lifecycleState: "UNINITIALIZED",
       core: core?.version === undefined ? {} : { localVersion: core.version },
       lockHealth: "unknown",
       selectedAdapters: [],
@@ -851,6 +1055,7 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
 
   let detectedAdapters: Detection[] = [];
   let resolvedAdapters: Detection[] = [];
+  let adapterEvidence: AdapterEvidence[] = [];
   if (manifest && core) {
     try {
       const sources = discoverSources(input.projectRoot);
@@ -869,6 +1074,7 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
         }));
       }
       const capabilities = capabilityEvidence(input.projectRoot, sources, resolvedAdapters, manifest.capability_providers);
+      adapterEvidence = capabilities.evidence;
       for (const item of Object.values(capabilities.resolutions).flatMap((resolution) => resolution.diagnostics)) {
         if (item.code === "missing-provider") continue;
         const mapped = mapAdapterDiagnostic(item.code);
@@ -892,13 +1098,25 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
   }
 
   const profile = verificationProfile(registry, input.projectRoot, diagnostics);
-  const lastRun = inspectLastRun(input.projectRoot, diagnostics);
+  if (manifest) diagnostics.push(...inspectOverrides(input.projectRoot, input.coreRoot, selectedAdapters.map((adapter) => adapter.id)));
+  const lastRun = inspectLastRun(input.projectRoot, input.coreRoot, adapterEvidence, diagnostics);
   inspectGeneratedProvenance(registry, input.projectRoot, diagnostics);
+
+  const lockHealth = lockHealthFromDiagnostics(lockResult.health, diagnostics);
+  const state = lifecycleState({
+    hasManifest: true,
+    manifestValid: manifest !== undefined,
+    lockHealth,
+    profile,
+    generated: lastRun?.present === true || existsSync(join(input.projectRoot, ".paved/project")),
+    diagnostics,
+  });
 
   return {
     projectRoot: input.projectRoot,
     coreRoot: input.coreRoot,
     initialized: true,
+    lifecycleState: state,
     ...(manifest?.project?.name === undefined ? {} : { projectName: manifest.project.name }),
     core: {
       ...(core?.version === undefined ? {} : { localVersion: core.version }),
@@ -906,7 +1124,7 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
       ...(lockResult.lock?.core?.version === undefined ? {} : { lockedVersion: lockResult.lock.core.version }),
       ...(coreDigestMatches === undefined ? {} : { lockDigestMatches: coreDigestMatches }),
     },
-    lockHealth: lockHealthFromDiagnostics(lockResult.health, diagnostics),
+    lockHealth,
     selectedAdapters: selectedAdapters.map((adapter) => adapter.id).sort(),
     detectedAdapters: detectedAdapters.filter((detection) => detection.confidence !== "unknown").map((detection) => ({
       id: detection.adapter.id,

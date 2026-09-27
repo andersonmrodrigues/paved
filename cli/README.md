@@ -14,7 +14,7 @@ this CLI yet.
 | Command | Purpose | Writes |
 |---|---|---|
 | [`paved init`](commands/init/README.md) | Create a new local `.paved/` state for a repository that is not initialized yet | `.paved/manifest.yaml`, `.paved/paved.lock`, `.paved/.gitignore`; generator outputs unless `--no-generate` |
-| [`paved update`](commands/update/README.md) | Reconcile an initialized consumer with the local Core checkout and selected local adapters/generator contracts | `.paved/paved.lock`; safe generator outputs/proposals only when required |
+| [`paved update`](commands/update/README.md) | Plan, stage, validate and commit local Core, adapter or source-input changes | `.paved/paved.lock` when resolution changes; affected context and disposable proposals |
 | [`paved generate`](commands/generate/README.md) | Run all generators or selected generator ids and their dependencies | `.paved/project/`, `.paved/generated/`, `.paved/generated/state/last-run.json` |
 | [`paved verify`](commands/verify/README.md) | Run the explicit verification profile through approved Tool bindings and record sanitized evidence | `.paved/generated/evidence/` |
 | [`paved status`](commands/status/README.md) | Report initialized state, lock health, adapters, generator state, proposals and verification profile state | nothing |
@@ -83,6 +83,11 @@ when a blocking diagnostic decides the exit code.
 - `init` refuses to reset existing `.paved/` state and validates existing manifest
   and lock documents before returning.
 - `update` is local-only: it never downloads a Core, adapter or migration.
+- `update` stages generation in a temporary consumer copy, checks for concurrent
+  changes, validates the stage and swaps `.paved/` with a recoverable backup. Unknown
+  compatibility and required migrations are reported without changing the lock.
+- `status` and `doctor` expose a derived `lifecycleState` alongside lock health and
+  diagnostics; `.paved/` presence alone never implies readiness.
 - `generate` preserves human-edited generated content by writing proposals instead
   of overwriting.
 - `verify` is explicit-only: it runs only checks listed by

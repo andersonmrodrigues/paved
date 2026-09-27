@@ -14,6 +14,11 @@ Contains breaking schema changes, allowed within `0.x` (see versioning).
 
 ### Added
 
+- Phase 11 local multi-consumer lifecycle: derived states, deterministic impact
+  planning, override target and schema preflight, source and generator staleness
+  checks, and a staged recoverable `.paved/` update commit. No public document
+  schema or API version changed.
+
 - Phase 09 local Adapter Framework: Core capability registry, schema-validated static
   providers, evidence-based detection, compatibility/dependency/conflict resolution,
   manifest provider selection and local locking. Added reusable Git, Java, Quarkus,

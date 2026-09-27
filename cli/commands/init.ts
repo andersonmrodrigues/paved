@@ -5,6 +5,7 @@ import { basename, join } from "node:path";
 import { loadYaml } from "../lib/documents.ts";
 import { initializeConsumer, isIgnoredSourceEntry, planConsumerInitialization, runGenerators } from "../lib/generator-runtime.ts";
 import { createRegistry } from "../lib/schemas.ts";
+import { inspectConsumer } from "../lib/consumer-state.ts";
 import { createDiagnostic, createResult, type CommandResult, type Diagnostic, type ResultStatus } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
 import { diagnosticsForRun, generateData } from "./generate.ts";
@@ -196,6 +197,7 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
 
   initializeConsumer(invocation.paths.coreRoot, invocation.paths.projectRoot, projectName);
   if (invocation.flags.noGenerate) {
+    const lifecycleState = inspectConsumer({ projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot }).lifecycleState;
     return createResult({
       command: "init",
       status: statusFor(planningDiagnostics),
@@ -206,12 +208,14 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
         selectedAdapters: plan.selectedAdapters,
         resolvedAdapters: plan.resolvedAdapters,
         generated: false,
+        lifecycleState,
       },
       diagnostics: planningDiagnostics,
     });
   }
 
   const generation = runGenerators(invocation.paths.coreRoot, invocation.paths.projectRoot);
+  const lifecycleState = inspectConsumer({ projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot }).lifecycleState;
   const diagnostics = [...planningDiagnostics, ...diagnosticsForRun(generation, false)];
   return createResult({
     command: "init",
@@ -223,6 +227,7 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
       selectedAdapters: plan.selectedAdapters,
       resolvedAdapters: plan.resolvedAdapters,
       generated: true,
+      lifecycleState,
       generation: generateData(generation, false),
     },
     diagnostics,

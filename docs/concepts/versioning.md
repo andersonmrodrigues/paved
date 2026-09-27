@@ -26,10 +26,11 @@ The rest is versioned by reference rather than by number:
 The project declares requirements: `.paved/manifest.yaml` has an `apiVersion`, a Core
 range (`paved.core`) and adapter ranges; `.paved/paved.lock` records exactly what was
 resolved. The optional `generators` list identifies available contracts and their
-digests; it does not mean each generator ran. Phase 08 and Phase 09 local locks use `local-core` as
+digests; it does not mean each generator ran. Phase 11 local locks use `local-core` as
 their source. Phase 09 records exact versions and digests for the five local adapters;
 manifest `capability_providers` resolves provider ambiguity without changing adapter
-versions. Distribution resolution belongs to the later CLI phase.
+versions. Distribution resolution belongs to a later phase. `resolved_at` is metadata
+and does not affect resolution, compatibility or staleness.
 
 ## Change classification
 
@@ -55,7 +56,7 @@ previously complete task into an incomplete one.
 |---|---|
 | **Compatible change** | `paved update` within the range; revalidate; no human action |
 | **Breaking change** | New Core major (or minor while `0.x`); outside existing ranges, so no project gets it without editing its manifest |
-| **Migration** | Shipped with the Core release that needs it: a deterministic transform of `.paved/` documents from one `apiVersion` to the next. Dry run, confirmation, apply, validate |
+| **Migration** | Phase 11 detects documents that require migration and blocks update. Automatic transforms remain planned. |
 | **Regeneration** | Needed when a generator's output format changes (`generator_version` bump) or its sources change (stale hashes). Follows the merge strategy; never a migration of human content |
 | **Validation failure** | After update or migration, any invalid document stops the update and restores the previous lock ([failure handling](failure-handling.md)) |
 | **Override target changed** | Subtractive overrides suspended until re-confirmed ([inheritance](inheritance.md)) |
@@ -112,10 +113,10 @@ problem is reported as one message instead of a list of unrelated field errors.
 | Renamed field | Breaking | Add the new field, deprecate the old one, remove it in the next API version. A removed field name is never reused with a different meaning |
 | New enum value in a field a *consumer* writes and Paved branches on | Breaking for readers | Treated as breaking: an older reader would reject documents using it |
 
-- **Migration.** A Core that introduces `paved/v2` keeps reading `paved/v1` for at least
-  one major version and ships a deterministic migration (dry run, confirm, apply,
-  validate). Migrations transform structure only; they never regenerate or rewrite
-  human-owned content.
+- **Migration policy.** A future Core that introduces `paved/v2` should keep reading
+  `paved/v1` for a transition period and ship a reviewed deterministic migration.
+  Phase 11 has no automatic schema migration; unknown compatibility or invalid
+  existing documents block a local update and leave human-owned content untouched.
 - **Deprecation.** A deprecated field stays valid, its schema `description` starts with
   `Deprecated:` and names the replacement, and the changelog records it. It is removed
   only with a new API version.

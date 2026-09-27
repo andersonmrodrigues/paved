@@ -97,9 +97,11 @@ content is modified only through typed overrides; see
 
 ## 6. Lifecycle
 
-**Repository:** `paved init` → discovery → technology detection → adapter resolution →
-context generation → verification setup → validation → ready. `paved update` → Core
-update → compatibility check → context validation → migration if necessary.
+**Repository:** `paved init` discovers local adapters, locks exact inputs and drafts
+context. A consumer becomes ready only after it has a valid verification profile and
+no outstanding blocking state. `paved update` plans changes, validates overrides and
+project documents, stages affected generation and commits recoverably. Unknown
+compatibility or a required document migration blocks the update.
 See [repository lifecycle](docs/concepts/repository-lifecycle.md).
 
 **Task:** context → discovery → planning → implementation → validation → verification →
@@ -191,6 +193,10 @@ specific customer technologies. See [adapters](docs/concepts/adapters.md).
 Phase 10 delivers the first local production CLI for `init`, `update`, `generate`,
 `verify`, `status` and `doctor`. The update path is local-only, verification is
 explicit-profile only, and `evidence`/`tool` command families remain contract-only.
+
+Phase 11 adds derived lifecycle states, consumer-isolated update planning,
+source and contract staleness checks, override target validation and a staged local
+update commit. Automatic schema migrations and remote distribution remain planned.
 
 Subsequent milestones include distribution packaging, CI integration, richer command
 families and additional adapters.
