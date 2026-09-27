@@ -1,31 +1,45 @@
 # `paved doctor`
 
-Diagnose problems with a repository's Paved setup and suggest fixes. Unlike `status`,
-which reports state, `doctor` looks for things that are wrong.
+Diagnose invalid or inconsistent Paved state and return actionable findings. It is
+read-only; it does not repair files or run verification checks.
+
+## Inputs
+
+- The selected project root.
+- `.paved/manifest.yaml`, `.paved/paved.lock`, generated provenance, generator
+  state, pending proposals/conflicts and verification profile state.
+- Local Core schemas, manifest, adapters and capability registry.
+
+## Supported flags
+
+- `--project <dir>`: select the consumer root.
+- `--adapter <id>`: repeatable adapter content-root selection for inspection.
+- `--json`: render the structured result.
+- `--help`: show command help.
+
+`--run-checks`, `--dry-run`, selectors and repair flags are not supported.
 
 ## Checks
 
-- Every `.paved/` document declares a supported `apiVersion` and validates against its
-  schema.
-- References resolve (`cli/lib/references.ts`): every qualified rule, skill, tool and
-  workflow id used in skills, workflows, rules, evidence, profiles and overrides exists
-  in the effective set and is visible to the referencing layer.
-- Citations resolve (`cli/lib/provenance.ts`): sources cited by managed blocks and
-  conflicts are declared, and managed blocks are well formed.
-- Composition succeeds: no short skill or workflow name active in two layers; every
-  override targets inherited content that is overridable; no two overrides on one target.
-- Overrides whose `target_sha256` no longer matches are reported as *needs review*;
-  overrides without a digest are reported as unverifiable.
-- Every profile Check resolves to a Tool with one compatible ToolImplementation in the
-  target environment;
-  optionally runs the checks (`--run-checks`).
-- The `AGENTS.md` Paved block is present and current.
-- Paths in `.paved/` not described by the consumer layout are reported.
+`doctor` reports diagnostics for uninitialized consumers, invalid manifest/lock
+documents, Core version/digest mismatch, unavailable or undetected adapters,
+adapter digest drift, ambiguous capabilities, missing verification profile,
+pending proposals, generator conflicts, tampered generated provenance and missing
+required consumer-layout paths.
 
-## Options
-
-`--run-checks`, `--json`.
+Diagnostics include stable codes, severity, category, component and remediation
+when available. Document contents and secret values are not printed.
 
 ## Writes
 
-Nothing. Each finding comes with a suggested command or edit.
+Nothing.
+
+## Exit codes
+
+- `0` for healthy initialized state with no findings.
+- `1` for warnings/non-blocking findings.
+- `2` for invalid invocation.
+- `4` for invalid or missing required configuration/state.
+- `5` for adapter/capability resolution failures.
+- `8` for pending generated conflicts where applicable.
+- `9` for unexpected internal failures.

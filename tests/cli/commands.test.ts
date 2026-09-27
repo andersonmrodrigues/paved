@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,7 @@ import { exitCode, primaryCategory, type CommandResult } from "../../cli/result.
 
 const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const HEALTHY_FIXTURE = join(ROOT, "tests/cli/fixtures/healthy");
+const VERIFICATION_FIXTURE = join(ROOT, "tests/cli/fixtures/verification");
 let sandboxCounter = 0;
 
 interface ResolvedLockEntry {
@@ -41,6 +42,14 @@ function sandbox(name: string): string {
 function fixtureCopy(name: string): string {
   const dir = sandbox(name);
   cpSync(HEALTHY_FIXTURE, dir, { recursive: true });
+  return dir;
+}
+
+function verificationFixtureCopy(name: string): string {
+  const dir = sandbox(name);
+  cpSync(VERIFICATION_FIXTURE, dir, { recursive: true });
+  chmodSync(join(dir, ".paved/tools/marker.mjs"), 0o755);
+  chmodSync(join(dir, ".paved/tools/unlisted.mjs"), 0o755);
   return dir;
 }
 
@@ -146,6 +155,67 @@ async function run(projectRoot: string, command: "init" | "update" | "generate" 
     executablePath: join(ROOT, "cli/index.ts"),
   });
 }
+
+async function runAny(projectRoot: string, command: "init" | "update" | "generate" | "verify" | "status" | "doctor", extra: readonly string[] = []): Promise<CommandResult> {
+  return dispatchCli({
+    argv: [command, "--project", projectRoot, ...extra],
+    cwd: ROOT,
+    executablePath: join(ROOT, "cli/index.ts"),
+  });
+}
+
+describe("command output, exit, and safety regressions", () => {
+  it("keeps warning exit behavior and JSON/human parity for actual command results", async () => {
+    const project = fixtureCopy("warning-parity");
+    try {
+      writeCurrentLock(project);
+      rmSync(join(project, ".paved/verification/profile.yaml"), { force: true });
+
+      const result = await runAny(project, "status");
+      const human = renderHuman(result);
+      const json = JSON.parse(renderJson(result)) as CommandResult;
+
+      assert.equal(result.status, "warning");
+      assert.equal(primaryCategory(result), "findings");
+      assert.equal(exitCode(result), 1);
+      assert.deepEqual(json, result);
+      for (const diagnostic of result.diagnostics) assert.match(human, new RegExp(diagnostic.code));
+      assert.doesNotMatch(human, /\n\s*at\s+/);
+      assert.doesNotMatch(renderJson(result), /\n\s*at\s+/);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects arbitrary verify arguments before running any executable or shell command", async () => {
+    const project = verificationFixtureCopy("verify-arbitrary-args");
+    try {
+      const before = snapshotFiles(project);
+
+      const result = await dispatchCli({
+        argv: [
+          "verify",
+          "--project",
+          project,
+          "node",
+          "-e",
+          "import('node:fs').then(fs => fs.writeFileSync('.paved/generated/evidence/arbitrary.txt', 'ran'))",
+        ],
+        cwd: ROOT,
+        executablePath: join(ROOT, "cli/index.ts"),
+      });
+
+      assert.equal(primaryCategory(result), "usage");
+      assertCode(result, "PAVED_CLI_USAGE");
+      assert.equal(existsSync(join(project, ".paved/generated/evidence/marker-called.txt")), false);
+      assert.equal(existsSync(join(project, ".paved/generated/evidence/unlisted-called.txt")), false);
+      assert.equal(existsSync(join(project, ".paved/generated/evidence/arbitrary.txt")), false);
+      assert.deepEqual(snapshotFiles(project), before);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+});
 
   describe("update command", () => {
     it("requires a valid existing lock before planning any write", async () => {
