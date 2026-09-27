@@ -13,5 +13,5 @@ When a sample is needed.
 ## Procedure
 
 1. Read the sibling code.
-2. Compare with `core.git.diff`.
+2. Compare with `core.repository.diff`.
 

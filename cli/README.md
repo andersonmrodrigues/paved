@@ -2,8 +2,10 @@
 
 `paved` is the command-line interface for installing, updating, generating, verifying
 and diagnosing Paved in a consumer repository. **The commands are specified, not
-implemented.** `cli/lib/` contains the shared library the commands will use; the Core's
-own tests already use it.
+implemented.** `cli/lib/` contains tested implementations for document and schema
+validation, reference resolution, provenance, skill and workflow assessment, Check and
+Evidence assessment, and Tool discovery, policy and capture. There is no command runner,
+consumer installation path or production execution boundary yet.
 
 ## Commands
 
@@ -41,8 +43,7 @@ own tests already use it.
 ```text
 cli/
 ├── commands/<command>/   # command contract (README.md); implementation later
-└── lib/                  # shared library: document loading, schema validation,
-                          # evidence assessment
+└── lib/                  # tested validation, resolution, policy and assessment libraries
 ```
 
 The implementation language is TypeScript on Node.js (chosen for the bootstrap; see

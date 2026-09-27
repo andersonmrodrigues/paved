@@ -5,8 +5,9 @@ projects using it are usually structured, which checks it offers, and technology
 skills, rules and tools. Adapters sit between the domain-agnostic Core and the
 project-specific context.
 
-**No adapter content exists yet.** This directory defines the contract so adapters can be
-added without changing the Core.
+The first adapter, [`infrastructure/git`](infrastructure/git/adapter.yaml), binds the
+Core repository status, diff and history capabilities to Git commands. It carries no
+project knowledge. Other technology adapters remain future work.
 
 ## Layout
 
@@ -22,6 +23,8 @@ adapters/<category>/<name>/
 
 Categories: `languages`, `frameworks`, `infrastructure`, `databases`. An adapter id is
 `<category>/<name>` (for example `frameworks/spring`), matching its directory.
+Source-control tooling uses the existing `infrastructure` category; the Git adapter's
+namespace is `adapter-git`.
 
 ## How adapters are used
 

@@ -1,14 +1,14 @@
 apiVersion: paved/v1
 kind: Skill
 id: core.development.feature-development
-version: 0.2.1
+version: 0.3.0
 status: experimental
 category: development
 context:
   required: []
   optional: [feature-map, architecture, rules, verification]
 tools:
-  required: [core.git.diff, core.git.status]
+  required: [core.repository.diff, core.repository.status]
 rules:
   - core.architecture.follow-existing-patterns
   - core.architecture.respect-declared-boundaries

@@ -44,7 +44,7 @@ $defs:
     pattern: "^(core|project|adapter-[a-z0-9]+(-[a-z0-9]+)*)(\\.[a-z0-9]+(-[a-z0-9]+)*){2}$"
 
   toolRef:
-    description: "Tool id: <namespace>.<group>.<name>, for example core.git.status."
+    description: "Tool id: <namespace>.<group>.<name>, for example core.repository.status."
     $ref: "#/$defs/ruleRef"
 
   skillRef:

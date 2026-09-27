@@ -45,7 +45,7 @@ The diff is final enough to review.
 
 ## Tools
 
-`core.git.diff` to review exactly what changed.
+`core.repository.diff` to review exactly what changed.
 
 ## Rules
 

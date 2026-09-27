@@ -11,7 +11,7 @@ over.
 - **context:** the release procedure is project knowledge; find it in project tools and
   context. Do not assume a registry, tag format or branch model. Both preconditions are
   checked before this phase; without them the run is `blocked`.
-- **discovery:** `core.git.log` lists the changes since the previous release tag or
+- **discovery:** `core.repository.history` lists the changes since the previous release marker or
   marker; each should map to a changelog entry.
 - **planning:** derive the version from the changes with the project's versioning
   scheme. Incompatible changes need the `breaking-change-accepted` approval.

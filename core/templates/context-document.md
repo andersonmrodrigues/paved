@@ -40,6 +40,7 @@ conflicts:
 Human-written text outside managed blocks is never changed by generators.
 
 <!-- paved:begin generated id=components sources=build-file confidence=observed -->
-Generated content, with its own sources and confidence. Regenerated only while it still
-matches its recorded hash; a human takes ownership of it by deleting the markers.
+Generated content, with its own sources and confidence. Regenerated only when its previous
+content can be verified against a trusted baseline; a human takes ownership by deleting
+the markers.
 <!-- paved:end generated -->

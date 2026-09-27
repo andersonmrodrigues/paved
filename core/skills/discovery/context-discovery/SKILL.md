@@ -48,8 +48,8 @@ before exploring.
 
 ## Tools
 
-`core.git.status` shows local changes that may affect the task. `core.git.log` shows
-where recent work happened and who changed the area. `core.git.diff` shows what those
+`core.repository.status` shows local changes that may affect the task. `core.repository.history` shows
+where recent work happened and who changed the area. `core.repository.diff` shows what those
 changes did.
 
 ## Rules

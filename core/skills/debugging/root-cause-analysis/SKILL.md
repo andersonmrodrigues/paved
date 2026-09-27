@@ -42,8 +42,8 @@ otherwise the "bug" may be a requirements question.
 
 ## Tools
 
-`core.git.diff` against the last known-good revision when the defect is a regression;
-`core.git.log`, when available, to narrow down which change introduced it.
+`core.repository.diff` against the last known-good revision when the defect is a regression;
+`core.repository.history`, when available, to narrow down which change introduced it.
 
 ## Rules
 

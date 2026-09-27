@@ -98,6 +98,15 @@ describe("Tool capabilities", () => {
     }).allowed, false);
   });
 
+  it("rejects option-shaped revisions in source-control bindings", () => {
+    for (const name of ["diff", "history"]) {
+      const contract = loadYaml(at("core", "tools", "repository", `${name}.yaml`)) as ToolContract;
+      const binding = loadYaml(at("adapters", "infrastructure", "git", "tool-implementations", "repository", `${name}.yaml`)) as ToolImplementation;
+      const input = name === "diff" ? "base" : "range";
+      assert.throws(() => buildArgv(contract, binding, {[input]: "--ext-diff"}), /pattern/);
+    }
+  });
+
   it("builds an argv vector from validated inputs without shell interpolation", () => {
     const command = copy(implementation);
     command.invocation = {type: "command", executable: "git", arguments: ["diff"], input_bindings: [{input: "path", flag: "--"}]};

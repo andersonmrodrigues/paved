@@ -1,10 +1,13 @@
 # Schema review
 
+This records the schemas pass at that point in the roadmap. For the current
+implementation state and next milestone, see the [README](../../README.md).
+
 What the schemas and contracts pass defined, which decisions it made, and what it left
 open. The schemas make Paved documents **well formed and internally consistent**; they
 do not make them correct. No schema or check here can tell whether a rule is wise, a
 feature description is true, or a test exercises the claim it supports. Paved is still
-not production ready: there is no CLI, generator or runner, and nothing has been used on
+not production ready: there are no CLI commands, generator or runner, and nothing has been used on
 a real consumer repository.
 
 ## Starting point

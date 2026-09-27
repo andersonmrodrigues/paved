@@ -6,7 +6,7 @@ description: >-
   Prepares, verifies and hands over a versioned release candidate, and verifies the
   release after a human publishes it. Use when a task asks for a new version of the
   software to be released.
-version: 0.2.0
+version: 0.3.0
 status: experimental
 change_type: release
 inputs:
@@ -31,7 +31,7 @@ phases:
   - phase: discovery
     goal: List the changes since the previous release and their evidence.
     tools:
-      required: [core.git.log]
+      required: [core.repository.history]
   - phase: planning
     goal: Decide the version number and verification scope from the changes.
     gates:

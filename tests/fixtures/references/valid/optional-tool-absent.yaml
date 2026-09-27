@@ -9,7 +9,7 @@ category: debugging
 context:
   required: []
 tools:
-  required: [core.git.diff]
+  required: [core.repository.diff]
   optional: [project.observability.logs]
 depends_on:
   required: [core.debugging.root-cause-analysis]

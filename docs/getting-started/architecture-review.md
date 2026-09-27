@@ -1,8 +1,11 @@
 # Architecture review
 
+This records the architecture pass at that point in the roadmap. For the current
+implementation state and next milestone, see the [README](../../README.md).
+
 What the architecture and Core design pass defined, which decisions it made, what it left
 open, and what should be built next. Paved is **not** production ready: the architecture
-is specified and partly enforced by tests in this repository, but no CLI, generator or
+is specified and partly enforced by tests in this repository, but no CLI commands, generator or
 runner exists, and nothing has been used on a real consumer repository.
 
 ## Starting point
@@ -138,7 +141,7 @@ Inconsistencies found and fixed during the pass:
 
 ## Assumptions
 
-- Consumers use Git, and revisions identify what was tested.
+- At this pass, consumers were assumed to use Git; ADR 0019 moved that assumption to an adapter. Revisions still identify what was tested.
 - A repository has at least one human owner who reviews context and overrides.
 - Agents follow Markdown instructions reasonably well; enforcement does not depend on it,
   but usefulness does.

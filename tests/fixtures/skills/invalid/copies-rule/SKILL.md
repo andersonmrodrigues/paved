@@ -13,7 +13,7 @@ When a sample is needed.
 ## Procedure
 
 1. Read the sibling code.
-2. Compare with `core.git.diff`.
+2. Compare with `core.repository.diff`.
 3. Do not add credentials, tokens, private keys or connection strings with embedded
    passwords to tracked files, including tests, fixtures, examples and evidence records.
    Reference secrets through the project's configured secret mechanism.

@@ -5,7 +5,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as described in
 [docs/concepts/versioning.md](docs/concepts/versioning.md).
 
-## [Unreleased]
+## [0.2.0] - Unreleased
 
 Architecture and Core design, schemas and contracts, the skills architecture, the
 workflows architecture, the Verification and Evidence architecture, and the Tools
@@ -13,6 +13,19 @@ architecture and implementation contracts.
 Contains breaking schema changes, allowed within `0.x` (see versioning).
 
 ### Added
+
+- Architecture reconciliation before Phase 08: clarified the implemented CLI libraries
+  versus command contracts, kept Generators as the next milestone, and made the
+  trusted-baseline requirement for safe managed-block regeneration explicit.
+- Repository diff and history Tool inputs reject option-shaped revisions before argv
+  construction, with regression coverage against the Git adapter bindings.
+- Recorded the existing Git-specific Core Tool dependency as an unresolved boundary
+  decision before generator implementation.
+- **Breaking:** replaced `core.git.status`, `.diff` and `.log` with
+  `core.repository.status`, `.diff` and `.history`; moved Git command bindings into the
+  `infrastructure/git` adapter. Updated Skill and release Workflow versions, added
+  adapter-resolution and boundary tests, and recorded ADR 0019. This version has not
+  been released or tagged.
 
 - `Check` schema, check definitions, a profile of check ids, and generic Core checks
   wired through Tool contracts.
@@ -29,7 +42,7 @@ Contains breaking schema changes, allowed within `0.x` (see versioning).
   `unit-testing`, `integration-testing`, `e2e-testing`, `backend-performance`,
   `frontend-performance`, `threat-modeling`; references and synthetic examples for
   `context-discovery`, `bug-investigation`, `profiling` and `threat-modeling`.
-- Tool `core.git.log` (read-only).
+- Repository history capability (read-only), now bound by the Git adapter.
 - `cli/lib/skills.ts`: skill quality checks, dependency cycles, duplicated sentences,
   unproving required checks, and evidence assessed against producer skills. Optional
   references (`tools.optional`, `depends_on.optional`) may be absent during resolution.

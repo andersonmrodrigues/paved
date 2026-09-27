@@ -13,7 +13,7 @@ When a sample is needed.
 ## Procedure
 
 1. Read the sibling code.
-2. Compare with `core.git.diff`.
+2. Compare with `core.repository.diff`.
 3. Step number 3 of a procedure that should have been a reference.
 4. Step number 4 of a procedure that should have been a reference.
 5. Step number 5 of a procedure that should have been a reference.

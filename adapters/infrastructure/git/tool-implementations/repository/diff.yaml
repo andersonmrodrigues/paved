@@ -1,10 +1,10 @@
 apiVersion: paved/v1
 kind: ToolImplementation
-id: core.git.log
-tool: core.git.log
+id: adapter-git.repository.diff
+tool: core.repository.diff
 version: 0.1.0
 contract: ^0.1.0
-source: core
+source: adapter
 environments:
   - local
   - ci
@@ -14,9 +14,7 @@ invocation:
   timeout_seconds: 60
   executable: git
   arguments:
-    - log
+    - diff
   input_bindings:
-    - input: range
-    - input: path
-      flag: --
+    - input: base
 availability: available

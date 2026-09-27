@@ -50,7 +50,7 @@ context:
 tools:
   required:
     - adapter-sample.build.compile
-    - core.git.status
+    - core.repository.status
 verification:
   required:
     - runtime

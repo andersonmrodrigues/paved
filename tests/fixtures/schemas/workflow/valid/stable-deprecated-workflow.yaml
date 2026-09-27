@@ -31,8 +31,8 @@ phases:
     goal: Look around.
     skip_when: The task names the exact file to change.
     tools:
-      required: [core.git.status]
-      optional: [core.git.log]
+      required: [core.repository.status]
+      optional: [core.repository.history]
   - phase: implementation
     goal: Change it.
     retry:

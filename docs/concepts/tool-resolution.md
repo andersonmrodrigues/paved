@@ -18,6 +18,12 @@ requires an explicit `select-implementation` override. An override selects only 
 binding; it cannot redefine capability meaning or weaken policy. No matching binding
 means `implementation-unavailable`.
 
+For source control, Core declares `core.repository.status`, `.diff` and `.history`.
+The `infrastructure/git` adapter provides `adapter-git.repository.*` implementations
+that reference those Core Tool ids. The Core does not invoke Git or require that adapter.
+If no selected adapter provides a compatible binding, resolution blocks; the resolver
+has no source-control-specific branch.
+
 Adapters list Tool contracts and bindings in `adapter.yaml` `provides.tools` and
 `provides.tool_implementations`; the adapter lock pins their version. Projects may add
 their own Tool and binding under `.paved/tools/` and `.paved/tool-implementations/`.

@@ -9,7 +9,7 @@ context:
   required: [manifest]
   optional: [feature-map]
 tools:
-  required: [core.git.diff]
+  required: [core.repository.diff]
   optional: []
 rules: []
 depends_on:

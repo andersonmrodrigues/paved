@@ -1,20 +1,19 @@
 apiVersion: paved/v1
 kind: ToolImplementation
-id: core.git.diff
-tool: core.git.diff
+id: adapter-git.repository.status
+tool: core.repository.status
 version: 0.1.0
 contract: ^0.1.0
-source: core
+source: adapter
 environments:
   - local
   - ci
   - ephemeral
 invocation:
   type: command
-  timeout_seconds: 60
+  timeout_seconds: 30
   executable: git
   arguments:
-    - diff
-  input_bindings:
-    - input: base
+    - status
+    - --porcelain=v1
 availability: available

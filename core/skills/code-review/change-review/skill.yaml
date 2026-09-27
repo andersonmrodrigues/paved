@@ -1,14 +1,14 @@
 apiVersion: paved/v1
 kind: Skill
 id: core.code-review.change-review
-version: 0.2.0
+version: 0.3.0
 status: experimental
 category: code-review
 context:
   required: []
   optional: [rules, architecture]
 tools:
-  required: [core.git.diff, core.git.status]
+  required: [core.repository.diff, core.repository.status]
 rules:
   - core.architecture.follow-existing-patterns
   - core.quality.evidence-before-completion
