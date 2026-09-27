@@ -83,6 +83,6 @@ the Core itself: a rule that is only documented is a candidate for a check. Stat
 | `output_sha256` matches stored check output | Planned (CLI) | `paved verify` |
 | Human gates approved by a human | Planned (CLI) | needs an approval record format |
 | Stale context (source hash mismatch) | Planned (CLI) | `paved status` |
-| Lock digests match resolved content | Planned (CLI) | `paved doctor` |
+| Lock digests match resolved content | Enforced (CLI) | `paved generate`, `paved status`, `paved doctor` |
 | Generators never overwrite human edits | Planned (generator runtime) | merge strategy |
 | Destructive tools are not run without confirmation | Planned (tool runtime) | |

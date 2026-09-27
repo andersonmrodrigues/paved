@@ -72,6 +72,25 @@ $defs:
       lines: { $ref: "urn:paved:schema:common:v1#/$defs/lineRange" }
       revision: { type: string }
       captured_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+      adapter: { $ref: "urn:paved:schema:common:v1#/$defs/adapterId" }
+      adapter_version: { $ref: "urn:paved:schema:common:v1#/$defs/semver" }
+      capability: { type: string, pattern: "^[a-z]+\\.[a-z][a-z0-9.-]*$" }
+      detection_confidence: { enum: [strong, medium, weak, unknown] }
+      detection_evidence: { type: array, items: { type: string } }
+      classification: { enum: [observed, inferred] }
+      adapter_evidence:
+        description: All adapter capabilities that contributed observations from this source.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [adapter, adapter_version, capability, detection_confidence, classification]
+          properties:
+            adapter: { $ref: "urn:paved:schema:common:v1#/$defs/adapterId" }
+            adapter_version: { $ref: "urn:paved:schema:common:v1#/$defs/semver" }
+            capability: { type: string, pattern: "^[a-z]+\\.[a-z][a-z0-9.-]*$" }
+            detection_confidence: { enum: [strong, medium, weak, unknown] }
+            classification: { enum: [observed, inferred] }
     allOf:
       - if: { properties: { type: { const: file } } }
         then: { properties: { location: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" } } }

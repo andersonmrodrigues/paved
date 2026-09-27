@@ -21,11 +21,15 @@ The rest is versioned by reference rather than by number:
 | **Project Context** | The project's VCS history; `apiVersion` of each document; `provenance.source_revision` and `generator_version` | It changes with the code it describes |
 | **Overrides** | The project's VCS history; `target_sha256` binds each entry to the target version it was written for | What matters is whether the *target* changed, not the override |
 | **Generated data** | `generator_version` in provenance; nothing for disposable output | It can be regenerated from its inputs |
-| **Lock** | Exact Core and adapter versions and digests | It *is* the resolution record |
+| **Lock** | Exact Core, adapter and available generator versions and digests | It *is* the resolution record |
 
 The project declares requirements: `.paved/manifest.yaml` has an `apiVersion`, a Core
 range (`paved.core`) and adapter ranges; `.paved/paved.lock` records exactly what was
-resolved.
+resolved. The optional `generators` list identifies available contracts and their
+digests; it does not mean each generator ran. Phase 08 and Phase 09 local locks use `local-core` as
+their source. Phase 09 records exact versions and digests for the five local adapters;
+manifest `capability_providers` resolves provider ambiguity without changing adapter
+versions. Distribution resolution belongs to the later CLI phase.
 
 ## Change classification
 
@@ -35,6 +39,7 @@ resolved.
 | Skill | Clearer wording; new optional context, tool, dependency or recommended check; new step that does not contradict existing ones | Removed or renamed; different purpose; new required context, tool, dependency or check type |
 | Workflow | Clearer guidance; optional input, context, tool or recommended check | Removed or renamed; phase added or removed; new gate or approval; new required input, check type or evidence kind |
 | Rule | Lower severity; narrower `applies_to`; clearer rationale | Removed or renamed; higher severity; wider scope; `overridable` changed to `false` |
+| Capability meaning | Core registry `core/capabilities/registry.yaml`, versioned with Core | Change in the observation or operation promised to consumers |
 | Tool contract | New optional input/output field | Removed/renamed; safety raised; required input added; capability meaning changed |
 | Tool implementation | Internal fix within same contract | Required binding removed; compatibility range narrowed incompatibly; execution semantics changed |
 | Consumer layout | New optional path | Path removed or moved; ownership changed; path made required |

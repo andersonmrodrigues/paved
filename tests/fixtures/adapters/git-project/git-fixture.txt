@@ -1,0 +1,1 @@
+Synthetic fixture: tests create a temporary .git marker beside this file.

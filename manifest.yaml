@@ -12,6 +12,7 @@ schemas:
   Project: schemas/manifest.schema.yaml
   Lock: schemas/lock.schema.yaml
   Adapter: schemas/adapter.schema.yaml
+  CapabilityRegistry: schemas/capability-registry.schema.yaml
   Rule: schemas/rule.schema.yaml
   Skill: schemas/skill.schema.yaml
   Workflow: schemas/workflow.schema.yaml
@@ -63,7 +64,7 @@ components:
     path: generators
     distributed: true
     depends_on: [schemas, core]
-    responsibility: Contracts (later implementations) that turn a consumer repository into Project Context and proposals.
+    responsibility: Contracts for turning a consumer repository into Project Context and proposals.
   - name: adapters
     path: adapters
     distributed: false
@@ -73,7 +74,7 @@ components:
     path: cli
     distributed: false
     depends_on: [schemas, core, generators, adapters]
-    responsibility: Command contracts and the library that loads, validates, resolves and verifies.
+    responsibility: Command contracts and shared libraries that load, validate, resolve, generate and verify.
   - name: docs
     path: docs
     distributed: false

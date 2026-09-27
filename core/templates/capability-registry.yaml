@@ -1,0 +1,6 @@
+apiVersion: paved/v1
+kind: CapabilityRegistry
+capabilities:
+  - id: source.example
+    meaning: Observe repository evidence for a defined source concern.
+    consumer: project-context/architecture

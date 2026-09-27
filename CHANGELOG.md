@@ -14,6 +14,17 @@ Contains breaking schema changes, allowed within `0.x` (see versioning).
 
 ### Added
 
+- Phase 09 local Adapter Framework: Core capability registry, schema-validated static
+  providers, evidence-based detection, compatibility/dependency/conflict resolution,
+  manifest provider selection and local locking. Added reusable Git, Java, Quarkus,
+  Angular and PostgreSQL adapter set with synthetic fixtures and Apecatus validation.
+
+
+- Experimental Phase 08 Generator Runtime with deterministic source discovery, inline
+  provenance, a local lock containing generator digests, trusted managed-block
+  baselines, conflict proposals, conservative context generation and an external
+  Apecatus pilot. Project rules, skills and tools remain proposal contracts pending
+  explicit policy extraction.
 - Architecture reconciliation before Phase 08: clarified the implemented CLI libraries
   versus command contracts, kept Generators as the next milestone, and made the
   trusted-baseline requirement for safe managed-block regeneration explicit.
