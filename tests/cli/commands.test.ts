@@ -1,0 +1,437 @@
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
+import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
+import { stringify } from "yaml";
+import { renderHuman, renderJson } from "../../cli/output.ts";
+import { dispatchCli } from "../../cli/runtime.ts";
+import { exitCode, primaryCategory, type CommandResult } from "../../cli/result.ts";
+
+const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const HEALTHY_FIXTURE = join(ROOT, "tests/cli/fixtures/healthy");
+let sandboxCounter = 0;
+
+interface ResolvedLockEntry {
+  id?: string;
+  version: string;
+  source: string;
+  sha256: string;
+}
+
+interface LockDocument {
+  apiVersion: "paved/v1";
+  kind: "Lock";
+  resolved_at: string;
+  core: ResolvedLockEntry;
+  adapters?: ResolvedLockEntry[];
+  generators?: ResolvedLockEntry[];
+}
+
+function sandbox(name: string): string {
+  const dir = join(ROOT, "tests/cli/.sandbox-commands", `${name}-${process.pid}-${++sandboxCounter}`);
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function fixtureCopy(name: string): string {
+  const dir = sandbox(name);
+  cpSync(HEALTHY_FIXTURE, dir, { recursive: true });
+  return dir;
+}
+
+function sha(value: string | Buffer): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function safe(root: string, path: string): string {
+  const full = resolve(root, path);
+  if (full !== resolve(root) && !full.startsWith(resolve(root) + sep)) {
+    throw new Error(`Path escapes root: ${path}`);
+  }
+  return full;
+}
+
+function hashFile(path: string): string {
+  return sha(readFileSync(path));
+}
+
+function hashTree(root: string, paths: string[]): string {
+  const entries: string[] = [];
+  function collect(path: string): void {
+    const full = safe(root, path);
+    if (!existsSync(full)) return;
+    const stat = statSync(full);
+    if (stat.isDirectory()) {
+      for (const child of readdirSync(full).sort()) collect(`${path}/${child}`);
+      return;
+    }
+    if (stat.isFile()) entries.push(`${path.replace(/\\/g, "/")}\0${hashFile(full)}`);
+  }
+  for (const path of [...paths].sort()) collect(path);
+  return sha(entries.join("\n"));
+}
+
+function currentLock(adapterIds = ["technology/java"]): LockDocument {
+  return {
+    apiVersion: "paved/v1",
+    kind: "Lock",
+    resolved_at: "2026-09-27T00:00:00Z",
+    core: {
+      version: JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version as string,
+      source: "local-core",
+      sha256: hashTree(ROOT, ["VERSION", "manifest.yaml", "schemas", "core", "generators", "cli/lib"]),
+    },
+    adapters: adapterIds.map((id) => ({
+      id,
+      version: "0.1.0",
+      source: "local-core",
+      sha256: hashTree(ROOT, [`adapters/${id}`]),
+    })),
+    generators: [],
+  };
+}
+
+function writeCurrentLock(project: string, adapterIds?: string[]): void {
+  writeFileSync(join(project, ".paved/paved.lock"), stringify(currentLock(adapterIds)));
+}
+
+function snapshotFiles(root: string): Map<string, string> {
+  const files = new Map<string, string>();
+  function walk(dir: string): void {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (entry.isFile()) files.set(relative(root, full).split(sep).join("/"), hashFile(full));
+    }
+  }
+  walk(root);
+  return files;
+}
+
+async function run(projectRoot: string, command: "status" | "doctor", extra: readonly string[] = []): Promise<CommandResult> {
+  return dispatchCli({
+    argv: [command, "--project", projectRoot, ...extra],
+    cwd: ROOT,
+    executablePath: join(ROOT, "cli/index.ts"),
+  });
+}
+
+async function assertReadOnly(projectRoot: string, command: "status" | "doctor", extra: readonly string[] = []): Promise<CommandResult> {
+  const before = snapshotFiles(projectRoot);
+  const result = await run(projectRoot, command, extra);
+  assert.deepEqual(snapshotFiles(projectRoot), before, `${command} must not modify files`);
+  return result;
+}
+
+function codes(result: CommandResult): string[] {
+  return result.diagnostics.map((diagnostic) => diagnostic.code);
+}
+
+function assertCode(result: CommandResult, code: string): void {
+  assert.ok(codes(result).includes(code), `expected ${code}, got ${codes(result).join(", ")}`);
+}
+
+function dataOf(result: CommandResult): Record<string, unknown> {
+  assert.equal(typeof result.data, "object");
+  assert.notEqual(result.data, null);
+  return result.data as Record<string, unknown>;
+}
+
+function writeManifest(project: string, manifest: unknown): void {
+  mkdirSync(join(project, ".paved"), { recursive: true });
+  writeFileSync(join(project, ".paved/manifest.yaml"), stringify(manifest));
+}
+
+describe("status and doctor commands", () => {
+  it("reports an uninitialized consumer without creating .paved", async () => {
+    const project = sandbox("uninitialized");
+    try {
+      writeFileSync(join(project, "README.md"), "# Example\n");
+
+      const status = await assertReadOnly(project, "status");
+      const doctor = await assertReadOnly(project, "doctor");
+
+      assert.equal(exitCode(status), 4);
+      assert.equal(primaryCategory(status), "config");
+      assert.equal(existsSync(join(project, ".paved")), false);
+      assertCode(status, "PAVED_CONSUMER_UNINITIALIZED");
+      assertCode(doctor, "PAVED_CONSUMER_UNINITIALIZED");
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("summarizes a healthy initialized consumer with valid manifest and lock", async () => {
+    const project = fixtureCopy("healthy");
+    try {
+      writeCurrentLock(project);
+
+      const status = await assertReadOnly(project, "status");
+      const doctor = await assertReadOnly(project, "doctor");
+      const statusData = dataOf(status);
+
+      assert.equal(exitCode(status), 0);
+      assert.equal(exitCode(doctor), 0);
+      assert.equal(statusData.projectName, "healthy");
+      assert.equal(statusData.lockHealth, "healthy");
+      assert.deepEqual(statusData.selectedAdapters, ["technology/java"]);
+      assert.deepEqual(statusData.resolvedAdapters, ["technology/java"]);
+      assert.equal(statusData.verificationProfile, "present");
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("reports invalid manifest and invalid lock documents as config errors", async () => {
+    const invalidManifest = fixtureCopy("invalid-manifest");
+    const invalidLock = fixtureCopy("invalid-lock");
+    try {
+      writeFileSync(join(invalidManifest, ".paved/manifest.yaml"), "apiVersion: paved/v1\nkind: Project\nproject: bad\n");
+      writeCurrentLock(invalidLock);
+      writeFileSync(join(invalidLock, ".paved/paved.lock"), "apiVersion: paved/v1\nkind: Lock\ncore: bad\n");
+
+      const manifestResult = await assertReadOnly(invalidManifest, "doctor");
+      const lockResult = await assertReadOnly(invalidLock, "doctor");
+
+      assert.equal(exitCode(manifestResult), 4);
+      assert.equal(exitCode(lockResult), 4);
+      assertCode(manifestResult, "PAVED_MANIFEST_INVALID");
+      assertCode(lockResult, "PAVED_LOCK_INVALID");
+    } finally {
+      rmSync(invalidManifest, { recursive: true, force: true });
+      rmSync(invalidLock, { recursive: true, force: true });
+    }
+  });
+
+  it("compares lock Core version and digest against the locally available Core", async () => {
+    const project = fixtureCopy("lock-core-mismatch");
+    try {
+      const lock = currentLock();
+      lock.core.version = "9.9.9";
+      lock.core.sha256 = "f".repeat(64);
+      writeFileSync(join(project, ".paved/paved.lock"), stringify(lock));
+
+      const result = await assertReadOnly(project, "doctor");
+
+      assert.equal(exitCode(result), 4);
+      assertCode(result, "PAVED_LOCK_CORE_VERSION_MISMATCH");
+      assertCode(result, "PAVED_LOCK_CORE_DIGEST_MISMATCH");
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("reports selected adapters that are unavailable, undetected, or locally drifted from the lock", async () => {
+    const missing = fixtureCopy("missing-adapter");
+    const undetected = fixtureCopy("undetected-adapter");
+    const drifted = fixtureCopy("adapter-digest-mismatch");
+    try {
+      writeManifest(missing, {
+        apiVersion: "paved/v1",
+        kind: "Project",
+        project: { name: "missing-adapter" },
+        paved: { core: "^0.2.0" },
+        adapters: [{ id: "technology/not-real", version: "^0.1.0" }],
+      });
+      writeCurrentLock(missing, []);
+      writeManifest(undetected, {
+        apiVersion: "paved/v1",
+        kind: "Project",
+        project: { name: "undetected-adapter" },
+        paved: { core: "^0.2.0" },
+        adapters: [{ id: "technology/angular", version: "^0.1.0" }],
+      });
+      writeCurrentLock(undetected, ["technology/angular"]);
+      const lock = currentLock();
+      lock.adapters![0]!.sha256 = "e".repeat(64);
+      writeFileSync(join(drifted, ".paved/paved.lock"), stringify(lock));
+
+      const missingResult = await assertReadOnly(missing, "doctor");
+      const undetectedResult = await assertReadOnly(undetected, "doctor");
+      const driftedResult = await assertReadOnly(drifted, "doctor");
+
+      assertCode(missingResult, "PAVED_ADAPTER_UNAVAILABLE");
+      assertCode(undetectedResult, "PAVED_ADAPTER_UNDETECTED");
+      assertCode(driftedResult, "PAVED_LOCK_ADAPTER_DIGEST_MISMATCH");
+    } finally {
+      rmSync(missing, { recursive: true, force: true });
+      rmSync(undetected, { recursive: true, force: true });
+      rmSync(drifted, { recursive: true, force: true });
+    }
+  });
+
+  it("reports ambiguous adapter capabilities when the manifest does not select a provider", async () => {
+    const workspace = sandbox("ambiguous-capability");
+    const project = join(workspace, "project");
+    const core = join(workspace, "core");
+    try {
+      cpSync(HEALTHY_FIXTURE, project, { recursive: true });
+      cpSync(join(ROOT, "schemas"), join(core, "schemas"), { recursive: true });
+      cpSync(join(ROOT, "core/capabilities"), join(core, "core/capabilities"), { recursive: true });
+      cpSync(join(ROOT, "adapters/technology/java"), join(core, "adapters/technology/java"), { recursive: true });
+      cpSync(join(ROOT, "adapters/technology/java"), join(core, "adapters/technology/java-alt"), { recursive: true });
+      mkdirSync(join(core, "cli"), { recursive: true });
+      writeFileSync(join(core, "package.json"), JSON.stringify({ version: "0.2.0" }));
+      writeFileSync(join(core, "manifest.yaml"), readFileSync(join(ROOT, "manifest.yaml"), "utf8"));
+      writeFileSync(join(core, "cli/index.ts"), "");
+      let alt = readFileSync(join(core, "adapters/technology/java-alt/adapter.yaml"), "utf8");
+      alt = alt.replace("id: technology/java", "id: technology/java-alt").replace("title: Java", "title: Java alternate");
+      writeFileSync(join(core, "adapters/technology/java-alt/adapter.yaml"), alt);
+      writeManifest(project, {
+        apiVersion: "paved/v1",
+        kind: "Project",
+        project: { name: "ambiguous" },
+        paved: { core: "^0.2.0" },
+        adapters: [
+          { id: "technology/java", version: "^0.1.0" },
+          { id: "technology/java-alt", version: "^0.1.0" },
+        ],
+      });
+      writeFileSync(join(project, ".paved/paved.lock"), stringify({
+        apiVersion: "paved/v1",
+        kind: "Lock",
+        resolved_at: "2026-09-27T00:00:00Z",
+        core: { version: "0.2.0", source: "local-core", sha256: hashTree(core, ["VERSION", "manifest.yaml", "schemas", "core", "generators", "cli/lib"]) },
+        adapters: [
+          { id: "technology/java", version: "0.1.0", source: "local-core", sha256: hashTree(core, ["adapters/technology/java"]) },
+          { id: "technology/java-alt", version: "0.1.0", source: "local-core", sha256: hashTree(core, ["adapters/technology/java-alt"]) },
+        ],
+        generators: [],
+      }));
+
+      const result = await dispatchCli({
+        argv: ["doctor", "--project", project],
+        cwd: ROOT,
+        executablePath: join(core, "cli/index.ts"),
+      });
+
+      assertCode(result, "PAVED_CAPABILITY_AMBIGUOUS");
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("reports missing verification profile as a finding rather than authorizing verification", async () => {
+    const project = fixtureCopy("missing-profile");
+    try {
+      writeCurrentLock(project);
+      rmSync(join(project, ".paved/verification/profile.yaml"), { force: true });
+
+      const result = await assertReadOnly(project, "status");
+
+      assert.equal(exitCode(result), 1);
+      assertCode(result, "PAVED_VERIFICATION_PROFILE_MISSING");
+      assert.equal(dataOf(result).verificationProfile, "missing");
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("reports pending proposals and conflict entries from the last generator run", async () => {
+    const project = fixtureCopy("proposals-conflicts");
+    try {
+      writeCurrentLock(project);
+      const stateDir = join(project, ".paved/generated/state");
+      mkdirSync(stateDir, { recursive: true });
+      writeFileSync(join(stateDir, "last-run.json"), JSON.stringify({
+        executions: [
+          { generator: "rules", status: "proposed", proposals: [".paved/generated/proposals/rules/style.yaml"], errors: [] },
+          { generator: "project-context/architecture", status: "conflict", proposals: [".paved/generated/proposals/project/architecture/overview.md"], errors: ["conflict"] },
+        ],
+      }));
+
+      const result = await assertReadOnly(project, "doctor");
+      const data = dataOf(result);
+
+      assertCode(result, "PAVED_GENERATOR_PROPOSALS_PENDING");
+      assertCode(result, "PAVED_GENERATOR_CONFLICTS_PENDING");
+      assert.deepEqual(data.proposals, [".paved/generated/proposals/rules/style.yaml", ".paved/generated/proposals/project/architecture/overview.md"]);
+      assert.deepEqual(data.conflicts, ["project-context/architecture"]);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("reports tampered generated provenance without leaking document content", async () => {
+    const project = fixtureCopy("tampered-provenance");
+    try {
+      writeCurrentLock(project);
+      const output = join(project, ".paved/project/architecture/overview.md");
+      mkdirSync(dirname(output), { recursive: true });
+      writeFileSync(output, [
+        "---",
+        "apiVersion: paved/v1",
+        "kind: ContextDocument",
+        "area: architecture",
+        "title: Architecture",
+        "confidence: observed",
+        "provenance:",
+        "  generator: project-context/architecture",
+        "  generator_version: 0.2.0",
+        "  generated_at: 2026-09-27T00:00:00Z",
+        `  output_sha256: "${"0".repeat(64)}"`,
+        "  sources:",
+        "    - id: s1",
+        "      type: file",
+        "      location: pom.xml",
+        "      sha256: " + hashFile(join(project, "pom.xml")),
+        "---",
+        "<!-- paved:begin generated id=observations sources=s1 confidence=observed -->",
+        "SECRET_SENTINEL_VALUE",
+        "<!-- paved:end generated -->",
+        "",
+      ].join("\n"));
+
+      const result = await assertReadOnly(project, "doctor");
+      const human = renderHuman(result);
+      const json = renderJson(result);
+
+      assertCode(result, "PAVED_GENERATED_PROVENANCE_TAMPERED");
+      assert.doesNotMatch(human, /SECRET_SENTINEL_VALUE/);
+      assert.doesNotMatch(json, /SECRET_SENTINEL_VALUE/);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("treats only required consumer layout entries as hard missing-required errors", async () => {
+    const project = fixtureCopy("missing-required");
+    try {
+      writeCurrentLock(project);
+      rmSync(join(project, ".paved/manifest.yaml"));
+
+      const result = await assertReadOnly(project, "doctor");
+
+      assert.equal(primaryCategory(result), "config");
+      assertCode(result, "PAVED_CONSUMER_REQUIRED_PATH_MISSING");
+      assert.doesNotMatch(renderHuman(result), /\.paved\/project\/.*required/i);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps JSON and human output in parity by rendering the same diagnostic codes and summary fields", async () => {
+    const project = fixtureCopy("json-human-parity");
+    try {
+      writeCurrentLock(project);
+      rmSync(join(project, ".paved/verification/profile.yaml"), { force: true });
+
+      const result = await assertReadOnly(project, "doctor");
+      const parsed = JSON.parse(renderJson(result)) as CommandResult;
+      const human = renderHuman(result);
+
+      assert.deepEqual(parsed, result);
+      for (const diagnostic of result.diagnostics) assert.match(human, new RegExp(diagnostic.code));
+      assert.match(human, /verificationProfile/);
+      assert.match(human, /missing/);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+});
