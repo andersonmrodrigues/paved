@@ -274,19 +274,46 @@ export function retryDecision(tool: ToolContract, error: string, attempt: number
   return { retry, backoff_seconds: retry ? tool.retry.backoff_seconds : 0 };
 }
 
-const SECRET_KEY = /(secret|token|password|passwd|credential|private[_-]?key|api[_-]?key|authorization)/i;
+const KEY_NAME_PATTERN = String.raw`[A-Za-z][A-Za-z0-9]*(?:[_-][A-Za-z0-9]+)*`;
+const SECRET_KEY_SEGMENT = /(^|[_-])(secret|secrets|token|tokens|password|passwords|passwd|credential|credentials|authorization)(?=$|[_-])/i;
+const COMPOUND_SECRET_KEY = /(^|[_-])(private[_-]?key|api[_-]?key)(?=$|[_-])/i;
+const QUOTED_KEY_VALUE = /(["'])([A-Za-z][A-Za-z0-9]*(?:[_-][A-Za-z0-9]+)*)\1(\s*:\s*)(["'])(?:\\.|(?!\4).)*\4/g;
+const ASSIGNED_KEY_VALUE = new RegExp(
+  String.raw`(^|[^A-Za-z0-9_-])(${KEY_NAME_PATTERN})(\s*=\s*)("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s&]+)`,
+  "g",
+);
+const COLON_KEY_VALUE = new RegExp(
+  String.raw`(^|[^A-Za-z0-9_-])(${KEY_NAME_PATTERN})(\s*:\s*)("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\r\n,}]+)`,
+  "g",
+);
+
+function isSensitiveKey(key: string): boolean {
+  return SECRET_KEY_SEGMENT.test(key) || COMPOUND_SECRET_KEY.test(key);
+}
+
+function redactedValue(raw: string): string {
+  const quote = raw[0];
+  return (quote === "\"" || quote === "'") && raw.endsWith(quote) ? `${quote}[REDACTED]${quote}` : "[REDACTED]";
+}
+
 export function sanitizeToolOutput(value: unknown, secrets: string[] = []): unknown {
   const clean = secrets.filter(Boolean);
   const scrub = (text: string) => {
     let output = text.replace(/(Bearer\s+)\S+/gi, "$1[REDACTED]");
-    output = output.replace(/\b(secret|token|password|passwd|credential|private[_-]?key|api[_-]?key)\s*=\s*[^\s&]+/gi, "$1=[REDACTED]");
     output = output.replace(
-      /(["'])(secret|token|password|passwd|credential|private[_-]?key|api[_-]?key)\1(\s*:\s*)(["'])(?:\\.|(?!\4).)*\4/gi,
-      (_match, keyQuote: string, key: string, separator: string, valueQuote: string) => `${keyQuote}${key}${keyQuote}${separator}${valueQuote}[REDACTED]${valueQuote}`,
+      QUOTED_KEY_VALUE,
+      (match, keyQuote: string, key: string, separator: string, valueQuote: string) =>
+        isSensitiveKey(key) ? `${keyQuote}${key}${keyQuote}${separator}${valueQuote}[REDACTED]${valueQuote}` : match,
     );
     output = output.replace(
-      /\b(secret|token|password|passwd|credential|private[_-]?key|api[_-]?key)\b(\s*:\s*)[^\r\n]+/gi,
-      (_match, key: string, separator: string) => `${key}${separator}[REDACTED]`,
+      ASSIGNED_KEY_VALUE,
+      (match, prefix: string, key: string, separator: string, raw: string) =>
+        isSensitiveKey(key) ? `${prefix}${key}${separator}${redactedValue(raw)}` : match,
+    );
+    output = output.replace(
+      COLON_KEY_VALUE,
+      (match, prefix: string, key: string, separator: string, raw: string) =>
+        isSensitiveKey(key) ? `${prefix}${key}${separator}${redactedValue(raw.trimEnd())}` : match,
     );
     for (const secret of clean) output = output.split(secret).join("[REDACTED]");
     return output;
@@ -294,7 +321,7 @@ export function sanitizeToolOutput(value: unknown, secrets: string[] = []): unkn
   if (typeof value === "string") return scrub(value);
   if (Array.isArray(value)) return value.map((item) => sanitizeToolOutput(item, clean));
   if (value && typeof value === "object") return Object.fromEntries(
-    Object.entries(value).map(([key, item]) => [key, SECRET_KEY.test(key) ? "[REDACTED]" : sanitizeToolOutput(item, clean)]),
+    Object.entries(value).map(([key, item]) => [key, isSensitiveKey(key) ? "[REDACTED]" : sanitizeToolOutput(item, clean)]),
   );
   return value;
 }

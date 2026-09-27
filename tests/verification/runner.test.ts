@@ -272,6 +272,26 @@ describe("verification runner", () => {
     }
   });
 
+  it("scrubs compound secret keys from persisted stderr logs", async () => {
+    const project = sandbox("compound-stderr");
+    try {
+      writeMarkerMode(project, "compound-stderr");
+
+      const result = await runVerification({ projectRoot: project, coreRoot: ROOT });
+      const generated = readAllFiles(join(project, ".paved/generated/evidence")).join("\n");
+
+      assert.equal(result.status, "success", resultText(result));
+      assert.equal(generated.includes("PAVED-STDERR-ACCESS"), false);
+      assert.equal(generated.includes("PAVED-STDERR-CLIENT"), false);
+      assert.equal(generated.includes("PAVED-STDERR-REFRESH"), false);
+      assert.match(generated, /access_token=\[REDACTED\]/);
+      assert.match(generated, /client_secret: \[REDACTED\]/);
+      assert.match(generated, /"refresh-token":"\[REDACTED\]"/);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
   it("blocks invalid documents, unresolved bindings, unsafe authorization, and launch failures without echoing argv", async () => {
     const invalidProfile = sandbox("invalid-profile");
     const invalid = sandbox("invalid-check");
