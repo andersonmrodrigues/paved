@@ -69,9 +69,9 @@ const COMMANDS = new Set<string>(COMMAND_NAMES);
 const COMMON_VALUE_FLAGS = new Set(["--project"]);
 const COMMON_BOOLEAN_FLAGS = new Set(["--json"]);
 const COMMAND_RULES: Record<CommandName, CommandRule> = {
-  init: { adapters: true, dryRun: true, noGenerate: true, selectors: false },
+  init: { adapters: false, dryRun: true, noGenerate: true, selectors: false },
   update: { adapters: false, dryRun: true, noGenerate: false, selectors: false },
-  generate: { adapters: true, dryRun: true, noGenerate: false, selectors: true },
+  generate: { adapters: false, dryRun: true, noGenerate: false, selectors: true },
   verify: { adapters: true, dryRun: false, noGenerate: false, selectors: false },
   status: { adapters: true, dryRun: false, noGenerate: false, selectors: false },
   doctor: { adapters: true, dryRun: false, noGenerate: false, selectors: false },
@@ -135,9 +135,28 @@ function takeValue(argv: readonly string[], index: number, flag: string, command
 }
 
 function commandUsage(command: CommandName | undefined): string {
-  const commandSuffix = command === undefined ? " <command>" : ` ${command}`;
+  if (command !== undefined) {
+    const selectors = command === "generate" ? " [generator-id...]" : "";
+    const commandOptions: string[] = [];
+    const rule = COMMAND_RULES[command];
+    if (rule.adapters) commandOptions.push("  --adapter <id>   Select an adapter for status, doctor, or verification content resolution; repeatable.");
+    if (rule.dryRun) commandOptions.push("  --dry-run        Plan without writes.");
+    if (rule.noGenerate) commandOptions.push("  --no-generate    Initialize without running generators.");
+    return [
+      `Usage: paved ${command}${selectors} [options]`,
+      "",
+      "Global options:",
+      "  --help, -h       Show help.",
+      "  --project <dir>  Select a project directory.",
+      "  --json           Render structured JSON output.",
+      "",
+      "Command options:",
+      ...(commandOptions.length === 0 ? ["  (none)"] : commandOptions),
+    ].join("\n");
+  }
+
   return [
-    `Usage: paved${commandSuffix} [options]`,
+    "Usage: paved <command> [options]",
     "",
     "Commands:",
     `  ${COMMAND_NAMES.join(", ")}`,
@@ -148,10 +167,7 @@ function commandUsage(command: CommandName | undefined): string {
     "  --project <dir>  Select a project directory.",
     "  --json           Render structured JSON output.",
     "",
-    "Command options:",
-    "  --adapter <id>   Select an adapter; repeatable.",
-    "  --dry-run        Plan without writes for init, update, and generate.",
-    "  --no-generate    Initialize without running generators (init only).",
+    "Run paved <command> --help for command-specific inputs and flags.",
   ].join("\n");
 }
 

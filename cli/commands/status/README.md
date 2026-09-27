@@ -1,16 +1,42 @@
 # `paved status`
 
-Report the repository's Paved state without changing anything.
+Report a consumer repository's Paved state without changing files.
+
+## Inputs
+
+- The selected project root.
+- `.paved/manifest.yaml` and `.paved/paved.lock` when present.
+- Local Core and adapter contracts available from the executable's Core checkout.
+- Generator last-run state, proposals/conflicts and verification profile presence.
+
+## Supported flags
+
+- `--project <dir>`: select the consumer root.
+- `--adapter <id>`: repeatable adapter content-root selection for inspection.
+- `--json`: render the structured result.
+- `--help`: show command help.
+
+`--dry-run`, selectors and writing/repair flags are not supported because the
+command is read-only.
 
 ## Output
 
-- Repository state (not initialized, context missing, context stale, incompatible,
-  ready), as defined in `core/instructions/lifecycle.md`.
-- Core and adapter versions: declared range, locked version, newest available.
-- Stale generated documents and the sources that changed.
-- Unreviewed generated documents and open unknowns, by area.
-- Pending proposals and unresolved conflicts.
+The structured result summarizes initialization state, project name, Core and lock
+health, selected/detected/resolved adapters, generator state, pending proposals,
+conflicts and verification profile status.
 
-## Options
+Missing verification profile is reported as a warning/finding, not as implicit
+authorization to verify anything.
 
-`--json`.
+## Writes
+
+Nothing.
+
+## Exit codes
+
+- `0` for healthy initialized state with no findings.
+- `1` for warnings such as a missing verification profile.
+- `2` for invalid invocation.
+- `4` for missing/invalid required Paved state.
+- `5` for adapter/capability resolution failures.
+- `9` for unexpected internal failures.

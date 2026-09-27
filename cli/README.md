@@ -1,61 +1,106 @@
 # CLI
 
-`paved` is the command-line interface for installing, updating, generating, verifying
-and diagnosing Paved in a consumer repository. Current implemented commands cover local
-init, local-only update, generation, status and doctor behavior; verification and Tool
-subcommands remain contract work.
+`paved` is the local command-line interface for initializing, updating,
+generating, verifying and diagnosing Paved consumer repositories from this Core
+checkout. The implemented production commands are `init`, `update`, `generate`,
+`verify`, `status` and `doctor`.
+
+`paved evidence` and `paved tool ...` remain **contract-only** command families:
+their contracts describe future behavior, but they are not executable commands in
+this CLI yet.
 
 ## Commands
 
 | Command | Purpose | Writes |
 |---|---|---|
-| [`paved init`](commands/init/README.md) | Set up Paved in a repository | `.paved/` skeleton, manifest, lock, AGENTS.md block |
-| [`paved update`](commands/update/README.md) | Refresh the local lock after configured local Core, adapter or generator contract changes | `.paved/paved.lock`, safe generator outputs/proposals when needed |
-| [`paved generate`](commands/generate/README.md) | Run generators | `.paved/project/`, `.paved/generated/` |
-| [`paved verify`](commands/verify/README.md) | Run profile checks and validate evidence | `.paved/generated/evidence/` |
-| [`paved evidence`](commands/verify/README.md) | Validate, inspect and list evidence | nothing |
-| [`paved status`](commands/status/README.md) | Report the repository's Paved state | nothing |
-| [`paved doctor`](commands/doctor/README.md) | Diagnose problems and suggest fixes | nothing |
-| [`paved tool list`](commands/tool/README.md) | Discover Tool capability contracts and availability | nothing |
-| [`paved tool inspect <tool>`](commands/tool/README.md) | Show contract, policy and resolved implementation metadata | nothing |
-| [`paved tool validate <tool>`](commands/tool/README.md) | Validate contract, binding and override compatibility | nothing |
-| [`paved tool doctor`](commands/tool/README.md) | Diagnose missing, ambiguous or incompatible bindings | nothing |
+| [`paved init`](commands/init/README.md) | Create a new local `.paved/` state for a repository that is not initialized yet | `.paved/manifest.yaml`, `.paved/paved.lock`, `.paved/.gitignore`; generator outputs unless `--no-generate` |
+| [`paved update`](commands/update/README.md) | Reconcile an initialized consumer with the local Core checkout and selected local adapters/generator contracts | `.paved/paved.lock`; safe generator outputs/proposals only when required |
+| [`paved generate`](commands/generate/README.md) | Run all generators or selected generator ids and their dependencies | `.paved/project/`, `.paved/generated/`, `.paved/generated/state/last-run.json` |
+| [`paved verify`](commands/verify/README.md) | Run the explicit verification profile through approved Tool bindings and record sanitized evidence | `.paved/generated/evidence/` |
+| [`paved status`](commands/status/README.md) | Report initialized state, lock health, adapters, generator state, proposals and verification profile state | nothing |
+| [`paved doctor`](commands/doctor/README.md) | Report actionable diagnostics for invalid or inconsistent Paved state | nothing |
+| `paved evidence ...` | **Contract-only.** Future evidence validation, show and list commands | not executable yet |
+| `paved tool ...` | **Contract-only.** Future Tool discovery, inspection, validation and diagnosis commands | not executable yet |
 
-## Conventions all commands follow
+## Common invocation
 
-- **Consumer layout is law.** Before writing a path, a command resolves its ownership
-  from the Core manifest's `consumer_layout` and refuses to write human-owned or
-  project-owned paths except where its contract explicitly allows it (for example `init`
-  creating a file that does not exist yet).
-- **Dry run.** Every writing command supports `--dry-run`, printing the planned changes.
-- **Machine-readable output.** Every command supports `--json` with a stable structure,
-  so agents and CI can consume results.
-- **Non-interactive by default in CI.** Prompts are skipped when stdin is not a TTY;
-  operations that would need confirmation then fail with a clear message instead.
-- **Exit codes.** Every command returns a structured result with retained diagnostics.
-  The primary category is selected deterministically; internal errors take precedence.
+```sh
+node ./cli/index.ts --help
+node ./cli/index.ts --version
+node ./cli/index.ts status --project /path/to/repo --json
+```
 
-  | Code | Primary category | Meaning |
-  |---:|---|---|
-  | `0` | `success` | The command completed without findings. |
-  | `1` | `findings` | The command completed and reported findings or warnings. |
-  | `2` | `usage` | The invocation is invalid, such as an unknown command, unsupported flag or missing argument. |
-  | `3` | `environment` | The local environment cannot support the command, such as an unreadable repository or missing executable. |
-  | `4` | `config` | Paved configuration or a loaded document is invalid. |
-  | `5` | `resolution` | Core, adapter, reference, Tool or capability resolution failed. |
-  | `6` | `generation/update` | Generation or update planning/application failed. |
-  | `7` | `verification` | Required verification did not run, failed or produced insufficient evidence. |
-  | `8` | `conflict` | The command detected conflicting ownership, edits or proposed changes. |
-  | `9` | `internal` | An unexpected internal error occurred. |
+Global options accepted by implemented commands:
+
+- `--project <dir>` selects the consumer root. Without it, the CLI uses the
+  nearest ancestor containing `.paved/manifest.yaml`; if none exists, it uses the
+  current directory as an uninitialized consumer.
+- `--json` renders the same structured result used by human output.
+- `--help`/`-h` prints global or command-specific help.
+- `--version` prints the Core package version.
+
+Command-specific options are intentionally narrow:
+
+| Command | Options and inputs |
+|---|---|
+| `init` | `--dry-run`, `--no-generate`; no selectors; `--adapter` is rejected |
+| `update` | `--dry-run`; no selectors; `--adapter` and remote update selectors are rejected |
+| `generate` | `--dry-run`, optional `[generator-id...]` selectors; `--adapter` and `--force` are rejected |
+| `verify` | `--adapter <id>` repeatable for content-root selection; no selectors, `--profile`, `--check`, shell command, or `--dry-run` |
+| `status` | `--adapter <id>` repeatable; read-only |
+| `doctor` | `--adapter <id>` repeatable; read-only; no `--run-checks` |
+
+## Output and exit codes
+
+All commands return one structured result: `command`, `status`, optional `data`,
+and retained diagnostics. Human output and `--json` output are rendered from that
+same result. Stack traces and raw process error objects are not printed.
+
+The primary exit category is selected deterministically from diagnostics; internal
+errors take precedence over all other categories, and warnings are retained even
+when a blocking diagnostic decides the exit code.
+
+| Code | Primary category | Meaning |
+|---:|---|---|
+| `0` | `success` | The command completed without findings. |
+| `1` | `findings` | The command completed with warnings or non-blocking findings. |
+| `2` | `usage` | Invalid invocation: unknown command, unsupported flag, missing flag value or unexpected argument. |
+| `3` | `environment` | Local environment failure, such as an inaccessible project path or missing executable. |
+| `4` | `config` | Invalid or missing Paved configuration/document state. |
+| `5` | `resolution` | Core, adapter, reference, Tool or capability resolution failed. |
+| `6` | `generation/update` | Generation or update planning/application failed. |
+| `7` | `verification` | Required verification did not run, failed, or produced insufficient evidence. |
+| `8` | `conflict` | A human edit, ownership conflict or proposal conflict blocked direct application. |
+| `9` | `internal` | Unexpected CLI/runtime failure. |
+
+## Safety constraints
+
+- Writing commands write only inside the consumer `.paved/` layout and never edit
+  application source files.
+- `--dry-run` for `init`, `update` and `generate` performs planning without final
+  writes to the consumer.
+- `init` refuses to reset existing `.paved/` state and validates existing manifest
+  and lock documents before returning.
+- `update` is local-only: it never downloads a Core, adapter or migration.
+- `generate` preserves human-edited generated content by writing proposals instead
+  of overwriting.
+- `verify` is explicit-only: it runs only checks listed by
+  `.paved/verification/profile.yaml`, resolves declared Tool/ToolImplementation
+  documents, invokes approved executables with `shell: false`, sanitizes output,
+  and never infers commands from package scripts or arbitrary CLI arguments.
+- `status` and `doctor` are read-only.
 
 ## Layout
 
 ```text
 cli/
-├── commands/<command>/   # command contract (README.md); implementation later
-└── lib/                  # tested validation, resolution, policy and assessment libraries
+├── index.ts            # executable entry point
+├── runtime.ts          # parser, help and dispatch
+├── result.ts           # result shape and exit-code mapping
+├── output.ts           # human and JSON renderers
+├── commands/           # command implementations and per-command README files
+└── lib/                # shared resolution, generator, verification and state libraries
 ```
 
-The implementation language is TypeScript on Node.js (chosen for the bootstrap; see
-`docs/getting-started/bootstrap-review.md`). How the CLI is distributed (npm package,
-standalone binary) is still open.
+The implementation language is TypeScript on Node.js 22.18+ using only project
+dependencies. Distribution packaging beyond the local `paved` bin remains future work.

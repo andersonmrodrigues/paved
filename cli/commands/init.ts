@@ -1,5 +1,4 @@
-import { cpSync, existsSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { cpSync, existsSync, mkdirSync, rmdirSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import { loadYaml } from "../lib/documents.ts";
 import { initializeConsumer, isIgnoredSourceEntry, planConsumerInitialization, runGenerators } from "../lib/generator-runtime.ts";
@@ -88,14 +87,24 @@ export function copyProjectForInitDryRun(projectRoot: string, destination: strin
 }
 
 function planDryRunGeneration(invocation: CommandInvocation, projectName: string) {
-  const workspace = mkdtempSync(join(tmpdir(), "paved-init-dry-run-"));
+  const scratchRoot = join(invocation.paths.coreRoot, ".paved-cli-scratch");
+  const workspace = join(
+    scratchRoot,
+    `init-dry-run-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
   const copy = join(workspace, "consumer");
   try {
+    mkdirSync(workspace, { recursive: true });
     copyProjectForInitDryRun(invocation.paths.projectRoot, copy);
     initializeConsumer(invocation.paths.coreRoot, copy, projectName);
     return runGenerators(invocation.paths.coreRoot, copy, { dryRun: true });
   } finally {
     rmSync(workspace, { recursive: true, force: true });
+    try {
+      rmdirSync(scratchRoot);
+    } catch {
+      // Another dry run may still be using the scratch root.
+    }
   }
 }
 

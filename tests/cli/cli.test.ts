@@ -16,6 +16,8 @@ import {
   createDiagnostic,
   createResult,
   type DiagnosticCategory,
+  EXIT_CODES,
+  type ExitCategory,
   exitCode,
   primaryCategory,
 } from "../../cli/result.ts";
@@ -135,6 +137,181 @@ describe("CLI result exit behavior", () => {
 
     assert.deepEqual(diagnostics.map((diagnostic) => diagnostic.category), ["usage", "findings", "conflict"]);
     assert.equal(diagnostics.length, 3);
+  });
+});
+
+describe("CLI Task 7 output and dispatch regressions", () => {
+  it("dispatches every command with every primary exit category without changing exit mapping", async () => {
+    const commands: CommandName[] = ["init", "update", "generate", "verify", "status", "doctor"];
+    const categories: ExitCategory[] = [
+      "success",
+      "findings",
+      "usage",
+      "environment",
+      "config",
+      "resolution",
+      "generation/update",
+      "verification",
+      "conflict",
+      "internal",
+    ];
+    const cwd = sandbox("dispatch-categories");
+    try {
+      for (const command of commands) {
+        for (const category of categories) {
+          const result = await dispatchCli({
+            argv: [command],
+            cwd,
+            executablePath: join(ROOT, "cli/index.ts"),
+            handlers: {
+              [command]: () => category === "success"
+                ? createResult({ command, status: "success" })
+                : createResult({
+                    command,
+                    status: category === "findings" ? "warning" : "failed",
+                    diagnostics: [
+                      createDiagnostic({
+                        severity: category === "findings" ? "warning" : "error",
+                        category,
+                        code: `PAVED_${String(category).toUpperCase().replace(/[^A-Z]+/g, "_")}`,
+                        component: "cli.test",
+                        message: `Synthetic ${category} result`,
+                      }),
+                    ],
+                  }),
+            },
+          });
+
+          assert.equal(primaryCategory(result), category);
+          assert.equal(exitCode(result), EXIT_CODES[category]);
+        }
+      }
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps primary category precedence stable when dispatch returns mixed diagnostics", async () => {
+    const cwd = sandbox("dispatch-precedence");
+    try {
+      const result = await dispatchCli({
+        argv: ["verify"],
+        cwd,
+        executablePath: join(ROOT, "cli/index.ts"),
+        handlers: {
+          verify: () => createResult({
+            command: "verify",
+            status: "failed",
+            diagnostics: [
+              createDiagnostic({
+                severity: "warning",
+                category: "findings",
+                code: "PAVED_WARNING",
+                component: "cli.test",
+                message: "warning retained",
+              }),
+              createDiagnostic({
+                severity: "error",
+                category: "verification",
+                code: "PAVED_VERIFY_FAILED",
+                component: "cli.test",
+                message: "verification failed",
+              }),
+              createDiagnostic({
+                severity: "error",
+                category: "config",
+                code: "PAVED_CONFIG_FAILED",
+                component: "cli.test",
+                message: "config failed",
+              }),
+            ],
+          }),
+        },
+      });
+
+      assert.equal(primaryCategory(result), "verification");
+      assert.equal(exitCode(result), 7);
+      assert.deepEqual(result.diagnostics.map((diagnostic) => diagnostic.code), [
+        "PAVED_WARNING",
+        "PAVED_VERIFY_FAILED",
+        "PAVED_CONFIG_FAILED",
+      ]);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("does not expose stack traces when dispatched handlers throw", async () => {
+    const cwd = sandbox("thrown-handler");
+    try {
+      const result = await dispatchCli({
+        argv: ["status"],
+        cwd,
+        executablePath: join(ROOT, "cli/index.ts"),
+        handlers: {
+          status: () => {
+            throw new Error("Synthetic handler failure");
+          },
+        },
+      });
+      const human = renderHuman(result);
+      const json = renderJson(result);
+
+      assert.equal(primaryCategory(result), "internal");
+      assert.match(human, /Synthetic handler failure/);
+      assert.match(json, /Synthetic handler failure/);
+      assert.doesNotMatch(human, /\n\s*at\s+/);
+      assert.doesNotMatch(json, /\n\s*at\s+/);
+      assert.doesNotMatch(json, /stack/i);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("shows command-specific help with only implemented flags and inputs", async () => {
+    const cwd = sandbox("command-help");
+    const expectations: Record<CommandName, { includes: readonly string[]; excludes: readonly string[] }> = {
+      init: {
+        includes: ["Usage: paved init", "--dry-run", "--no-generate"],
+        excludes: ["--adapter <id>", "[generator-id...]"],
+      },
+      update: {
+        includes: ["Usage: paved update", "--dry-run"],
+        excludes: ["--adapter <id>", "--no-generate", "[generator-id...]"],
+      },
+      generate: {
+        includes: ["Usage: paved generate", "[generator-id...]", "--dry-run"],
+        excludes: ["--adapter <id>", "--no-generate"],
+      },
+      verify: {
+        includes: ["Usage: paved verify", "--adapter <id>"],
+        excludes: ["--dry-run", "--no-generate", "[generator-id...]"],
+      },
+      status: {
+        includes: ["Usage: paved status", "--adapter <id>"],
+        excludes: ["--dry-run", "--no-generate", "[generator-id...]"],
+      },
+      doctor: {
+        includes: ["Usage: paved doctor", "--adapter <id>"],
+        excludes: ["--dry-run", "--no-generate", "[generator-id...]"],
+      },
+    };
+    try {
+      for (const [command, expectation] of Object.entries(expectations) as [CommandName, typeof expectations[CommandName]][]) {
+        const help = await dispatchCli({
+          argv: [command, "--help"],
+          cwd,
+          executablePath: join(ROOT, "cli/index.ts"),
+        });
+        const usage = (help.data as { usage: string }).usage;
+
+        assert.equal(exitCode(help), 0);
+        for (const text of expectation.includes) assert.match(usage, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+        for (const text of expectation.excludes) assert.doesNotMatch(usage, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+      }
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
   });
 });
 
@@ -275,9 +452,9 @@ describe("CLI argument parsing and dispatch", () => {
       mkdirSync(project, { recursive: true });
       const invocations: CommandInvocation[] = [];
 
-      const result = await dispatchCli({
+      const status = await dispatchCli({
         argv: [
-          "generate",
+          "status",
           "--project",
           "../target",
           "--adapter",
@@ -285,6 +462,16 @@ describe("CLI argument parsing and dispatch", () => {
           "--adapter",
           "technology/angular",
           "--json",
+        ],
+        cwd,
+        executablePath: join(ROOT, "cli/index.ts"),
+        handlers: { status: captureHandler(invocations) },
+      });
+      const generate = await dispatchCli({
+        argv: [
+          "generate",
+          "--project",
+          "../target",
           "--dry-run",
           "project-context/architecture",
           "verification",
@@ -294,14 +481,17 @@ describe("CLI argument parsing and dispatch", () => {
         handlers: { generate: captureHandler(invocations) },
       });
 
-      assert.equal(result.status, "success");
-      assert.equal(invocations.length, 1);
+      assert.equal(status.status, "success");
+      assert.equal(generate.status, "success");
+      assert.equal(invocations.length, 2);
       assert.deepEqual(invocations[0]?.flags.adapters, ["technology/java", "technology/angular"]);
       assert.equal(invocations[0]?.flags.json, true);
-      assert.equal(invocations[0]?.flags.dryRun, true);
-      assert.deepEqual(invocations[0]?.selectors, ["project-context/architecture", "verification"]);
       assert.equal(invocations[0]?.paths.projectRoot, project);
       assert.equal(invocations[0]?.paths.coreRoot, ROOT);
+      assert.equal(invocations[1]?.flags.dryRun, true);
+      assert.deepEqual(invocations[1]?.selectors, ["project-context/architecture", "verification"]);
+      assert.equal(invocations[1]?.paths.projectRoot, project);
+      assert.equal(invocations[1]?.paths.coreRoot, ROOT);
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }
