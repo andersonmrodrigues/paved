@@ -34,9 +34,21 @@ consumer installation path or production execution boundary yet.
   so agents and CI can consume results.
 - **Non-interactive by default in CI.** Prompts are skipped when stdin is not a TTY;
   operations that would need confirmation then fail with a clear message instead.
-- **Exit codes.** `0` success; `1` the command ran and found problems (failed checks,
-  invalid documents, incompatibility); `2` usage error; `3` environment error (missing
-  tool, unreadable repository).
+- **Exit codes.** Every command returns a structured result with retained diagnostics.
+  The primary category is selected deterministically; internal errors take precedence.
+
+  | Code | Primary category | Meaning |
+  |---:|---|---|
+  | `0` | `success` | The command completed without findings. |
+  | `1` | `findings` | The command completed and reported findings or warnings. |
+  | `2` | `usage` | The invocation is invalid, such as an unknown command, unsupported flag or missing argument. |
+  | `3` | `environment` | The local environment cannot support the command, such as an unreadable repository or missing executable. |
+  | `4` | `config` | Paved configuration or a loaded document is invalid. |
+  | `5` | `resolution` | Core, adapter, reference, Tool or capability resolution failed. |
+  | `6` | `generation/update` | Generation or update planning/application failed. |
+  | `7` | `verification` | Required verification did not run, failed or produced insufficient evidence. |
+  | `8` | `conflict` | The command detected conflicting ownership, edits or proposed changes. |
+  | `9` | `internal` | An unexpected internal error occurred. |
 
 ## Layout
 
