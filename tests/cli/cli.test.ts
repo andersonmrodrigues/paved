@@ -226,6 +226,31 @@ describe("CLI argument parsing and dispatch", () => {
     }
   });
 
+  it("returns a structured diagnostic when package metadata cannot be read for version", async () => {
+    const workspace = sandbox("malformed-package-version");
+    try {
+      const coreRoot = join(workspace, "core");
+      const executablePath = join(coreRoot, "cli/index.ts");
+      mkdirSync(join(coreRoot, "cli"), { recursive: true });
+      writeFileSync(join(coreRoot, "manifest.yaml"), "apiVersion: paved/v1\nkind: Core\n");
+      writeFileSync(join(coreRoot, "package.json"), "{\"version\":");
+      writeFileSync(executablePath, "");
+
+      let version: Awaited<ReturnType<typeof dispatchCli>> | undefined;
+      await assert.doesNotReject(async () => {
+        version = await dispatchCli({ argv: ["--version"], cwd: workspace, executablePath });
+      });
+
+      assert.equal(version?.status, "failed");
+      assert.equal(version?.command, "version");
+      assert.equal(primaryCategory(version), "internal");
+      assert.equal(exitCode(version), 9);
+      assert.match(version.diagnostics[0]?.message ?? "", /JSON|package/i);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("rejects unknown commands, unknown flags, and missing flag values as usage errors", async () => {
     const cwd = sandbox("usage-errors");
     try {
