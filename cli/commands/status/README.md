@@ -23,7 +23,7 @@ command is read-only.
 
 The structured result summarizes initialization state, project name, Core and lock
 health, selected/detected/resolved adapters, generator state, pending proposals,
-conflicts and verification profile status.
+conflicts, verification profile status and derived `lifecycleState`.
 
 Missing verification profile is reported as a warning/finding, not as implicit
 authorization to verify anything.

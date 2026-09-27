@@ -1,0 +1,6 @@
+apiVersion: paved/v1
+kind: Project
+project:
+  name: consumer-incompatible
+paved:
+  core: ^9.0.0

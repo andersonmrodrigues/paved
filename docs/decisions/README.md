@@ -26,6 +26,7 @@ writing a new record that supersedes it, not by editing the old one.
 | [0019](0019-source-control-boundary.md) | Source-control capability ownership | Accepted |
 | [0020](0020-generator-runtime-and-baselines.md) | Generator runtime and trusted regeneration baselines | Accepted |
 | [0021](0021-adapter-capabilities-and-local-resolution.md) | Adapter capabilities and local resolution | Accepted |
+| [0022](0022-consumer-lifecycle-and-atomic-local-update.md) | Consumer lifecycle and atomic local update | Accepted |
 
 ## Format
 

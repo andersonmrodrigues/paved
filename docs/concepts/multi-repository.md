@@ -26,7 +26,6 @@ consumer-repository/
 │   ├── workflows/            # project-owned: project workflows (new names only)
 │   ├── overrides/            # human-owned: overrides.yaml and addenda
 │   └── generated/            # disposable, not committed
-│       ├── core/             #   resolved Core cache (read-only)
 │       ├── proposals/        #   generator output awaiting human adoption
 │       ├── state/            #   last generated output, for three-way diffs
 │       └── evidence/         #   evidence records
@@ -42,8 +41,9 @@ generated, human-owned, inherited, extendable, regenerable) is in
 
 - **It does not copy the Core.** It declares a compatible Core range in
   `.paved/manifest.yaml`; the CLI resolves the exact version into `.paved/paved.lock`
-  and materializes a read-only cache in `.paved/generated/core/`. The cache is a
-  derived artifact, never edited and not committed by default.
+  from the locally available Core checkout. Core cache materialization is planned,
+  not implemented. A changed checkout is detected by digest and must be reconciled
+  with `paved update` before generation.
 - **It does not edit Core or adapter content.** Adjustments go through overrides.
 - **It does not put project knowledge anywhere but `.paved/`** (plus its own code and
   documentation, which remain the primary source of truth).
@@ -72,6 +72,13 @@ Context is generated too, but it is *reviewed* and therefore not disposable; see
 
 How "the effective set" of rules, skills, workflows, tools and checks is computed is
 defined in [inheritance](inheritance.md#precedence-summary).
+
+Each consumer's repository root and Project manifest define its identity for CLI
+operations. `project.name` is human-owned display metadata and may change without
+creating a new globally registered consumer. The lock stores relative source labels,
+exact versions and digests, never the machine's absolute path or Git remote. A
+second consumer has its own lock and generated context, even when both resolve the
+same Core and adapters. See [ADR 0022](../decisions/0022-consumer-lifecycle-and-atomic-local-update.md).
 
 ## Where knowledge goes
 
@@ -105,9 +112,9 @@ flowchart TB
 The design choices that let this scale to hundreds of repositories:
 
 - **Pull, not push.** Each repository declares a range and updates when it chooses
-  (`paved update`). The Core never writes to consumers, so a Core release cannot break a
-  repository that has not updated. A fleet-wide rollout is many independent updates,
-  which can be automated per repository (for example a scheduled update PR).
+  (`paved update`). The Core never writes to consumers. A changed local checkout
+  can make a consumer stale until that consumer updates. Fleet-wide rollout and
+  scheduled update PRs are outside the local CLI.
 - **Locked resolution.** `.paved/paved.lock` pins exact versions and digests, so all
   agents and CI runs in one repository use the same Paved, whatever was released since.
 - **No copies.** Consumers hold only their own knowledge. A Core fix reaches every

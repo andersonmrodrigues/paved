@@ -47,7 +47,7 @@ arrows, which show data flow. Nothing in the Core or in an adapter points at a c
 | **Project Context** | How this project works: architecture, domain, product, integrations, feature map | `.paved/project/` | Generated, then reviewed by the project's humans | The project's code changes |
 | **Project configuration** | Project rules, verification profile, tools, skills, workflows | `.paved/{rules,verification,tools,skills,workflows}/` | The project | The project decides |
 | **Override** | Reasoned modifications of Core or adapter content, by reference | `.paved/overrides/` | The project's humans | The project decides |
-| **Generated** | Disposable output: resolved Core cache, proposals, generation state, evidence | `.paved/generated/` | Tools | Every run |
+| **Generated** | Disposable output: proposals, generation state, evidence | `.paved/generated/` | Tools | Every run |
 
 ## What each concept is
 
@@ -72,11 +72,12 @@ project: change a rule's severity, disable a rule, skill or workflow, extend a s
 with an addendum, or add gates and required checks to a workflow. Overrides reference
 their target; they never copy it. See [inheritance](inheritance.md).
 
-**Generated data.** Anything a tool can recompute: the resolved Core cache, generator
+**Generated data.** Anything a tool can recompute: generator
 proposals, generation state and evidence records. It lives in `.paved/generated/`, is
 not committed, and can be deleted at any time. Project Context is generated *and
 reviewed*, which makes it a different category (`generated-reviewed`). See
 [ownership and regeneration](ownership-and-regeneration.md).
+Core cache materialization remains planned.
 
 **Skill.** A reusable procedure for one kind of work (find a root cause, write a
 regression test, review a change), in the [Agent Skills](https://agentskills.io/specification)
