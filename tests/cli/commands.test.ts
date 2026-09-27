@@ -4,7 +4,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse, stringify } from "yaml";
-import { copyProjectForInitDryRun } from "../../cli/commands/init.ts";
+import { copyProjectForInitDryRun, createInitDryRunWorkspace, initDryRunScratchPrefix } from "../../cli/commands/init.ts";
 import { hashLocalCore, hashLocalFile, hashLocalTree } from "../../cli/lib/local-core.ts";
 import { initializeConsumer } from "../../cli/lib/generator-runtime.ts";
 import { renderHuman, renderJson } from "../../cli/output.ts";
@@ -335,6 +335,25 @@ describe("command output, exit, and safety regressions", () => {
         assert.ok(data.plannedWrites?.includes(".paved/paved.lock"));
         assert.deepEqual(data.plannedGeneratorIds, ["project-context/architecture"]);
         assert.deepEqual(snapshotFiles(project), before);
+      } finally {
+        rmSync(project, { recursive: true, force: true });
+      }
+    });
+
+    it("reports update-created human-review proposals as non-blocking findings", async () => {
+      const project = freshConsumer("update-proposed-finding");
+      try {
+        initializeConsumer(ROOT, project, "update-proposed-finding");
+        const lock = parse(readFileSync(join(project, ".paved/paved.lock"), "utf8")) as LockDocument;
+        lock.generators!.find((entry) => entry.id === "verification")!.sha256 = "6".repeat(64);
+        writeFileSync(join(project, ".paved/paved.lock"), stringify(lock));
+
+        const result = await run(project, "update");
+
+        assert.equal(exitCode(result), 1);
+        assert.equal(primaryCategory(result), "findings");
+        assertCode(result, "PAVED_GENERATOR_PROPOSAL_CREATED");
+        assert.equal(existsSync(join(project, ".paved/generated/proposals/verification/profile.yaml")), true);
       } finally {
         rmSync(project, { recursive: true, force: true });
       }
@@ -798,7 +817,8 @@ describe("init and generate commands", () => {
       const result = await run(project, "init", ["--dry-run"]);
       const data = dataOf(result) as { plannedWrites?: string[]; selectedAdapters?: string[]; generation?: { executions?: { generator: string }[] } };
 
-      assert.equal(exitCode(result), 0);
+      assert.equal(exitCode(result), 1);
+      assertCode(result, "PAVED_GENERATOR_PROPOSAL_CREATED");
       assert.deepEqual(snapshotFiles(project), before);
       assert.equal(existsSync(join(project, ".paved")), false);
       assert.ok(data.plannedWrites?.includes(".paved/manifest.yaml"));
@@ -807,6 +827,25 @@ describe("init and generate commands", () => {
       assert.ok(data.generation?.executions?.some((entry) => entry.generator === "project-context/architecture"));
     } finally {
       rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("derives init dry-run scratch workspaces from an OS temp parent, not the Core or consumer tree", () => {
+    const project = freshConsumer("init-dry-run-temp-path-project");
+    const tempParent = sandbox("init-dry-run-temp-parent");
+    try {
+      const syntheticOsTemp = resolve(ROOT, "..", "os-temp-parent");
+      const prefix = initDryRunScratchPrefix(syntheticOsTemp);
+      const workspace = createInitDryRunWorkspace(tempParent);
+
+      assert.equal(prefix, join(syntheticOsTemp, "paved-init-dry-run-"));
+      assert.equal(prefix.startsWith(ROOT + sep), false);
+      assert.equal(prefix.startsWith(project + sep), false);
+      assert.equal(workspace.startsWith(initDryRunScratchPrefix(tempParent)), true);
+      assert.equal(existsSync(workspace), true);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+      rmSync(tempParent, { recursive: true, force: true });
     }
   });
 
@@ -886,7 +925,8 @@ describe("init and generate commands", () => {
 
       const result = await run(project, "init");
 
-      assert.equal(exitCode(result), 0);
+      assert.equal(exitCode(result), 1);
+      assertCode(result, "PAVED_GENERATOR_PROPOSAL_CREATED");
       assert.equal(existsSync(join(project, ".paved/manifest.yaml")), true);
       assert.equal(existsSync(join(project, ".paved/paved.lock")), true);
       assert.equal(existsSync(join(project, ".paved/generated/state/last-run.json")), true);
@@ -967,6 +1007,42 @@ describe("init and generate commands", () => {
       assert.equal(existsSync(join(project, ".paved/project/feature-map/web-courses.yaml")), true);
       assert.equal(existsSync(join(project, ".paved/generated/proposals/verification/profile.yaml")), false);
       assert.deepEqual(snapshotApplicationFiles(project), appBefore);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("reports generated human-review proposals as non-blocking findings", async () => {
+    const project = freshConsumer("generate-proposed-finding");
+    try {
+      initializeConsumer(ROOT, project, "generate-proposed-finding");
+
+      const result = await run(project, "generate", ["verification"]);
+
+      assert.equal(exitCode(result), 1);
+      assert.equal(primaryCategory(result), "findings");
+      assertCode(result, "PAVED_GENERATOR_PROPOSAL_CREATED");
+      assert.equal(existsSync(join(project, ".paved/generated/proposals/verification/profile.yaml")), true);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("reports dry-run human-review proposals as planned without claiming writes", async () => {
+    const project = freshConsumer("generate-dry-run-proposed-finding");
+    try {
+      initializeConsumer(ROOT, project, "generate-dry-run-proposed-finding");
+      const before = snapshotFiles(project);
+
+      const result = await run(project, "generate", ["--dry-run", "verification"]);
+      const diagnostic = result.diagnostics.find((entry) => entry.code === "PAVED_GENERATOR_PROPOSAL_CREATED");
+
+      assert.equal(exitCode(result), 1);
+      assert.equal(primaryCategory(result), "findings");
+      assert.match(diagnostic?.message ?? "", /would create proposal/i);
+      assert.doesNotMatch(diagnostic?.message ?? "", /\bwrote\b/i);
+      assert.equal(existsSync(join(project, ".paved/generated/proposals/verification/profile.yaml")), false);
+      assert.deepEqual(snapshotFiles(project), before);
     } finally {
       rmSync(project, { recursive: true, force: true });
     }
