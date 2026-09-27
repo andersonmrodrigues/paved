@@ -324,7 +324,11 @@ export async function dispatchCli(options: DispatchOptions = {}): Promise<Comman
     return helpResult(parsed.json, parsed.command);
   }
   if (parsed.kind === "version") {
-    return versionResult(coreRoot, parsed.json);
+    try {
+      return versionResult(coreRoot, parsed.json);
+    } catch (error) {
+      return internal("version", error);
+    }
   }
 
   try {
