@@ -1,0 +1,22 @@
+apiVersion: paved/v1
+kind: Check
+id: project.verify.marker
+title: Marker verification
+purpose: Prove the explicitly configured marker verification command can run.
+type: unit
+tool: project.tool.marker
+inputs:
+  mode: pass
+  secret: PAVED_VERIFY_SECRET
+  literal: "$PAVED_VERIFY_SECRET;touch should-not-exist"
+expected:
+  description: The marker exits successfully.
+  exit_code: 0
+timeout_seconds: 5
+environment:
+  kinds: [local]
+failure: The marker check failed.
+determinism:
+  class: deterministic
+retry:
+  class: non-retryable

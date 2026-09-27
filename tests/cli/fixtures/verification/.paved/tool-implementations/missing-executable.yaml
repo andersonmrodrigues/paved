@@ -1,0 +1,20 @@
+apiVersion: paved/v1
+kind: ToolImplementation
+id: project.tool.missing-executable
+tool: project.tool.missing-executable
+version: 0.1.0
+contract: ^0.1.0
+source: project
+environments:
+  - local
+invocation:
+  type: command
+  executable: .paved/tools/not-present
+  arguments:
+    - --secret
+    - PAVED_VERIFY_SECRET
+  input_bindings:
+    - input: mode
+      flag: --mode
+  timeout_seconds: 5
+availability: available

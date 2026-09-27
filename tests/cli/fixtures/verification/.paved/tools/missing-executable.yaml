@@ -1,0 +1,36 @@
+apiVersion: paved/v1
+kind: Tool
+id: project.tool.missing-executable
+version: 0.1.0
+title: Missing executable Tool
+purpose: Fixture Tool whose executable is absent.
+capability: missing-executable
+safety: safe-mutation
+permissions:
+  - process-control
+environments:
+  - local
+inputs:
+  - name: mode
+    description: Fixture mode.
+    type: string
+    required: true
+outputs:
+  format: text
+  description: Fixture text output.
+side_effects:
+  - process
+preconditions: []
+idempotency: idempotent
+timeout_seconds: 5
+retry:
+  max_attempts: 1
+  backoff_seconds: 0
+errors:
+  - environment-failure
+availability: available
+evidence:
+  capture:
+    - revision
+    - environment
+confirmation: none
