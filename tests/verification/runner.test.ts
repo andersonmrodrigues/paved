@@ -121,6 +121,7 @@ describe("verification runner", () => {
       assert.equal(existsSync(markerPath(project)), false);
       assert.equal(existsSync(unlistedPath(project)), false);
       assert.deepEqual(evidenceFiles(project), []);
+      assert.equal(existsSync(join(project, ".paved-operation-lock")), false);
     } finally {
       rmSync(project, { recursive: true, force: true });
     }

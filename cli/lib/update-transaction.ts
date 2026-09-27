@@ -3,6 +3,7 @@ import { basename, dirname, join } from "node:path";
 import { copyProjectForInitDryRun } from "../commands/init.ts";
 import { hashLocalTree } from "./local-core.ts";
 import { discoverSources } from "./generator-runtime.ts";
+import { acquireConsumerOperationLock } from "./operation-lock.ts";
 
 function assertNoSymlinks(root: string): void {
   function walk(path: string): void {
@@ -17,7 +18,7 @@ function assertNoSymlinks(root: string): void {
 }
 
 /** A failed stage leaves the authoritative .paved directory untouched. */
-export function applyConsumerUpdate<T>(
+function applyConsumerUpdateUnlocked<T>(
   projectRoot: string,
   stage: (stagedRoot: string) => T,
   options: { commitIf?: (result: T) => boolean; onRejected?: (stagedRoot: string, result: T) => void } = {},
@@ -61,5 +62,18 @@ export function applyConsumerUpdate<T>(
     // second rename restores it above; a process crash leaves the backup on disk.
     if (!committed && existsSync(recovery) && !existsSync(paved)) renameSync(recovery, paved);
     rmSync(workspace, { recursive: true, force: true });
+  }
+}
+
+export function applyConsumerUpdate<T>(
+  projectRoot: string,
+  stage: (stagedRoot: string) => T,
+  options: { commitIf?: (result: T) => boolean; onRejected?: (stagedRoot: string, result: T) => void } = {},
+): T {
+  const release = acquireConsumerOperationLock(projectRoot, "update");
+  try {
+    return applyConsumerUpdateUnlocked(projectRoot, stage, options);
+  } finally {
+    release();
   }
 }

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { parse, stringify } from 'yaml';
 import { createRegistry } from './schemas.ts';
@@ -8,6 +8,8 @@ import { loadMarkdown } from './documents.ts';
 import { assessProvenance } from './provenance.ts';
 import { loadAdapters, detectAdapters, resolveAdapters, capabilityEvidence, type AdapterEvidence, type Detection, type Diagnostic } from './adapters.ts';
 import { hashLocalCore, hashLocalTree } from './local-core.ts';
+import { atomicWriteFileSync } from './atomic-write.ts';
+import { acquireConsumerOperationLock } from './operation-lock.ts';
 
 export interface Source { path: string; kind: string; sha256: string; adapter?: string; adapterVersion?: string; capability?: string; detectionConfidence?: Detection['confidence']; detectionEvidence?: string[]; classification?: 'observed'; adapterEvidence?: { adapter: string; adapter_version: string; capability: string; detection_confidence: Detection['confidence']; classification: 'observed' }[] }
 export interface Execution { generator: string; version: string; contractSha256?: string; engineSha256?: string; manifestSha256?: string; status: 'written' | 'unchanged' | 'conflict' | 'proposed' | 'failed'; sources: Source[]; outputs: string[]; outputHashes: Record<string, string>; proposals: string[]; unknowns: string[]; warnings: string[]; errors: string[] }
@@ -21,7 +23,7 @@ interface Contract { apiVersion: string; kind: 'Generator'; id: string; version:
 interface Output { path: string; content: string; schema: string }
 type WriteOutputStatus = 'written' | 'unchanged' | 'conflict' | 'proposed';
 interface WriteOutputResult { status: WriteOutputStatus; finalContent: string; sha256: string }
-export const IGNORED_SOURCE_ENTRY_NAMES = ['.git', '.paved', '.claude', '.agents', '.superpowers', 'node_modules', 'target', 'dist', 'build', '.angular', '.next', '.venv', 'venv', '.worktrees', 'coverage'] as const;
+export const IGNORED_SOURCE_ENTRY_NAMES = ['.git', '.paved', '.paved-operation-lock', '.claude', '.agents', '.superpowers', 'node_modules', 'target', 'dist', 'build', '.angular', '.next', '.venv', 'venv', '.worktrees', 'coverage'] as const;
 const ignoredSourceEntryNames = new Set<string>(IGNORED_SOURCE_ENTRY_NAMES);
 export function isIgnoredSourceEntry(name: string): boolean { return name.startsWith('.env') || ignoredSourceEntryNames.has(name); }
 const sha = (content: string | Buffer) => createHash('sha256').update(content).digest('hex');
@@ -75,7 +77,7 @@ export function initializeConsumer(core: string, consumer: string, name: string)
   const adapters = detected.filter(d => d.confidence === 'strong' || (d.adapter.id === 'infrastructure/git' && d.confidence !== 'unknown')).map(d => d.adapter);
   const dir = join(consumer, '.paved'); mkdirSync(dir, { recursive: true });
   const manifest = { apiVersion: 'paved/v1', kind: 'Project', project: { name }, paved: { core: `^${version}` }, adapters: adapters.map(a => ({ id: a.id, version: `^${a.version}` })) };
-  const path = join(dir, 'manifest.yaml'); if (existsSync(path)) validate(registry, parse(readFileSync(path, 'utf8'))); else { validate(registry, manifest); writeFileSync(path, stringify(manifest)); }
+  const path = join(dir, 'manifest.yaml'); if (existsSync(path)) validate(registry, parse(readFileSync(path, 'utf8'))); else { validate(registry, manifest); atomicWriteFileSync(path, stringify(manifest)); }
   const effectiveManifest = parse(readFileSync(path, 'utf8')) as { adapters?: { id: string; version: string }[] };
   const selected = resolveAdapters(detected, effectiveManifest.adapters ?? [], version);
   const generators = loadContracts(core, registry).map(c => ({ id: c.id, version: c.version, source: 'local-core', sha256: hashLocalTree(core, [`generators/${c.id}`]) }));
@@ -84,9 +86,9 @@ export function initializeConsumer(core: string, consumer: string, name: string)
   if (existsSync(lockPath)) {
     const previous = parse(readFileSync(lockPath, 'utf8')) as typeof lock; validate(registry, previous);
     const same = JSON.stringify({ core: previous.core, adapters: previous.adapters, generators: previous.generators }) === JSON.stringify({ core: lock.core, adapters: lock.adapters, generators: lock.generators });
-    if (!same) { if (previous.core.source !== 'local-core') throw new Error('Existing lock uses a different distribution source'); validate(registry, lock); writeFileSync(lockPath, stringify(lock)); }
-  } else { validate(registry, lock); writeFileSync(lockPath, stringify(lock)); }
-  const ignore = join(dir, '.gitignore'); if (!existsSync(ignore)) writeFileSync(ignore, '/generated/\n');
+    if (!same) { if (previous.core.source !== 'local-core') throw new Error('Existing lock uses a different distribution source'); validate(registry, lock); atomicWriteFileSync(lockPath, stringify(lock)); }
+  } else { validate(registry, lock); atomicWriteFileSync(lockPath, stringify(lock)); }
+  const ignore = join(dir, '.gitignore'); if (!existsSync(ignore)) atomicWriteFileSync(ignore, '/generated/\n');
   return manifest;
 }
 function loadContracts(core: string, registry: Registry): Contract[] {
@@ -233,7 +235,7 @@ function writeOutput(root: string, output: Output, registry: Registry, info: Ret
         const semantic = { ...old }; delete semantic.provenance;
         if (!p || p.generator !== generator || p.output_sha256 !== sha(stringify(semantic))) return result('conflict', finalContent);
         if (dryRun) return result('written', finalContent);
-        mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, finalContent);
+        mkdirSync(dirname(target), { recursive: true }); atomicWriteFileSync(target, finalContent);
         return result('written', finalContent);
       }
       const old = loadMarkdown(target); const p = old.frontmatter.provenance as { generator?: string; output_sha256?: string; review?: { status?: string } } | undefined;
@@ -255,10 +257,10 @@ function writeOutput(root: string, output: Output, registry: Registry, info: Ret
     }
   }
   if (dryRun) return result(owner === 'disposable' ? 'proposed' : 'written', finalContent);
-  mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, finalContent);
+  mkdirSync(dirname(target), { recursive: true }); atomicWriteFileSync(target, finalContent);
   if (owner === 'generated-reviewed' && output.schema === 'ContextDocument') {
     const body = loadMarkdown(target).body; mkdirSync(dirname(baselinePath), { recursive: true });
-    writeFileSync(baselinePath, stringify({ generator, body, sha256: sha(body) }));
+    atomicWriteFileSync(baselinePath, stringify({ generator, body, sha256: sha(body) }));
   }
   return result(owner === 'disposable' ? 'proposed' : 'written', finalContent);
 }
@@ -316,7 +318,7 @@ function generationLockErrors(core: string, consumer: string, registry: Registry
   }
   return errors;
 }
-export function runGenerators(core: string, consumer: string, options: RunGeneratorOptions = {}): RunResult {
+function runGeneratorsUnlocked(core: string, consumer: string, options: RunGeneratorOptions = {}): RunResult {
   const registry = createRegistry(join(core, 'schemas'), ['paved/v1']); const info = coreManifest(core);
   const manifest = parse(readFileSync(join(consumer, '.paved/manifest.yaml'), 'utf8')) as { adapters?: { id: string; version: string }[] }; validate(registry, manifest);
   const allSources = discoverSources(consumer); const timestamp = new Date().toISOString(); const sourceRevision = revision(consumer);
@@ -398,7 +400,17 @@ export function runGenerators(core: string, consumer: string, options: RunGenera
     if (existsSync(path)) { try { prior = (JSON.parse(readFileSync(path, 'utf8')) as { executions?: Execution[] }).executions ?? []; } catch { /* disposable state */ } }
     const updated = new Set(result.executions.map(e => e.generator));
     const stored = { ...result, executions: [...prior.filter(e => !updated.has(e.generator)), ...result.executions].sort((a, b) => a.generator.localeCompare(b.generator, 'en')) };
-    writeFileSync(path, JSON.stringify(stored, null, 2) + '\n');
+    atomicWriteFileSync(path, JSON.stringify(stored, null, 2) + '\n');
   }
   return result;
+}
+
+export function runGenerators(core: string, consumer: string, options: RunGeneratorOptions = {}): RunResult {
+  if (options.dryRun === true) return runGeneratorsUnlocked(core, consumer, options);
+  const release = acquireConsumerOperationLock(consumer, "generate");
+  try {
+    return runGeneratorsUnlocked(core, consumer, options);
+  } finally {
+    release();
+  }
 }

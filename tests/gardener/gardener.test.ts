@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { afterEach, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -9,14 +8,13 @@ import { analyzeGardener, considerCoreCandidates } from "../../cli/lib/gardener.
 import { dispatchCli } from "../../cli/runtime.ts";
 import { exitCode } from "../../cli/result.ts";
 import { createRegistry } from "../../cli/lib/schemas.ts";
+import { cleanupTemporaryDirectories, temporaryDirectory } from "../helpers.ts";
 
 const CORE = resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const dirs: string[] = [];
-afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+afterEach(cleanupTemporaryDirectories);
 
 function consumer(name: string): string {
-  const dir = mkdtempSync(join(tmpdir(), "paved-gardener-"));
-  dirs.push(dir);
+  const dir = temporaryDirectory("paved-gardener");
   mkdirSync(join(dir, ".paved/generated/evidence"), { recursive: true });
   writeFileSync(join(dir, ".paved/manifest.yaml"), stringify({ apiVersion: "paved/v1", kind: "Project", project: { name }, paved: { core: "^0.2.0" } }));
   return dir;

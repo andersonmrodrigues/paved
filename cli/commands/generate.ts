@@ -1,4 +1,5 @@
 import { runGenerators, type Execution, type RunResult } from "../lib/generator-runtime.ts";
+import { ConsumerOperationLockedError } from "../lib/operation-lock.ts";
 import { createDiagnostic, createResult, type CommandResult, type Diagnostic, type ResultStatus } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
 
@@ -122,10 +123,27 @@ export function generateHandler(invocation: CommandInvocation): CommandResult {
     });
   }
 
-  const result = runGenerators(invocation.paths.coreRoot, invocation.paths.projectRoot, {
-    dryRun: invocation.flags.dryRun,
-    ...(invocation.selectors.length === 0 ? {} : { generators: [...invocation.selectors] }),
-  });
+  let result: RunResult;
+  try {
+    result = runGenerators(invocation.paths.coreRoot, invocation.paths.projectRoot, {
+      dryRun: invocation.flags.dryRun,
+      ...(invocation.selectors.length === 0 ? {} : { generators: [...invocation.selectors] }),
+    });
+  } catch (error) {
+    if (!(error instanceof ConsumerOperationLockedError)) throw error;
+    return createResult({
+      command: "generate",
+      status: "failed",
+      diagnostics: [createDiagnostic({
+        severity: "error",
+        category: "conflict",
+        code: "PAVED_OPERATION_IN_PROGRESS",
+        component: "consumer.operation",
+        message: error.message,
+        remediation: "Wait for the active operation to finish. For a stale lock, confirm no Paved process is active before removing .paved-operation-lock.",
+      })],
+    });
+  }
   const diagnostics = diagnosticsForRun(result, invocation.flags.dryRun);
   return createResult({
     command: "generate",
