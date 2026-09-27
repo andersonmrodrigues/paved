@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { describe, it } from "node:test";
@@ -153,6 +156,133 @@ describe("verification runner", () => {
       const record = readEvidence(project);
       assert.equal((record.completion as { status?: unknown }).status, "complete");
       assert.equal((record.completion as { verification?: unknown }).verification, "verified");
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps evidence ids and output logs unique when configured checks share a final id segment", async () => {
+    const project = sandbox("duplicate-check-suffix");
+    try {
+      const first = parse(readFileSync(join(project, ".paved/verification/checks/marker.yaml"), "utf8")) as Record<string, unknown>;
+      writeFileSync(join(project, ".paved/verification/checks/other-marker.yaml"), stringify({ ...first, id: "project.other.marker" }));
+      writeProfile(project, ["project.verify.marker", "project.other.marker"]);
+
+      const result = await runVerification({ projectRoot: project, coreRoot: ROOT });
+      const record = readEvidence(project);
+      const checks = record.checks as { id: string; output_ref?: string }[];
+      const logs = checks.map((check) => check.output_ref);
+      const artifacts = record.artifacts as { source: { location: string; sha256: string } }[];
+
+      assert.equal(result.status, "success", resultText(result));
+      assert.equal(new Set(checks.map((check) => check.id)).size, 2);
+      assert.equal(new Set(logs).size, 2);
+      for (const log of logs) {
+        const file = join(project, log!);
+        assert.equal(existsSync(file), true);
+        const artifact = artifacts.find((entry) => entry.source.location === log);
+        assert.ok(artifact);
+        assert.equal(artifact.source.sha256, createHash("sha256").update(readFileSync(file)).digest("hex"));
+      }
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("reports malformed YAML in verification content roots as configuration errors", async () => {
+    const project = sandbox("malformed-check-content");
+    try {
+      writeFileSync(join(project, ".paved/verification/checks/empty.yaml"), "");
+      writeProfile(project, ["project.verify.marker", "project.verify.failure"]);
+
+      const result = await runCli(project);
+
+      assert.equal(exitCode(result), 4);
+      assert.equal(primaryCategory(result), "config");
+      assert.equal(result.diagnostics.filter((item) => item.code === "PAVED_VERIFY_CHECK_INVALID").length, 1);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  for (const [signal, expectedExitCode] of [["SIGINT", 130], ["SIGHUP", 129]] as const) {
+    it(`forwards ${signal} to detached check processes after an earlier launch failure`, { skip: process.platform === "win32" }, async () => {
+      const project = sandbox(`interrupt-child-${signal.toLowerCase()}`);
+      const pidPath = join(project, ".paved/generated/evidence/check-pid.txt");
+      let cli: ReturnType<typeof spawn> | undefined;
+      let checkPid: number | undefined;
+      try {
+        writeMarkerMode(project, "timeout");
+        writeFileSync(join(project, ".paved/tools/marker.mjs"), [
+          "#!/usr/bin/env node",
+          'import { mkdirSync, writeFileSync } from "node:fs";',
+          'import { dirname } from "node:path";',
+          `const pidFile = ${JSON.stringify(pidPath)};`,
+          "mkdirSync(dirname(pidFile), { recursive: true });",
+          "writeFileSync(pidFile, String(process.pid));",
+          "setInterval(() => {}, 1000);",
+          "",
+        ].join("\n"), { mode: 0o755 });
+        const checkPath = join(project, ".paved/verification/checks/marker.yaml");
+        const check = parse(readFileSync(checkPath, "utf8")) as { timeout_seconds?: number };
+        check.timeout_seconds = 60;
+        writeFileSync(checkPath, stringify(check));
+        writeProfile(project, ["project.verify.missing-executable", "project.verify.marker"]);
+        cli = spawn(process.execPath, [join(ROOT, "cli/index.ts"), "verify", "--project", project], {
+          cwd: ROOT,
+          stdio: "ignore",
+        });
+        for (let attempt = 0; attempt < 300 && !existsSync(pidPath) && cli.exitCode === null; attempt += 1) {
+          await new Promise((resolveDelay) => setTimeout(resolveDelay, 10));
+        }
+        assert.equal(existsSync(pidPath), true, "verification child did not start");
+        checkPid = Number(readFileSync(pidPath, "utf8"));
+        const closed = once(cli, "close") as Promise<[number | null, NodeJS.Signals | null]>;
+
+        assert.equal(cli.kill(signal), true);
+        const [code, childSignal] = await closed;
+
+        assert.equal(childSignal, null);
+        assert.equal(code, expectedExitCode);
+        assert.throws(() => process.kill(checkPid!, 0), { code: "ESRCH" });
+      } finally {
+        if (cli !== undefined && cli.exitCode === null && cli.signalCode === null) cli.kill("SIGKILL");
+        if (checkPid !== undefined) {
+          try {
+            process.kill(checkPid, "SIGKILL");
+          } catch (error) {
+            if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
+          }
+        }
+        rmSync(project, { recursive: true, force: true });
+      }
+    });
+  }
+
+  it("enforces check timeouts when descendants inherit the command output pipes", async () => {
+    const project = sandbox("timeout-descendant");
+    try {
+      writeProfile(project, ["project.verify.marker"]);
+      writeMarkerMode(project, "timeout");
+      writeFileSync(join(project, ".paved/tools/marker.mjs"), [
+        "#!/usr/bin/env node",
+        'import { spawn } from "node:child_process";',
+        'spawn(process.execPath, ["-e", "setTimeout(() => {}, 10000)"], { stdio: "inherit" });',
+        "setTimeout(() => {}, 10000);",
+        "",
+      ].join("\n"));
+      const checkPath = join(project, ".paved/verification/checks/marker.yaml");
+      const check = parse(readFileSync(checkPath, "utf8")) as { timeout_seconds?: number };
+      check.timeout_seconds = 1;
+      writeFileSync(checkPath, stringify(check));
+      const started = Date.now();
+
+      const result = await runVerification({ projectRoot: project, coreRoot: ROOT });
+      const elapsed = Date.now() - started;
+
+      assert.equal(result.status, "failed");
+      assert.ok(elapsed < 3_000, `verification took ${elapsed}ms despite a 1s check timeout`);
+      assert.equal((readEvidence(project).checks as [{ status: string }])[0]!.status, "error");
     } finally {
       rmSync(project, { recursive: true, force: true });
     }

@@ -181,8 +181,8 @@ function findDocument<T extends { id: string }>(
   const matches: T[] = [];
   for (const root of roots) {
     for (const file of yamlFiles(root)) {
-      const raw = loadYaml(file) as { id?: unknown; kind?: unknown };
-      if (raw.kind !== kind || raw.id !== id) continue;
+      const raw = loadContentDocument(file, kind, diagnostics);
+      if (raw === undefined || raw.kind !== kind || raw.id !== id) continue;
       const document = validateDocument<T>(schemaRegistry, file, kind, diagnostics);
       if (document !== undefined) matches.push(document);
     }
@@ -199,6 +199,32 @@ function findDocument<T extends { id: string }>(
   return undefined;
 }
 
+function loadContentDocument(
+  file: string,
+  kind: DocumentKind,
+  diagnostics: Diagnostic[],
+): Record<string, unknown> | undefined {
+  try {
+    const document = loadYaml(file);
+    if (document !== null && typeof document === "object" && !Array.isArray(document)) {
+      return document as Record<string, unknown>;
+    }
+  } catch {
+    // Report malformed content uniformly without exposing parser internals.
+  }
+  const code = `PAVED_VERIFY_${kind.toUpperCase()}_INVALID`;
+  const message = `${file} is not a valid ${kind} document.`;
+  if (diagnostics.some((item) => item.code === code && item.message === message)) return undefined;
+  diagnostics.push(diagnostic({
+    code,
+    category: "config",
+    component: "verification.config",
+    message,
+    remediation: "Fix the YAML syntax or ensure the file contains a mapping document.",
+  }));
+  return undefined;
+}
+
 function findImplementations(
   roots: readonly string[],
   toolId: string,
@@ -208,7 +234,8 @@ function findImplementations(
   const implementations: ToolImplementation[] = [];
   for (const root of roots) {
     for (const file of yamlFiles(root)) {
-      const raw = loadYaml(file) as { kind?: unknown; tool?: unknown };
+      const raw = loadContentDocument(file, "ToolImplementation", diagnostics);
+      if (raw === undefined) continue;
       if (raw.kind !== "ToolImplementation" || raw.tool !== toolId) continue;
       const document = validateDocument<ToolImplementation>(schemaRegistry, file, "ToolImplementation", diagnostics);
       if (document !== undefined) implementations.push(document);
@@ -278,6 +305,11 @@ function collectChunk(chunks: Buffer[], next: Buffer, state: { bytes: number; tr
   if (next.length > remaining) state.truncated = true;
 }
 
+function evidenceCheckId(checkId: string): string {
+  const prefix = checkId.toLowerCase().replaceAll(".", "_").replace(/[^a-z0-9_-]/g, "-").slice(0, 220).replace(/[-_]+$/g, "") || "check";
+  return `${prefix}-${sha(checkId).slice(0, 12)}-run`;
+}
+
 async function spawnApproved(args: {
   executable: string;
   argv: string[];
@@ -301,33 +333,68 @@ async function spawnApproved(args: {
       cwd: args.cwd,
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
+      detached: process.platform !== "win32",
     });
 
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 1_000).unref();
-    }, Math.max(1, args.timeoutSeconds) * 1_000);
-
-    child.stdout.on("data", (chunk: Buffer) => collectChunk(stdout, chunk, state));
-    child.stderr.on("data", (chunk: Buffer) => collectChunk(stderr, chunk, state));
-    child.on("error", () => {
+    const signalGroup = (signal: NodeJS.Signals): boolean => {
+      try {
+        if (process.platform !== "win32" && child.pid !== undefined) {
+          process.kill(-child.pid, signal);
+          return true;
+        }
+        return child.kill(signal);
+      } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ESRCH") return false;
+        throw error;
+      }
+    };
+    const signalHandlers: { signal: NodeJS.Signals; handler: () => void }[] = [];
+    const forwardSignal = (signal: NodeJS.Signals, exitCode: number): void => {
+      signalGroup(signal);
+      signalGroup("SIGKILL");
+      process.exit(exitCode);
+    };
+    for (const [signal, exitCode] of [
+      ...(process.platform === "win32" ? [] : [["SIGHUP", 129]]),
+      ["SIGINT", 130],
+      ["SIGTERM", 143],
+      ...(process.platform === "win32" ? [] : [["SIGQUIT", 131]]),
+    ] as [NodeJS.Signals, number][]) {
+      const handler = () => forwardSignal(signal, exitCode);
+      signalHandlers.push({ signal, handler });
+      process.once(signal, handler);
+    }
+    const finish = (code: number | null, kind?: "launch-error"): void => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolveRun({ kind: "launch-error", stdout: "", stderr: "", truncated: false });
-    });
-    child.on("close", (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
+      for (const { signal, handler } of signalHandlers) process.removeListener(signal, handler);
+      child.stdout.destroy();
+      child.stderr.destroy();
       resolveRun({
-        kind: timedOut ? "timeout" : "completed",
+        kind: kind ?? (timedOut ? "timeout" : "completed"),
         ...(code === null ? {} : { exitCode: code }),
         stdout: Buffer.concat(stdout).toString("utf8"),
         stderr: Buffer.concat(stderr).toString("utf8"),
         truncated: state.truncated,
       });
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      if (signalGroup("SIGTERM")) setTimeout(() => signalGroup("SIGKILL"), 1_000);
+      finish(null);
+    }, Math.max(1, args.timeoutSeconds) * 1_000);
+
+    child.stdout.on("data", (chunk: Buffer) => collectChunk(stdout, chunk, state));
+    child.stderr.on("data", (chunk: Buffer) => collectChunk(stderr, chunk, state));
+    child.on("error", () => {
+      finish(null, "launch-error");
+    });
+    child.on("exit", (code) => {
+      if (!settled) {
+        if (signalGroup("SIGTERM")) setTimeout(() => signalGroup("SIGKILL"), 1_000);
+      }
+      finish(code);
     });
   });
 }
@@ -513,7 +580,7 @@ async function executeCheck(args: {
       inputs: args.check.inputs ?? {},
       errors: [`precondition ${args.check.preconditions[0]!.id} is unmet`],
     });
-    return { evidenceCheck: toEvidenceCheck(captured, args.check, `${args.check.id.split(".").slice(-1)[0]}-run`) };
+    return { evidenceCheck: toEvidenceCheck(captured, args.check, evidenceCheckId(args.check.id)) };
   }
 
   const validation = validateToolInputs(resolution.tool, args.check.inputs ?? {});
@@ -555,7 +622,7 @@ async function executeCheck(args: {
         message: `Check ${args.check.id} would expose a sensitive Tool input through its command binding, so it was blocked before execution.`,
         remediation: "Remove the sensitive input binding or introduce a reviewed ToolImplementation contract with an explicit secret channel.",
       }),
-      evidenceCheck: toEvidenceCheck(captured, args.check, `${args.check.id.split(".").slice(-1)[0]}-run`),
+      evidenceCheck: toEvidenceCheck(captured, args.check, evidenceCheckId(args.check.id)),
     };
   }
 
@@ -589,7 +656,7 @@ async function executeCheck(args: {
         message: `Check ${args.check.id} was not authorized to run.`,
         remediation: authorization.reasons.join("; "),
       }),
-      evidenceCheck: toEvidenceCheck(captured, args.check, `${args.check.id.split(".").slice(-1)[0]}-run`),
+      evidenceCheck: toEvidenceCheck(captured, args.check, evidenceCheckId(args.check.id)),
     };
   }
 
@@ -659,7 +726,7 @@ async function executeCheck(args: {
       ...(commandFailed ? stderr.errors : []),
     ],
   });
-  const evidenceCheck = toEvidenceCheck(captured, args.check, `${args.check.id.split(".").slice(-1)[0]}-run`);
+  const evidenceCheck = toEvidenceCheck(captured, args.check, evidenceCheckId(args.check.id));
   const outputRef = `.paved/generated/evidence/${evidenceCheck.id}.log`;
   (evidenceCheck as EvidenceRecord["checks"][number] & { output_ref: string }).output_ref = outputRef;
   return {
