@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { stringify } from "yaml";
+import { parse, stringify } from "yaml";
+import { hashLocalCore, hashLocalFile, hashLocalTree } from "../../cli/lib/local-core.ts";
+import { initializeConsumer } from "../../cli/lib/generator-runtime.ts";
 import { renderHuman, renderJson } from "../../cli/output.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
 import { exitCode, primaryCategory, type CommandResult } from "../../cli/result.ts";
@@ -42,38 +43,6 @@ function fixtureCopy(name: string): string {
   return dir;
 }
 
-function sha(value: string | Buffer): string {
-  return createHash("sha256").update(value).digest("hex");
-}
-
-function safe(root: string, path: string): string {
-  const full = resolve(root, path);
-  if (full !== resolve(root) && !full.startsWith(resolve(root) + sep)) {
-    throw new Error(`Path escapes root: ${path}`);
-  }
-  return full;
-}
-
-function hashFile(path: string): string {
-  return sha(readFileSync(path));
-}
-
-function hashTree(root: string, paths: string[]): string {
-  const entries: string[] = [];
-  function collect(path: string): void {
-    const full = safe(root, path);
-    if (!existsSync(full)) return;
-    const stat = statSync(full);
-    if (stat.isDirectory()) {
-      for (const child of readdirSync(full).sort()) collect(`${path}/${child}`);
-      return;
-    }
-    if (stat.isFile()) entries.push(`${path.replace(/\\/g, "/")}\0${hashFile(full)}`);
-  }
-  for (const path of [...paths].sort()) collect(path);
-  return sha(entries.join("\n"));
-}
-
 function currentLock(adapterIds = ["technology/java"]): LockDocument {
   return {
     apiVersion: "paved/v1",
@@ -82,13 +51,13 @@ function currentLock(adapterIds = ["technology/java"]): LockDocument {
     core: {
       version: JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version as string,
       source: "local-core",
-      sha256: hashTree(ROOT, ["VERSION", "manifest.yaml", "schemas", "core", "generators", "cli/lib"]),
+      sha256: hashLocalCore(ROOT),
     },
     adapters: adapterIds.map((id) => ({
       id,
       version: "0.1.0",
       source: "local-core",
-      sha256: hashTree(ROOT, [`adapters/${id}`]),
+      sha256: hashLocalTree(ROOT, [`adapters/${id}`]),
     })),
     generators: [],
   };
@@ -107,7 +76,10 @@ function snapshotFiles(root: string): Map<string, string> {
         walk(full);
         continue;
       }
-      if (entry.isFile()) files.set(relative(root, full).split(sep).join("/"), hashFile(full));
+      if (entry.isFile()) {
+        const path = relative(root, full).split(sep).join("/");
+        files.set(path, hashLocalFile(root, path));
+      }
     }
   }
   walk(root);
@@ -149,6 +121,44 @@ function writeManifest(project: string, manifest: unknown): void {
 }
 
 describe("status and doctor commands", () => {
+  it("includes command files in the local Core digest", () => {
+    const core = sandbox("core-digest-cli-commands");
+    try {
+      writeFileSync(join(core, "VERSION"), "0.2.0\n");
+      writeFileSync(join(core, "manifest.yaml"), "version: 0.2.0\n");
+      mkdirSync(join(core, "schemas"), { recursive: true });
+      mkdirSync(join(core, "core"), { recursive: true });
+      mkdirSync(join(core, "generators"), { recursive: true });
+      mkdirSync(join(core, "cli/commands"), { recursive: true });
+      writeFileSync(join(core, "cli/commands/doctor.ts"), "export const command = 'doctor';\n");
+
+      const before = hashLocalCore(core);
+      writeFileSync(join(core, "cli/commands/doctor.ts"), "export const command = 'doctor-changed';\n");
+
+      assert.notEqual(hashLocalCore(core), before);
+    } finally {
+      rmSync(core, { recursive: true, force: true });
+    }
+  });
+
+  it("uses the same local Core digest when writing and checking the lock", async () => {
+    const project = sandbox("runtime-lock-digest");
+    try {
+      writeFileSync(join(project, "README.md"), "# Runtime lock digest\n");
+      initializeConsumer(ROOT, project, "runtime-lock-digest");
+      const lock = parse(readFileSync(join(project, ".paved/paved.lock"), "utf8")) as LockDocument;
+
+      const result = await assertReadOnly(project, "doctor");
+      const data = dataOf(result) as { core?: { lockDigestMatches?: boolean } };
+
+      assert.equal(lock.core.sha256, hashLocalCore(ROOT));
+      assert.equal(data.core?.lockDigestMatches, true);
+      assert.ok(!codes(result).includes("PAVED_LOCK_CORE_DIGEST_MISMATCH"));
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
   it("reports an uninitialized consumer without creating .paved", async () => {
     const project = sandbox("uninitialized");
     try {
@@ -297,10 +307,10 @@ describe("status and doctor commands", () => {
         apiVersion: "paved/v1",
         kind: "Lock",
         resolved_at: "2026-09-27T00:00:00Z",
-        core: { version: "0.2.0", source: "local-core", sha256: hashTree(core, ["VERSION", "manifest.yaml", "schemas", "core", "generators", "cli/lib"]) },
+        core: { version: "0.2.0", source: "local-core", sha256: hashLocalCore(core) },
         adapters: [
-          { id: "technology/java", version: "0.1.0", source: "local-core", sha256: hashTree(core, ["adapters/technology/java"]) },
-          { id: "technology/java-alt", version: "0.1.0", source: "local-core", sha256: hashTree(core, ["adapters/technology/java-alt"]) },
+          { id: "technology/java", version: "0.1.0", source: "local-core", sha256: hashLocalTree(core, ["adapters/technology/java"]) },
+          { id: "technology/java-alt", version: "0.1.0", source: "local-core", sha256: hashLocalTree(core, ["adapters/technology/java-alt"]) },
         ],
         generators: [],
       }));
@@ -380,7 +390,7 @@ describe("status and doctor commands", () => {
         "    - id: s1",
         "      type: file",
         "      location: pom.xml",
-        "      sha256: " + hashFile(join(project, "pom.xml")),
+        "      sha256: " + hashLocalFile(project, "pom.xml"),
         "---",
         "<!-- paved:begin generated id=observations sources=s1 confidence=observed -->",
         "SECRET_SENTINEL_VALUE",

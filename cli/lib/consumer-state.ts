@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { stringify } from "yaml";
 import { createDiagnostic, type Diagnostic } from "../result.ts";
 import { capabilityEvidence, detectAdapters, loadAdapters, resolveAdapters, type Detection } from "./adapters.ts";
 import { loadYaml, loadMarkdown } from "./documents.ts";
 import { discoverSources } from "./generator-runtime.ts";
+import { hashLocalCore, hashLocalTree } from "./local-core.ts";
 import { assessProvenance } from "./provenance.ts";
 import { createRegistry, type SchemaRegistry } from "./schemas.ts";
 import { compatible } from "./tools.ts";
@@ -73,8 +74,6 @@ interface GeneratorContract {
   readonly version: string;
 }
 
-const LOCAL_CORE_DIGEST_PATHS = ["VERSION", "manifest.yaml", "schemas", "core", "generators", "cli/lib"] as const;
-
 function diagnostic(input: {
   readonly code: string;
   readonly component: string;
@@ -112,22 +111,6 @@ function safe(root: string, path: string): string {
 
 function hashFile(path: string): string {
   return sha(readFileSync(path));
-}
-
-export function hashLocalTree(root: string, paths: readonly string[]): string {
-  const entries: string[] = [];
-  function collect(path: string): void {
-    const full = safe(root, path);
-    if (!existsSync(full)) return;
-    if (lstatSync(full).isSymbolicLink()) return;
-    if (statSync(full).isDirectory()) {
-      for (const child of readdirSync(full).sort()) collect(`${path}/${child}`);
-      return;
-    }
-    entries.push(`${path.replace(/\\/g, "/")}\0${hashFile(full)}`);
-  }
-  for (const path of [...paths].sort()) collect(path);
-  return sha(entries.join("\n"));
 }
 
 function readValidated<T>(
@@ -219,7 +202,7 @@ function compareCoreLock(lock: LockDocument | undefined, core: CoreManifest | un
   }
 
   if (lock.core.source === "local-core") {
-    const localDigest = hashLocalTree(coreRoot, LOCAL_CORE_DIGEST_PATHS);
+    const localDigest = hashLocalCore(coreRoot);
     if (lock.core.sha256 !== localDigest) {
       matches = false;
       diagnostics.push(diagnostic({
