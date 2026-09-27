@@ -610,7 +610,10 @@ async function executeCheck(args: {
     .filter((input) => input.sensitive)
     .map((input) => validation.values[input.name])
     .filter((value): value is string => typeof value === "string");
-  const sanitizedOutput = sanitizeToolOutput(`stdout:\n${execution.stdout}\nstderr:\n${execution.stderr}`, secretValues) as string;
+  const sanitizedOutput = [
+    `stdout:\n${sanitizeToolOutput(execution.stdout, secretValues) as string}`,
+    `stderr:\n${sanitizeToolOutput(execution.stderr, secretValues) as string}`,
+  ].join("\n");
 
   if (execution.kind === "launch-error") {
     return {

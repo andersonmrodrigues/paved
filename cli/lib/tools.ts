@@ -288,7 +288,8 @@ const COLON_KEY_VALUE = new RegExp(
 );
 
 function isSensitiveKey(key: string): boolean {
-  return SECRET_KEY_SEGMENT.test(key) || COMPOUND_SECRET_KEY.test(key);
+  const normalized = key.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
+  return SECRET_KEY_SEGMENT.test(normalized) || COMPOUND_SECRET_KEY.test(normalized);
 }
 
 function redactedValue(raw: string): string {
@@ -299,6 +300,16 @@ function redactedValue(raw: string): string {
 export function sanitizeToolOutput(value: unknown, secrets: string[] = []): unknown {
   const clean = secrets.filter(Boolean);
   const scrub = (text: string) => {
+    if (text.trimStart().startsWith("{") || text.trimStart().startsWith("[")) {
+      try {
+        const parsed: unknown = JSON.parse(text);
+        if (parsed !== null && typeof parsed === "object") {
+          return JSON.stringify(sanitizeToolOutput(parsed, clean));
+        }
+      } catch {
+        // Continue with conservative key/value redaction for non-JSON log text.
+      }
+    }
     let output = text.replace(/(Bearer\s+)\S+/gi, "$1[REDACTED]");
     output = output.replace(
       QUOTED_KEY_VALUE,

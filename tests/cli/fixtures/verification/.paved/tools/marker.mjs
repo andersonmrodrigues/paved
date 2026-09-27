@@ -37,6 +37,13 @@ if (mode === "json") {
   console.error("access_token=PAVED-STDERR-ACCESS");
   console.error("client_secret: PAVED-STDERR-CLIENT");
   console.error("\"refresh-token\":\"PAVED-STDERR-REFRESH\"");
+} else if (mode === "camel-secret") {
+  console.log(JSON.stringify({
+    ok: true,
+    accessToken: "PAVED-CAMEL-ACCESS",
+    clientSecret: 123456,
+    sessionToken: { value: "PAVED-CAMEL-NESTED" },
+  }));
 } else {
   console.log(`marker mode=${mode} secret=${secret} literal=${literal}`);
   console.error(`stderr secret=${secret}`);
