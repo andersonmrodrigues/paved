@@ -195,11 +195,12 @@ async function run(projectRoot: string, command: "init" | "update" | "generate" 
         const before = snapshotFiles(project);
 
         const result = await run(project, "update");
-        const data = dataOf(result) as { changed?: boolean; plannedWrites?: string[] };
+        const data = dataOf(result) as { changed?: boolean; plannedWrites?: string[]; plannedGeneratorIds?: string[] };
 
         assert.equal(exitCode(result), 0);
         assert.equal(data.changed, false);
         assert.deepEqual(data.plannedWrites, []);
+        assert.deepEqual(data.plannedGeneratorIds, []);
         assert.deepEqual(snapshotFiles(project), before);
       } finally {
         rmSync(project, { recursive: true, force: true });
@@ -250,7 +251,8 @@ async function run(projectRoot: string, command: "init" | "update" | "generate" 
         const lock = currentLock();
         lock.core.sha256 = "1".repeat(64);
         lock.adapters![0]!.sha256 = "2".repeat(64);
-        lock.generators = [{ id: "project-context/architecture", version: "0.2.0", source: "local-core", sha256: "3".repeat(64) }];
+        lock.generators = localGeneratorEntries();
+        lock.generators.find((entry) => entry.id === "project-context/architecture")!.sha256 = "3".repeat(64);
         writeFileSync(join(project, ".paved/paved.lock"), stringify(lock));
         const before = snapshotFiles(project);
 
@@ -290,13 +292,22 @@ async function run(projectRoot: string, command: "init" | "update" | "generate" 
       }
     });
 
-    it("records every local generator contract when refreshing an older lock", async () => {
-      const project = fixtureCopy("update-generator-lock-fill");
+    it("runs newly discovered generator contracts before writing them to the lock", async () => {
+      const project = freshConsumer("update-missing-generator-entry");
       try {
-        const lock = currentLock();
-        delete lock.generators;
-        lock.core.sha256 = "6".repeat(64);
+        initializeConsumer(ROOT, project, "update-missing-generator-entry");
+        const lock = parse(readFileSync(join(project, ".paved/paved.lock"), "utf8")) as LockDocument;
+        lock.generators = (lock.generators ?? []).filter((entry) => entry.id !== "project-context/architecture");
         writeFileSync(join(project, ".paved/paved.lock"), stringify(lock));
+        const beforeDryRun = snapshotFiles(project);
+
+        const dryRun = await run(project, "update", ["--dry-run"]);
+        const dryRunData = dataOf(dryRun) as { plannedGeneratorIds?: string[]; plannedWrites?: string[] };
+
+        assert.equal(exitCode(dryRun), 0);
+        assert.deepEqual(dryRunData.plannedGeneratorIds, ["project-context/architecture"]);
+        assert.ok(dryRunData.plannedWrites?.includes(".paved/paved.lock"));
+        assert.deepEqual(snapshotFiles(project), beforeDryRun);
 
         const result = await run(project, "update");
         const updated = parse(readFileSync(join(project, ".paved/paved.lock"), "utf8")) as LockDocument;
