@@ -12,7 +12,7 @@ import { renderHuman, renderJson } from "../../cli/output.ts";
 function result(...categories: DiagnosticCategory[]) {
   return createResult({
     command: "synthetic",
-    status: categories.length === 0 ? "success" : "failed",
+    status: categories.length === 0 ? "success" : categories.every((category) => category === "findings") ? "warning" : "failed",
     diagnostics: categories.map((category, index) => createDiagnostic({
       category,
       severity: category === "findings" ? "warning" : "error",
@@ -50,6 +50,33 @@ describe("CLI result exit behavior", () => {
 
   it("maps warning status without diagnostics to findings exit code", () => {
     assert.equal(exitCode(createResult({ command: "synthetic", status: "warning" })), 1);
+  });
+
+  it("maps malformed failed results without blocking diagnostics to internal errors", () => {
+    const withoutDiagnostics = createResult({ command: "synthetic", status: "failed" });
+    const withOnlyFindings = createResult({
+      command: "synthetic",
+      status: "failed",
+      diagnostics: [
+        createDiagnostic({
+          category: "findings",
+          severity: "warning",
+          code: "PAVED_WARNING",
+          component: "cli.test",
+          message: "Non-blocking finding",
+        }),
+      ],
+    });
+
+    assert.equal(primaryCategory(withoutDiagnostics), "internal");
+    assert.equal(exitCode(withoutDiagnostics), 9);
+    assert.equal(primaryCategory(withOnlyFindings), "internal");
+    assert.equal(exitCode(withOnlyFindings), 9);
+    assert.deepEqual(withOnlyFindings.diagnostics.map((diagnostic) => diagnostic.category), ["findings", "internal"]);
+    assert.match(
+      withOnlyFindings.diagnostics.at(-1)?.message ?? "",
+      /failed result.*blocking diagnostic/i,
+    );
   });
 
   it("gives internal diagnostics precedence over other blocking categories", () => {
