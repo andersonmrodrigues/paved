@@ -615,7 +615,7 @@ function updateLockGenerators(
       sha256: hashLocalTree(coreRoot, [`generators/${local.id}`]),
     };
     const locked = lockedById.get(local.id);
-    if (locked !== undefined && entryChanged(locked, next)) changedIds.push(local.id);
+    if (entryChanged(locked, next)) changedIds.push(local.id);
     return next;
   });
   return { entries, changedIds: changedIds.sort() };
