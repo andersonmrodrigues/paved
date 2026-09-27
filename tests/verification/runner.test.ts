@@ -292,6 +292,25 @@ describe("verification runner", () => {
     }
   });
 
+  it("scrubs camelCase and non-string secret values from persisted JSON output", async () => {
+    const project = sandbox("camel-secret-json");
+    try {
+      writeMarkerToolOutput(project, "json");
+      writeMarkerMode(project, "camel-secret");
+
+      const result = await runVerification({ projectRoot: project, coreRoot: ROOT });
+      const generated = readAllFiles(join(project, ".paved/generated/evidence")).join("\n");
+
+      assert.equal(result.status, "success", resultText(result));
+      assert.doesNotMatch(generated, /PAVED-CAMEL-(?:ACCESS|NESTED)|123456/);
+      assert.match(generated, /"accessToken":"\[REDACTED\]"/);
+      assert.match(generated, /"clientSecret":"\[REDACTED\]"/);
+      assert.match(generated, /"sessionToken":"\[REDACTED\]"/);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
   it("blocks invalid documents, unresolved bindings, unsafe authorization, and launch failures without echoing argv", async () => {
     const invalidProfile = sandbox("invalid-profile");
     const invalid = sandbox("invalid-check");

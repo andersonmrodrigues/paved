@@ -188,6 +188,38 @@ describe("Tool capabilities", () => {
     assert.equal(sanitized.prose, "The client secret rotation guide mentions access_token fields.");
   });
 
+  it("redacts camelCase secret keys in objects and text", () => {
+    const output = sanitizeToolOutput({
+      accessToken: "PAVED-CAMEL-ACCESS",
+      clientSecret: "PAVED-CAMEL-CLIENT",
+      refreshToken: "PAVED-CAMEL-REFRESH",
+      dbPassword: "PAVED-CAMEL-PASSWORD",
+      xApiKey: "PAVED-CAMEL-API",
+      json: '{"accessToken":"PAVED-JSON-CAMEL","clientSecret":"PAVED-JSON-CLIENT"}',
+      log: "refreshToken=PAVED-LOG-CAMEL",
+      prose: "A tokenizer is not a credential.",
+    }) as Record<string, unknown>;
+
+    for (const key of ["accessToken", "clientSecret", "refreshToken", "dbPassword", "xApiKey"]) {
+      assert.equal(output[key], "[REDACTED]", key);
+    }
+    assert.doesNotMatch(String(output.json), /PAVED-JSON-(?:CAMEL|CLIENT)/);
+    assert.match(String(output.json), /"accessToken":"\[REDACTED\]"/);
+    assert.equal(output.log, "refreshToken=[REDACTED]");
+    assert.equal(output.prose, "A tokenizer is not a credential.");
+  });
+
+  it("redacts non-string values under sensitive keys in raw JSON text", () => {
+    const output = sanitizeToolOutput(
+      '{"clientSecret":123456,"sessionToken":{"value":"PAVED-NESTED-NUMERIC"},"enabled":true}',
+    );
+
+    assert.doesNotMatch(String(output), /123456|PAVED-NESTED-NUMERIC/);
+    assert.match(String(output), /"clientSecret":"?\[REDACTED\]"?/);
+    assert.match(String(output), /"sessionToken":"?\[REDACTED\]"?/);
+    assert.match(String(output), /"enabled":true/);
+  });
+
   it("rejects malformed structured output and records it as a failure", () => {
     assert.match(validateToolResult(tool, {other: 2}).join("\n"), /count/);
     const record = captureToolExecution({
