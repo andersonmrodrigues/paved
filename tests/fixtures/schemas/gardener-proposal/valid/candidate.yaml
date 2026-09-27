@@ -1,0 +1,22 @@
+apiVersion: paved/v1
+kind: GardenerProposal
+id: proposal-0123456789abcdef0123
+scope: { consumer: sample, target: consumer }
+status: CANDIDATE
+problem: A check failed twice.
+observation: observation-0123456789abcdef0123
+evidence:
+  - { record: .paved/generated/evidence/one.yaml, item: check-one }
+  - { record: .paved/generated/evidence/two.yaml, item: check-two }
+evidence_sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+root_cause: Root cause unknown.
+root_cause_state: unknown
+recommended_layer: architecture
+layer_rationale: Review structural prevention first.
+proposed_change: Investigate the design.
+expected_impact: Prevent recurrence.
+affected_components: [project.check.boundary]
+uncertainty: Design intent unknown.
+provenance:
+  sources:
+    - { type: file, location: .paved/generated/evidence/one.yaml }

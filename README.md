@@ -9,7 +9,7 @@ mechanisms. Repositories that use Paved (consumers) keep their own knowledge in 
 
 > Status: **first local production CLI implemented (0.2.0 unreleased)**.
 > Contracts, schemas, Core content and self-tests exist. The local `paved` CLI
-> implements `init`, `update`, `generate`, `verify`, `status` and `doctor` over
+> implements `init`, `update`, `generate`, `verify`, `status`, `doctor` and `gardener` over
 > shared validation, adapter resolution, Tool policy, evidence assessment and the
 > Generator Runtime. `paved evidence` and `paved tool ...` remain contract-only. See the
 > [bootstrap review](docs/getting-started/bootstrap-review.md), the
@@ -197,6 +197,10 @@ explicit-profile only, and `evidence`/`tool` command families remain contract-on
 Phase 11 adds derived lifecycle states, consumer-isolated update planning,
 source and contract staleness checks, override target validation and a staged local
 update commit. Automatic schema migrations and remote distribution remain planned.
+
+Phase 12 adds a read-only, consumer-scoped Gardener that turns recurring Evidence
+failures and Generator Runtime signals into deterministic, human-reviewed improvement
+proposals. See [Gardener](docs/concepts/gardener.md).
 
 Subsequent milestones include distribution packaging, CI integration, richer command
 families and additional adapters.

@@ -14,6 +14,9 @@ Contains breaking schema changes, allowed within `0.x` (see versioning).
 
 ### Added
 
+- Phase 12 read-only Gardener analysis, consumer-scoped observations and proposals,
+  review lifecycle schema, deterministic recurrence detection, and `paved gardener`.
+
 - Phase 11 local multi-consumer lifecycle: derived states, deterministic impact
   planning, override target and schema preflight, source and generator staleness
   checks, and a staged recoverable `.paved/` update commit. No public document

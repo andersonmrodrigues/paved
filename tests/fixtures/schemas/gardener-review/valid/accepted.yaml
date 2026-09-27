@@ -1,0 +1,9 @@
+apiVersion: paved/v1
+kind: GardenerReviews
+reviews:
+  - proposal: proposal-0123456789abcdef0123
+    status: ACCEPTED
+    by: maintainer
+    at: 2026-01-03T00:00:00Z
+    evidence_sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    reason: Approved for separate implementation.

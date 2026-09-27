@@ -1,0 +1,17 @@
+# expect-error: must NOT have fewer than 1 items
+apiVersion: paved/v1
+kind: GardenerObservation
+id: observation-0123456789abcdef0123
+consumer: sample
+category: verification-failure
+subject: check
+state: enforced
+pattern: check
+first_observed: date
+last_observed: date
+occurrences: 1
+evidence: []
+provenance:
+  sources:
+    - { type: file, location: .paved/generated/evidence/one.yaml }
+confidence: high

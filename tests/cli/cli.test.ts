@@ -295,6 +295,10 @@ describe("CLI Task 7 output and dispatch regressions", () => {
         includes: ["Usage: paved doctor", "--adapter <id>"],
         excludes: ["--dry-run", "--no-generate", "[generator-id...]"],
       },
+      gardener: {
+        includes: ["Usage: paved gardener", "--dry-run"],
+        excludes: ["--adapter <id>", "--no-generate", "[generator-id...]"],
+      },
     };
     try {
       for (const [command, expectation] of Object.entries(expectations) as [CommandName, typeof expectations[CommandName]][]) {
