@@ -1,0 +1,18 @@
+apiVersion: paved/v1
+kind: ToolImplementation
+id: project.tool.unauthorized
+tool: project.tool.unauthorized
+version: 0.1.0
+contract: ^0.1.0
+source: project
+environments:
+  - local
+invocation:
+  type: command
+  executable: .paved/tools/marker.mjs
+  arguments: []
+  input_bindings:
+    - input: mode
+      flag: --mode
+  timeout_seconds: 5
+availability: available

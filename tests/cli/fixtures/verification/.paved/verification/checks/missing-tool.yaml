@@ -1,0 +1,18 @@
+apiVersion: paved/v1
+kind: Check
+id: project.verify.missing-tool
+title: Missing tool verification
+purpose: Report an unresolvable Tool binding.
+type: unit
+tool: project.tool.missing
+expected:
+  description: The missing tool cannot run.
+  exit_code: 0
+timeout_seconds: 5
+environment:
+  kinds: [local]
+failure: The Tool is missing.
+determinism:
+  class: deterministic
+retry:
+  class: non-retryable

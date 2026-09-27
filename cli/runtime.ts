@@ -6,6 +6,7 @@ import { generateHandler } from "./commands/generate.ts";
 import { initHandler } from "./commands/init.ts";
 import { statusHandler } from "./commands/status.ts";
 import { updateHandler } from "./commands/update.ts";
+import { verifyHandler } from "./commands/verify.ts";
 import { createDiagnostic, createResult, type CommandResult } from "./result.ts";
 import { CliPathError, resolveCoreRoot, resolveProjectRoot } from "./paths.ts";
 
@@ -328,6 +329,7 @@ const DEFAULT_HANDLERS: CommandHandlers = {
   init: initHandler,
   status: statusHandler,
   update: updateHandler,
+  verify: verifyHandler,
 };
 
 export async function dispatchCli(options: DispatchOptions = {}): Promise<CommandResult> {

@@ -1,0 +1,39 @@
+apiVersion: paved/v1
+kind: Tool
+id: project.tool.unauthorized
+version: 0.1.0
+title: Unauthorized Tool
+purpose: Fixture Tool that requires an unmet precondition.
+capability: unauthorized-marker
+safety: safe-mutation
+permissions:
+  - process-control
+environments:
+  - local
+inputs:
+  - name: mode
+    description: Fixture mode.
+    type: string
+    required: true
+outputs:
+  format: text
+  description: Fixture text output.
+side_effects:
+  - process
+preconditions:
+  - id: human-ready
+    kind: environment
+    description: A human has explicitly made the environment ready.
+idempotency: idempotent
+timeout_seconds: 5
+retry:
+  max_attempts: 1
+  backoff_seconds: 0
+errors:
+  - failed-precondition
+availability: available
+evidence:
+  capture:
+    - revision
+    - environment
+confirmation: none
