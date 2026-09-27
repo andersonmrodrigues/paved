@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
-import { stringify } from "yaml";
+import { parse as parseYaml, stringify } from "yaml";
 import { createDiagnostic, type Diagnostic } from "../result.ts";
 import { loadYaml } from "./documents.ts";
 import {
@@ -20,10 +20,12 @@ import {
   captureToolExecution,
   resolveTool,
   sanitizeToolOutput,
+  sensitiveArgvInputNames,
   toEvidenceCheck,
   validateImplementation,
   validateTool,
   validateToolInputs,
+  validateToolResult,
   type ToolContract,
   type ToolImplementation,
 } from "./tools.ts";
@@ -330,6 +332,35 @@ async function spawnApproved(args: {
   });
 }
 
+function parseToolOutput(tool: ToolContract, stdout: string): { output: unknown; problems: string[] } {
+  if (tool.outputs.format === "text") return { output: stdout, problems: [] };
+  if (tool.outputs.format === "none") return { output: undefined, problems: [] };
+  if (tool.outputs.format === "json") {
+    try {
+      return { output: JSON.parse(stdout) as unknown, problems: [] };
+    } catch {
+      return { output: undefined, problems: [`${tool.id} stdout is not valid JSON for its declared output format`] };
+    }
+  }
+  if (tool.outputs.format === "yaml") {
+    try {
+      return { output: parseYaml(stdout) as unknown, problems: [] };
+    } catch {
+      return { output: undefined, problems: [`${tool.id} stdout is not valid YAML for its declared output format`] };
+    }
+  }
+  return { output: stdout, problems: [] };
+}
+
+function stderrMessages(stderr: string, secretValues: readonly string[]): { warnings: string[]; errors: string[] } {
+  if (stderr.trim().length === 0) return { warnings: [], errors: [] };
+  const sanitized = sanitizeToolOutput(stderr, [...secretValues]) as string;
+  return {
+    warnings: [`Verification command wrote to stderr:\n${sanitized}`],
+    errors: [`Verification command wrote to stderr:\n${sanitized}`],
+  };
+}
+
 function evidenceId(): string {
   evidenceCounter += 1;
   return `verify-${new Date().toISOString().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}-${process.pid}-${evidenceCounter}`;
@@ -498,6 +529,36 @@ async function executeCheck(args: {
     };
   }
 
+  const sensitiveInputs = sensitiveArgvInputNames(resolution.tool, resolution.implementation, validation.values);
+  if (sensitiveInputs.length > 0) {
+    const now = new Date().toISOString();
+    const captured = captureToolExecution({
+      tool: resolution.tool,
+      implementation: resolution.implementation,
+      environment: "local",
+      revision: args.revision,
+      runtime_version: RUNTIME_VERSION,
+      recorded_by: "paved",
+      started_at: now,
+      finished_at: now,
+      status: "blocked",
+      error_code: "policy-violation",
+      output: undefined,
+      inputs: validation.values,
+      errors: ["Sensitive Tool inputs cannot be passed through command argv by the current ToolImplementation contract."],
+    });
+    return {
+      diagnostic: diagnostic({
+        code: "PAVED_VERIFY_SENSITIVE_ARGV_INPUT",
+        category: "config",
+        component: "verification.runner",
+        message: `Check ${args.check.id} would expose a sensitive Tool input through its command binding, so it was blocked before execution.`,
+        remediation: "Remove the sensitive input binding or introduce a reviewed ToolImplementation contract with an explicit secret channel.",
+      }),
+      evidenceCheck: toEvidenceCheck(captured, args.check, `${args.check.id.split(".").slice(-1)[0]}-run`),
+    };
+  }
+
   const authorization = authorizeTool(resolution.tool, {
     environment: "local",
     permissions: ["repository-read", "process-read", "process-control"],
@@ -563,6 +624,13 @@ async function executeCheck(args: {
     };
   }
 
+  const parsed = parseToolOutput(resolution.tool, execution.stdout);
+  const malformedOutputProblems = execution.kind === "completed"
+    ? [...parsed.problems, ...validateToolResult(resolution.tool, sanitizeToolOutput(parsed.output, secretValues))]
+    : [];
+  const malformedOutput = malformedOutputProblems.length > 0;
+  const stderr = stderrMessages(execution.stderr, secretValues);
+  const commandFailed = execution.kind === "completed" && execution.exitCode !== undefined && execution.exitCode !== 0;
   const captured = captureToolExecution({
     tool: resolution.tool,
     implementation: resolution.implementation,
@@ -572,18 +640,35 @@ async function executeCheck(args: {
     recorded_by: "paved",
     started_at: started,
     finished_at: finished,
-    status: execution.kind === "timeout" ? "timed-out" : "succeeded",
-    ...(execution.exitCode === undefined ? {} : { exit_code: execution.exitCode }),
+    status: execution.kind === "timeout" ? "timed-out" : malformedOutput ? "failed" : "succeeded",
+    ...(execution.exitCode === undefined || malformedOutput ? {} : { exit_code: execution.exitCode }),
     ...(execution.kind === "timeout" ? { error_code: "timeout" as const } : {}),
-    output: sanitizedOutput,
+    ...(malformedOutput ? { error_code: "malformed-output" as const } : {}),
+    output: parsed.output,
     inputs: validation.values,
-    warnings: execution.truncated ? ["Verification output was truncated."] : [],
-    errors: execution.kind === "timeout" ? ["Verification command timed out."] : [],
+    warnings: [
+      ...(execution.truncated ? ["Verification output was truncated."] : []),
+      ...(!commandFailed ? stderr.warnings : []),
+    ],
+    errors: [
+      ...(execution.kind === "timeout" ? ["Verification command timed out."] : []),
+      ...malformedOutputProblems,
+      ...(commandFailed ? stderr.errors : []),
+    ],
   });
   const evidenceCheck = toEvidenceCheck(captured, args.check, `${args.check.id.split(".").slice(-1)[0]}-run`);
   const outputRef = `.paved/generated/evidence/${evidenceCheck.id}.log`;
   (evidenceCheck as EvidenceRecord["checks"][number] & { output_ref: string }).output_ref = outputRef;
   return {
+    ...(malformedOutput ? {
+      diagnostic: diagnostic({
+        code: "PAVED_VERIFY_OUTPUT_MALFORMED",
+        category: "verification",
+        component: "verification.runner",
+        message: `Check ${args.check.id} produced malformed Tool output.`,
+        remediation: malformedOutputProblems.join("; "),
+      }),
+    } : {}),
     evidenceCheck,
     log: { relativePath: outputRef, content: sanitizedOutput },
   };

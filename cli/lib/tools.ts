@@ -205,11 +205,27 @@ export function validateToolInputs(tool: ToolContract, inputs: Record<string, un
   return { values, problems };
 }
 
+function argvIncludesBoundValue(value: unknown): boolean {
+  return value !== undefined && value !== false;
+}
+
+export function sensitiveArgvInputNames(tool: ToolContract, implementation: ToolImplementation, inputs: Record<string, unknown>): string[] {
+  const inputByName = new Map(tool.inputs.map((input) => [input.name, input]));
+  const names = new Set<string>();
+  for (const binding of implementation.invocation.input_bindings ?? []) {
+    const input = inputByName.get(binding.input);
+    if (input?.sensitive === true && argvIncludesBoundValue(inputs[binding.input])) names.add(binding.input);
+  }
+  return [...names].sort();
+}
+
 /** Construct separate argv elements only after contract validation; callers must spawn without a shell. */
 export function buildArgv(tool: ToolContract, implementation: ToolImplementation, inputs: Record<string, unknown>): { executable: string; argv: string[] } {
   if (implementation.invocation.type !== "command" || !implementation.invocation.executable) throw new Error("implementation is not a command binding");
   const checked = validateToolInputs(tool, inputs);
   if (checked.problems.length > 0) throw new Error(checked.problems.join("; "));
+  const sensitiveInputs = sensitiveArgvInputNames(tool, implementation, checked.values);
+  if (sensitiveInputs.length > 0) throw new Error("sensitive Tool inputs cannot be bound to command argv");
   const argv = [...(implementation.invocation.arguments ?? [])];
   for (const binding of implementation.invocation.input_bindings ?? []) {
     const value = checked.values[binding.input];
@@ -264,6 +280,14 @@ export function sanitizeToolOutput(value: unknown, secrets: string[] = []): unkn
   const scrub = (text: string) => {
     let output = text.replace(/(Bearer\s+)\S+/gi, "$1[REDACTED]");
     output = output.replace(/\b(secret|token|password|passwd|credential|private[_-]?key|api[_-]?key)\s*=\s*[^\s&]+/gi, "$1=[REDACTED]");
+    output = output.replace(
+      /(["'])(secret|token|password|passwd|credential|private[_-]?key|api[_-]?key)\1(\s*:\s*)(["'])(?:\\.|(?!\4).)*\4/gi,
+      (_match, keyQuote: string, key: string, separator: string, valueQuote: string) => `${keyQuote}${key}${keyQuote}${separator}${valueQuote}[REDACTED]${valueQuote}`,
+    );
+    output = output.replace(
+      /\b(secret|token|password|passwd|credential|private[_-]?key|api[_-]?key)\b(\s*:\s*)[^\r\n]+/gi,
+      (_match, key: string, separator: string) => `${key}${separator}[REDACTED]`,
+    );
     for (const secret of clean) output = output.split(secret).join("[REDACTED]");
     return output;
   };
@@ -275,7 +299,7 @@ export function sanitizeToolOutput(value: unknown, secrets: string[] = []): unkn
   return value;
 }
 
-const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value) ?? "undefined").digest("hex");
 
 export function captureToolExecution(args: {
   tool: ToolContract; implementation: ToolImplementation; environment: string; revision: string;

@@ -67,6 +67,23 @@ function writeProfile(project: string, checks: string[]): void {
   }));
 }
 
+function writeMarkerToolOutput(project: string, format: "text" | "json" | "yaml" | "none"): void {
+  const path = join(project, ".paved/tools/marker.yaml");
+  const tool = parse(readFileSync(path, "utf8")) as { outputs: { format: string; fields?: string[] } };
+  tool.outputs.format = format;
+  if (format === "json" || format === "yaml") tool.outputs.fields = ["ok"];
+  else delete tool.outputs.fields;
+  writeFileSync(path, stringify(tool));
+}
+
+function writeMarkerMode(project: string, mode: string): void {
+  const path = join(project, ".paved/verification/checks/marker.yaml");
+  const check = parse(readFileSync(path, "utf8")) as { inputs: Record<string, unknown> };
+  check.inputs.mode = mode;
+  delete check.inputs.secret;
+  writeFileSync(path, stringify(check));
+}
+
 function readEvidence(project: string): Record<string, unknown> {
   const files = evidenceFiles(project);
   assert.equal(files.length, 1, `expected one evidence file, got ${files.map((file) => relative(project, file)).join(", ")}`);
@@ -161,9 +178,9 @@ describe("verification runner", () => {
     }
   });
 
-  it("scrubs sensitive input and output values from diagnostics, logs, and evidence", async () => {
-    const project = sandbox("secret-scrub");
-    const secret = "PAVED-SECRET-SENTINEL";
+  it("blocks sensitive command-bound inputs before spawning and scrubs the supplied value", async () => {
+    const project = sandbox("secret-argv-block");
+    const secret = "PAVED-ARGV-SENTINEL";
     try {
       const check = parse(readFileSync(join(project, ".paved/verification/checks/marker.yaml"), "utf8")) as { inputs: Record<string, string> };
       check.inputs.secret = secret;
@@ -173,12 +190,85 @@ describe("verification runner", () => {
       const evidenceRoot = join(project, ".paved/generated/evidence");
       const allGenerated = readAllFiles(evidenceRoot).join("\n");
 
-      assert.equal(result.status, "success");
+      assert.equal(result.status, "failed");
+      assert.equal(result.diagnostics.some((item) => item.code === "PAVED_VERIFY_SENSITIVE_ARGV_INPUT"), true);
+      assert.equal(existsSync(markerPath(project)), false);
       assert.equal(resultText(result).includes(secret), false);
       assert.equal(allGenerated.includes(secret), false);
-      assert.match(allGenerated, /\[REDACTED\]/);
+      assert.equal(resultText(result).includes("--secret"), false);
+      assert.equal((readEvidence(project).checks as [{ status: string; reason?: string }])[0]!.status, "blocked");
     } finally {
       rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("parses stdout according to Tool output formats without mixing stderr into the result", async () => {
+    for (const [format, mode] of [
+      ["text", "pass"],
+      ["json", "json"],
+      ["yaml", "yaml"],
+      ["none", "none"],
+    ] as const) {
+      const project = sandbox(`output-${format}`);
+      try {
+        writeMarkerToolOutput(project, format);
+        writeMarkerMode(project, mode);
+
+        const result = await runVerification({ projectRoot: project, coreRoot: ROOT });
+        const generated = readAllFiles(join(project, ".paved/generated/evidence")).join("\n");
+
+        assert.equal(result.status, "success", `${format}: ${resultText(result)}`);
+        assert.equal((readEvidence(project).checks as [{ status: string }])[0]!.status, "passed", format);
+        assert.match(generated, /stderr/, format);
+      } finally {
+        rmSync(project, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("reports malformed structured stdout as a failed check without leaking raw output", async () => {
+    for (const [format, mode] of [
+      ["json", "malformed-json"],
+      ["yaml", "malformed-yaml"],
+    ] as const) {
+      const project = sandbox(`malformed-${format}`);
+      try {
+        writeMarkerToolOutput(project, format);
+        writeMarkerMode(project, mode);
+
+        const result = await runVerification({ projectRoot: project, coreRoot: ROOT });
+        const generated = readAllFiles(join(project, ".paved/generated/evidence")).join("\n");
+
+        assert.equal(result.status, "failed");
+        assert.equal(result.diagnostics.some((item) => item.code === "PAVED_VERIFY_OUTPUT_MALFORMED"), true);
+        assert.equal((readEvidence(project).checks as [{ status: string; summary?: string }])[0]!.status, "failed");
+        assert.equal(resultText(result).includes("PAVED-MALFORMED-SENTINEL"), false);
+        assert.equal(generated.includes("PAVED-MALFORMED-SENTINEL"), false);
+      } finally {
+        rmSync(project, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("scrubs secret-like keys from structured stdout logs", async () => {
+    for (const [format, mode] of [
+      ["json", "json-secret"],
+      ["yaml", "yaml-secret"],
+    ] as const) {
+      const project = sandbox(`structured-secret-${format}`);
+      try {
+        writeMarkerToolOutput(project, format);
+        writeMarkerMode(project, mode);
+
+        const result = await runVerification({ projectRoot: project, coreRoot: ROOT });
+        const generated = readAllFiles(join(project, ".paved/generated/evidence")).join("\n");
+
+        assert.equal(result.status, "success", resultText(result));
+        assert.equal(generated.includes("PAVED-STRUCTURED-SENTINEL"), false);
+        assert.match(generated, /\[REDACTED\]/);
+      } finally {
+        rmSync(project, { recursive: true, force: true });
+      }
     }
   });
 
