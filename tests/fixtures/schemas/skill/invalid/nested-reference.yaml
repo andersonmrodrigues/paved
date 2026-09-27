@@ -1,0 +1,14 @@
+# expect-error: /references/0 must match pattern
+apiVersion: paved/v1
+kind: Skill
+id: project.testing.sample
+version: 0.1.0
+status: experimental
+category: testing
+context:
+  required: []
+verification:
+  required: [unit]
+evidence:
+  required: [check-result]
+references: [references/deep/detail.md]

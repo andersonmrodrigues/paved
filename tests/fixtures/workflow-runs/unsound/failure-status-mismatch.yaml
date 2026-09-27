@@ -1,0 +1,46 @@
+# expect-problem: failure input-missing means the run is blocked, not failed
+apiVersion: paved/v1
+kind: WorkflowRun
+id: sample-run
+workflow:
+  id: core.bug
+  version: 0.2.0
+revision: 3f2a9c1
+started_at: 2026-09-27T10:00:00Z
+ended_at: 2026-09-27T12:00:00Z
+status: failed
+inputs:
+  - id: report
+    value: Sample input.
+    source: human
+phases:
+  - phase: context
+    status: blocked
+    failure:
+      code: input-missing
+      phase: context
+      reason: No expected behavior.
+      retry: requires-human
+      next_action: A human states the expected behavior.
+  - phase: discovery
+    status: pending
+  - phase: planning
+    status: pending
+  - phase: implementation
+    status: pending
+  - phase: validation
+    status: pending
+  - phase: verification
+    status: pending
+  - phase: evidence
+    status: pending
+  - phase: review
+    status: pending
+  - phase: completion
+    status: pending
+failure:
+  code: input-missing
+  phase: context
+  reason: No expected behavior.
+  retry: requires-human
+  next_action: A human states the expected behavior.

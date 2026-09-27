@@ -1,0 +1,15 @@
+# expect-error: references unknown tool "project.observability.logs"
+apiVersion: paved/v1
+kind: Skill
+id: project.debugging.sample
+version: 0.1.0
+status: experimental
+category: debugging
+context:
+  required: []
+tools:
+  required: [project.observability.logs]
+verification:
+  required: [runtime]
+evidence:
+  required: [log]

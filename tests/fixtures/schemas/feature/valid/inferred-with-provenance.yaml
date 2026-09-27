@@ -1,0 +1,24 @@
+apiVersion: paved/v1
+kind: Feature
+id: sample
+name: Sample
+summary: Not stated in the sources.
+status: active
+confidence: inferred
+code:
+  paths: [src/sample/**]
+unknowns:
+  - topic: Purpose
+    reason: No documentation or comments describe the feature.
+provenance:
+  generator: project-context/feature-map
+  generator_version: 0.1.0
+  generated_at: 2026-01-01T00:00:00Z
+  sources:
+    - id: entry
+      type: file
+      location: src/sample/entry.ext
+      sha256: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+  output_sha256: "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
+  review:
+    status: unreviewed

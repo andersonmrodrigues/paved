@@ -1,0 +1,12 @@
+# expect-error: /outputs/0/kind must NOT be valid
+apiVersion: paved/v1
+kind: Check
+id: project.test.unit
+title: Unit tests pass
+purpose: Existing behavior still holds.
+type: unit
+tool: project.test.run-unit
+outputs: [{ kind: check-result, description: The result. }]
+expected: { description: Every test passes., exit_code: 0 }
+failure: Read the output.
+determinism: { class: deterministic }

@@ -1,0 +1,26 @@
+# adapters/<category>/<name>/adapter.yaml
+apiVersion: paved/v1
+kind: Adapter
+id: languages/example
+title: Example language
+version: 0.1.0
+summary: Reusable knowledge about one technology. Nothing specific to any consumer project.
+requires:
+  core: ^0.1.0
+detect:
+  any_files:
+    - example.config
+provides:
+  knowledge: []
+  skills: []
+  rules: []
+  tools: []
+  check_suggestions:
+    - type: unit
+      command: <official test command for this technology>
+      description: Runs the unit tests using the technology's standard tooling.
+sources:
+  - title: Official documentation page the content is based on
+    url: https://example.org/docs
+    retrieved_at: 2026-01-01
+reviewed_at: 2026-01-01

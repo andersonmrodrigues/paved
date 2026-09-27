@@ -1,0 +1,8 @@
+# expect-error: must match a schema in anyOf
+apiVersion: paved/v1
+kind: Overrides
+workflows:
+  - target: core.release
+    action: extend
+    owner: sample-team
+    reason: Sample.

@@ -1,0 +1,12 @@
+# expect-error: must be equal to one of the allowed values
+apiVersion: paved/v1
+kind: Rule
+id: project.quality.sample
+title: Sample
+rationale: Sample.
+applies_to: {}
+rule: Sample.
+enforcement:
+  mechanism: review
+severity: critical
+verification: Sample.

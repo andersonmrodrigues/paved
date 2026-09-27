@@ -1,0 +1,9 @@
+apiVersion: paved/v1
+kind: Project
+project:
+  name: sample
+paved:
+  core: ">=0.1.0 <0.2.0"
+adapters:
+  - id: languages/sample
+    version: ^1.0.0

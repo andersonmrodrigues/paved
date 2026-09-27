@@ -1,0 +1,19 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.development.refactoring
+version: 0.1.0
+status: experimental
+category: development
+context:
+  required: []
+  optional: [architecture, rules, verification]
+rules:
+  - core.architecture.follow-existing-patterns
+  - core.architecture.respect-declared-boundaries
+depends_on:
+  optional: [core.testing.unit-testing, core.testing.integration-testing]
+verification:
+  required: [unit]
+  recommended: [integration, architecture, static-analysis, build]
+evidence:
+  required: [check-result, diff]

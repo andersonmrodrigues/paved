@@ -1,0 +1,19 @@
+# expect-problem: never mentions core.git.log
+# expect-problem: never says when to use core.testing.unit-testing
+apiVersion: paved/v1
+kind: Skill
+id: project.development.unexplained-contract
+version: 0.1.0
+status: experimental
+category: development
+context:
+  required: []
+tools:
+  required: [core.git.diff]
+  optional: [core.git.log]
+depends_on:
+  optional: [core.testing.unit-testing]
+verification:
+  required: [unit]
+evidence:
+  required: [check-result]

@@ -1,0 +1,24 @@
+apiVersion: paved/v1
+kind: ToolImplementation
+id: core.paved.evidence
+tool: core.paved.evidence
+version: 0.1.0
+contract: ^0.1.0
+source: core
+environments:
+  - local
+  - ci
+  - ephemeral
+invocation:
+  type: command
+  timeout_seconds: 120
+  executable: paved
+  arguments:
+    - evidence
+    - validate
+    - --json
+  input_bindings:
+    - input: against
+      flag: --against
+    - input: record
+availability: planned

@@ -1,0 +1,13 @@
+apiVersion: paved/v1
+kind: Generator
+id: sample/generator
+version: 0.1.0
+status: contract
+summary: Sample.
+depends_on: [sample]
+inputs:
+  - { kind: repository, description: Sample. }
+outputs:
+  - { path: .paved/generated/proposals/sample/, format: markdown, metadata: sidecar }
+change_detection:
+  strategy: [on-demand]

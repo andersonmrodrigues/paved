@@ -1,0 +1,41 @@
+# expect-error: /retry/max_attempts must be equal to constant
+apiVersion: paved/v1
+kind: Tool
+id: project.format.apply
+title: Apply formatting
+purpose: Sample.
+safety: safe-mutation
+inputs: []
+outputs:
+  format: none
+  description: Nothing.
+side_effects:
+  - filesystem
+confirmation: none
+examples:
+  - description: Sample.
+version: 0.1.0
+capability: format-apply
+permissions:
+  - repository-write
+environments:
+  - local
+  - ci
+  - ephemeral
+preconditions: []
+idempotency: non-idempotent
+timeout_seconds: 300
+retry:
+  max_attempts: 2
+  backoff_seconds: 0
+errors:
+  - execution-failure
+  - failed-precondition
+  - timeout
+evidence:
+  capture:
+    - revision
+    - environment
+    - timestamps
+    - output-digest
+availability: available

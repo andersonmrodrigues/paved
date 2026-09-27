@@ -1,0 +1,13 @@
+# expect-error: /version must NOT be valid
+apiVersion: paved/v1
+kind: Skill
+id: project.testing.sample
+version: 0.3.0
+status: stable
+category: testing
+context:
+  required: []
+verification:
+  required: [unit]
+evidence:
+  required: [check-result]

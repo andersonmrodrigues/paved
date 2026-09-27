@@ -1,0 +1,7 @@
+# expect-error: is newer than this Core supports
+apiVersion: paved/v9
+kind: Project
+project:
+  name: sample
+paved:
+  core: ^0.1.0

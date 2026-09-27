@@ -1,0 +1,7 @@
+apiVersion: paved/v1
+kind: VerificationProfile
+checks:
+  - core.paved.schema-validation
+  - project.test.unit
+policy:
+  minimum_recorder: paved

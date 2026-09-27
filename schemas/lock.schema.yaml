@@ -1,0 +1,39 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:lock:v1
+title: Paved lock file
+description: >
+  `.paved/paved.lock` in a consumer repository. Records exactly which Core and adapter
+  versions were resolved from the ranges in the project manifest, with content digests,
+  so that every agent and CI run in the repository uses the same Paved. Written only by
+  the CLI (ownership `tool-managed`).
+type: object
+additionalProperties: false
+required: [apiVersion, kind, resolved_at, core]
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { const: Lock }
+  resolved_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+  core: { $ref: "#/$defs/resolved" }
+  adapters:
+    type: array
+    items:
+      allOf:
+        - $ref: "#/$defs/resolved"
+        - type: object
+          required: [id]
+          properties:
+            id: { $ref: "urn:paved:schema:common:v1#/$defs/adapterId" }
+$defs:
+  resolved:
+    type: object
+    required: [version, source, sha256]
+    properties:
+      id: true
+      version: { $ref: "urn:paved:schema:common:v1#/$defs/semver" }
+      source:
+        description: Where the content was obtained. Its format depends on the distribution channel (open decision).
+        $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+      sha256:
+        description: Digest of the resolved content, so tampering or drift is detectable.
+        $ref: "urn:paved:schema:common:v1#/$defs/sha256"
+    additionalProperties: false

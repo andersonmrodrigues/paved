@@ -1,0 +1,6 @@
+# expect-error: document has no `apiVersion`
+kind: Project
+project:
+  name: sample
+paved:
+  core: ^0.1.0

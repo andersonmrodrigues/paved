@@ -1,0 +1,45 @@
+# A refactor that needed three attempts at implementation, within its limit.
+apiVersion: paved/v1
+kind: WorkflowRun
+id: sample-run
+workflow:
+  id: core.refactor
+  version: 0.2.0
+revision: 3f2a9c1
+started_at: 2026-09-27T10:00:00Z
+ended_at: 2026-09-27T12:00:00Z
+status: completed
+inputs:
+  - id: request
+    value: Sample input.
+    source: human
+phases:
+  - phase: context
+    status: completed
+  - phase: discovery
+    status: completed
+    gates:
+      - id: behavior-pinned
+        status: passed
+      - id: uncovered-risk
+        status: not-applicable
+        reason: Every invariant is covered by an existing test.
+  - phase: planning
+    status: completed
+  - phase: implementation
+    status: completed
+    attempts: 3
+  - phase: validation
+    status: completed
+  - phase: verification
+    status: completed
+  - phase: evidence
+    status: completed
+  - phase: review
+    status: completed
+  - phase: completion
+    status: completed
+    gates:
+      - id: criteria-met
+        status: passed
+evidence: .paved/generated/evidence/sample-run.yaml

@@ -1,0 +1,13 @@
+# expect-error: must have required property 'check'
+apiVersion: paved/v1
+kind: Rule
+id: project.quality.sample
+title: Sample
+rationale: Sample.
+applies_to: {}
+rule: Sample.
+enforcement:
+  mechanism: automated
+  layer: ci
+severity: error
+verification: Sample.

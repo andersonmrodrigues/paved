@@ -1,0 +1,13 @@
+# expect-error: must have required property 'metadata'
+apiVersion: paved/v1
+kind: Generator
+id: sample
+version: 0.1.0
+status: contract
+summary: Sample.
+inputs:
+  - { kind: repository, description: Sample. }
+outputs:
+  - { path: .paved/generated/sample/, format: markdown }
+change_detection:
+  strategy: [on-demand]

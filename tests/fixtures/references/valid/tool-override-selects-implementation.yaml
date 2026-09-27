@@ -1,0 +1,19 @@
+apiVersion: paved/v1
+kind: ToolImplementation
+id: project.git.status
+tool: core.git.status
+version: 0.1.0
+contract: ^0.1.0
+source: project
+environments: [local]
+invocation: { type: synthetic, synthetic_result: { status: clean } }
+availability: available
+---
+apiVersion: paved/v1
+kind: Overrides
+tools:
+  - target: core.git.status
+    action: select-implementation
+    implementation: project.git.status
+    owner: example-team
+    reason: Synthetic reference fixture.

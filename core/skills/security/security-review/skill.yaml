@@ -1,0 +1,19 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.security.security-review
+version: 0.2.0
+status: experimental
+category: security
+context:
+  required: []
+  optional: [integrations, architecture, rules]
+tools:
+  required: [core.git.diff]
+rules: [core.security.no-secrets-in-source]
+depends_on:
+  optional: [core.security.threat-modeling]
+verification:
+  required: [security]
+  recommended: [static-analysis]
+evidence:
+  required: [review]

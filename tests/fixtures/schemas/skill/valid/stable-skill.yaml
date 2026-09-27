@@ -1,0 +1,12 @@
+apiVersion: paved/v1
+kind: Skill
+id: project.discovery.sample
+version: 2.0.1
+status: stable
+category: discovery
+context:
+  required: []
+verification:
+  required: []
+evidence:
+  required: []

@@ -1,0 +1,12 @@
+# expect-error: must be equal to one of the allowed values
+apiVersion: paved/v1
+kind: GeneratedArtifact
+artifact: { path: notes/sample.md, format: markdown }
+ownership: human-owned
+provenance:
+  generator: skills
+  generator_version: 0.1.0
+  generated_at: 2026-01-01T00:00:00Z
+  sources:
+    - { id: history, type: revision, location: abc1234 }
+  output_sha256: "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"

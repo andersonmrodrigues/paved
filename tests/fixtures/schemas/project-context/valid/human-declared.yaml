@@ -1,0 +1,16 @@
+apiVersion: paved/v1
+kind: ContextDocument
+area: domain
+title: Sample
+confidence: declared
+provenance:
+  generator: human
+  generated_at: 2026-01-01T00:00:00Z
+  sources:
+    - { id: interview, type: human, location: "Sample team, onboarding notes." }
+    - { id: spec, type: url, location: https://example.org/spec }
+conflicts:
+  - topic: Sample
+    statements:
+      - { statement: One thing., source: interview }
+      - { statement: Another thing., source: spec }

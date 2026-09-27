@@ -1,0 +1,5 @@
+# expect-error: references unknown check "project.test.smoke"
+# A profile may list only checks that are defined somewhere in the effective set.
+apiVersion: paved/v1
+kind: VerificationProfile
+checks: [core.paved.schema-validation, project.test.smoke]

@@ -1,0 +1,10 @@
+generator: project-context/architecture
+generator_version: 0.1.0
+generated_at: 2026-01-01T00:00:00Z
+source_revision: abc1234
+sources:
+  - { id: build, type: file, location: build.config, lines: "1-40", sha256: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" }
+  - { id: history, type: revision, location: abc1234..def5678 }
+  - { id: listing, type: command, location: ./list-modules, captured_at: 2026-01-01T00:00:00Z }
+output_sha256: "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
+review: { status: reviewed, by: sample-team, at: 2026-01-02 }

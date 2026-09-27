@@ -1,0 +1,39 @@
+# expect-error: must NOT be valid
+apiVersion: paved/v1
+kind: Evidence
+id: sample
+created_at: 2026-01-01T00:00:00Z
+change:
+  summary: Sample.
+  revision: abc1234
+plan:
+  required: []
+  evidence: [check-result]
+claims:
+  - id: works
+    statement: It works.
+    type: behavior
+    supported_by: [unit]
+checks:
+  - id: unit
+    type: unit
+    status: failed
+    execution:
+      recorded_by: paved
+      revision: abc1234
+      started_at: 2026-01-01T00:00:00Z
+    check: project.test.unit
+    tool:
+      id: project.test.unit
+      version: 1.0.0
+    summary: The check reported a failure.
+    output_ref: .paved/generated/evidence/sample/unit.log
+completion:
+  status: complete
+  verification: verified
+  decided_by: paved
+  criteria:
+    - statement: Tests pass.
+      met: true
+verification:
+  profile: .paved/verification/profile.yaml

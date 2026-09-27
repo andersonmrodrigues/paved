@@ -1,0 +1,23 @@
+# skill.yaml: the checkable part of a skill contract. Prose belongs in SKILL.md.
+apiVersion: paved/v1
+kind: Skill
+id: project.development.example-skill
+version: 0.1.0
+status: experimental
+category: development
+context:
+  required: [manifest]
+  optional: [feature-map]
+tools:
+  required: [core.git.diff]
+  optional: []
+rules: []
+depends_on:
+  required: []
+  optional: [core.testing.unit-testing]
+verification:
+  required: [unit]
+  recommended: [static-analysis]
+evidence:
+  required: [check-result]
+references: []

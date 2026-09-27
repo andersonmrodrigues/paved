@@ -1,0 +1,21 @@
+apiVersion: paved/v1
+kind: Overrides
+rules:
+  - target: core.performance.measure-before-optimizing
+    action: set-severity
+    severity: info
+    applies_to: [scripts/**]
+    owner: sample-team
+    reason: Scripts are not performance sensitive.
+    target_sha256: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+skills:
+  - { target: core.debugging.root-cause-analysis, action: disable, owner: sample-team, reason: Replaced by a project skill. }
+  - { target: adapter-sample.development.sample, action: extend, addendum: skills/sample.md, owner: sample-team, reason: Local conventions. }
+workflows:
+  - target: core.release
+    action: extend
+    add_gates:
+      - { phase: completion, id: sign-off, condition: Release owner signed off., approval: release }
+    require_checks: [unit]
+    owner: sample-team
+    reason: Releases need sign-off.

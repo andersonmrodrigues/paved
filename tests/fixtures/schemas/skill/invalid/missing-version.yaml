@@ -1,0 +1,12 @@
+# expect-error: must have required property 'version'
+apiVersion: paved/v1
+kind: Skill
+id: project.testing.sample
+status: experimental
+category: testing
+context:
+  required: []
+verification:
+  required: [unit]
+evidence:
+  required: [check-result]

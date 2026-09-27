@@ -1,0 +1,59 @@
+apiVersion: paved/v1
+kind: Tool
+id: adapter-sample.build.compile
+title: Compile
+purpose: Compile the sample language.
+safety: read-only
+inputs: []
+outputs:
+  format: text
+  description: Compiler output.
+side_effects: []
+confirmation: none
+examples:
+  - description: Compile.
+version: 0.1.0
+capability: build-compile
+permissions:
+  - repository-read
+environments:
+  - local
+  - ci
+  - ephemeral
+preconditions: []
+idempotency: unknown
+timeout_seconds: 300
+retry:
+  max_attempts: 1
+  backoff_seconds: 0
+errors:
+  - execution-failure
+  - failed-precondition
+  - timeout
+evidence:
+  capture:
+    - revision
+    - environment
+    - timestamps
+    - output-digest
+availability: available
+---
+apiVersion: paved/v1
+kind: Skill
+version: 0.1.0
+status: experimental
+id: adapter-sample.development.sample-build
+category: development
+context:
+  required:
+    - technology
+tools:
+  required:
+    - adapter-sample.build.compile
+    - core.git.status
+verification:
+  required:
+    - runtime
+evidence:
+  required:
+    - check-result

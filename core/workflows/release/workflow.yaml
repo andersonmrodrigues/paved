@@ -1,0 +1,74 @@
+apiVersion: paved/v1
+kind: Workflow
+id: core.release
+title: Release
+description: >-
+  Prepares, verifies and hands over a versioned release candidate, and verifies the
+  release after a human publishes it. Use when a task asks for a new version of the
+  software to be released.
+version: 0.2.0
+status: experimental
+change_type: release
+inputs:
+  - id: release-request
+    description: What should be released, and the version or scope asked for.
+    required: true
+  - id: target
+    description: Where the release goes (registry, environment, channel), if the project has several.
+    required: false
+context:
+  required: []
+  optional: [technology, verification, tools]
+preconditions:
+  - id: release-procedure-known
+    condition: The project's release procedure and tools are found in Project Context or project tools.
+  - id: releasable-revision
+    condition: The working tree is clean and at the revision to release.
+phases:
+  - phase: context
+    goal: Identify the release scope and the project's release procedure.
+    skills: [core.discovery.context-discovery]
+  - phase: discovery
+    goal: List the changes since the previous release and their evidence.
+    tools:
+      required: [core.git.log]
+  - phase: planning
+    goal: Decide the version number and verification scope from the changes.
+    gates:
+      - id: breaking-change-accepted
+        when: The release contains incompatible changes.
+        condition: A human accepted releasing the incompatible changes and the version reflects them.
+        approval: breaking-change
+  - phase: implementation
+    goal: Prepare the release candidate (version, changelog, notes, artifacts) using project tools.
+  - phase: validation
+    goal: Build the release candidate.
+    verification:
+      recommended: [build, static-analysis]
+  - phase: verification
+    goal: Run the whole verification profile against the release candidate.
+    verification:
+      required: [unit, integration]
+      recommended: [e2e, security, performance]
+  - phase: evidence
+    goal: Record the candidate, full check results and known issues.
+  - phase: review
+    goal: Review changelog accuracy and known issues.
+    skills: [core.code-review.change-review]
+  - phase: completion
+    goal: Hand the candidate to a human to publish, then verify the published release.
+    verification:
+      required: [runtime]
+    gates:
+      - id: publish-approved
+        condition: A human approved publishing and published the candidate, or had it published.
+        approval: release
+    retry: { class: requires-human }
+evidence:
+  required: [check-result]
+outputs: [release-candidate, evidence, review]
+completion:
+  criteria:
+    - The whole profile passed against the candidate, or failures are known issues a human accepted.
+    - Release notes match the actual changes.
+    - A runtime check against the published release passed and is in the evidence.

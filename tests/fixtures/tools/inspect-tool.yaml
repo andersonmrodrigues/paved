@@ -1,0 +1,48 @@
+apiVersion: paved/v1
+kind: Tool
+id: project.synthetic.inspect
+title: Inspect synthetic repository
+purpose: Sample.
+safety: read-only
+inputs:
+  - name: path
+    description: Relative path.
+    type: path
+    required: true
+    pattern: ^(?!/)(?!.*\.\.)[^\s]+$
+outputs:
+  format: json
+  description: Synthetic file count.
+  fields:
+    - count
+side_effects: []
+confirmation: none
+examples:
+  - description: Sample.
+version: 0.1.0
+capability: repository-inspect
+permissions:
+  - repository-read
+environments:
+  - local
+  - ci
+preconditions:
+  - id: repository
+    kind: repository
+    description: Synthetic repository is present.
+idempotency: idempotent
+timeout_seconds: 300
+retry:
+  max_attempts: 2
+  backoff_seconds: 1
+errors:
+  - execution-failure
+  - failed-precondition
+  - timeout
+evidence:
+  capture:
+    - revision
+    - environment
+    - timestamps
+    - output-digest
+availability: available

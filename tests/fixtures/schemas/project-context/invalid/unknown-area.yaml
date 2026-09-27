@@ -1,0 +1,6 @@
+# expect-error: must be equal to one of the allowed values
+apiVersion: paved/v1
+kind: ContextDocument
+area: project.architecture
+title: Sample
+confidence: declared

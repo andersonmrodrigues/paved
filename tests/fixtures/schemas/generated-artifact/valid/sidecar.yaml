@@ -1,0 +1,14 @@
+apiVersion: paved/v1
+kind: GeneratedArtifact
+artifact:
+  path: .paved/generated/proposals/skills/sample/SKILL.md
+  format: markdown
+  proposal_for: .paved/skills/sample/SKILL.md
+ownership: disposable
+provenance:
+  generator: skills
+  generator_version: 0.1.0
+  generated_at: 2026-01-01T00:00:00Z
+  sources:
+    - { id: history, type: revision, location: abc1234..def5678 }
+  output_sha256: "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"

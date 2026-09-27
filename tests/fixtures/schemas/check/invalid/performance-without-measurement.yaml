@@ -1,0 +1,11 @@
+# expect-error: /expected must have required property 'measurement'
+apiVersion: paved/v1
+kind: Check
+id: project.perf.export-latency
+title: Export latency
+purpose: Export stays fast.
+type: performance
+tool: project.perf.run-benchmark
+expected: { description: The benchmark exits cleanly., exit_code: 0 }
+failure: Profile the change.
+determinism: { class: controlled, sources: [concurrency], controls: Dedicated runner. }

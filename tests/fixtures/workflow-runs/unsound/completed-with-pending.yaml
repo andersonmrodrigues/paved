@@ -1,0 +1,35 @@
+# expect-problem: run is completed but not every phase is completed or skipped
+apiVersion: paved/v1
+kind: WorkflowRun
+id: sample-run
+workflow:
+  id: core.bug
+  version: 0.2.0
+revision: 3f2a9c1
+started_at: 2026-09-27T10:00:00Z
+ended_at: 2026-09-27T12:00:00Z
+status: completed
+inputs:
+  - id: report
+    value: Sample input.
+    source: human
+phases:
+  - phase: context
+    status: completed
+  - phase: discovery
+    status: completed
+  - phase: planning
+    status: pending
+  - phase: implementation
+    status: pending
+  - phase: validation
+    status: pending
+  - phase: verification
+    status: pending
+  - phase: evidence
+    status: pending
+  - phase: review
+    status: pending
+  - phase: completion
+    status: pending
+evidence: .paved/generated/evidence/sample-run.yaml

@@ -1,0 +1,41 @@
+# expect-error: ci or stronger is required
+# minimum-recorder: ci
+# The project requires CI-recorded checks; a self-reported pass does not count.
+apiVersion: paved/v1
+kind: Evidence
+id: self-reported
+created_at: 2026-01-01T00:00:00Z
+change:
+  summary: Sample.
+  revision: 4f2c9e1
+plan:
+  required: [unit]
+  evidence: [check-result]
+claims:
+  - id: works
+    statement: It works.
+    type: behavior
+    supported_by: [unit]
+checks:
+  - id: unit
+    type: unit
+    status: passed
+    execution:
+      recorded_by: agent
+      revision: 4f2c9e1
+      started_at: 2026-01-01T00:00:00Z
+    check: project.test.unit
+    tool:
+      id: project.test.unit
+      version: 1.0.0
+    exit_code: 0
+completion:
+  status: complete
+  verification: verified
+  decided_by: agent
+  criteria:
+    - statement: Works.
+      met: true
+      supported_by: [works]
+verification:
+  profile: .paved/verification/profile.yaml

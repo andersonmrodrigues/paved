@@ -1,0 +1,7 @@
+apiVersion: paved/v1
+kind: Project
+project:
+  name: sample
+  owners: [sample-team]
+paved:
+  core: ^0.1.0

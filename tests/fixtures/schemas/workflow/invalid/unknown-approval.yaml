@@ -1,0 +1,36 @@
+# expect-error: /phases/4/gates/0/approval must be equal to one of the allowed values
+apiVersion: paved/v1
+kind: Workflow
+id: project.sample
+title: Sample
+description: Sample workflow. Use when testing fixtures.
+version: 0.1.0
+status: experimental
+change_type: configuration
+inputs:
+  - id: request
+    description: What to change.
+    required: true
+phases:
+  - phase: context
+    goal: Restate the task.
+    skills: [core.discovery.context-discovery, project.discovery.sample]
+  - phase: implementation
+    goal: Change it.
+  - phase: verification
+    goal: Prove it.
+    verification:
+      required: [unit]
+  - phase: evidence
+    goal: Record evidence.
+  - phase: completion
+    goal: Finish.
+    gates:
+      - id: sign-off
+        condition: Signed off.
+        approval: manager
+evidence:
+  required: [check-result]
+outputs: [change, evidence]
+completion:
+  criteria: [The change is applied.]

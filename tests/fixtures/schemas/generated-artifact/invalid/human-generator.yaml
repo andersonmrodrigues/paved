@@ -1,0 +1,10 @@
+# expect-error: /provenance/generator must NOT be valid
+apiVersion: paved/v1
+kind: GeneratedArtifact
+artifact: { path: notes/sample.md, format: markdown }
+ownership: disposable
+provenance:
+  generator: human
+  generated_at: 2026-01-01T00:00:00Z
+  sources:
+    - { id: owner, type: human, location: Sample. }

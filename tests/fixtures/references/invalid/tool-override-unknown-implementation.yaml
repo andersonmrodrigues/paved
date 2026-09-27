@@ -1,0 +1,9 @@
+# expect-error: references unknown tool-implementation
+apiVersion: paved/v1
+kind: Overrides
+tools:
+  - target: core.git.status
+    action: select-implementation
+    implementation: project.git.missing
+    owner: example-team
+    reason: Synthetic reference fixture.

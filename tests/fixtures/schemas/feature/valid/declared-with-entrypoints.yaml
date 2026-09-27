@@ -1,0 +1,16 @@
+apiVersion: paved/v1
+kind: Feature
+id: sample
+name: Sample
+summary: Lets a user do a sample thing.
+status: active
+confidence: declared
+actors: [sample-user]
+code:
+  paths: [src/sample/**]
+  entrypoints:
+    - { kind: http, name: POST /samples, location: { path: src/sample/entry.ext, lines: "10-20" }, confidence: observed }
+data:
+  - { name: sample-store, access: read-write, confidence: inferred }
+dependencies:
+  features: [other-sample]

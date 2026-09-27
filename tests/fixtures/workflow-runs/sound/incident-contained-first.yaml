@@ -1,0 +1,39 @@
+# Containment before investigation, waiting for a human to approve the mitigation.
+apiVersion: paved/v1
+kind: WorkflowRun
+id: sample-run
+workflow:
+  id: core.incident
+  version: 0.2.0
+revision: 3f2a9c1
+started_at: 2026-09-27T10:00:00Z
+status: awaiting-approval
+inputs:
+  - id: signal
+    value: Sample input.
+    source: human
+phases:
+  - phase: context
+    status: completed
+    gates:
+      - id: impact-assessed
+        status: passed
+  - phase: discovery
+    status: skipped
+    skip_reason: Impact is growing and disabling the new path is a known reversible containment.
+  - phase: planning
+    status: running
+    gates:
+      - id: mitigation-approved
+        status: awaiting-approval
+        requested_at: 2026-09-27T10:20:00Z
+  - phase: implementation
+    status: pending
+  - phase: verification
+    status: pending
+  - phase: evidence
+    status: pending
+  - phase: review
+    status: pending
+  - phase: completion
+    status: pending

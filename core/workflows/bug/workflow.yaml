@@ -1,0 +1,75 @@
+apiVersion: paved/v1
+kind: Workflow
+id: core.bug
+title: Bug fix
+description: >-
+  Takes a defect from report to a verified fix with a regression test, never through a
+  speculative fix. Use when the software behaves differently from its intended behavior.
+version: 0.2.0
+status: experimental
+change_type: bug-fix
+inputs:
+  - id: report
+    description: The observed behavior and where it was seen.
+    required: true
+  - id: expected-behavior
+    description: What should have happened instead.
+    required: false
+  - id: reproduction
+    description: Steps, inputs or raw failure output that show the defect.
+    required: false
+  - id: environment
+    description: Where the defect was observed (version, configuration, data).
+    required: false
+context:
+  required: []
+  optional: [feature-map, verification]
+rules: [core.testing.regression-test-for-bug-fix]
+phases:
+  - phase: context
+    goal: Capture the reported behavior, the expected behavior and the raw failure data.
+    skills: [core.discovery.context-discovery]
+    gates:
+      - id: expected-behavior-known
+        condition: Expected behavior is stated by the report, the tests or a human.
+  - phase: discovery
+    goal: Reproduce the defect, isolate it and confirm its root cause.
+    skills: [core.debugging.bug-investigation]
+    gates:
+      - id: cause-confirmed
+        condition: The root cause is confirmed by an observation, not only hypothesized.
+  - phase: planning
+    goal: Plan the fix at the cause and the regression test that proves it.
+    skills: [core.debugging.bug-investigation]
+  - phase: implementation
+    goal: Write the failing regression test, then the fix.
+    skills: [core.debugging.bug-investigation]
+    gates:
+      - id: test-failed-first
+        condition: The regression test failed on the unfixed code for the reported reason.
+  - phase: validation
+    goal: Build, lint and confirm the regression test now passes.
+    verification:
+      recommended: [build, static-analysis, unit]
+  - phase: verification
+    goal: Run the suites covering the affected code.
+    verification:
+      required: [unit]
+      recommended: [integration, e2e]
+  - phase: evidence
+    goal: Record the reproduction, the cause, the regression test results and the diff.
+  - phase: review
+    goal: Check the fix explains the cause and look for the same cause elsewhere.
+    skills: [core.code-review.change-review]
+  - phase: completion
+    goal: Confirm every completion criterion and report the outcome.
+    gates:
+      - id: criteria-met
+        condition: The evidence record is complete and valid.
+evidence:
+  required: [reproduction, check-result, diff]
+outputs: [change, evidence, review]
+completion:
+  criteria:
+    - The evidence explains the cause, with the observation that confirmed it.
+    - Other occurrences of the same cause are fixed, ruled out or recorded as follow-ups.

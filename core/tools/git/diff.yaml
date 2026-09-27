@@ -1,0 +1,51 @@
+apiVersion: paved/v1
+kind: Tool
+id: core.git.diff
+title: Show changes
+purpose: >
+  Inspect exactly what a change modifies, for self-review and to attach a diff
+  artifact to evidence.
+safety: read-only
+inputs:
+  - name: base
+    description: Revision to compare against. Omit to compare the working tree with
+      the index.
+    required: false
+    pattern: ^[A-Za-z0-9._/~^@{}-]+$
+    type: string
+outputs:
+  format: text
+  description: Unified diff.
+side_effects: []
+confirmation: none
+examples:
+  - description: Changes since the main branch.
+  - description: Unstaged changes.
+version: 0.1.0
+capability: git-diff
+permissions:
+  - repository-read
+environments:
+  - local
+  - ci
+  - ephemeral
+preconditions:
+  - id: precondition-1
+    kind: repository
+    description: The working directory is inside a Git repository.
+idempotency: idempotent
+timeout_seconds: 60
+retry:
+  max_attempts: 1
+  backoff_seconds: 0
+errors:
+  - execution-failure
+  - failed-precondition
+  - timeout
+evidence:
+  capture:
+    - revision
+    - environment
+    - timestamps
+    - output-digest
+availability: available

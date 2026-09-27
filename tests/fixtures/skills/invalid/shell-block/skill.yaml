@@ -1,0 +1,15 @@
+# expect-problem: shell command block
+apiVersion: paved/v1
+kind: Skill
+id: project.development.shell-block
+version: 0.1.0
+status: experimental
+category: development
+context:
+  required: []
+tools:
+  required: [core.git.diff]
+verification:
+  required: [unit]
+evidence:
+  required: [check-result]

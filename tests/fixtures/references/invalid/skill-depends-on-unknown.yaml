@@ -1,0 +1,15 @@
+# expect-error: references unknown skill "core.testing.no-such-skill"
+apiVersion: paved/v1
+kind: Skill
+id: project.development.sample
+version: 0.1.0
+status: experimental
+category: development
+context:
+  required: []
+depends_on:
+  required: [core.testing.no-such-skill]
+verification:
+  required: [unit]
+evidence:
+  required: [check-result]

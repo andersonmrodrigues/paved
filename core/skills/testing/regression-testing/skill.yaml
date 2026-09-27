@@ -1,0 +1,17 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.testing.regression-testing
+version: 0.2.0
+status: experimental
+category: testing
+context:
+  required: []
+  optional: [verification]
+rules: [core.testing.regression-test-for-bug-fix]
+depends_on:
+  optional: [core.testing.unit-testing, core.testing.integration-testing, core.testing.e2e-testing]
+verification:
+  required: [unit]
+  recommended: [integration, e2e]
+evidence:
+  required: [check-result]

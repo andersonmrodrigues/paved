@@ -1,0 +1,26 @@
+apiVersion: paved/v1
+kind: WorkflowRun
+id: 2026-09-27-sample
+workflow:
+  id: core.bug
+  version: 0.2.0
+revision: 3f2a9c1
+started_at: 2026-09-27T10:00:00Z
+ended_at: 2026-09-27T11:00:00Z
+status: blocked
+inputs: []
+phases:
+  - phase: context
+    status: blocked
+    failure:
+      code: input-missing
+      phase: context
+      reason: No defect report was given.
+      retry: requires-human
+      next_action: A human provides the report.
+failure:
+  code: input-missing
+  phase: context
+  reason: No defect report was given.
+  retry: requires-human
+  next_action: A human provides the report.

@@ -1,0 +1,79 @@
+---
+name: security-review
+description: >-
+  Reviews a change for security impact: trust boundaries crossed, untrusted input
+  handling, authentication and authorization, secrets, sensitive data exposure and new
+  dependencies. Use before completing any change that touches input handling, access
+  control, data exposure, configuration or dependencies.
+---
+
+# Security review
+
+## When to use
+
+In the `review` phase of any change that touches external input, access control,
+persistence of sensitive data, logging, configuration, dependencies or infrastructure.
+When the change adds a new component, interface or data flow, run `threat-modeling`
+first: a review checks the code against threats someone has named.
+
+## Required context
+
+None is required. Useful: the integrations and architecture context that identify trust
+boundaries (what is external, who calls what), and project security rules.
+
+## Preconditions
+
+The diff is final enough to review.
+
+## Procedure
+
+1. **List the trust boundaries** the change touches: where data enters from users, other
+   services, files, queues or configuration.
+2. **Check each entry point**: input is validated at the boundary, and output is encoded
+   for its destination (queries, markup, commands, file paths, logs).
+3. **Check authentication and authorization** on every new or changed operation. A
+   missing check is a finding even if "the interface does not expose it".
+4. **Check secrets and sensitive data**: nothing written to code, logs, errors, evidence
+   or test data; nothing returned to a caller who should not see it.
+5. **Check new dependencies**: why they are needed, where they come from, whether they
+   are maintained, and whether they bring known vulnerabilities.
+6. **Check failure behavior**: errors do not leak internals, and a failed security check
+   denies rather than allows.
+7. **Run the security checks** the profile has.
+8. **Record findings** with severity and the boundary they concern. Fix what is in
+   scope; raise what is not.
+
+## Tools
+
+`core.git.diff` to review exactly what changed.
+
+## Rules
+
+`core.security.no-secrets-in-source` always; project security rules by scope.
+
+## Verification
+
+Required: `security` — a security check when the profile has one, otherwise a gap
+stating that only the manual review below was done. Recommended: `static-analysis`.
+
+## Evidence
+
+A review artifact listing the boundaries examined and the findings. An agent-recorded
+review supports no claim by itself; it tells the human reviewer where to look.
+
+## Completion criteria
+
+- Every touched boundary was examined and is listed in the review.
+- No unresolved finding of high severity remains in scope.
+
+## Failure modes
+
+| Failure | Signal | Response |
+|---|---|---|
+| Review of intent, not code | Findings describe what the code should do | Re-read the diff |
+| Trusting internal callers | "Only called internally" with no enforcement | Treat as a boundary or record the assumption |
+| Scanner as the review | Only tool output is reported | Walk steps 1 to 6 as well |
+
+## References
+
+None.

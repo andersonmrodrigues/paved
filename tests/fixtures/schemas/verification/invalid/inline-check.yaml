@@ -1,0 +1,6 @@
+# expect-error: /checks/0 must be string
+# A profile lists check ids; the command belongs to the tool the check names.
+apiVersion: paved/v1
+kind: VerificationProfile
+checks:
+  - { id: unit, type: unit, command: ./test }

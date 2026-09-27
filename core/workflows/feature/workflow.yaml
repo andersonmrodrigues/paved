@@ -1,0 +1,73 @@
+apiVersion: paved/v1
+kind: Workflow
+id: core.feature
+title: Feature
+description: >-
+  Adds behavior or changes existing behavior on purpose, from request to reviewed,
+  verified change. Use when a task asks the software to do something it does not do yet.
+version: 0.2.0
+status: experimental
+change_type: feature
+inputs:
+  - id: request
+    description: What the software should do and for whom.
+    required: true
+  - id: acceptance-criteria
+    description: Observable conditions that mean the request is met.
+    required: false
+  - id: constraints
+    description: Deadlines, compatibility or scope limits stated with the request.
+    required: false
+context:
+  required: []
+  optional: [feature-map, product, architecture, rules, verification]
+rules: [core.architecture.follow-existing-patterns]
+phases:
+  - phase: context
+    goal: Restate the requested behavior, its scope and what is out of scope.
+    skills: [core.discovery.context-discovery]
+    gates:
+      - id: scope-clear
+        condition: Acceptance behavior is stated, and ambiguous points are resolved by a human or listed as out of scope.
+  - phase: discovery
+    goal: Locate the affected code, the pattern to follow, the rules in scope and the unknowns.
+    skills: [core.discovery.context-discovery]
+  - phase: planning
+    goal: List the claims the feature will make and the check that will prove each one.
+    skills: [core.development.feature-development]
+    gates:
+      - id: claims-planned
+        condition: Every acceptance behavior maps to at least one claim with a planned check or artifact.
+      - id: boundary-exception
+        when: The plan crosses a declared architectural boundary.
+        condition: A human accepted the boundary exception.
+        approval: architecture-exception
+  - phase: implementation
+    goal: Implement the claims following the chosen pattern, with tests.
+    skills: [core.development.feature-development]
+  - phase: validation
+    goal: Build, lint and run targeted tests while working.
+    verification:
+      recommended: [build, static-analysis, unit]
+  - phase: verification
+    goal: Run the profile checks that prove each claim.
+    verification:
+      required: [unit]
+      recommended: [integration, e2e]
+  - phase: evidence
+    goal: Record claims, check results, artifacts and gaps.
+  - phase: review
+    goal: Review scope, correctness, patterns, security impact and evidence.
+    skills: [core.code-review.change-review]
+  - phase: completion
+    goal: Confirm every completion criterion and report the outcome.
+    gates:
+      - id: criteria-met
+        condition: The evidence record is complete and valid.
+evidence:
+  required: [check-result, diff]
+outputs: [change, evidence, review, context-update]
+completion:
+  criteria:
+    - Every acceptance behavior is a supported claim in the evidence.
+    - The feature map entry is updated when the feature's code paths or entrypoints changed.

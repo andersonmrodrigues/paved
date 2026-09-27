@@ -1,0 +1,12 @@
+# expect-error: /retry/max_attempts must be <= 3
+apiVersion: paved/v1
+kind: Check
+id: project.test.e2e
+title: User flows work
+purpose: Main user flows complete.
+type: e2e
+tool: project.test.run-e2e
+expected: { description: Every flow passes., exit_code: 0 }
+failure: Read the trace.
+determinism: { class: controlled, sources: [network], controls: Recorded responses. }
+retry: { class: retryable, max_attempts: 10 }

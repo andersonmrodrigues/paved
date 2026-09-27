@@ -1,0 +1,7 @@
+# expect-error: must have required property 'sha256'
+apiVersion: paved/v1
+kind: Lock
+resolved_at: 2026-01-01T00:00:00Z
+core:
+  version: 0.1.0
+  source: sample-channel/0.1.0

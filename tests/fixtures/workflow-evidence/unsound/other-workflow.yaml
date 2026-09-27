@@ -1,0 +1,64 @@
+# Checked against core.bug.
+# expect-problem: evidence names workflow core.feature, not core.bug
+apiVersion: paved/v1
+kind: Evidence
+id: bug-fix
+created_at: 2026-01-01T00:00:00Z
+producer:
+  workflow: core.feature
+  skills: [core.debugging.bug-investigation]
+change:
+  summary: Export every row.
+  revision: 4f2c9e1
+plan:
+  required: [unit]
+  recommended: [build, static-analysis, integration, e2e]
+  evidence: [reproduction, check-result, diff]
+claims:
+  - id: fixed
+    statement: The export contains every row.
+    type: behavior
+    supported_by: [regression]
+checks:
+  - id: regression
+    type: unit
+    status: passed
+    execution:
+      recorded_by: ci
+      revision: 4f2c9e1
+      started_at: 2026-01-01T00:00:00Z
+      run_url: https://ci.example.invalid/runs/1
+    check: project.test.unit
+    tool:
+      id: project.test.unit
+      version: 1.0.0
+    exit_code: 0
+artifacts:
+  - id: repro
+    kind: reproduction
+    description: Three rows exported before and after.
+    recorded_by: agent
+    revision: 4f2c9e1
+    created_at: 2026-01-01T00:00:00Z
+    source:
+      type: file
+      location: .paved/generated/evidence/bug-fix/repro.md
+  - id: patch
+    kind: diff
+    description: Loop bound fixed.
+    recorded_by: paved
+    revision: 4f2c9e1
+    created_at: 2026-01-01T00:00:00Z
+    source:
+      type: file
+      location: .paved/generated/evidence/bug-fix/patch.md
+completion:
+  status: complete
+  verification: verified
+  decided_by: human
+  criteria:
+    - statement: Regression test passes.
+      met: true
+      supported_by: [fixed]
+verification:
+  profile: .paved/verification/profile.yaml

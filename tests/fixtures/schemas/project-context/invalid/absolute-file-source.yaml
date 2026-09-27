@@ -1,0 +1,11 @@
+# expect-error: /provenance/sources/0/location must NOT be valid
+apiVersion: paved/v1
+kind: ContextDocument
+area: architecture
+title: Sample
+confidence: observed
+provenance:
+  generator: project-context/architecture
+  generated_at: 2026-01-01T00:00:00Z
+  sources:
+    - { id: build, type: file, location: /etc/build.config }

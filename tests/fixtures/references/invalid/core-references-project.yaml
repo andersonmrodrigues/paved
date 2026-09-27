@@ -1,0 +1,26 @@
+# expect-error: core content may only reference core or core
+apiVersion: paved/v1
+kind: Skill
+version: 0.1.0
+status: experimental
+id: core.testing.sample
+category: testing
+context:
+  required: []
+rules: [project.quality.sample]
+verification:
+  required: [unit]
+evidence:
+  required: [check-result]
+---
+apiVersion: paved/v1
+kind: Rule
+id: project.quality.sample
+title: Sample
+rationale: Sample.
+applies_to: {}
+rule: Sample.
+enforcement:
+  mechanism: review
+severity: warning
+verification: Sample.

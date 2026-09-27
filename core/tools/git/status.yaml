@@ -1,0 +1,44 @@
+apiVersion: paved/v1
+kind: Tool
+id: core.git.status
+title: Working tree status
+purpose: >
+  See which files are modified, staged or untracked before and after a change,
+  to confirm the change touches only what was intended.
+safety: read-only
+inputs: []
+outputs:
+  format: text
+  description: One line per changed path, prefixed by a two-letter status code.
+side_effects: []
+confirmation: none
+examples:
+  - description: List changes in the working tree.
+version: 0.1.0
+capability: git-status
+permissions:
+  - repository-read
+environments:
+  - local
+  - ci
+  - ephemeral
+preconditions:
+  - id: precondition-1
+    kind: repository
+    description: The working directory is inside a Git repository.
+idempotency: idempotent
+timeout_seconds: 30
+retry:
+  max_attempts: 1
+  backoff_seconds: 0
+errors:
+  - execution-failure
+  - failed-precondition
+  - timeout
+evidence:
+  capture:
+    - revision
+    - environment
+    - timestamps
+    - output-digest
+availability: available

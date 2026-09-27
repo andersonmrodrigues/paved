@@ -1,0 +1,12 @@
+# expect-error: must have required property 'id'
+apiVersion: paved/v1
+kind: Skill
+version: 0.1.0
+status: experimental
+category: testing
+context:
+  required: []
+verification:
+  required: [unit]
+evidence:
+  required: [check-result]

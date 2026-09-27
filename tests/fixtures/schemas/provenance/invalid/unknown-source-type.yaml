@@ -1,0 +1,5 @@
+# expect-error: must be equal to one of the allowed values
+generator: human
+generated_at: 2026-01-01T00:00:00Z
+sources:
+  - { id: chat, type: conversation, location: Sample. }

@@ -1,0 +1,20 @@
+# expect-error: targets project content "project.quality.sample"
+apiVersion: paved/v1
+kind: Overrides
+rules:
+  - target: project.quality.sample
+    action: disable
+    owner: sample-team
+    reason: Sample.
+---
+apiVersion: paved/v1
+kind: Rule
+id: project.quality.sample
+title: Sample
+rationale: Sample.
+applies_to: {}
+rule: Sample.
+enforcement:
+  mechanism: review
+severity: warning
+verification: Sample.

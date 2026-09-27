@@ -1,0 +1,6 @@
+# expect-error: must have required property 'provenance'
+apiVersion: paved/v1
+kind: ContextDocument
+area: domain
+title: Sample
+confidence: inferred

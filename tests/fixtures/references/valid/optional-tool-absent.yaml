@@ -1,0 +1,19 @@
+# An optional tool may be missing from the effective set; the skill says what to do
+# without it.
+apiVersion: paved/v1
+kind: Skill
+id: project.debugging.sample
+version: 0.1.0
+status: experimental
+category: debugging
+context:
+  required: []
+tools:
+  required: [core.git.diff]
+  optional: [project.observability.logs]
+depends_on:
+  required: [core.debugging.root-cause-analysis]
+verification:
+  required: [runtime]
+evidence:
+  required: [log]
