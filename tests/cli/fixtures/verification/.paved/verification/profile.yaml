@@ -1,0 +1,6 @@
+apiVersion: paved/v1
+kind: VerificationProfile
+checks:
+  - project.verify.marker
+policy:
+  minimum_recorder: agent

@@ -1,0 +1,51 @@
+apiVersion: paved/v1
+kind: Tool
+id: project.tool.marker
+version: 0.1.0
+title: Marker Tool
+purpose: Fixture Tool that writes a marker only when explicitly invoked.
+capability: marker
+safety: safe-mutation
+permissions:
+  - process-control
+environments:
+  - local
+inputs:
+  - name: mode
+    description: Fixture mode.
+    type: string
+    required: true
+    pattern: "^(pass|fail|timeout)$"
+  - name: secret
+    description: Sensitive sentinel to scrub.
+    type: string
+    required: false
+    sensitive: true
+  - name: literal
+    description: Shell metacharacter probe.
+    type: string
+    required: false
+outputs:
+  format: text
+  description: Fixture text output.
+side_effects:
+  - process
+  - filesystem
+preconditions: []
+idempotency: idempotent
+timeout_seconds: 5
+retry:
+  max_attempts: 1
+  backoff_seconds: 0
+errors:
+  - execution-failure
+  - timeout
+  - failed-precondition
+availability: available
+evidence:
+  capture:
+    - revision
+    - environment
+    - timestamps
+    - output-digest
+confirmation: none

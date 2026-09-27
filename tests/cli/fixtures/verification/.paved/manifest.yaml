@@ -1,0 +1,7 @@
+apiVersion: paved/v1
+kind: Project
+project:
+  name: verification-fixture
+paved:
+  core: ^0.2.0
+adapters: []

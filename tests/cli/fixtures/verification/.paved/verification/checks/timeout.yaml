@@ -1,0 +1,22 @@
+apiVersion: paved/v1
+kind: Check
+id: project.verify.timeout
+title: Timeout marker verification
+purpose: Preserve a verification timeout.
+type: unit
+tool: project.tool.marker
+inputs:
+  mode: timeout
+  secret: PAVED_VERIFY_SECRET
+  literal: timeout
+expected:
+  description: The marker exits successfully.
+  exit_code: 0
+timeout_seconds: 1
+environment:
+  kinds: [local]
+failure: The marker check timed out.
+determinism:
+  class: deterministic
+retry:
+  class: non-retryable

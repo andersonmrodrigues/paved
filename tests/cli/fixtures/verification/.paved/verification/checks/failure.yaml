@@ -1,0 +1,22 @@
+apiVersion: paved/v1
+kind: Check
+id: project.verify.failure
+title: Failing marker verification
+purpose: Preserve a nonzero verification failure.
+type: unit
+tool: project.tool.marker
+inputs:
+  mode: fail
+  secret: PAVED_VERIFY_SECRET
+  literal: failure
+expected:
+  description: The marker exits successfully.
+  exit_code: 0
+timeout_seconds: 5
+environment:
+  kinds: [local]
+failure: The marker check failed.
+determinism:
+  class: deterministic
+retry:
+  class: non-retryable

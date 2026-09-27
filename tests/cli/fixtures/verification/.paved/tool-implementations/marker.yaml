@@ -1,0 +1,22 @@
+apiVersion: paved/v1
+kind: ToolImplementation
+id: project.tool.marker
+tool: project.tool.marker
+version: 0.1.0
+contract: ^0.1.0
+source: project
+environments:
+  - local
+invocation:
+  type: command
+  executable: .paved/tools/marker.mjs
+  arguments: []
+  input_bindings:
+    - input: mode
+      flag: --mode
+    - input: secret
+      flag: --secret
+    - input: literal
+      flag: --literal
+  timeout_seconds: 5
+availability: available
