@@ -86,7 +86,29 @@ function snapshotFiles(root: string): Map<string, string> {
   return files;
 }
 
-async function run(projectRoot: string, command: "status" | "doctor", extra: readonly string[] = []): Promise<CommandResult> {
+function snapshotApplicationFiles(root: string): Map<string, string> {
+  const files = snapshotFiles(root);
+  for (const path of [...files.keys()]) {
+    if (path === ".paved" || path.startsWith(".paved/")) files.delete(path);
+  }
+  return files;
+}
+
+function freshConsumer(name: string): string {
+  const dir = sandbox(name);
+  mkdirSync(join(dir, "web/src"), { recursive: true });
+  writeFileSync(join(dir, "README.md"), `# ${name}\n`);
+  writeFileSync(join(dir, "web/package.json"), JSON.stringify({
+    name,
+    dependencies: { "@angular/core": "^19.2.15" },
+    scripts: { test: "node --test" },
+  }));
+  writeFileSync(join(dir, "web/angular.json"), "{\"projects\":{}}");
+  writeFileSync(join(dir, "web/src/app-routing.module.ts"), "const routes = [{ path: 'courses', component: CoursesPage }];\n");
+  return dir;
+}
+
+async function run(projectRoot: string, command: "init" | "generate" | "status" | "doctor", extra: readonly string[] = []): Promise<CommandResult> {
   return dispatchCli({
     argv: [command, "--project", projectRoot, ...extra],
     cwd: ROOT,
@@ -440,6 +462,201 @@ describe("status and doctor commands", () => {
       for (const diagnostic of result.diagnostics) assert.match(human, new RegExp(diagnostic.code));
       assert.match(human, /verificationProfile/);
       assert.match(human, /missing/);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("init and generate commands", () => {
+  it("plans a fresh init in dry-run mode without creating .paved", async () => {
+    const project = freshConsumer("init-dry-run");
+    try {
+      const before = snapshotFiles(project);
+
+      const result = await run(project, "init", ["--dry-run"]);
+      const data = dataOf(result) as { plannedWrites?: string[]; selectedAdapters?: string[]; generation?: { executions?: { generator: string }[] } };
+
+      assert.equal(exitCode(result), 0);
+      assert.deepEqual(snapshotFiles(project), before);
+      assert.equal(existsSync(join(project, ".paved")), false);
+      assert.ok(data.plannedWrites?.includes(".paved/manifest.yaml"));
+      assert.ok(data.plannedWrites?.includes(".paved/paved.lock"));
+      assert.ok(data.selectedAdapters?.includes("technology/angular"));
+      assert.ok(data.generation?.executions?.some((entry) => entry.generator === "project-context/architecture"));
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects adapter override flags for init and generate instead of ignoring them", async () => {
+    const initProject = freshConsumer("init-adapter-flag");
+    const generateProject = freshConsumer("generate-adapter-flag");
+    try {
+      initializeConsumer(ROOT, generateProject, "generate-adapter-flag");
+      const initBefore = snapshotFiles(initProject);
+      const generateBefore = snapshotFiles(generateProject);
+
+      const initResult = await run(initProject, "init", ["--adapter", "technology/angular"]);
+      const generateResult = await run(generateProject, "generate", ["--adapter", "technology/angular"]);
+
+      assert.equal(primaryCategory(initResult), "usage");
+      assert.equal(primaryCategory(generateResult), "usage");
+      assertCode(initResult, "PAVED_CLI_USAGE");
+      assertCode(generateResult, "PAVED_CLI_USAGE");
+      assert.deepEqual(snapshotFiles(initProject), initBefore);
+      assert.deepEqual(snapshotFiles(generateProject), generateBefore);
+    } finally {
+      rmSync(initProject, { recursive: true, force: true });
+      rmSync(generateProject, { recursive: true, force: true });
+    }
+  });
+
+  it("initializes a fresh consumer and honors --no-generate", async () => {
+    const project = freshConsumer("init-no-generate");
+    try {
+      const appBefore = snapshotApplicationFiles(project);
+
+      const result = await run(project, "init", ["--no-generate"]);
+
+      assert.equal(exitCode(result), 0);
+      assert.equal(existsSync(join(project, ".paved/manifest.yaml")), true);
+      assert.equal(existsSync(join(project, ".paved/paved.lock")), true);
+      assert.equal(existsSync(join(project, ".paved/project")), false);
+      assert.equal(existsSync(join(project, ".paved/generated/state/last-run.json")), false);
+      assert.deepEqual(snapshotApplicationFiles(project), appBefore);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("runs generation during fresh init unless --no-generate is supplied", async () => {
+    const project = freshConsumer("init-with-generate");
+    try {
+      const appBefore = snapshotApplicationFiles(project);
+
+      const result = await run(project, "init");
+
+      assert.equal(exitCode(result), 0);
+      assert.equal(existsSync(join(project, ".paved/manifest.yaml")), true);
+      assert.equal(existsSync(join(project, ".paved/paved.lock")), true);
+      assert.equal(existsSync(join(project, ".paved/generated/state/last-run.json")), true);
+      assert.equal(existsSync(join(project, ".paved/project/architecture/overview.md")), true);
+      assert.deepEqual(snapshotApplicationFiles(project), appBefore);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to reset already initialized state and leaves files byte-identical", async () => {
+    const project = freshConsumer("init-existing");
+    try {
+      initializeConsumer(ROOT, project, "init-existing");
+      const architecture = join(project, ".paved/project/architecture/overview.md");
+      mkdirSync(dirname(architecture), { recursive: true });
+      writeFileSync(architecture, "human maintained context\n");
+      const before = snapshotFiles(project);
+
+      const result = await run(project, "init");
+
+      assert.equal(primaryCategory(result), "config");
+      assertCode(result, "PAVED_INIT_ALREADY_INITIALIZED");
+      assert.deepEqual(snapshotFiles(project), before);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("validates existing manifest and lock before refusing init", async () => {
+    const project = freshConsumer("init-invalid-existing");
+    try {
+      mkdirSync(join(project, ".paved"), { recursive: true });
+      writeFileSync(join(project, ".paved/manifest.yaml"), "apiVersion: paved/v1\nkind: Project\nproject: bad\n");
+      writeFileSync(join(project, ".paved/paved.lock"), "apiVersion: paved/v1\nkind: Lock\ncore: bad\n");
+      const before = snapshotFiles(project);
+
+      const result = await run(project, "init");
+
+      assert.equal(primaryCategory(result), "config");
+      assertCode(result, "PAVED_MANIFEST_INVALID");
+      assertCode(result, "PAVED_LOCK_INVALID");
+      assert.deepEqual(snapshotFiles(project), before);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("generate supports selectors, dry-run immutability, and source-file safety", async () => {
+    const project = freshConsumer("generate-selectors");
+    try {
+      initializeConsumer(ROOT, project, "generate-selectors");
+      const beforeDryRun = snapshotFiles(project);
+      const appBefore = snapshotApplicationFiles(project);
+
+      const dryRun = await run(project, "generate", ["--dry-run", "project-context/feature-map"]);
+      const dryRunData = dataOf(dryRun) as { executions?: { generator: string }[] };
+
+      assert.equal(exitCode(dryRun), 0);
+      assert.deepEqual(snapshotFiles(project), beforeDryRun);
+      assert.deepEqual(dryRunData.executions?.map((entry) => entry.generator), [
+        "project-context/architecture",
+        "project-context/domain",
+        "project-context/product",
+        "project-context/feature-map",
+      ]);
+
+      const generated = await run(project, "generate", ["project-context/feature-map"]);
+      const generatedData = dataOf(generated) as { executions?: { generator: string }[] };
+
+      assert.equal(exitCode(generated), 0);
+      assert.deepEqual(generatedData.executions?.map((entry) => entry.generator), [
+        "project-context/architecture",
+        "project-context/domain",
+        "project-context/product",
+        "project-context/feature-map",
+      ]);
+      assert.equal(existsSync(join(project, ".paved/project/feature-map/web-courses.yaml")), true);
+      assert.equal(existsSync(join(project, ".paved/generated/proposals/verification/profile.yaml")), false);
+      assert.deepEqual(snapshotApplicationFiles(project), appBefore);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("generate maps invalid selectors to usage diagnostics without writes", async () => {
+    const project = freshConsumer("generate-invalid-selector");
+    try {
+      initializeConsumer(ROOT, project, "generate-invalid-selector");
+      const before = snapshotFiles(project);
+
+      const result = await run(project, "generate", ["project-context/not-real"]);
+
+      assert.equal(primaryCategory(result), "usage");
+      assertCode(result, "PAVED_GENERATOR_SELECTOR_UNKNOWN");
+      assert.deepEqual(snapshotFiles(project), before);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("generate reports conflicts and proposals without overwriting human edits", async () => {
+    const project = freshConsumer("generate-conflict");
+    try {
+      initializeConsumer(ROOT, project, "generate-conflict");
+      await run(project, "generate", ["project-context/architecture"]);
+      const architecture = join(project, ".paved/project/architecture/overview.md");
+      const humanEdited = readFileSync(architecture, "utf8").replace("Implemented structure", "Human maintained structure");
+      writeFileSync(architecture, humanEdited);
+      const appBefore = snapshotApplicationFiles(project);
+
+      const result = await run(project, "generate", ["project-context/architecture"]);
+      const data = dataOf(result) as { conflicts?: string[]; proposals?: string[] };
+
+      assert.equal(primaryCategory(result), "conflict");
+      assert.deepEqual(data.conflicts, ["project-context/architecture"]);
+      assert.ok(data.proposals?.some((path) => path === ".paved/generated/proposals/project/architecture/overview.md"));
+      assert.equal(readFileSync(architecture, "utf8"), humanEdited);
+      assert.deepEqual(snapshotApplicationFiles(project), appBefore);
     } finally {
       rmSync(project, { recursive: true, force: true });
     }
