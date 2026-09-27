@@ -27,7 +27,7 @@ $defs:
   adapterId:
     description: "<category>/<name>, matching the adapter's directory under adapters/. Its namespace is adapter-<name>."
     type: string
-    pattern: "^(languages|frameworks|infrastructure|databases)/[a-z0-9]+(-[a-z0-9]+)*$"
+    pattern: "^(languages|frameworks|infrastructure|databases|technology)/[a-z0-9]+(-[a-z0-9]+)*$"
 
   generatorId:
     description: Path of a Core generator directory relative to generators/, for example project-context/domain.

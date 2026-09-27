@@ -23,6 +23,16 @@ properties:
           required: [id]
           properties:
             id: { $ref: "urn:paved:schema:common:v1#/$defs/adapterId" }
+  generators:
+    description: Exact generator contracts available to this consumer; this does not imply that each generator has run.
+    type: array
+    items:
+      allOf:
+        - $ref: "#/$defs/resolved"
+        - type: object
+          required: [id]
+          properties:
+            id: { $ref: "urn:paved:schema:common:v1#/$defs/generatorId" }
 $defs:
   resolved:
     type: object

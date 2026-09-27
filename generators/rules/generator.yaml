@@ -1,8 +1,8 @@
 apiVersion: paved/v1
 kind: Generator
 id: rules
-version: 0.1.0
-status: contract
+version: 0.2.0
+status: experimental
 summary: >
   Proposes project rules from constraints the repository already enforces or states, and from recurring evidence of violations.
 depends_on: [project-context/architecture]

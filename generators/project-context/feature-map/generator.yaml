@@ -1,8 +1,8 @@
 apiVersion: paved/v1
 kind: Generator
 id: project-context/feature-map
-version: 0.1.0
-status: contract
+version: 0.2.0
+status: experimental
 summary: >
   Maps user-visible capabilities to their entrypoints, code paths, tests and relevant context documents, one Feature document per feature.
 depends_on: [project-context/architecture, project-context/product]

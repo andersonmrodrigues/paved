@@ -1,8 +1,8 @@
 apiVersion: paved/v1
 kind: Generator
 id: verification
-version: 0.1.0
-status: contract
+version: 0.2.0
+status: experimental
 summary: >
   Proposes a verification profile from the commands the repository already runs (build files, CI configuration, scripts) and adapter check suggestions.
 depends_on: []
