@@ -2,13 +2,11 @@ import { cpSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { loadYaml } from "../lib/documents.ts";
-import { initializeConsumer, planConsumerInitialization, runGenerators } from "../lib/generator-runtime.ts";
+import { initializeConsumer, isIgnoredSourceEntry, planConsumerInitialization, runGenerators } from "../lib/generator-runtime.ts";
 import { createRegistry } from "../lib/schemas.ts";
 import { createDiagnostic, createResult, type CommandResult, type Diagnostic, type ResultStatus } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
 import { diagnosticsForRun, generateData } from "./generate.ts";
-
-const INIT_DRY_RUN_COPY_SKIP = new Set([".git", ".paved", "node_modules", "target", "dist", "build", ".angular", ".next", ".venv", "venv", ".worktrees", "coverage"]);
 
 function statusFor(diagnostics: readonly Diagnostic[]): ResultStatus {
   if (diagnostics.some((diagnostic) => diagnostic.category !== "findings")) return "failed";
@@ -79,17 +77,21 @@ function usage(message: string): CommandResult {
   });
 }
 
+export function copyProjectForInitDryRun(projectRoot: string, destination: string): void {
+  cpSync(projectRoot, destination, {
+    recursive: true,
+    filter: (source) => {
+      if (source === projectRoot) return true;
+      return !isIgnoredSourceEntry(basename(source));
+    },
+  });
+}
+
 function planDryRunGeneration(invocation: CommandInvocation, projectName: string) {
   const workspace = mkdtempSync(join(tmpdir(), "paved-init-dry-run-"));
   const copy = join(workspace, "consumer");
   try {
-    cpSync(invocation.paths.projectRoot, copy, {
-      recursive: true,
-      filter: (source) => {
-        if (source === invocation.paths.projectRoot) return true;
-        return !INIT_DRY_RUN_COPY_SKIP.has(basename(source));
-      },
-    });
+    copyProjectForInitDryRun(invocation.paths.projectRoot, copy);
     initializeConsumer(invocation.paths.coreRoot, copy, projectName);
     return runGenerators(invocation.paths.coreRoot, copy, { dryRun: true });
   } finally {

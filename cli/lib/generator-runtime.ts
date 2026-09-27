@@ -17,15 +17,23 @@ export interface ConsumerInitializationPlan { manifest: Record<string, unknown>;
 type Registry = ReturnType<typeof createRegistry>;
 interface Contract { apiVersion: string; kind: 'Generator'; id: string; version: string; status: string; summary: string; depends_on?: string[]; inputs: unknown[]; outputs: { path: string; format: string; metadata: string; schema?: string }[]; change_detection: unknown }
 interface Output { path: string; content: string; schema: string }
-const skip = new Set(['.git', '.paved', '.claude', '.agents', '.superpowers', 'node_modules', 'target', 'dist', 'build', '.angular', '.next', '.venv', 'venv', '.worktrees', 'coverage']);
+type WriteOutputStatus = 'written' | 'unchanged' | 'conflict' | 'proposed';
+interface WriteOutputResult { status: WriteOutputStatus; finalContent: string; sha256: string }
+export const IGNORED_SOURCE_ENTRY_NAMES = ['.git', '.paved', '.claude', '.agents', '.superpowers', 'node_modules', 'target', 'dist', 'build', '.angular', '.next', '.venv', 'venv', '.worktrees', 'coverage'] as const;
+const ignoredSourceEntryNames = new Set<string>(IGNORED_SOURCE_ENTRY_NAMES);
+export function isIgnoredSourceEntry(name: string): boolean { return name.startsWith('.env') || ignoredSourceEntryNames.has(name); }
 const sha = (content: string | Buffer) => createHash('sha256').update(content).digest('hex');
+function outputHash(schema: string, content: string): string {
+  if (schema === 'ContextDocument') return sha(content.slice(content.indexOf('\n---\n') + 5));
+  return sha(content);
+}
 function safe(root: string, path: string) { const full = resolve(root, path); if (full !== resolve(root) && !full.startsWith(resolve(root) + sep)) throw new Error(`Path escapes repository: ${path}`); return full; }
 export function hashSource(root: string, path: string) { return sha(readFileSync(safe(root, path))); }
 export function discoverSources(root: string): Source[] {
   const result: Source[] = [];
   function walk(dir: string) {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (skip.has(entry.name) || entry.name.startsWith('.env') || entry.isSymbolicLink()) continue;
+      if (isIgnoredSourceEntry(entry.name) || entry.isSymbolicLink()) continue;
       const full = join(dir, entry.name);
       if (entry.isDirectory()) { walk(full); continue; }
       if (!entry.isFile() || !/\.(md|txt|yaml|yml|json|xml|properties|java|ts|tsx|js|jsx|sql|gradle|sh|py)$/i.test(entry.name) || statSync(full).size > 1024 * 1024) continue;
@@ -184,7 +192,8 @@ function ruleProposals(contract: Contract, sources: Source[], root: string, at: 
   }
   return outputs;
 }
-function writeOutput(root: string, output: Output, registry: Registry, info: ReturnType<typeof coreManifest>, generator: string, dryRun = false): 'written' | 'unchanged' | 'conflict' | 'proposed' {
+function writeOutput(root: string, output: Output, registry: Registry, info: ReturnType<typeof coreManifest>, generator: string, dryRun = false): WriteOutputResult {
+  const result = (status: WriteOutputStatus, finalContent: string): WriteOutputResult => ({ status, finalContent, sha256: outputHash(output.schema, finalContent) });
   const owner = [...info.consumer_layout].sort((a, b) => b.path.length - a.path.length).find(x => output.path.startsWith(x.path))?.ownership;
   if (owner !== 'generated-reviewed' && owner !== 'disposable') throw new Error(`Disallowed output ownership: ${output.path}`);
   const yaml = output.schema === 'ContextDocument' ? parse(output.content.slice(4, output.content.indexOf('\n---\n'))) : parse(output.content);
@@ -195,7 +204,7 @@ function writeOutput(root: string, output: Output, registry: Registry, info: Ret
   let finalContent = output.content;
   if (existsSync(target)) {
     const current = readFileSync(target, 'utf8');
-    if (current === output.content) return 'unchanged';
+    if (current === output.content) return result('unchanged', current);
     const oldDoc = output.schema === 'ContextDocument' ? loadMarkdown(target) : undefined;
     const newBody = output.schema === 'ContextDocument' ? output.content.slice(output.content.indexOf('\n---\n') + 5) : undefined;
     const oldMeta = oldDoc?.frontmatter ?? parse(current) as Record<string, unknown>;
@@ -206,26 +215,26 @@ function writeOutput(root: string, output: Output, registry: Registry, info: Ret
       if (p) delete p.generated_at;
       return stringify(copy);
     };
-    if ((oldDoc === undefined || oldDoc.body === newBody) && withoutTime(oldMeta) === withoutTime(newMeta)) return 'unchanged';
+    if ((oldDoc === undefined || oldDoc.body === newBody) && withoutTime(oldMeta) === withoutTime(newMeta)) return result('unchanged', current);
     if (owner === 'generated-reviewed') {
       if (output.schema === 'Feature') {
         const old = parse(readFileSync(target, 'utf8')) as Record<string, unknown>;
         const p = old.provenance as { generator?: string; output_sha256?: string } | undefined;
         const semantic = { ...old }; delete semantic.provenance;
-        if (!p || p.generator !== generator || p.output_sha256 !== sha(stringify(semantic))) return 'conflict';
-        if (dryRun) return 'written';
+        if (!p || p.generator !== generator || p.output_sha256 !== sha(stringify(semantic))) return result('conflict', finalContent);
+        if (dryRun) return result('written', finalContent);
         mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, finalContent);
-        return 'written';
+        return result('written', finalContent);
       }
       const old = loadMarkdown(target); const p = old.frontmatter.provenance as { generator?: string; output_sha256?: string; review?: { status?: string } } | undefined;
-      if (!p || p.generator !== generator || (p.review?.status === 'reviewed' && !old.body.includes('<!-- paved:begin generated'))) return 'conflict';
+      if (!p || p.generator !== generator || (p.review?.status === 'reviewed' && !old.body.includes('<!-- paved:begin generated'))) return result('conflict', finalContent);
       if (p.output_sha256 !== sha(old.body)) {
-        if (!existsSync(baselinePath)) return 'conflict';
+        if (!existsSync(baselinePath)) return result('conflict', finalContent);
         const baseline = parse(readFileSync(baselinePath, 'utf8')) as { generator: string; body: string; sha256: string };
-        if (baseline.generator !== generator || baseline.sha256 !== sha(baseline.body) || baseline.sha256 !== p.output_sha256) return 'conflict';
+        if (baseline.generator !== generator || baseline.sha256 !== sha(baseline.body) || baseline.sha256 !== p.output_sha256) return result('conflict', finalContent);
         const block = /<!-- paved:begin generated [^\n]+ -->\n[\s\S]*?<!-- paved:end generated -->/g;
         const prior = [...baseline.body.matchAll(block)]; const current = [...old.body.matchAll(block)]; const next = [...(newBody ?? '').matchAll(block)];
-        if (prior.length !== 1 || current.length !== 1 || next.length !== 1 || prior[0]?.[0] !== current[0]?.[0]) return 'conflict';
+        if (prior.length !== 1 || current.length !== 1 || next.length !== 1 || prior[0]?.[0] !== current[0]?.[0]) return result('conflict', finalContent);
         const merged = old.body.replace(block, next[0]?.[0] ?? '');
         const front = structuredClone(yaml as Record<string, unknown>);
         const provenance = front.provenance as Record<string, unknown>; provenance.output_sha256 = sha(merged);
@@ -235,13 +244,13 @@ function writeOutput(root: string, output: Output, registry: Registry, info: Ret
       }
     }
   }
-  if (dryRun) return owner === 'disposable' ? 'proposed' : 'written';
+  if (dryRun) return result(owner === 'disposable' ? 'proposed' : 'written', finalContent);
   mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, finalContent);
   if (owner === 'generated-reviewed' && output.schema === 'ContextDocument') {
     const body = loadMarkdown(target).body; mkdirSync(dirname(baselinePath), { recursive: true });
     writeFileSync(baselinePath, stringify({ generator, body, sha256: sha(body) }));
   }
-  return owner === 'disposable' ? 'proposed' : 'written';
+  return result(owner === 'disposable' ? 'proposed' : 'written', finalContent);
 }
 function selectedContracts(contracts: Contract[], selectors: readonly string[] | undefined): { contracts: Contract[]; errors: string[] } {
   if (!selectors?.length) return { contracts, errors: [] };
@@ -299,17 +308,18 @@ export function runGenerators(core: string, consumer: string, options: RunGenera
       else if (contract.id === 'rules') outputs.push(...ruleProposals(contract, sources, consumer, timestamp, sourceRevision));
       else entry.warnings.push('No explicit, schema-safe project policy was established; no proposal emitted.');
       for (const output of outputs) {
-        const status = writeOutput(consumer, output, registry, info, contract.id, options.dryRun === true);
+        const writeResult = writeOutput(consumer, output, registry, info, contract.id, options.dryRun === true);
+        const status = writeResult.status;
         if (status === 'conflict') {
           const path = `.paved/generated/proposals/${output.path.replace(/^\.paved\//, '')}`;
-          if (options.dryRun !== true) writeOutput(consumer, { ...output, path }, registry, info, contract.id);
+          const proposal = options.dryRun === true ? writeResult : writeOutput(consumer, { ...output, path }, registry, info, contract.id);
           entry.proposals.push(path);
-          entry.outputHashes[path] = options.dryRun === true ? sha(output.content) : hashSource(consumer, path);
+          entry.outputHashes[path] = proposal.sha256;
           entry.status = 'conflict';
         }
         else {
           entry.outputs.push(output.path);
-          entry.outputHashes[output.path] = options.dryRun === true && status !== 'unchanged' ? sha(output.content) : hashSource(consumer, output.path);
+          entry.outputHashes[output.path] = writeResult.sha256;
           if (status === 'proposed') entry.proposals.push(output.path);
           if (entry.status !== 'conflict' && status !== 'unchanged') entry.status = status;
         }

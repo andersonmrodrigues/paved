@@ -4,6 +4,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse, stringify } from "yaml";
+import { copyProjectForInitDryRun } from "../../cli/commands/init.ts";
 import { hashLocalCore, hashLocalFile, hashLocalTree } from "../../cli/lib/local-core.ts";
 import { initializeConsumer } from "../../cli/lib/generator-runtime.ts";
 import { renderHuman, renderJson } from "../../cli/output.ts";
@@ -486,6 +487,34 @@ describe("init and generate commands", () => {
       assert.ok(data.generation?.executions?.some((entry) => entry.generator === "project-context/architecture"));
     } finally {
       rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("copies init dry-run inputs without ignored secrets or agent state", async () => {
+    const project = freshConsumer("init-dry-run-copy-exclusions");
+    const workspace = sandbox("init-dry-run-copy-exclusions-target");
+    const copy = join(workspace, "consumer");
+    const secret = `secret-${process.pid}-${Date.now()}`;
+    try {
+      writeFileSync(join(project, ".env"), `API_TOKEN=${secret}\n`);
+      writeFileSync(join(project, ".env.local"), `API_TOKEN=${secret}\n`);
+      for (const directory of [".claude", ".agents", ".superpowers"]) {
+        mkdirSync(join(project, directory), { recursive: true });
+        writeFileSync(join(project, directory, "state.txt"), secret);
+      }
+
+      copyProjectForInitDryRun(project, copy);
+      const result = await run(project, "init", ["--dry-run"]);
+
+      assert.equal(existsSync(join(copy, ".env")), false);
+      assert.equal(existsSync(join(copy, ".env.local")), false);
+      assert.equal(existsSync(join(copy, ".claude")), false);
+      assert.equal(existsSync(join(copy, ".agents")), false);
+      assert.equal(existsSync(join(copy, ".superpowers")), false);
+      assert.equal(JSON.stringify(result).includes(secret), false, "dry-run result must not include ignored file contents");
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+      rmSync(workspace, { recursive: true, force: true });
     }
   });
 

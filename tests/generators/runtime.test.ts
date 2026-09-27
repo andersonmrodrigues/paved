@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -139,6 +139,37 @@ test('managed block regeneration preserves human text outside a trusted baseline
   assert.equal(result.errors.length, 0);
   assert.match(readFileSync(path, 'utf8'), /Human architecture note/);
   assert.ok(!result.executions.some(e => e.generator === 'project-context/architecture' && e.status === 'conflict'));
+});
+
+test('dry-run trusted managed-block merge reports the same final hash as a later write without mutating files', () => {
+  const dir = fixture();
+  try {
+    initializeConsumer(core, dir, 'example');
+    runGenerators(core, dir, { generators: ['project-context/architecture'] });
+    const outputPath = '.paved/project/architecture/overview.md';
+    const absoluteOutputPath = join(dir, outputPath);
+    const withHumanText = `${readFileSync(absoluteOutputPath, 'utf8')}\nHuman architecture note.\n`;
+    writeFileSync(absoluteOutputPath, withHumanText);
+    mkdirSync(join(dir, 'server'), { recursive: true });
+    writeFileSync(join(dir, 'server', 'package.json'), JSON.stringify({ name: 'server', scripts: { build: 'node build.js' } }));
+    const beforeDryRun = readFileSync(absoluteOutputPath, 'utf8');
+
+    const dryRun = runGenerators(core, dir, { dryRun: true, generators: ['project-context/architecture'] });
+    const dryRunExecution = dryRun.executions.find(e => e.generator === 'project-context/architecture');
+
+    assert.equal(readFileSync(absoluteOutputPath, 'utf8'), beforeDryRun);
+    assert.equal(dryRunExecution?.status, 'written');
+    assert.equal(typeof dryRunExecution?.outputHashes[outputPath], 'string');
+
+    const generated = runGenerators(core, dir, { generators: ['project-context/architecture'] });
+    const generatedExecution = generated.executions.find(e => e.generator === 'project-context/architecture');
+
+    assert.equal(generatedExecution?.status, 'written');
+    assert.equal(dryRunExecution?.outputHashes[outputPath], generatedExecution?.outputHashes[outputPath]);
+    assert.match(readFileSync(absoluteOutputPath, 'utf8'), /Human architecture note/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('route names with separators produce schema-valid feature ids', () => {
