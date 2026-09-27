@@ -32,6 +32,11 @@ if (mode === "json") {
   console.log(JSON.stringify({ ok: true, token: "PAVED-STRUCTURED-SENTINEL" }));
 } else if (mode === "yaml-secret") {
   console.log("ok: true\ntoken: PAVED-STRUCTURED-SENTINEL");
+} else if (mode === "compound-stderr") {
+  console.log("marker mode=compound-stderr");
+  console.error("access_token=PAVED-STDERR-ACCESS");
+  console.error("client_secret: PAVED-STDERR-CLIENT");
+  console.error("\"refresh-token\":\"PAVED-STDERR-REFRESH\"");
 } else {
   console.log(`marker mode=${mode} secret=${secret} literal=${literal}`);
   console.error(`stderr secret=${secret}`);
