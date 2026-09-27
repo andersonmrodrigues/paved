@@ -1,4 +1,5 @@
-import { cpSync, existsSync, mkdirSync, rmdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { loadYaml } from "../lib/documents.ts";
 import { initializeConsumer, isIgnoredSourceEntry, planConsumerInitialization, runGenerators } from "../lib/generator-runtime.ts";
@@ -86,25 +87,23 @@ export function copyProjectForInitDryRun(projectRoot: string, destination: strin
   });
 }
 
+export function initDryRunScratchPrefix(tempRoot = tmpdir()): string {
+  return join(tempRoot, "paved-init-dry-run-");
+}
+
+export function createInitDryRunWorkspace(tempRoot = tmpdir()): string {
+  return mkdtempSync(initDryRunScratchPrefix(tempRoot));
+}
+
 function planDryRunGeneration(invocation: CommandInvocation, projectName: string) {
-  const scratchRoot = join(invocation.paths.coreRoot, ".paved-cli-scratch");
-  const workspace = join(
-    scratchRoot,
-    `init-dry-run-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  );
+  const workspace = createInitDryRunWorkspace();
   const copy = join(workspace, "consumer");
   try {
-    mkdirSync(workspace, { recursive: true });
     copyProjectForInitDryRun(invocation.paths.projectRoot, copy);
     initializeConsumer(invocation.paths.coreRoot, copy, projectName);
     return runGenerators(invocation.paths.coreRoot, copy, { dryRun: true });
   } finally {
     rmSync(workspace, { recursive: true, force: true });
-    try {
-      rmdirSync(scratchRoot);
-    } catch {
-      // Another dry run may still be using the scratch root.
-    }
   }
 }
 
@@ -149,7 +148,7 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
   const planningDiagnostics = adapterDiagnostics(plan.adapterDiagnostics);
   if (invocation.flags.dryRun) {
     const generation = invocation.flags.noGenerate ? undefined : planDryRunGeneration(invocation, projectName);
-    const diagnostics = generation === undefined ? planningDiagnostics : [...planningDiagnostics, ...diagnosticsForRun(generation)];
+    const diagnostics = generation === undefined ? planningDiagnostics : [...planningDiagnostics, ...diagnosticsForRun(generation, true)];
     const generatedPaths = generation === undefined ? [] : generation.executions.flatMap((execution) => [...execution.outputs, ...execution.proposals]);
     return createResult({
       command: "init",
@@ -186,7 +185,7 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
   }
 
   const generation = runGenerators(invocation.paths.coreRoot, invocation.paths.projectRoot);
-  const diagnostics = [...planningDiagnostics, ...diagnosticsForRun(generation)];
+  const diagnostics = [...planningDiagnostics, ...diagnosticsForRun(generation, false)];
   return createResult({
     command: "init",
     status: statusFor(diagnostics),

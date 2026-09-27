@@ -56,5 +56,8 @@ internal errors have highest precedence.
 | `5` | `resolution` | Core, adapter, reference, Tool or capability resolution failed. |
 | `6` | `generation/update` | Generation or update planning/application failed. |
 | `7` | `verification` | Required verification did not run, failed, or produced insufficient evidence. |
-| `8` | `conflict` | A human edit, ownership conflict or proposal conflict blocked direct application. |
+| `8` | `conflict` | A human edit or ownership conflict blocked direct application. |
 | `9` | `internal` | Unexpected CLI/runtime failure. |
+
+Generated proposals that do not involve an ownership conflict are non-blocking
+findings (`1`) so humans can review them without treating the command as failed.

@@ -15,7 +15,10 @@ Create the first local Paved state for a repository that does not already have a
 
 - `--project <dir>`: select the consumer root.
 - `--dry-run`: report the initialization and generation plan without final writes
-  to the consumer.
+  to the consumer. When generation planning needs a copy, the CLI creates a
+  temporary `paved-init-dry-run-*` workspace under the OS temp directory and
+  removes it before returning; it does not write scratch data under the consumer
+  or Core checkout.
 - `--no-generate`: create manifest/lock state without running generators.
 - `--json`: render the structured result.
 - `--help`: show command help.
@@ -43,9 +46,12 @@ state. Use `paved status`, `paved doctor` or `paved update` instead.
 ## Exit codes
 
 - `0` when initialization planning/application succeeds.
-- `1` for non-blocking detection findings.
+- `1` for non-blocking detection findings or generated proposals requiring
+  human review.
 - `2` for unsupported flags or unexpected arguments.
+- `3` for environment failures such as an inaccessible project path or
+  unresolved Core root.
 - `4` for invalid existing Paved state or an already initialized consumer.
 - `6` for generator failures during initialization.
-- `8` for generator conflicts/proposals caused by safe generation.
+- `8` for generator ownership conflicts caused by safe generation.
 - `9` for unexpected internal failures.

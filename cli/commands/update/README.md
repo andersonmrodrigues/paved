@@ -44,10 +44,13 @@ outside the consumer `.paved/` layout.
 ## Exit codes
 
 - `0` when no changes are needed or the local update succeeds.
-- `1` for non-blocking findings.
+- `1` for non-blocking findings or generated proposals requiring human review.
 - `2` for unsupported flags or arguments.
+- `3` for environment failures such as an inaccessible project path or
+  unresolved Core root.
 - `4` for missing/invalid manifest or lock, or incompatible Core range.
 - `5` for unavailable/incompatible adapters or capability resolution failures.
 - `6` for update/generation planning or application failures.
-- `8` for human-edited or untrusted generated output that becomes a proposal.
+- `8` for human-edited or untrusted generated output that creates an ownership
+  conflict.
 - `9` for unexpected internal failures.

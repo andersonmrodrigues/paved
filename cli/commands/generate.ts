@@ -7,7 +7,7 @@ function statusFor(diagnostics: readonly Diagnostic[]): ResultStatus {
   return diagnostics.length > 0 ? "warning" : "success";
 }
 
-export function diagnosticsForRun(result: RunResult): Diagnostic[] {
+export function diagnosticsForRun(result: RunResult, dryRun = false): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   for (const diagnostic of result.adapterDiagnostics) {
     diagnostics.push(createDiagnostic({
@@ -27,6 +27,20 @@ export function diagnosticsForRun(result: RunResult): Diagnostic[] {
         component: `generator.${execution.generator}`,
         message: `Generator ${execution.generator} produced a conflict and wrote a proposal instead of overwriting a human-edited artifact.`,
         remediation: "Review the proposal under .paved/generated/proposals and reconcile the human-owned generated document.",
+      }));
+    }
+    if (execution.status === "proposed" && execution.proposals.length > 0) {
+      diagnostics.push(createDiagnostic({
+        severity: "warning",
+        category: "findings",
+        code: "PAVED_GENERATOR_PROPOSAL_CREATED",
+        component: `generator.${execution.generator}`,
+        message: dryRun
+          ? `Generator ${execution.generator} would create proposal(s) that require human review: ${execution.proposals.join(", ")}.`
+          : `Generator ${execution.generator} wrote proposal(s) that require human review: ${execution.proposals.join(", ")}.`,
+        remediation: dryRun
+          ? "Run without --dry-run to write proposal files, then review and either adopt or discard them."
+          : "Review the proposal files and either adopt or discard them.",
       }));
     }
     for (const error of execution.errors) {
@@ -112,7 +126,7 @@ export function generateHandler(invocation: CommandInvocation): CommandResult {
     dryRun: invocation.flags.dryRun,
     ...(invocation.selectors.length === 0 ? {} : { generators: [...invocation.selectors] }),
   });
-  const diagnostics = diagnosticsForRun(result);
+  const diagnostics = diagnosticsForRun(result, invocation.flags.dryRun);
   return createResult({
     command: "generate",
     status: statusFor(diagnostics),

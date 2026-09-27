@@ -70,7 +70,7 @@ when a blocking diagnostic decides the exit code.
 | `5` | `resolution` | Core, adapter, reference, Tool or capability resolution failed. |
 | `6` | `generation/update` | Generation or update planning/application failed. |
 | `7` | `verification` | Required verification did not run, failed, or produced insufficient evidence. |
-| `8` | `conflict` | A human edit, ownership conflict or proposal conflict blocked direct application. |
+| `8` | `conflict` | A human edit or ownership conflict blocked direct application. |
 | `9` | `internal` | Unexpected CLI/runtime failure. |
 
 ## Safety constraints
@@ -78,7 +78,8 @@ when a blocking diagnostic decides the exit code.
 - Writing commands write only inside the consumer `.paved/` layout and never edit
   application source files.
 - `--dry-run` for `init`, `update` and `generate` performs planning without final
-  writes to the consumer.
+  writes to the consumer; `init --dry-run` uses a cleaned-up OS temp scratch
+  workspace instead of writing under the consumer or Core checkout.
 - `init` refuses to reset existing `.paved/` state and validates existing manifest
   and lock documents before returning.
 - `update` is local-only: it never downloads a Core, adapter or migration.

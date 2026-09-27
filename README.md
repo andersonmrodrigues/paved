@@ -183,8 +183,10 @@ requires a trusted baseline; otherwise the runtime writes a proposal. See
 [generators](generators/README.md) and
 [ownership and regeneration](docs/concepts/ownership-and-regeneration.md).
 
-Phase 09 adds local adapter detection, capability resolution and static evidence for
-Git, Java, Quarkus, Angular and PostgreSQL. See [adapters](docs/concepts/adapters.md).
+Phase 09 adds the local adapter framework, capability resolution and static
+evidence plumbing. Adapter content in the working tree is experimental and should
+be read as framework exercise material, not as a tracked Phase 10 guarantee for
+specific customer technologies. See [adapters](docs/concepts/adapters.md).
 
 Phase 10 delivers the first local production CLI for `init`, `update`, `generate`,
 `verify`, `status` and `doctor`. The update path is local-only, verification is
