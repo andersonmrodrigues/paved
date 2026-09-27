@@ -1,0 +1,16 @@
+# expect-error: must match pattern
+apiVersion: paved/v1
+kind: Adapter
+id: technology/example
+version: 0.1.0
+summary: An example adapter.
+requires: { core: ^0.2.0 }
+detect: { any_files: [pom.xml] }
+provides:
+  capabilities:
+    - id: Bad Capability
+      evidence:
+        - { glob: pom.xml, pattern: sample, statement: Sample marker }
+sources:
+  - { title: Official source, url: 'https://example.org', retrieved_at: 2026-09-27 }
+reviewed_at: 2026-09-27

@@ -1,8 +1,8 @@
 apiVersion: paved/v1
 kind: Generator
 id: project-context/architecture
-version: 0.1.0
-status: contract
+version: 0.2.0
+status: experimental
 summary: >
   Drafts the architecture overview of a repository: components, their responsibilities, runtime units, dependencies between them and declared boundaries.
 depends_on: []

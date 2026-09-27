@@ -24,6 +24,8 @@ writing a new record that supersedes it, not by editing the old one.
 | [0017](0017-tool-capability-and-resolution.md) | Capability contracts and implementation resolution | Accepted |
 | [0018](0018-tool-safety-and-evidence.md) | Tool safety boundaries and evidence capture | Accepted |
 | [0019](0019-source-control-boundary.md) | Source-control capability ownership | Accepted |
+| [0020](0020-generator-runtime-and-baselines.md) | Generator runtime and trusted regeneration baselines | Accepted |
+| [0021](0021-adapter-capabilities-and-local-resolution.md) | Adapter capabilities and local resolution | Accepted |
 
 ## Format
 

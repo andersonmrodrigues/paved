@@ -5,9 +5,10 @@ projects using it are usually structured, which checks it offers, and technology
 skills, rules and tools. Adapters sit between the domain-agnostic Core and the
 project-specific context.
 
-The first adapter, [`infrastructure/git`](infrastructure/git/adapter.yaml), binds the
-Core repository status, diff and history capabilities to Git commands. It carries no
-project knowledge. Other technology adapters remain future work.
+The Git adapter binds Core repository status, diff and history Tools. The initial
+technology adapters are `technology/java`, `technology/quarkus`, `technology/angular`
+and `technology/postgresql`. Adapter detection, resolution, conflicts and evidence are described in the
+maintainer documentation.
 
 ## Layout
 
@@ -21,17 +22,16 @@ adapters/<category>/<name>/
 └── tool-implementations/<group>/<name>.yaml # bindings for Core or adapter Tools
 ```
 
-Categories: `languages`, `frameworks`, `infrastructure`, `databases`. An adapter id is
+Categories: `technology`, `infrastructure` (the earlier `languages`, `frameworks` and `databases` IDs remain schema-valid). An adapter id is
 `<category>/<name>` (for example `frameworks/spring`), matching its directory.
 Source-control tooling uses the existing `infrastructure` category; the Git adapter's
 namespace is `adapter-git`.
 
 ## How adapters are used
 
-1. **Detection.** `paved init` evaluates each adapter's `detect` signals against the
-   consumer repository and *proposes* matching adapters.
-2. **Confirmation.** A human confirms the list in `.paved/manifest.yaml`, with a version range.
-3. **Resolution.** `paved update` resolves exact versions into `.paved/paved.lock` and
+1. **Detection.** The local initialization library evaluates each adapter's `detect` signals and records confidence.
+2. **Selection.** The consumer manifest records the chosen adapters and ranges.
+3. **Resolution.** The local resolver records exact versions in `.paved/paved.lock` and
    checks each adapter's `requires.core` against the Core version.
 4. **Consumption.** Generators use adapter knowledge to interpret the repository;
    agents load adapter skills and rules like Core ones. Adapter ToolImplementations bind

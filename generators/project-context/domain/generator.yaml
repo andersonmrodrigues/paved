@@ -1,8 +1,8 @@
 apiVersion: paved/v1
 kind: Generator
 id: project-context/domain
-version: 0.1.0
-status: contract
+version: 0.2.0
+status: experimental
 summary: >
   Drafts a glossary of domain terms and the entities, relationships and invariants that the code makes explicit.
 depends_on: [project-context/architecture]

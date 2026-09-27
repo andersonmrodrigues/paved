@@ -1,0 +1,5 @@
+# expect-error: must match pattern
+apiVersion: paved/v1
+kind: CapabilityRegistry
+capabilities:
+  - { id: Bad Capability, meaning: Invalid name, consumer: project-context/architecture }

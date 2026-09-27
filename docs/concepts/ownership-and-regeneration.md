@@ -65,8 +65,10 @@ On regeneration of a `generated-reviewed` file:
    - Otherwise: do not write. Store the new output as a proposal under
      `.paved/generated/proposals/<same path>` and report a **conflict**.
 4. If no trusted block baseline is available, write a proposal for edited blocks; the
-   marker itself contains no hash. Phase 08 must define baseline storage and matching
-   before implementing block replacement.
+   marker itself contains no hash. Phase 08 keeps the previous Markdown body and hash
+   under `.paved/generated/state/baselines/`. A baseline is trusted only when its hash
+   matches inline provenance and the existing managed block matches the stored block.
+   The runtime then replaces that block and preserves text outside it.
 5. Conflicts are shown by `paved generate` and `paved status` as a diff; a human
    resolves them. If `.paved/generated/state/` still has the previous generated output,
    the diff is three-way (previous, current, new).
@@ -76,7 +78,7 @@ setting its review status to `reviewed` and removing managed blocks.
 
 ## Open points
 
-The exact baseline format, how review status is updated (by hand, or via a
-`paved review` command), and whether `.paved/generated/state/` should be committed for
-teams that regenerate often, are listed as open decisions in the
+How review status is updated (by hand, or via a `paved review` command), and whether
+`.paved/generated/state/` should be committed for teams that regenerate often, are
+listed as open decisions in the
 [bootstrap review](../getting-started/bootstrap-review.md).

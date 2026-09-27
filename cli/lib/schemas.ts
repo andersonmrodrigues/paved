@@ -37,6 +37,7 @@ const KIND_TO_SCHEMA: Readonly<Record<string, string>> = {
   Project: "urn:paved:schema:manifest:v1",
   Lock: "urn:paved:schema:lock:v1",
   Adapter: "urn:paved:schema:adapter:v1",
+  CapabilityRegistry: "urn:paved:schema:capability-registry:v1",
   Rule: "urn:paved:schema:rule:v1",
   Skill: "urn:paved:schema:skill:v1",
   Workflow: "urn:paved:schema:workflow:v1",

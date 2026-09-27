@@ -64,6 +64,65 @@ test('dry-run plans generator work without creating generated state or outputs',
   assert.equal(existsSync(join(dir, '.paved/project')), false);
 });
 
+test('generation refuses to run without a valid consumer lock', () => {
+  const dir = fixture();
+  initializeConsumer(core, dir, 'example');
+  rmSync(join(dir, '.paved/paved.lock'));
+
+  const result = runGenerators(core, dir, { dryRun: true });
+
+  assert.ok(result.errors.some(error => /paved\.lock is missing/.test(error)));
+  assert.equal(existsSync(join(dir, '.paved/generated')), false);
+  assert.equal(existsSync(join(dir, '.paved/project')), false);
+});
+
+test('generation refuses a local Core digest that differs from the consumer lock', () => {
+  const dir = fixture();
+  initializeConsumer(core, dir, 'example');
+  const lockPath = join(dir, '.paved/paved.lock');
+  const lock = parse(readFileSync(lockPath, 'utf8')) as { core: { sha256: string } };
+  lock.core.sha256 = '0'.repeat(64);
+  writeFileSync(lockPath, stringify(lock));
+
+  const result = runGenerators(core, dir, { dryRun: true });
+
+  assert.ok(result.errors.some(error => /locked Core digest does not match/.test(error)));
+  assert.equal(existsSync(join(dir, '.paved/generated')), false);
+  assert.equal(existsSync(join(dir, '.paved/project')), false);
+});
+
+test('generation refuses a resolved adapter digest that differs from the consumer lock', () => {
+  const dir = fixture();
+  initializeConsumer(core, dir, 'example');
+  const lockPath = join(dir, '.paved/paved.lock');
+  const lock = parse(readFileSync(lockPath, 'utf8')) as { adapters: { id: string; sha256: string }[] };
+  const angular = lock.adapters.find(adapter => adapter.id === 'technology/angular');
+  assert.ok(angular);
+  angular.sha256 = '0'.repeat(64);
+  writeFileSync(lockPath, stringify(lock));
+
+  const result = runGenerators(core, dir, { dryRun: true });
+
+  assert.ok(result.errors.some(error => /locked digest for adapter technology\/angular/.test(error)));
+  assert.equal(existsSync(join(dir, '.paved/generated')), false);
+  assert.equal(existsSync(join(dir, '.paved/project')), false);
+});
+
+test('generation refuses local generator contracts missing from the consumer lock', () => {
+  const dir = fixture();
+  initializeConsumer(core, dir, 'example');
+  const lockPath = join(dir, '.paved/paved.lock');
+  const lock = parse(readFileSync(lockPath, 'utf8')) as { generators: { id: string }[] };
+  lock.generators = lock.generators.slice(1);
+  writeFileSync(lockPath, stringify(lock));
+
+  const result = runGenerators(core, dir, { dryRun: true });
+
+  assert.ok(result.errors.some(error => /generator .* is missing from the lock/i.test(error)));
+  assert.equal(existsSync(join(dir, '.paved/generated')), false);
+  assert.equal(existsSync(join(dir, '.paved/project')), false);
+});
+
 test('selected generators run with dependency closure in topological order', () => {
   const dir = fixture();
   initializeConsumer(core, dir, 'example');

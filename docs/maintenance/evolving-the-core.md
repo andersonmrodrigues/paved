@@ -18,6 +18,7 @@ How to change this repository without breaking consumers.
 | Tool | `core/tools/<group>/<name>.yaml`, id `core.<group>.<name>` | `tests/core/rules-and-tools.test.ts` |
 | Check | `core/verification/checks/<group>/<name>.yaml`, id `core.<group>.<name>`, referencing a safe Tool; no project command in the definition | `tests/verification/`, `tests/core/references.test.ts` |
 | Check type | Entry in `core/verification/registry.yaml` **and** the enum in `schemas/common.schema.yaml` | `tests/schemas/` (sync check) |
+| Capability | Add the technology-neutral meaning and concrete consumer to `core/capabilities/registry.yaml`; update its schema and tests when the contract changes | `tests/adapters/` |
 | Adapter | `adapters/<category>/<name>/adapter.yaml` from the template, with official sources | schema validation |
 | Generator | `generators/<id>/` with `GENERATOR.md` and `generator.yaml` | `tests/generators/` |
 | Document kind | Schema in `schemas/`, entry in `manifest.yaml` `schemas`, entry in `KIND_TO_SCHEMA` in `cli/lib/schemas.ts`, template, valid and invalid fixtures in `tests/fixtures/schemas/<schema-name>/`. A shared definition without a kind goes in `schema_definitions` instead ([schemas](../concepts/schemas.md)) | `tests/schemas/` |

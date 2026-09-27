@@ -12,7 +12,9 @@ import { hashLocalCore, hashLocalTree } from './local-core.ts';
 export interface Source { path: string; kind: string; sha256: string; adapter?: string; adapterVersion?: string; capability?: string; detectionConfidence?: Detection['confidence']; detectionEvidence?: string[]; classification?: 'observed'; adapterEvidence?: { adapter: string; adapter_version: string; capability: string; detection_confidence: Detection['confidence']; classification: 'observed' }[] }
 export interface Execution { generator: string; version: string; status: 'written' | 'unchanged' | 'conflict' | 'proposed' | 'failed'; sources: Source[]; outputs: string[]; outputHashes: Record<string, string>; proposals: string[]; unknowns: string[]; warnings: string[]; errors: string[] }
 export interface RunResult { executionId: string; timestamp: string; coreVersion: string; consumer: string; sourceRevision?: string; unmatchedTechnologies: string[]; unmodeledTechnologies: string[]; adapterWarnings: string[]; adapterDiagnostics: Diagnostic[]; detectedAdapters: { id: string; confidence: string; evidence: string[] }[]; selectedAdapters: string[]; capabilityResolutions: Record<string, string>; adapterEvidence: AdapterEvidence[]; executions: Execution[]; errors: string[] }
-export interface RunGeneratorOptions { dryRun?: boolean; generators?: string[] }
+export interface LockEntry { id?: string; version: string; source: string; sha256: string }
+export interface GenerationLock { core: LockEntry; adapters?: readonly LockEntry[]; generators?: readonly LockEntry[] }
+export interface RunGeneratorOptions { dryRun?: boolean; generators?: string[]; lock?: GenerationLock }
 export interface ConsumerInitializationPlan { manifest: Record<string, unknown>; lock: Record<string, unknown>; selectedAdapters: string[]; resolvedAdapters: string[]; adapterDiagnostics: Diagnostic[]; plannedWrites: string[] }
 type Registry = ReturnType<typeof createRegistry>;
 interface Contract { apiVersion: string; kind: 'Generator'; id: string; version: string; status: string; summary: string; depends_on?: string[]; inputs: unknown[]; outputs: { path: string; format: string; metadata: string; schema?: string }[]; change_detection: unknown }
@@ -36,7 +38,7 @@ export function discoverSources(root: string): Source[] {
       if (isIgnoredSourceEntry(entry.name) || entry.isSymbolicLink()) continue;
       const full = join(dir, entry.name);
       if (entry.isDirectory()) { walk(full); continue; }
-      if (!entry.isFile() || !/\.(md|txt|yaml|yml|json|xml|properties|java|ts|tsx|js|jsx|sql|gradle|sh|py)$/i.test(entry.name) || statSync(full).size > 1024 * 1024) continue;
+      if (!entry.isFile() || !/\.(md|txt|yaml|yml|json|xml|properties|java|ts|tsx|js|jsx|sql|gradle|kts|sh|py)$/i.test(entry.name) || statSync(full).size > 1024 * 1024) continue;
       const path = relative(root, full).split(sep).join('/');
       const kind = /README|docs\//i.test(path) ? 'documentation' : /src\/test\/|\.spec\./.test(path) ? 'test' : /\.gitlab-ci|\.github\/workflows/.test(path) ? 'ci' : /package\.json$|pom\.xml$|angular\.json$/.test(path) ? 'manifest' : /application\.|\.properties$/.test(path) ? 'configuration' : /Dockerfile|compose/.test(path) ? 'infrastructure' : 'source-module';
       result.push({ path, kind, sha256: hashSource(root, path) });
@@ -270,6 +272,42 @@ function selectedContracts(contracts: Contract[], selectors: readonly string[] |
   for (const id of selectors) visit(id);
   return errors.length ? { contracts: [], errors } : { contracts: contracts.filter(contract => selected.has(contract.id)), errors: [] };
 }
+function generationLockErrors(core: string, consumer: string, registry: Registry, coreVersion: string, adapters: Detection[], contracts: Contract[], override?: GenerationLock): string[] {
+  const path = join(consumer, '.paved/paved.lock');
+  if (!override && !existsSync(path)) return ['.paved/paved.lock is missing; run paved init or paved update before generation.'];
+  const lock = override ?? parse(readFileSync(path, 'utf8')) as GenerationLock;
+  validate(registry, lock);
+  const errors: string[] = [];
+  if (lock.core.version !== coreVersion) errors.push(`Lock pins Core ${lock.core.version}, but the local Core is ${coreVersion}. Run paved update after reviewing the change.`);
+  if (lock.core.source === 'local-core' && lock.core.sha256 !== hashLocalCore(core)) errors.push('The locked Core digest does not match the locally available Core content. Run paved update after reviewing the change.');
+  const lockedAdapters = new Map<string, LockEntry>();
+  for (const entry of lock.adapters ?? []) if (entry.id) lockedAdapters.set(entry.id, entry);
+  for (const detection of adapters) {
+    const locked = lockedAdapters.get(detection.adapter.id);
+    if (!locked) {
+      errors.push(`Resolved adapter ${detection.adapter.id} is missing from the lock. Run paved update before generation.`);
+      continue;
+    }
+    if (locked.version !== detection.adapter.version) errors.push(`Lock pins ${detection.adapter.id} ${locked.version}, but the local adapter is ${detection.adapter.version}. Run paved update after reviewing the change.`);
+    if (locked.source === 'local-core' && locked.sha256 !== hashLocalTree(core, [`adapters/${detection.adapter.id}`])) errors.push(`The locked digest for adapter ${detection.adapter.id} does not match the locally available adapter content. Run paved update after reviewing the change.`);
+  }
+  const contractsById = new Map(contracts.map(contract => [contract.id, contract]));
+  for (const locked of lock.generators ?? []) {
+    if (!locked.id) continue;
+    const local = contractsById.get(locked.id);
+    if (!local) {
+      errors.push(`Locked generator ${locked.id} is unavailable in the local Core. Use the locked Core or run paved update.`);
+      continue;
+    }
+    if (locked.version !== local.version) errors.push(`Lock pins generator ${locked.id} ${locked.version}, but the local generator is ${local.version}. Run paved update after reviewing the change.`);
+    if (locked.source === 'local-core' && locked.sha256 !== hashLocalTree(core, [`generators/${locked.id}`])) errors.push(`The locked digest for generator ${locked.id} does not match local generator content. Run paved update after reviewing the change.`);
+  }
+  const lockedGeneratorIds = new Set((lock.generators ?? []).flatMap(entry => entry.id ? [entry.id] : []));
+  for (const contract of contracts) {
+    if (!lockedGeneratorIds.has(contract.id)) errors.push(`Generator ${contract.id} is missing from the lock. Run paved update before generation.`);
+  }
+  return errors;
+}
 export function runGenerators(core: string, consumer: string, options: RunGeneratorOptions = {}): RunResult {
   const registry = createRegistry(join(core, 'schemas'), ['paved/v1']); const info = coreManifest(core);
   const manifest = parse(readFileSync(join(consumer, '.paved/manifest.yaml'), 'utf8')) as { adapters?: { id: string; version: string }[] }; validate(registry, manifest);
@@ -288,19 +326,33 @@ export function runGenerators(core: string, consumer: string, options: RunGenera
     const selected = selectedContracts(orderedContracts, options.generators);
     contracts = selected.contracts;
     result.errors.push(...selected.errors);
+    if (result.errors.length === 0) result.errors.push(...generationLockErrors(core, consumer, registry, info.version, resolved.adapters, orderedContracts, options.lock));
   } catch (error) { result.errors.push(String(error)); return result; }
-  if (result.errors.length && contracts.length === 0) return result;
+  if (result.errors.length) return result;
   const completed = new Set<string>();
   for (const contract of contracts) {
     const entry: Execution = { generator: contract.id, version: contract.version, status: 'unchanged', sources: [], outputs: [], outputHashes: {}, proposals: [], unknowns: [], warnings: [], errors: [] }; result.executions.push(entry);
     try {
       if ((contract.depends_on ?? []).some(d => !completed.has(d))) throw new Error('Required generator dependency failed');
       const relevant = capabilities.evidence.filter(e => { const id = contract.id; return id.endsWith('/architecture') ? ['source.build','source.dependencies','application.runtime','application.modules','database.configuration'].includes(e.capability) : id.endsWith('/domain') ? ['source.structure','database.migrations'].includes(e.capability) : id.endsWith('/integrations') ? ['application.http-routes','application.ui-routes','database.configuration'].includes(e.capability) : id.endsWith('/feature-map') ? ['application.ui-routes','application.http-routes'].includes(e.capability) : id.endsWith('/product') ? e.capability === 'application.ui-routes' : id === 'verification' ? e.capability === 'source.test' : false; });
-      const sources = sourcesFor(contract.id, allSources);
+      const sources = sourcesFor(contract.id, allSources).map(source => ({ ...source }));
       for (const item of relevant) if (!sources.some(s => s.path === item.source.path)) sources.push({ ...item.source });
       for (const source of sources) { const matches = relevant.filter(e => e.source.path === source.path); const item = matches[0]; if (item) Object.assign(source, { adapter: item.adapter, adapterVersion: item.adapterVersion, capability: item.capability, detectionConfidence: item.detectionConfidence, detectionEvidence: item.detectionEvidence, classification: item.classification, adapterEvidence: [...new Map(matches.map(e => [`${e.adapter}:${e.capability}`, { adapter: e.adapter, adapter_version: e.adapterVersion, capability: e.capability, detection_confidence: e.detectionConfidence, classification: e.classification }])).values()] }); }
       entry.sources = sources;
-      if (!sources.length) { entry.warnings.push('No matching source found.'); if (contract.id.startsWith('project-context/')) throw new Error('Required repository source missing'); }
+      if (!sources.length) {
+        entry.warnings.push('No matching source found.');
+        if (contract.id === 'project-context/feature-map') {
+          entry.unknowns.push('UI and HTTP route evidence');
+          completed.add(contract.id);
+          continue;
+        }
+        if (contract.id === 'project-context/integrations') {
+          entry.unknowns.push('Integration configuration and route evidence');
+          completed.add(contract.id);
+          continue;
+        }
+        if (contract.id.startsWith('project-context/')) throw new Error('Required repository source missing');
+      }
       const outputs: Output[] = [];
       if (contract.id.startsWith('project-context/') && !contract.id.endsWith('/feature-map')) { const generated = context(contract, sources, relevant, consumer, timestamp, sourceRevision); outputs.push(generated.output); entry.unknowns = generated.unknowns; }
       else if (contract.id.endsWith('/feature-map')) outputs.push(...features(contract, sources, relevant, timestamp, sourceRevision));

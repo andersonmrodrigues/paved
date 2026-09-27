@@ -150,3 +150,8 @@ $defs:
           properties:
             id: { $ref: "urn:paved:schema:common:v1#/$defs/adapterId" }
             version: { $ref: "urn:paved:schema:common:v1#/$defs/semverRange" }
+      capability_providers:
+        description: Explicit adapter selections for capabilities with multiple compatible providers.
+        type: object
+        propertyNames: { pattern: "^[a-z]+\\.[a-z][a-z0-9.-]*$" }
+        additionalProperties: { $ref: "urn:paved:schema:common:v1#/$defs/adapterId" }
