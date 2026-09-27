@@ -1,0 +1,8 @@
+# expect-error: references unknown workflow "core.no-such-workflow"
+apiVersion: paved/v1
+kind: Overrides
+workflows:
+  - target: core.no-such-workflow
+    action: disable
+    owner: sample-team
+    reason: Sample.

@@ -1,0 +1,40 @@
+# expect-error: has no passed check
+# "It compiles" is not "it is correct": a build cannot support a behavior claim.
+apiVersion: paved/v1
+kind: Evidence
+id: build-only
+created_at: 2026-01-01T00:00:00Z
+change:
+  summary: Add a filter.
+  revision: 4f2c9e1
+plan:
+  required: [build]
+  evidence: [check-result]
+claims:
+  - id: filters
+    statement: The list is filtered by status.
+    type: behavior
+    supported_by: [build]
+checks:
+  - id: build
+    type: build
+    status: passed
+    execution:
+      recorded_by: paved
+      revision: 4f2c9e1
+      started_at: 2026-01-01T00:00:00Z
+    check: project.test.build
+    tool:
+      id: project.test.build
+      version: 1.0.0
+    exit_code: 0
+completion:
+  status: complete
+  verification: verified
+  decided_by: paved
+  criteria:
+    - statement: Feature works.
+      met: true
+      supported_by: [filters]
+verification:
+  profile: .paved/verification/profile.yaml

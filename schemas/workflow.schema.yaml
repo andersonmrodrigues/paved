@@ -1,0 +1,236 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:workflow:v1
+title: Paved workflow contract
+description: >
+  `workflow.yaml` next to a WORKFLOW.md. A workflow orchestrates one class of change
+  through the canonical task lifecycle (core/instructions/lifecycle.md): which phases
+  run, in which order, which skills each phase activates, which tools it may use, which
+  checks prove the outcome, which gates and human approvals stand between phases, and
+  what completion requires. It references skills, tools, rules, check types and evidence
+  kinds by id; it never repeats what they contain. Workflows do not invoke other
+  workflows. Execution semantics (failure, retry, approval, run state):
+  core/instructions/workflows.md and docs/concepts/workflows.md.
+type: object
+additionalProperties: false
+required: [apiVersion, kind, id, title, description, version, status, change_type, inputs, phases, evidence, outputs, completion]
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { const: Workflow }
+  id:
+    description: <namespace>.<name>. The name must equal the workflow's directory name.
+    $ref: "urn:paved:schema:common:v1#/$defs/workflowRef"
+  title: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  description:
+    description: What the workflow covers and when to select it ("Use when …").
+    type: string
+    minLength: 1
+    maxLength: 1024
+  version:
+    description: >
+      Version of this workflow, independent of the Core release. Major: a phase, gate,
+      approval, required input, required check type or required evidence kind added, or
+      the class of change it covers altered, so a run that completed before may not now.
+      Minor: optional inputs, context, tools or recommended checks; guidance that does not
+      change what completion requires. Patch: wording.
+    $ref: "urn:paved:schema:common:v1#/$defs/semver"
+  status: { $ref: "urn:paved:schema:common:v1#/$defs/lifecycleStatus" }
+  deprecation:
+    description: Required when, and only when, `status` is `deprecated`.
+    $ref: "urn:paved:schema:common:v1#/$defs/deprecation"
+    type: object
+    properties:
+      replaced_by: { $ref: "urn:paved:schema:common:v1#/$defs/workflowRef" }
+    unevaluatedProperties: false
+  change_type:
+    description: The trigger. A task of this kind of change selects this workflow.
+    $ref: "urn:paved:schema:common:v1#/$defs/changeType"
+  inputs:
+    description: >
+      What the task must provide. A missing `required` input stops the run
+      (`input-missing`) before any phase starts; it is never invented. The `context`
+      phase restates every input in the run record.
+    type: array
+    minItems: 1
+    items:
+      type: object
+      additionalProperties: false
+      required: [id, description, required]
+      properties:
+        id: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+        description: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+        required: { type: boolean }
+  context:
+    description: >
+      Context areas the workflow reads regardless of which skills run, resolved through
+      the Core manifest's `context_areas`. Skills add their own.
+    type: object
+    additionalProperties: false
+    required: [required]
+    properties:
+      required: { $ref: "#/$defs/contextAreas" }
+      optional: { $ref: "#/$defs/contextAreas" }
+  preconditions:
+    description: >
+      Workflow-specific conditions checked before the first phase, in addition to the
+      standard preconditions every run checks. A failed precondition stops the run
+      (`precondition-failed`).
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [id, condition]
+      properties:
+        id: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+        condition: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  rules:
+    description: >
+      Rules every run of this workflow respects, in addition to rules selected by their
+      own `applies_to` and the rules of the skills it activates. Listing a rule here does
+      not change its severity.
+    type: array
+    uniqueItems: true
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/ruleRef" }
+  phases:
+    description: >
+      Phases in canonical order, each at most once (tests enforce the order).
+      `verification`, `evidence` and `completion` are mandatory and cannot be skipped.
+    type: array
+    minItems: 1
+    items: { $ref: "#/$defs/phase" }
+    allOf:
+      - contains: { type: object, properties: { phase: { const: verification } } }
+      - contains: { type: object, properties: { phase: { const: evidence } } }
+      - contains: { type: object, properties: { phase: { const: completion } } }
+  evidence:
+    description: >
+      Evidence kinds a `complete` record of a run must contain, in addition to those the
+      activated skills require.
+    type: object
+    additionalProperties: false
+    required: [required]
+    properties:
+      required:
+        type: array
+        uniqueItems: true
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/evidenceKind" }
+  outputs:
+    description: What a completed run leaves behind, besides its run record.
+    type: array
+    minItems: 1
+    uniqueItems: true
+    items:
+      enum: [change, evidence, review, measurement, release-candidate, follow-up, context-update]
+  completion:
+    description: >
+      Criteria specific to this workflow. They add to the standard completion rule
+      (every phase completed or legitimately skipped, gates passed or approved, required
+      checks passed (missing checks recorded as gaps but still blocking), required evidence present, no violated `error`
+      rule); they never relax it.
+    type: object
+    additionalProperties: false
+    required: [criteria]
+    properties:
+      criteria:
+        type: array
+        minItems: 1
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  references:
+    description: Supporting files under `references/`, loaded when WORKFLOW.md points to them.
+    type: array
+    uniqueItems: true
+    items:
+      type: string
+      pattern: "^references/[a-z0-9]+(-[a-z0-9]+)*\\.md$"
+allOf:
+  - if:
+      properties: { status: { const: deprecated } }
+    then:
+      required: [deprecation]
+    else:
+      not: { required: [deprecation] }
+  - if:
+      properties: { status: { const: experimental } }
+    then:
+      properties: { version: { type: string, pattern: "^0\\." } }
+  - if:
+      properties: { status: { const: stable } }
+    then:
+      properties: { version: { type: string, not: { pattern: "^0\\." } } }
+$defs:
+  phase:
+    type: object
+    additionalProperties: false
+    required: [phase, goal]
+    properties:
+      phase: { $ref: "urn:paved:schema:common:v1#/$defs/phase" }
+      goal: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      skills:
+        description: >
+          Skills activated in this phase, in the listed order. A skill whose "When to use"
+          does not fit the task is recorded as not applicable. A skill already active
+          from an earlier phase continues; it is never started twice.
+        type: array
+        uniqueItems: true
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/skillRef" }
+      tools:
+        description: >
+          Tools the phase uses directly, beyond those of its skills. Their safety class
+          applies unchanged: a destructive tool needs a gate with `approval` in the phase.
+        type: object
+        additionalProperties: false
+        properties:
+          required: { $ref: "#/$defs/toolRefs" }
+          optional: { $ref: "#/$defs/toolRefs" }
+      verification:
+        description: >
+          Check types run in this phase. Each `required` type must end as a passed check
+          or a recorded gap; `recommended` types run when the project's profile has them
+          (a warning when not run); `optional` types run when relevant (informational).
+        type: object
+        additionalProperties: false
+        properties:
+          required: { $ref: "#/$defs/checkTypes" }
+          recommended: { $ref: "#/$defs/checkTypes" }
+          optional: { $ref: "#/$defs/checkTypes" }
+      gates:
+        description: Conditions that must hold before leaving the phase.
+        type: array
+        items:
+          $ref: "urn:paved:schema:common:v1#/$defs/gate"
+          type: object
+          unevaluatedProperties: false
+      skip_when:
+        description: >
+          The only condition under which this phase may be skipped. A phase without it
+          always runs. A skipped phase is recorded with the reason.
+        $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+      retry:
+        description: >
+          How a failed attempt of this phase may be retried. Defaults: `retryable` with
+          `max_attempts: 2`. A failure code that is never retryable overrides this.
+        type: object
+        additionalProperties: false
+        required: [class]
+        properties:
+          class: { $ref: "urn:paved:schema:common:v1#/$defs/retryClass" }
+          max_attempts: { type: integer, minimum: 1, maximum: 5 }
+        if:
+          properties: { class: { enum: [non-retryable, requires-human] } }
+        then:
+          not: { required: [max_attempts] }
+    if:
+      properties: { phase: { enum: [verification, evidence, completion] } }
+    then:
+      not: { required: [skip_when] }
+  contextAreas:
+    type: array
+    uniqueItems: true
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/contextArea" }
+  toolRefs:
+    type: array
+    uniqueItems: true
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/toolRef" }
+  checkTypes:
+    type: array
+    uniqueItems: true
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/checkType" }

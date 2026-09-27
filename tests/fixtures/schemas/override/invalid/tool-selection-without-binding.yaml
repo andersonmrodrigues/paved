@@ -1,0 +1,30 @@
+# expect-error: /tools/0 must have required property 'implementation'
+apiVersion: paved/v1
+kind: Overrides
+rules:
+  - target: core.performance.measure-before-optimizing
+    action: set-severity
+    severity: warning
+    owner: example-team
+    reason: Why the project needs this adjustment, and when it can be removed.
+skills:
+  - target: core.development.feature-development
+    action: extend
+    addendum: skills/feature-development.md
+    owner: example-team
+    reason: Project-specific steps the Core skill cannot know.
+workflows:
+  - target: core.release
+    action: extend
+    add_gates:
+      - phase: completion
+        id: release-notes-approved
+        condition: Release notes approved by the release owner.
+        approval: release
+    owner: example-team
+    reason: Why the project needs the extra gate.
+tools:
+  - target: core.git.status
+    action: select-implementation
+    owner: team
+    reason: Synthetic test

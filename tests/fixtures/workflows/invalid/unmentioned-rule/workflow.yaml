@@ -1,0 +1,35 @@
+# expect-problem: never mentions core.quality.evidence-before-completion
+apiVersion: paved/v1
+kind: Workflow
+id: project.sample
+title: Sample
+description: >-
+  Applies a configuration change and proves it. Use when a task changes project
+  configuration only.
+version: 0.1.0
+status: experimental
+change_type: configuration
+inputs:
+  - id: request
+    description: The configuration to change.
+    required: true
+rules: [core.quality.evidence-before-completion]
+phases:
+  - phase: context
+    goal: Restate the change.
+    skills: [core.discovery.context-discovery]
+  - phase: implementation
+    goal: Change the configuration.
+  - phase: verification
+    goal: Prove it.
+    verification:
+      required: [unit]
+  - phase: evidence
+    goal: Record evidence.
+  - phase: completion
+    goal: Finish.
+evidence:
+  required: [check-result]
+outputs: [change, evidence]
+completion:
+  criteria: [The configuration is applied.]

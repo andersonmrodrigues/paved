@@ -1,0 +1,39 @@
+# expect-error: has no passed check
+# A measurement within noise decides nothing.
+apiVersion: paved/v1
+kind: Evidence
+id: within-noise
+created_at: 2026-01-01T00:00:00Z
+change:
+  summary: Sample.
+  revision: 4f2c9e1
+plan:
+  required: []
+  evidence: [check-result]
+claims:
+  - id: faster
+    statement: It is faster.
+    type: performance
+    supported_by: [bench]
+checks:
+  - id: bench
+    type: performance
+    status: inconclusive
+    execution:
+      recorded_by: paved
+      revision: 4f2c9e1
+      started_at: 2026-01-01T00:00:00Z
+    check: project.test.performance
+    tool:
+      id: project.test.performance
+      version: 1.0.0
+completion:
+  status: complete
+  verification: verified
+  decided_by: paved
+  criteria:
+    - statement: Faster.
+      met: true
+      supported_by: [faster]
+verification:
+  profile: .paved/verification/profile.yaml

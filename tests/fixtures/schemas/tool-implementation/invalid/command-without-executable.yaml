@@ -1,0 +1,17 @@
+# expect-error: /invocation must have required property 'executable'
+apiVersion: paved/v1
+kind: ToolImplementation
+id: core.git.status
+tool: core.git.status
+version: 0.1.0
+contract: ^0.1.0
+source: core
+environments:
+  - local
+  - ci
+  - ephemeral
+invocation:
+  type: command
+  timeout_seconds: 30
+  arguments: []
+availability: available

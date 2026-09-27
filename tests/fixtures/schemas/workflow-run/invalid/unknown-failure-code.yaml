@@ -1,0 +1,27 @@
+# expect-error: /failure/code must be equal to one of the allowed values
+apiVersion: paved/v1
+kind: WorkflowRun
+id: 2026-09-27-sample
+workflow:
+  id: core.bug
+  version: 0.2.0
+revision: 3f2a9c1
+started_at: 2026-09-27T10:00:00Z
+ended_at: 2026-09-27T11:00:00Z
+status: failed
+inputs: []
+phases:
+  - phase: context
+    status: failed
+    failure:
+      code: oops
+      phase: context
+      reason: Something.
+      retry: retryable
+      next_action: Retry.
+failure:
+  code: oops
+  phase: context
+  reason: Something.
+  retry: retryable
+  next_action: Retry.

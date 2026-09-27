@@ -1,0 +1,16 @@
+# expect-problem: must require verification
+# expect-problem: must require evidence
+apiVersion: paved/v1
+kind: Skill
+id: project.development.change-without-verification
+version: 0.1.0
+status: experimental
+category: development
+context:
+  required: []
+tools:
+  required: [core.git.diff]
+verification:
+  required: []
+evidence:
+  required: []

@@ -1,0 +1,37 @@
+# expect-problem: can use destructive tools (project.data.purge) without an approval gate
+# expect-problem: is retried automatically
+apiVersion: paved/v1
+kind: Workflow
+id: project.sample
+title: Sample
+description: >-
+  Applies a configuration change and proves it. Use when a task changes project
+  configuration only.
+version: 0.1.0
+status: experimental
+change_type: configuration
+inputs:
+  - id: request
+    description: The configuration to change.
+    required: true
+phases:
+  - phase: context
+    goal: Restate the change.
+    skills: [core.discovery.context-discovery]
+  - phase: implementation
+    goal: Remove stale settings.
+    tools:
+      required: [project.data.purge]
+  - phase: verification
+    goal: Prove it.
+    verification:
+      required: [unit]
+  - phase: evidence
+    goal: Record evidence.
+  - phase: completion
+    goal: Finish.
+evidence:
+  required: [check-result]
+outputs: [change, evidence]
+completion:
+  criteria: [The configuration is applied.]

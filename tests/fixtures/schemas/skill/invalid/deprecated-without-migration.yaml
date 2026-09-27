@@ -1,0 +1,13 @@
+# expect-error: must have required property 'deprecation'
+apiVersion: paved/v1
+kind: Skill
+id: project.testing.sample
+version: 1.2.0
+status: deprecated
+category: testing
+context:
+  required: []
+verification:
+  required: [unit]
+evidence:
+  required: [check-result]

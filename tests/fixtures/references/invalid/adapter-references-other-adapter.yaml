@@ -1,0 +1,15 @@
+# expect-error: adapter-sample content may only reference core or adapter-sample
+apiVersion: paved/v1
+kind: Skill
+version: 0.1.0
+status: experimental
+id: adapter-sample.development.sample
+category: development
+context:
+  required: []
+tools:
+  required: [adapter-other.build.compile]
+verification:
+  required: [runtime]
+evidence:
+  required: [check-result]

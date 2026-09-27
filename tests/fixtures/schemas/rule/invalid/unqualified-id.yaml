@@ -1,0 +1,12 @@
+# expect-error: must match pattern
+apiVersion: paved/v1
+kind: Rule
+id: sample-rule
+title: Sample
+rationale: Sample.
+applies_to: {}
+rule: Sample.
+enforcement:
+  mechanism: review
+severity: error
+verification: Sample.

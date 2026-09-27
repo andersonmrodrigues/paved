@@ -1,0 +1,74 @@
+# expect-error: /completion/verification must be equal to constant
+# A violated warning-severity rule does not block completion; an error-severity one would.
+apiVersion: paved/v1
+kind: Evidence
+id: sample
+created_at: 2026-01-01T00:00:00Z
+producer:
+  agent: sample-agent
+  workflow: core.bug
+  skills: [core.debugging.root-cause-analysis]
+verification:
+  profile: .paved/verification/profile.yaml
+change:
+  summary: Sample.
+  revision: abc1234
+plan:
+  required: [unit]
+  evidence: [check-result]
+claims:
+  - id: works
+    statement: It works.
+    type: behavior
+    supported_by: [unit]
+checks:
+  - id: unit
+    type: unit
+    status: passed
+    execution:
+      recorded_by: paved
+      revision: abc1234
+      environment:
+        kind: local
+        facts:
+          os: sample-os
+      started_at: 2026-01-01T00:00:00Z
+    check: project.test.unit
+    tool:
+      id: project.test.unit
+      version: 1.0.0
+    exit_code: 0
+  - id: bench
+    type: performance
+    status: inconclusive
+    execution:
+      recorded_by: paved
+      revision: abc1234
+      started_at: 2026-01-01T00:00:00Z
+    check: project.test.performance
+    tool:
+      id: project.test.performance
+      version: 1.0.0
+artifacts:
+  - id: notes
+    kind: manual-observation
+    description: Observed the fixed behavior by hand.
+    recorded_by: human
+    source:
+      type: file
+      location: notes/observation.md
+    revision: abc1234
+    created_at: 2026-01-01T00:00:00Z
+rules:
+  - id: core.performance.measure-before-optimizing
+    severity: warning
+    status: violated
+    note: Sample.
+completion:
+  status: complete
+  verification: partially-verified
+  decided_by: paved
+  criteria:
+    - statement: Tests pass.
+      met: true
+      supported_by: [unit]

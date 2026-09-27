@@ -1,0 +1,14 @@
+apiVersion: paved/v1
+kind: Rule
+id: project.quality.sample
+title: Sample
+rationale: Sample.
+applies_to:
+  paths: [src/**]
+  workflows: [core.feature, project.sample]
+  change_types: [feature, bug-fix]
+rule: Sample.
+enforcement:
+  mechanism: review
+severity: warning
+verification: Sample.

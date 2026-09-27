@@ -1,0 +1,32 @@
+# expect-error: references unknown tool "core.git.push"
+apiVersion: paved/v1
+kind: Workflow
+id: project.sample
+title: Sample
+description: Sample bug workflow. Use when testing references.
+version: 0.1.0
+status: experimental
+change_type: bug-fix
+inputs:
+  - id: report
+    description: The defect.
+    required: true
+phases:
+  - phase: context
+    goal: Locate the failure.
+    skills: [core.debugging.root-cause-analysis]
+    tools:
+      required: [core.git.push]
+  - phase: verification
+    goal: Prove the fix.
+    verification:
+      required: [unit]
+  - phase: evidence
+    goal: Record evidence.
+  - phase: completion
+    goal: Finish.
+evidence:
+  required: [check-result]
+outputs: [change, evidence]
+completion:
+  criteria: [The defect no longer occurs.]

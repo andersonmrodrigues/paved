@@ -1,0 +1,8 @@
+# expect-error: must be equal to one of the allowed values
+apiVersion: paved/v1
+kind: Overrides
+skills:
+  - target: core.development.feature-development
+    action: replace
+    owner: sample-team
+    reason: Sample.

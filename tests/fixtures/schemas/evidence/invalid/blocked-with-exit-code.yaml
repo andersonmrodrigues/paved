@@ -1,0 +1,24 @@
+# expect-error: /checks/0 must NOT be valid
+apiVersion: paved/v1
+kind: Evidence
+id: sample
+created_at: 2026-01-01T00:00:00Z
+change: { summary: Sample., revision: abc1234 }
+plan: { required: [unit], evidence: [check-result] }
+claims:
+  - { id: works, statement: It works., type: behavior, supported_by: [unit] }
+checks:
+  - id: unit
+    check: core.paved.schema-validation
+    type: unit
+    tool: { id: core.paved.doctor, version: "1.0" }
+    status: blocked
+    reason: No database.
+    exit_code: 0
+    execution: { recorded_by: paved, revision: abc1234, started_at: 2026-01-01T00:00:00Z }
+completion:
+  status: incomplete
+  verification: unverified
+  decided_by: paved
+  criteria:
+    - { statement: Tests pass., met: true }

@@ -1,0 +1,79 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:provenance:v1
+title: Paved provenance
+description: >
+  The one definition of where knowledge came from (Principle 9). Embedded as
+  `provenance` in Project Context documents and feature entries, and in generated
+  artifact sidecars; its `source` definition is also used by evidence artifacts. It
+  answers "why does Paved believe this?": which sources, read at which revision, by
+  which generator (or which human), and whether a human has reviewed the result.
+  Confidence is a property of the knowledge, not of its origin, so it lives next to the
+  provenance block, not inside it. See docs/concepts/traceability.md.
+type: object
+additionalProperties: false
+required: [generator, generated_at, sources]
+properties:
+  generator:
+    description: Generator id, or `human` for knowledge written by a person.
+    anyOf:
+      - const: human
+      - $ref: "urn:paved:schema:common:v1#/$defs/generatorId"
+  generator_version: { $ref: "urn:paved:schema:common:v1#/$defs/semver" }
+  generated_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+  source_revision:
+    description: VCS revision the sources were read at, when available.
+    type: string
+  sources:
+    type: array
+    minItems: 1
+    items:
+      $ref: "#/$defs/source"
+      type: object
+      required: [id]
+  output_sha256:
+    description: >
+      Hash of the generated output (the Markdown body, or the YAML document without its
+      provenance block). A mismatch means a human edited the content since generation.
+    $ref: "urn:paved:schema:common:v1#/$defs/sha256"
+  review:
+    type: object
+    additionalProperties: false
+    required: [status]
+    properties:
+      status: { enum: [unreviewed, reviewed, rejected] }
+      by: { type: string }
+      at: { $ref: "urn:paved:schema:common:v1#/$defs/date" }
+# Output of a generator (anything but `human`) must say which generator version wrote it
+# and what it wrote, so edits and outdated generators are detectable.
+if:
+  properties: { generator: { not: { const: human } } }
+then:
+  required: [generator_version, output_sha256]
+$defs:
+  source:
+    description: >
+      One origin of knowledge. `file`: a file in the repository (location is a
+      repository-relative path). `revision`: a VCS revision or range. `human`: a
+      person's statement (location names who, and where it was recorded). `url`: an
+      external document. `command`: output of a command (location is the command).
+      `id` is required inside provenance, where statements cite it.
+    type: object
+    additionalProperties: false
+    required: [type, location]
+    properties:
+      id:
+        description: Local id cited by managed blocks and conflicts in the same document.
+        $ref: "urn:paved:schema:common:v1#/$defs/name"
+      type: { enum: [file, revision, human, url, command] }
+      location: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      sha256:
+        description: Content hash at the time it was read. A mismatch makes the knowledge STALE.
+        $ref: "urn:paved:schema:common:v1#/$defs/sha256"
+      lines: { $ref: "urn:paved:schema:common:v1#/$defs/lineRange" }
+      revision: { type: string }
+      captured_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+    allOf:
+      - if: { properties: { type: { const: file } } }
+        then: { properties: { location: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" } } }
+      - if: { properties: { type: { const: url } } }
+        then: { properties: { location: { type: string, pattern: "^https?://" } } }

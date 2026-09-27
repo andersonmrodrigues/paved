@@ -1,0 +1,23 @@
+apiVersion: paved/v1
+kind: Check
+id: project.perf.export-latency
+title: Export latency does not regress
+purpose: The export endpoint stays within the agreed regression budget.
+type: performance
+tool: project.perf.run-benchmark
+inputs: { workload: export-10k }
+preconditions:
+  - { id: baseline-recorded, condition: A baseline for the same workload exists., when_unmet: blocked }
+expected:
+  description: p95 latency is at most 10% worse than the baseline.
+  measurement: { metric: p95 latency, unit: ms, direction: lower-is-better, max_regression: 0.1, relative: true }
+environment: { kinds: [ci], capture: [cpu-model] }
+outputs:
+  - { kind: measurement, description: Raw samples. }
+failure: Latency regressed beyond the budget; profile the change before retrying.
+determinism:
+  class: nondeterministic
+  sources: [concurrency, environment-drift]
+  controls: Five samples on a dedicated runner; the median is compared.
+retry: { class: environment-dependent, max_attempts: 2 }
+minimum_recorder: ci

@@ -1,0 +1,57 @@
+apiVersion: paved/v1
+kind: Tool
+id: core.git.log
+title: Show history
+purpose: >
+  Find when and in which change code was introduced or modified, to date a
+  regression, find the last known-good revision, or read the reasoning recorded
+  in commit messages.
+safety: read-only
+inputs:
+  - name: range
+    description: Revision range to list, for example a last known-good revision up
+      to HEAD. Omit for the whole history.
+    required: false
+    pattern: ^[A-Za-z0-9._/~^@{}-]+(\.\.[A-Za-z0-9._/~^@{}-]+)?$
+    type: string
+  - name: path
+    description: Limit the history to changes touching this repository-relative path.
+    required: false
+    pattern: ^(?!/)(?!.*\.\.)\S+$
+    type: string
+outputs:
+  format: text
+  description: Commits with id, author, date and message, newest first.
+side_effects: []
+confirmation: none
+examples:
+  - description: Commits touching one directory since a known-good revision.
+  - description: The last ten commits, one line each.
+version: 0.1.0
+capability: git-log
+permissions:
+  - repository-read
+environments:
+  - local
+  - ci
+  - ephemeral
+preconditions:
+  - id: precondition-1
+    kind: repository
+    description: The working directory is inside a Git repository.
+idempotency: idempotent
+timeout_seconds: 60
+retry:
+  max_attempts: 1
+  backoff_seconds: 0
+errors:
+  - execution-failure
+  - failed-precondition
+  - timeout
+evidence:
+  capture:
+    - revision
+    - environment
+    - timestamps
+    - output-digest
+availability: available

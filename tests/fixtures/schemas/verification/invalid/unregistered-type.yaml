@@ -1,0 +1,6 @@
+# expect-error: /unavailable/0/type must match pattern
+apiVersion: paved/v1
+kind: VerificationProfile
+checks: [project.test.unit]
+unavailable:
+  - { type: smoke, reason: Sample. }

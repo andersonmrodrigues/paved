@@ -1,0 +1,42 @@
+# expect-problem: producer skill "core.development.implement-change" is unknown
+apiVersion: paved/v1
+kind: Evidence
+id: unknown-producer-skill
+created_at: 2026-01-01T00:00:00Z
+producer:
+  skills: [core.development.implement-change]
+change:
+  summary: Add a filter.
+  revision: 4f2c9e1
+plan:
+  required: [unit]
+  evidence: [check-result]
+claims:
+  - id: filters
+    statement: The list can be filtered.
+    type: behavior
+    supported_by: [unit]
+checks:
+  - id: unit
+    type: unit
+    status: passed
+    execution:
+      recorded_by: ci
+      revision: 4f2c9e1
+      started_at: 2026-01-01T00:00:00Z
+      run_url: https://ci.example.invalid/runs/1
+    check: project.test.unit
+    tool:
+      id: project.test.unit
+      version: 1.0.0
+    exit_code: 0
+completion:
+  status: complete
+  verification: verified
+  decided_by: human
+  criteria:
+    - statement: Filtering works.
+      met: true
+      supported_by: [filters]
+verification:
+  profile: .paved/verification/profile.yaml

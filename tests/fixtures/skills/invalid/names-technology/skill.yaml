@@ -1,0 +1,15 @@
+# expect-problem: names a specific technology
+apiVersion: paved/v1
+kind: Skill
+id: project.testing.names-technology
+version: 0.1.0
+status: experimental
+category: testing
+context:
+  required: []
+tools:
+  required: [core.git.diff]
+verification:
+  required: [unit]
+evidence:
+  required: [check-result]

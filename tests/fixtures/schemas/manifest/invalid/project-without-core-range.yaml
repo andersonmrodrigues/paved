@@ -1,0 +1,6 @@
+# expect-error: must have required property 'core'
+apiVersion: paved/v1
+kind: Project
+project:
+  name: sample
+paved: {}

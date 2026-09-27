@@ -1,0 +1,21 @@
+apiVersion: paved/v1
+kind: Skill
+id: project.testing.sample
+version: 0.1.0
+status: experimental
+category: testing
+context:
+  required: [manifest, verification]
+  optional: [feature-map]
+tools:
+  required: [core.git.diff]
+  optional: [project.testing.coverage]
+rules: [core.security.no-secrets-in-source]
+depends_on:
+  optional: [core.testing.unit-testing]
+verification:
+  required: [unit]
+  recommended: [integration]
+evidence:
+  required: [check-result]
+references: [references/detail.md, examples/sample.md]

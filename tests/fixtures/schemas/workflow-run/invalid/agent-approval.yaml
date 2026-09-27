@@ -1,0 +1,35 @@
+# expect-error: /decided_by must NOT be valid
+apiVersion: paved/v1
+kind: WorkflowRun
+id: 2026-09-27-sample
+workflow:
+  id: core.bug
+  version: 0.2.0
+revision: 3f2a9c1
+started_at: 2026-09-27T10:00:00Z
+status: running
+inputs:
+  - id: report
+    value: Export fails for archived items.
+    source: ticket
+phases:
+  - phase: context
+    status: completed
+    attempts: 1
+    skills:
+      - id: core.discovery.context-discovery
+        status: activated
+    gates:
+      - id: expected-behavior-known
+        status: approved
+        decided_by: agent
+        decided_at: 2026-09-27T10:04:00Z
+  - phase: discovery
+    status: running
+    attempts: 1
+events:
+  - at: 2026-09-27T10:00:00Z
+    type: run-started
+  - at: 2026-09-27T10:05:00Z
+    type: phase-started
+    phase: discovery

@@ -1,0 +1,40 @@
+# expect-error: must be equal to one of the allowed values
+apiVersion: paved/v1
+kind: Tool
+id: project.sample.read
+title: Sample
+purpose: Sample.
+safety: harmless
+inputs: []
+outputs:
+  format: text
+  description: Sample.
+side_effects: []
+confirmation: none
+examples:
+  - description: Sample.
+version: 0.1.0
+capability: sample-read
+permissions:
+  - repository-write
+environments:
+  - local
+  - ci
+  - ephemeral
+preconditions: []
+idempotency: unknown
+timeout_seconds: 300
+retry:
+  max_attempts: 1
+  backoff_seconds: 0
+errors:
+  - execution-failure
+  - failed-precondition
+  - timeout
+evidence:
+  capture:
+    - revision
+    - environment
+    - timestamps
+    - output-digest
+availability: available

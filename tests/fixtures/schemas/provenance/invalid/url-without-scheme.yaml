@@ -1,0 +1,5 @@
+# expect-error: /sources/0/location must match pattern
+generator: human
+generated_at: 2026-01-01T00:00:00Z
+sources:
+  - { id: spec, type: url, location: example.org/spec }

@@ -1,0 +1,15 @@
+apiVersion: paved/v1
+kind: ToolImplementation
+id: project.synthetic.inspect
+tool: project.synthetic.inspect
+version: 0.1.0
+contract: ^0.1.0
+source: project
+environments:
+  - local
+  - ci
+invocation:
+  type: synthetic
+  synthetic_result:
+    count: 2
+availability: available

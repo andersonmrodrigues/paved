@@ -1,0 +1,10 @@
+# expect-error: must have required property 'provenance'
+apiVersion: paved/v1
+kind: Feature
+id: sample
+name: Sample
+summary: Sample.
+status: active
+confidence: inferred
+code:
+  paths: [src/sample/**]

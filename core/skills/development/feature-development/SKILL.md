@@ -1,0 +1,92 @@
+---
+name: feature-development
+description: >-
+  Implements new behavior or a change to existing behavior: understands the requirement,
+  finds the code it affects, plans the change and its proof, implements it in the
+  repository's existing style, adds tests and verifies. Use when a task adds or changes
+  what the software does and the requirement is clear enough to state as claims.
+---
+
+# Feature development
+
+## When to use
+
+In the `planning` and `implementation` phases of the feature workflow, and for any other
+change that adds or alters behavior. For restructuring without behavior change use
+`refactoring`; for throwaway exploration use `prototyping`.
+
+## Required context
+
+None beyond the code. Useful when present: the feature map entry for the area, the
+architecture context (boundaries), the rules in scope and the verification profile, to
+know which checks exist before promising any.
+
+## Preconditions
+
+- The requirement can be written as observable claims ("given X, the system does Y").
+  If it cannot, ask; do not fill gaps in a requirement with guesses.
+- The affected code and the pattern to follow are known. If not, activate
+  `context-discovery` first.
+
+## Procedure
+
+1. **Understand the requirement.** Write it as claims, including the edge cases the
+   requirement implies (empty input, missing data, limits, failure of a dependency).
+   List what is out of scope.
+2. **Locate the affected code** through the feature map or by following the entry point
+   of the behavior. Name every file you expect to change.
+3. **Plan the proof.** For each claim, pick the check type from the profile that will
+   prove it. A claim no check can prove gets a planned artifact and a gap, decided now,
+   not after the code is written.
+4. **Implement in small steps** that mirror the chosen sibling: naming, structure, error
+   handling, logging, configuration. The diff contains only what the claims need.
+5. **Add tests with the code.** Hand the tests for each level to its skill:
+   `unit-testing` for logic, `integration-testing` for boundaries with real
+   collaborators, `e2e-testing` when the claim is a user-visible flow.
+6. **Run the fast checks** after each meaningful step and fix failures before going on.
+7. **Clean up** imports, parameters, files and flags the change left unused.
+8. **Self-review** the diff with `core.git.diff`, and confirm with `core.git.status` that
+   no unintended file changed.
+9. **Verify and record** every required check, then hand over to the `verification` phase.
+
+## Tools
+
+`core.git.diff` for self-review; `core.git.status` for unintended files. Build and test
+commands come from the Tools named by Checks in the verification profile.
+
+## Rules
+
+`core.architecture.follow-existing-patterns` and
+`core.architecture.respect-declared-boundaries` shape steps 2 and 4.
+`core.security.no-secrets-in-source` covers test data and examples as well as code.
+`core.quality.evidence-before-completion` governs step 9.
+
+## Verification
+
+Required: `unit`. Recommended when the profile has them: `build` and `static-analysis`
+(they validate, but prove no behavior), `integration` for changed boundaries, `e2e` for
+changed user flows.
+
+## Evidence
+
+A check result for every claim, the diff, and a gap for each claim without an
+available check.
+
+## Completion criteria
+
+- Every claim has a passed check or a supporting artifact, or is an explained gap.
+- The diff touches only files named in step 2, or the plan was updated to say why.
+- No new static-analysis warnings in the changed files.
+
+## Failure modes
+
+| Failure | Signal | Response |
+|---|---|---|
+| Scope creep | Diff touches files unrelated to the claims | Revert the unrelated parts |
+| New pattern by accident | Code differs in style from its siblings | Rewrite to match, or record why not |
+| Proof chosen after the fact | Claims appear only after implementation | Re-plan the claims; confirm the tests assert them |
+| Requirement grows during work | New claims appear mid-implementation | Stop and confirm them with a human |
+
+## References
+
+None.

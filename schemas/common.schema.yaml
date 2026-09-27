@@ -1,0 +1,328 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:common:v1
+title: Paved common definitions
+description: >
+  Shared definitions referenced by every other Paved schema. Changing a definition here
+  changes the contract of every document kind, so it follows the same versioning rules
+  as the schemas themselves (docs/concepts/versioning.md). Provenance has its own schema
+  (provenance.schema.yaml). Reference formats: docs/concepts/references.md.
+$defs:
+  apiVersion:
+    description: Contract version of the document. Breaking schema changes bump it.
+    const: paved/v1
+
+  name:
+    description: Lowercase kebab-case identifier (same constraints as Agent Skills names).
+    type: string
+    pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+    maxLength: 64
+
+  namespace:
+    description: >
+      The layer that owns an artifact: `core`, `project`, or `adapter-<name>` for the
+      adapter `<category>/<name>`. Adapter names are unique across categories.
+    type: string
+    pattern: "^(core|project|adapter-[a-z0-9]+(-[a-z0-9]+)*)$"
+
+  adapterId:
+    description: "<category>/<name>, matching the adapter's directory under adapters/. Its namespace is adapter-<name>."
+    type: string
+    pattern: "^(languages|frameworks|infrastructure|databases)/[a-z0-9]+(-[a-z0-9]+)*$"
+
+  generatorId:
+    description: Path of a Core generator directory relative to generators/, for example project-context/domain.
+    type: string
+    pattern: "^[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)?$"
+
+  # References. Composable artifacts (rules, tools, skills, workflows) are identified by
+  # a qualified id: `<namespace>.<path>`. The field a reference appears in fixes the kind
+  # of artifact it points to, so the id carries no kind prefix.
+
+  ruleRef:
+    description: "Rule id: <namespace>.<category>.<name>, for example core.security.no-secrets-in-source."
+    type: string
+    pattern: "^(core|project|adapter-[a-z0-9]+(-[a-z0-9]+)*)(\\.[a-z0-9]+(-[a-z0-9]+)*){2}$"
+
+  toolRef:
+    description: "Tool id: <namespace>.<group>.<name>, for example core.git.status."
+    $ref: "#/$defs/ruleRef"
+
+  skillRef:
+    description: >
+      Skill id: <namespace>.<category>.<name>, for example core.debugging.root-cause-analysis.
+      The last segment is the Agent Skills `name`.
+    $ref: "#/$defs/ruleRef"
+
+  environmentKind:
+    description: >
+      `local`: a developer or agent machine. `ci`: a CI runner. `ephemeral`: a
+      short-lived environment built for the change. `shared`: a long-lived non-production
+      environment. `production`: the live system.
+    enum: [local, ci, ephemeral, shared, production]
+
+  checkRef:
+    description: "Check id: <namespace>.<group>.<name>, for example core.paved.schema-validation."
+    $ref: "#/$defs/ruleRef"
+
+  workflowRef:
+    description: "Workflow id: <namespace>.<name>, for example core.bug."
+    type: string
+    pattern: "^(core|project|adapter-[a-z0-9]+(-[a-z0-9]+)*)\\.[a-z0-9]+(-[a-z0-9]+)*$"
+
+  semver:
+    description: Semantic Versioning 2.0.0 version.
+    type: string
+    pattern: "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+
+  semverRange:
+    description: >
+      Version range using npm-style comparators (for example `^0.1.0`, `>=1.2.0 <2.0.0`).
+      Interpreted by the CLI compatibility check. Each comparator names a full version;
+      tags such as `latest` and wildcards are not ranges, because they would make
+      resolution depend on when it runs.
+    type: string
+    pattern: "^\\s*((\\^|~|>=?|<=?|=)?\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?\\s*)+(\\|\\|\\s*((\\^|~|>=?|<=?|=)?\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?\\s*)+)*$"
+
+  relativePath:
+    description: Repository-relative POSIX path. Absolute paths and parent traversal are rejected.
+    type: string
+    minLength: 1
+    not:
+      anyOf:
+        - pattern: "^/"
+        - pattern: "(^|/)\\.\\.(/|$)"
+        - pattern: "\\\\"
+
+  date:
+    type: string
+    pattern: "^\\d{4}-\\d{2}-\\d{2}$"
+
+  dateTime:
+    description: RFC 3339 timestamp with explicit offset.
+    type: string
+    pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+
+  nonEmptyString:
+    type: string
+    minLength: 1
+
+  nonEmptyStringList:
+    type: array
+    items: { $ref: "#/$defs/nonEmptyString" }
+
+  checkType:
+    description: >
+      Verification check type. Core types are registered in
+      core/verification/registry.yaml (a test keeps this enum in sync). Projects may
+      declare their own types with an `x-` prefix.
+    anyOf:
+      - enum:
+          - build
+          - static-analysis
+          - unit
+          - integration
+          - e2e
+          - architecture
+          - security
+          - performance
+          - runtime
+          - contract
+          - database
+          - configuration
+          - deployment
+          - observability
+          - formal
+          - conformance
+      - type: string
+        pattern: "^x-[a-z0-9]+(-[a-z0-9]+)*$"
+
+  changeType:
+    description: >
+      Kind of change. The first six have Core workflows; the others exist so rules can be
+      scoped to them.
+    enum: [feature, bug-fix, refactor, performance, incident, release, dependency, configuration, documentation]
+
+  phase:
+    description: Task lifecycle phase, in canonical order (core/instructions/lifecycle.md).
+    enum: [context, discovery, planning, implementation, validation, verification, evidence, review, completion]
+
+  approvalCategory:
+    description: >
+      Why a gate needs a human decision. `destructive-operation`: data loss or effects
+      that cannot be undone. `production-change`: a change to a running shared or
+      production system. `release`: publishing to users. `security-exception`,
+      `architecture-exception`: accepting a deviation from a security or architecture
+      rule. `breaking-change`: an incompatible change for consumers. `risk-acceptance`:
+      proceeding despite a known, unmitigated risk. See docs/concepts/workflow-approval.md.
+    enum:
+      - destructive-operation
+      - production-change
+      - release
+      - security-exception
+      - architecture-exception
+      - breaking-change
+      - risk-acceptance
+
+  gate:
+    description: >
+      A condition that must hold before a workflow phase is left. With `approval`, only
+      an explicit human decision satisfies it. With `when`, the gate applies only when
+      the condition holds; otherwise it is recorded as not applicable, with the reason.
+      Open, so a document can add fields (an override adds `phase`); each user closes it
+      with `unevaluatedProperties: false`.
+    type: object
+    required: [id, condition]
+    properties:
+      id: { $ref: "#/$defs/name" }
+      condition: { $ref: "#/$defs/nonEmptyString" }
+      when: { $ref: "#/$defs/nonEmptyString" }
+      approval: { $ref: "#/$defs/approvalCategory" }
+
+  lifecycleStatus:
+    description: >
+      `experimental`: usable, may change in a minor version; version below 1.0.0.
+      `stable`: changes follow the version rules strictly; version 1.0.0 or later.
+      `deprecated`: still works, will be removed; `deprecation` says what to use instead.
+    enum: [experimental, stable, deprecated]
+
+  deprecation:
+    description: >
+      Deprecation note. Open, so each document schema can add a typed `replaced_by` and
+      close the object with `unevaluatedProperties: false`.
+    type: object
+    required: [since, migration]
+    properties:
+      since:
+        description: Version of the artifact that deprecated it.
+        $ref: "#/$defs/semver"
+      migration:
+        description: What a user of the artifact should do instead.
+        $ref: "#/$defs/nonEmptyString"
+
+  failureCode:
+    description: >
+      Why a workflow phase could not complete. Each code has a fixed run status and retry
+      class (docs/concepts/workflow-failure.md; enforced by cli/lib/workflows.ts).
+    enum:
+      - input-missing
+      - precondition-failed
+      - context-missing
+      - tool-unavailable
+      - skill-unavailable
+      - rule-violation
+      - approval-required
+      - approval-rejected
+      - skill-failed
+      - verification-failed
+      - inconclusive
+      - evidence-insufficient
+      - retries-exhausted
+
+  retryClass:
+    description: >
+      `retryable`: the phase may be attempted again by the agent, up to its limit.
+      `non-retryable`: repeating cannot help; the input, plan or code must change first.
+      `requires-human`: only a human decision can unblock it.
+    enum: [retryable, non-retryable, requires-human]
+
+  contextArea:
+    description: Part of a consumer's `.paved/` a skill may need to read.
+    enum:
+      - manifest
+      - architecture
+      - domain
+      - product
+      - integrations
+      - technology
+      - feature-map
+      - rules
+      - verification
+      - tools
+      - overrides
+
+  evidenceKind:
+    description: Kind of artifact that can support a claim in an evidence record.
+    enum:
+      - check-result
+      - reproduction
+      - measurement
+      - diff
+      - log
+      - trace
+      - screenshot
+      - review
+      - manual-observation
+
+  severity:
+    enum: [error, warning, info]
+
+  ownership:
+    description: Who may write a path in a consumer repository. See docs/concepts/ownership-and-regeneration.md.
+    enum:
+      - human-owned
+      - project-owned
+      - generated-reviewed
+      - disposable
+      - tool-managed
+
+  confidence:
+    description: >
+      How a piece of knowledge was obtained. `observed`: read directly from a source.
+      `declared`: stated by a human. Both count as KNOWN. `inferred`: derived by
+      reasoning; needs review. UNKNOWN and CONFLICTING knowledge is recorded in
+      `unknowns` and `conflicts`; STALE is computed from provenance, never stored.
+      See docs/concepts/traceability.md.
+    enum: [observed, declared, inferred]
+
+  unknown:
+    description: Explicitly recorded gap in knowledge. Generators emit these instead of guessing.
+    type: object
+    additionalProperties: false
+    required: [topic, reason]
+    properties:
+      topic: { $ref: "#/$defs/nonEmptyString" }
+      reason: { $ref: "#/$defs/nonEmptyString" }
+      question:
+        description: Question a human could answer to resolve the gap.
+        type: string
+
+  conflict:
+    description: >
+      Two or more sources disagree. Recorded instead of silently picking one;
+      resolution is a human decision.
+    type: object
+    additionalProperties: false
+    required: [topic, statements]
+    properties:
+      topic: { $ref: "#/$defs/nonEmptyString" }
+      statements:
+        type: array
+        minItems: 2
+        items:
+          type: object
+          additionalProperties: false
+          required: [statement, source]
+          properties:
+            statement: { $ref: "#/$defs/nonEmptyString" }
+            source:
+              description: Id of an entry in the document's provenance sources.
+              $ref: "#/$defs/name"
+      question: { type: string }
+
+  sha256:
+    type: string
+    pattern: "^[a-f0-9]{64}$"
+
+  fileRef:
+    description: Pointer to a file (and optionally lines) in the consumer repository.
+    type: object
+    additionalProperties: false
+    required: [path]
+    properties:
+      path: { $ref: "#/$defs/relativePath" }
+      lines: { $ref: "#/$defs/lineRange" }
+
+  lineRange:
+    description: A line number or an inclusive range, for example `12` or `12-40`.
+    type: string
+    pattern: "^\\d+(-\\d+)?$"

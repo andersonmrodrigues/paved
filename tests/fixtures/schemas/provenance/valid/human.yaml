@@ -1,0 +1,4 @@
+generator: human
+generated_at: 2026-01-01T00:00:00Z
+sources:
+  - { id: owner, type: human, location: "Sample team, design review." }

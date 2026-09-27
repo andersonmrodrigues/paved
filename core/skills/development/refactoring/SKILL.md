@@ -1,0 +1,81 @@
+---
+name: refactoring
+description: >-
+  Changes the structure of code without changing its behavior, in small steps that each
+  keep the tests passing. Use when code must be reorganized, renamed, split, merged or
+  simplified, or moved to respect a boundary, and no behavior should change.
+---
+
+# Refactoring
+
+## When to use
+
+In the refactor workflow, or when a feature or fix needs the code reshaped first. If
+behavior must change too, finish the refactoring, verify it, then change behavior with
+`feature-development`: never both in one step.
+
+## Required context
+
+The code to restructure and the tests that cover it. Useful: architecture context for
+the target structure, and the rules in scope.
+
+## Preconditions
+
+- The behavior to preserve is covered by tests that pass now. If coverage is missing,
+  first add characterization tests that pin the current behavior, including behavior
+  that looks wrong. Use `unit-testing` for them, or `integration-testing` when the
+  behavior only shows across a boundary.
+- The target structure is stated: what moves where, and why.
+
+## Procedure
+
+1. **Record the baseline**: run the covering tests and keep the result.
+2. **Pick the smallest step** toward the target: one rename, one extraction, one move.
+3. **Apply it** without changing any observable result: return values, errors, side
+   effects, ordering, logging that others rely on, public interfaces.
+4. **Run the covering tests.** On failure, undo the step rather than repair forward.
+5. **Repeat** until the target structure is reached.
+6. **Remove what is now dead**: old entry points, forwarding shims nobody calls,
+   duplicate helpers. Search for every reference first, including names in strings,
+   configuration and documentation.
+7. **Compare with the baseline**: the same tests pass with the same results; no test was
+   changed to make it pass, except for mechanical renames.
+
+## Tools
+
+None beyond the verification profile. Search the code for references before removing
+anything.
+
+## Rules
+
+`core.architecture.follow-existing-patterns`: the target structure is one the repository
+already uses. `core.architecture.respect-declared-boundaries`: a refactor must not
+introduce a dependency the boundaries forbid, even temporarily.
+
+## Verification
+
+Required: `unit`. Recommended: `integration` for code with external collaborators,
+`architecture` when modules or dependencies move, `static-analysis` and `build`.
+
+## Evidence
+
+The baseline and final check results, and the diff.
+
+## Completion criteria
+
+- The covering tests pass, unchanged except for mechanical renames.
+- Public interfaces are unchanged, or every caller was updated and the change recorded.
+- No dead code remains from the old structure.
+
+## Failure modes
+
+| Failure | Signal | Response |
+|---|---|---|
+| Hidden behavior change | A test assertion had to change | Undo; split out the behavior change |
+| Big-bang step | Many files change before tests run | Undo to the last green step; take smaller steps |
+| Refactoring without a net | No test fails when the code is broken on purpose | Add characterization tests first |
+| Orphaned references | A name survives in configuration or strings | Search again; update or remove them |
+
+## References
+
+None.

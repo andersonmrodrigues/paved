@@ -1,0 +1,39 @@
+# expect-error: has no passed check
+apiVersion: paved/v1
+kind: Evidence
+id: skipped
+created_at: 2026-01-01T00:00:00Z
+change:
+  summary: Sample.
+  revision: 4f2c9e1
+plan:
+  required: []
+  evidence: [check-result]
+claims:
+  - id: works
+    statement: It works.
+    type: behavior
+    supported_by: [integration]
+checks:
+  - id: integration
+    type: integration
+    status: skipped
+    execution:
+      recorded_by: paved
+      revision: 4f2c9e1
+      started_at: 2026-01-01T00:00:00Z
+    check: project.test.integration
+    tool:
+      id: project.test.integration
+      version: 1.0.0
+    reason: The check does not apply to this change.
+completion:
+  status: complete
+  verification: verified
+  decided_by: paved
+  criteria:
+    - statement: Works.
+      met: true
+      supported_by: [works]
+verification:
+  profile: .paved/verification/profile.yaml

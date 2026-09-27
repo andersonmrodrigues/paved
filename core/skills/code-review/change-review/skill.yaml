@@ -1,0 +1,21 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.code-review.change-review
+version: 0.2.0
+status: experimental
+category: code-review
+context:
+  required: []
+  optional: [rules, architecture]
+tools:
+  required: [core.git.diff, core.git.status]
+rules:
+  - core.architecture.follow-existing-patterns
+  - core.quality.evidence-before-completion
+depends_on:
+  optional: [core.security.security-review]
+verification:
+  required: []
+  recommended: [static-analysis]
+evidence:
+  required: [review]

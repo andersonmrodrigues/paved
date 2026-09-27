@@ -1,0 +1,62 @@
+apiVersion: paved/v1
+kind: Tool
+id: project.test.run-unit
+title: Run unit tests
+purpose: Run the unit suite.
+safety: read-only
+inputs: []
+outputs:
+  format: text
+  description: Test report.
+side_effects: []
+confirmation: none
+examples:
+  - description: Run the suite.
+version: 0.1.0
+capability: test-run-unit
+permissions:
+  - repository-read
+environments:
+  - local
+  - ci
+  - ephemeral
+preconditions:
+  - id: precondition-1
+    kind: dependency
+    description: Dependencies installed.
+idempotency: idempotent
+timeout_seconds: 600
+retry:
+  max_attempts: 1
+  backoff_seconds: 0
+errors:
+  - execution-failure
+  - failed-precondition
+  - timeout
+evidence:
+  capture:
+    - revision
+    - environment
+    - timestamps
+    - output-digest
+availability: available
+---
+apiVersion: paved/v1
+kind: Check
+id: project.test.unit
+title: Unit tests pass
+purpose: Existing behavior covered by the unit suite still holds.
+type: unit
+tool: project.test.run-unit
+expected:
+  description: Every test passes.
+  exit_code: 0
+failure: A test failed; read the output.
+determinism:
+  class: deterministic
+---
+apiVersion: paved/v1
+kind: VerificationProfile
+checks:
+  - core.paved.schema-validation
+  - project.test.unit

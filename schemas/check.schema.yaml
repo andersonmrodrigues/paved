@@ -1,0 +1,165 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:check:v1
+title: Paved check definition
+description: >
+  One executable or objectively observable validation: what is checked, why, which tool
+  runs it, what must hold before it can run, what result counts as success, and how
+  deterministic it is. A check never contains a command: the tool it names does, so the
+  definition stays independent of how a project runs it. Core checks live in
+  core/verification/checks/<group>/<name>.yaml (id core.<group>.<name>); adapter and
+  project checks in their own namespaces (.paved/verification/checks/ for a project).
+  The verification profile lists the checks a project has; evidence records what
+  running one observed. See docs/concepts/checks.md.
+type: object
+additionalProperties: false
+required: [apiVersion, kind, id, title, purpose, type, tool, expected, failure, determinism]
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { const: Check }
+  id: { $ref: "urn:paved:schema:common:v1#/$defs/checkRef" }
+  title: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  purpose:
+    description: Why the check exists and which claims a pass can support.
+    $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+  type: { $ref: "urn:paved:schema:common:v1#/$defs/checkType" }
+  tool:
+    description: >
+      Tool that executes the check. Its safety class applies; a check's tool is never
+      destructive (verification observes, it does not change shared state).
+    $ref: "urn:paved:schema:common:v1#/$defs/toolRef"
+  inputs:
+    description: Fixed values for the tool's declared inputs. Inputs not listed here are supplied at run time.
+    type: object
+    propertyNames: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+    additionalProperties: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  applies_to:
+    description: Glob patterns of changed files that make the check relevant. Omitted means always relevant.
+    $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyStringList"
+  preconditions:
+    description: >
+      What must hold before the check runs (a service running, a revision checked out,
+      credentials available). An unmet precondition means the check did not run: its
+      result is `blocked` (it should apply but cannot run) or `skipped` (it does not
+      apply), never `passed`.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [id, condition, when_unmet]
+      properties:
+        id: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+        condition: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+        when_unmet: { enum: [blocked, skipped] }
+  expected:
+    description: >
+      The result that counts as passing, stated so it can be decided mechanically: an
+      exit code, or a measurement compared with a baseline under a threshold.
+    type: object
+    additionalProperties: false
+    required: [description]
+    properties:
+      description: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      exit_code: { type: integer }
+      measurement: { $ref: "#/$defs/measurementRule" }
+    anyOf:
+      - required: [exit_code]
+      - required: [measurement]
+  timeout_seconds: { type: integer, minimum: 1, maximum: 86400 }
+  environment:
+    description: Where the check may run and what must be recorded about the environment beyond the standard facts.
+    type: object
+    additionalProperties: false
+    properties:
+      kinds:
+        type: array
+        uniqueItems: true
+        minItems: 1
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/environmentKind" }
+      capture:
+        description: Names of further environment facts every run must record (for example a runtime version).
+        type: array
+        uniqueItems: true
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+  outputs:
+    description: Artifacts a run produces besides the check result, stored by reference.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [kind, description]
+      properties:
+        kind:
+          $ref: "urn:paved:schema:common:v1#/$defs/evidenceKind"
+          not: { const: check-result }
+        description: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  failure:
+    description: What a failure means and what to do next.
+    $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+  determinism:
+    description: >
+      `deterministic`: same revision, inputs and environment give the same result.
+      `controlled`: non-deterministic sources exist but are pinned (seeds, fixed clocks,
+      recorded responses). `nondeterministic`: results may vary between identical runs;
+      a single pass is weaker evidence and disagreeing attempts make the check flaky.
+    type: object
+    additionalProperties: false
+    required: [class]
+    properties:
+      class: { enum: [deterministic, controlled, nondeterministic] }
+      sources:
+        type: array
+        uniqueItems: true
+        items:
+          enum: [timestamps, random-data, network, external-service, eventual-consistency, concurrency, environment-drift]
+      controls:
+        description: How the sources are pinned or bounded.
+        $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+    if:
+      properties: { class: { enum: [controlled, nondeterministic] } }
+    then:
+      required: [sources, controls]
+      properties: { sources: { type: array, minItems: 1 } }
+  retry:
+    description: >
+      `retryable`: an `error` result may be retried immediately. `environment-dependent`:
+      retry only after the environment changed. `non-retryable`: one attempt. A failed
+      attempt is never turned into a pass by retrying: attempts that disagree make the
+      check flaky and its result inconclusive. Omitted means one attempt.
+    type: object
+    additionalProperties: false
+    required: [class]
+    properties:
+      class: { enum: [retryable, non-retryable, environment-dependent] }
+      max_attempts: { type: integer, minimum: 1, maximum: 3 }
+    if:
+      properties: { class: { const: non-retryable } }
+    then:
+      not: { required: [max_attempts] }
+    else:
+      required: [max_attempts]
+  minimum_recorder:
+    description: The least independent recorder whose result counts for this check (agent < paved < ci).
+    enum: [agent, paved, ci]
+allOf:
+  - if:
+      properties: { type: { const: performance } }
+    then:
+      properties:
+        expected: { type: object, required: [measurement] }
+$defs:
+  measurementRule:
+    description: >
+      How a measurement is judged. Thresholds are project decisions: Core checks never
+      declare one.
+    type: object
+    additionalProperties: false
+    required: [metric, unit, direction, max_regression, relative]
+    properties:
+      metric: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      unit: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      direction: { enum: [lower-is-better, higher-is-better] }
+      max_regression:
+        description: Largest acceptable worsening against the baseline, in `unit` or as a fraction when `relative`.
+        type: number
+        minimum: 0
+      relative: { type: boolean }

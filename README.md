@@ -1,0 +1,183 @@
+# Paved (Predictable Agent Verification & Engineering Discipline)
+
+Paved is an engineering framework that lets AI agents work across many software
+repositories along predictable, verifiable, project-specific paths.
+
+This repository is the **Paved Core**: the universal knowledge, contracts and
+mechanisms. Repositories that use Paved (consumers) keep their own knowledge in a
+`.paved/` directory and reference a Core version; they never copy the Core.
+
+> Status: **architecture defined, not production ready (0.1.0 + unreleased changes)**.
+> Contracts, schemas, Core content and self-tests exist. The CLI and the generators are
+> specified but not implemented. See the
+> [bootstrap review](docs/getting-started/bootstrap-review.md), the
+> [architecture review](docs/getting-started/architecture-review.md), the
+> [schema review](docs/getting-started/schema-review.md), the
+> [skills review](docs/getting-started/skills-review.md) and the
+> [workflows review](docs/getting-started/workflows-review.md), and the
+> [verification review](docs/getting-started/verification-review.md) and
+> [Tools review](docs/getting-started/tools-review.md).
+
+## 1. The problem
+
+An agent that enters a repository without guidance tends to:
+
+- invent structure where the repository already has a pattern;
+- guess project facts (entities, conventions, commands) and act on the guess;
+- stop at "it compiles" or "the tests I ran pass" and report success;
+- repeat the same mistake in every session, because corrections are not captured anywhere.
+
+Writing longer prompts does not fix this. The knowledge ends up spread across tools,
+goes stale, is not project-specific, and nothing checks that it is followed.
+
+## 2. The paved path
+
+A paved path is the well-supported way to do a kind of work in a codebase: known
+context, known constraints, known way to prove the result. Paved makes that path explicit
+and machine-checkable for agents:
+
+- **Workflows** say which phases a kind of task goes through.
+- **Skills** say how to carry out a kind of work.
+- **Rules** say what must hold, and how compliance is shown.
+- **Tools** expose governed capabilities through stable contracts and explicit bindings.
+- **Verification** says which checks prove which claims.
+- **Evidence** records the proof.
+- **The Gardener** turns recurring mistakes into stronger paths.
+
+## 3. Context + constraints + verification
+
+Each is necessary; none is sufficient.
+
+| Without | The agent… |
+|---|---|
+| Context | follows the rules and passes the checks while solving the wrong problem, the wrong way for this codebase |
+| Constraints | understands the code but crosses boundaries, leaks secrets, invents patterns |
+| Verification | produces plausible changes nobody can trust without redoing the work |
+
+Paved treats verification as central: every claim a change makes needs a passed check or
+artifact able to support that *kind* of claim. A successful build supports no behavioral
+claim, and the evidence assessment enforces that ([verification](core/verification/README.md)).
+
+## 4. Multi-repository architecture
+
+```text
+ Paved Core (this repo) ──┐
+                          ├──► consumer A/.paved/  (context, rules, profile, overrides)
+ Adapters (per tech) ─────┤
+                          └──► consumer B/.paved/
+```
+
+The Core is versioned and domain-agnostic. Each consumer declares the Core range and
+adapters it uses in `.paved/manifest.yaml`, and holds everything project-specific
+itself. The consumer layout and the ownership of every path are part of the Core
+contract (`consumer_layout` in [manifest.yaml](manifest.yaml)). Details:
+[multi-repository architecture](docs/concepts/multi-repository.md).
+
+## 5. Core, Adapter, Project Context, Override, Generated
+
+| Layer | What | Where |
+|---|---|---|
+| Core | How agents work, for any repository | this repository |
+| Adapter | How a technology works | `adapters/<category>/<name>/` |
+| Project Context | How this project works (generated, then reviewed) | consumer `.paved/project/` |
+| Override | Reasoned adjustments to Core or adapter content, by reference | consumer `.paved/overrides/` |
+| Generated | Disposable, regenerable output | consumer `.paved/generated/` |
+
+Generators may never overwrite human-owned knowledge; see
+[ownership and regeneration](docs/concepts/ownership-and-regeneration.md). Inherited
+content is modified only through typed overrides; see
+[inheritance](docs/concepts/inheritance.md). Full picture:
+[architecture](docs/concepts/architecture.md); decisions: [docs/decisions](docs/decisions/README.md).
+
+## 6. Lifecycle
+
+**Repository:** `paved init` → discovery → technology detection → adapter resolution →
+context generation → verification setup → validation → ready. `paved update` → Core
+update → compatibility check → context validation → migration if necessary.
+See [repository lifecycle](docs/concepts/repository-lifecycle.md).
+
+**Task:** context → discovery → planning → implementation → validation → verification →
+evidence → review → completion. See [lifecycle](core/instructions/lifecycle.md).
+
+## 7. Repository structure
+
+```text
+.
+├── manifest.yaml, VERSION, CHANGELOG.md, LICENSE
+├── core/
+│   ├── instructions/   # AGENTS.md (agent entrypoint), principles, lifecycle
+│   ├── skills/         # <category>/<name>/{SKILL.md, skill.yaml}
+│   ├── workflows/      # <name>/{WORKFLOW.md, workflow.yaml}
+│   ├── verification/   # verification model, check-type and evidence registry
+│   ├── rules/          # <category>/<name>.yaml
+│   ├── tools/          # <group>/<name>.yaml
+│   ├── tool-implementations/ # Core capability bindings
+│   └── templates/      # starting points for every document kind
+├── generators/         # generator contracts (not implemented)
+├── adapters/           # technology adapter contract (no adapters yet)
+├── schemas/            # JSON Schema (draft 2020-12, authored in YAML); see docs/concepts/schemas.md
+├── cli/                # command contracts + shared library (cli/lib)
+├── docs/               # concepts, decisions (ADRs), getting started, maintenance
+└── tests/              # self-tests of every contract
+```
+
+Agents working **on** this repository start at [AGENTS.md](AGENTS.md). Agents working in
+a consumer start at [core/instructions/AGENTS.md](core/instructions/AGENTS.md).
+
+## 8. Versioning
+
+The Core version (SemVer), the document API version (`apiVersion: paved/v1`), adapter
+versions and generator versions are independent. Consumers declare ranges; the CLI locks
+exact versions and checks compatibility. See [versioning](docs/concepts/versioning.md).
+Every document kind has a schema; see [schemas](docs/concepts/schemas.md),
+[contracts](docs/concepts/contracts.md) and [references](docs/concepts/references.md).
+Skills have their own versions and lifecycle; see [skills](docs/concepts/skills.md),
+[skill discovery](docs/concepts/skill-discovery.md),
+[progressive disclosure](docs/concepts/progressive-disclosure.md) and
+[skill composition](docs/concepts/skill-composition.md). Workflows orchestrate skills
+through the task lifecycle with inputs, gates, approvals, failure codes and run records;
+see [workflows](docs/concepts/workflows.md), [stages](docs/concepts/workflow-stages.md),
+[failure](docs/concepts/workflow-failure.md), [approval](docs/concepts/workflow-approval.md)
+and [state](docs/concepts/workflow-state.md). Verification uses
+[checks](docs/concepts/checks.md), [evidence](docs/concepts/evidence.md) and
+[deterministic completion](docs/concepts/verification.md).
+Tools expose capabilities independently of implementation; see
+[Tools](docs/concepts/tools.md), [safety](docs/concepts/tool-safety.md),
+[resolution](docs/concepts/tool-resolution.md) and [results](docs/concepts/tool-results.md).
+
+## 9. Extensibility
+
+- **Add Core content** (skills, workflows, rules, tools, check types, document kinds):
+  [evolving the Core](docs/maintenance/evolving-the-core.md).
+- **Add technology knowledge:** write an adapter ([adapters/](adapters/README.md)).
+- **Customize for a project:** project rules, skills, tools, workflows and verification
+  in `.paved/`, plus [overrides](docs/concepts/inheritance.md) for inherited content.
+- **All extension points:** [extensibility](docs/concepts/extensibility.md).
+- **Improve the path:** the [gardener skill](core/skills/gardener/gardener/SKILL.md).
+
+## Development
+
+Requires Node.js 22.18 or later (TypeScript runs natively through type stripping).
+
+```bash
+npm ci
+npm run check   # strict type check + all tests
+```
+
+See [tests/README.md](tests/README.md) for what the tests prove.
+
+## 10. Initial roadmap
+
+1. **Validation CLI:** `paved doctor` and `paved verify --evidence` on top of `cli/lib`.
+2. **Distribution:** decide how consumers obtain a Core version (package, archive, Git
+   tag) and implement `paved init` and `paved update` with the lock file.
+3. **First adapters:** one language and one framework, with official sources, to
+   validate the adapter contract against reality.
+4. **First generators:** `verification` and `project-context/feature-map`, the most
+   deterministic, with the merge strategy.
+5. **Pilot:** integrate one real repository and feed what breaks back into the contracts.
+6. **CI** for this repository running `npm run check`.
+
+## License
+
+[MIT](LICENSE)

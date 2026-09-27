@@ -1,0 +1,24 @@
+# expect-error: /checks/0 must have required property 'measurement'
+apiVersion: paved/v1
+kind: Evidence
+id: sample
+created_at: 2026-01-01T00:00:00Z
+change: { summary: Sample., revision: abc1234 }
+plan: { required: [performance], evidence: [check-result] }
+claims:
+  - { id: faster, statement: It is faster., type: performance, supported_by: [bench] }
+checks:
+  - id: bench
+    check: project.perf.export-latency
+    type: performance
+    tool: { id: project.perf.run-benchmark, version: "1.0" }
+    status: passed
+    exit_code: 0
+    execution: { recorded_by: paved, revision: abc1234, started_at: 2026-01-01T00:00:00Z }
+verification: { profile: .paved/verification/profile.yaml }
+completion:
+  status: complete
+  verification: verified
+  decided_by: paved
+  criteria:
+    - { statement: Faster., met: true }

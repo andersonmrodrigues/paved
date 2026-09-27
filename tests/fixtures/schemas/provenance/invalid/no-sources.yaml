@@ -1,0 +1,4 @@
+# expect-error: must NOT have fewer than 1 items
+generator: human
+generated_at: 2026-01-01T00:00:00Z
+sources: []

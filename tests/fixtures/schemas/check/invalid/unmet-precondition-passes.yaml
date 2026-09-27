@@ -1,0 +1,14 @@
+# expect-error: /preconditions/0/when_unmet must be equal to one of the allowed values
+# An unmet precondition means the check did not run; it can never count as passed.
+apiVersion: paved/v1
+kind: Check
+id: project.test.integration
+title: Integration tests pass
+purpose: Components work together.
+type: integration
+tool: project.test.run-integration
+preconditions:
+  - { id: database, condition: A database is reachable., when_unmet: passed }
+expected: { description: Every test passes., exit_code: 0 }
+failure: Read the output.
+determinism: { class: deterministic }

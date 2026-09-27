@@ -1,0 +1,61 @@
+apiVersion: paved/v1
+kind: Evidence
+id: faster-export
+created_at: 2026-01-01T00:00:00Z
+change:
+  summary: Batch the export query.
+  revision: 4f2c9e1
+plan:
+  required: [unit]
+  evidence: [check-result]
+claims:
+  - id: faster
+    statement: p95 export latency drops below budget.
+    type: performance
+    supported_by: [baseline, result]
+  - id: same-output
+    statement: Export content is unchanged.
+    type: non-regression
+    supported_by: [unit]
+checks:
+  - id: unit
+    type: unit
+    status: passed
+    execution:
+      recorded_by: paved
+      revision: 4f2c9e1
+      started_at: 2026-01-01T00:00:00Z
+    check: project.test.unit
+    tool:
+      id: project.test.unit
+      version: 1.0.0
+    exit_code: 0
+artifacts:
+  - id: baseline
+    kind: measurement
+    description: Baseline under the stated workload.
+    recorded_by: paved
+    revision: 4f2c9e1
+    created_at: 2026-01-01T00:00:00Z
+    source:
+      type: file
+      location: .paved/generated/evidence/faster-export/baseline.md
+  - id: result
+    kind: measurement
+    description: Result under the same workload.
+    recorded_by: paved
+    revision: 4f2c9e1
+    created_at: 2026-01-01T00:00:00Z
+    source:
+      type: file
+      location: .paved/generated/evidence/faster-export/result.md
+completion:
+  status: complete
+  verification: verified
+  decided_by: paved
+  criteria:
+    - statement: Latency within budget.
+      met: true
+      supported_by: [faster]
+verification:
+  profile: .paved/verification/profile.yaml

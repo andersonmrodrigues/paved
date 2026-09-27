@@ -1,0 +1,8 @@
+# expect-error: /workflows/0/target must match pattern
+apiVersion: paved/v1
+kind: Overrides
+workflows:
+  - target: release
+    action: disable
+    owner: sample-team
+    reason: Sample.

@@ -1,0 +1,8 @@
+# expect-error: must have required property 'addendum'
+apiVersion: paved/v1
+kind: Overrides
+skills:
+  - target: core.development.feature-development
+    action: extend
+    owner: sample-team
+    reason: Sample.

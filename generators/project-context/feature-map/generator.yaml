@@ -1,0 +1,22 @@
+apiVersion: paved/v1
+kind: Generator
+id: project-context/feature-map
+version: 0.1.0
+status: contract
+summary: >
+  Maps user-visible capabilities to their entrypoints, code paths, tests and relevant context documents, one Feature document per feature.
+depends_on: [project-context/architecture, project-context/product]
+inputs:
+  - kind: repository
+    description: Entrypoints (routes, handlers, commands, screens), tests and their names, module boundaries.
+  - kind: project-context
+    description: Architecture and product context.
+outputs:
+  - path: .paved/project/feature-map/
+    format: yaml
+    metadata: inline
+    schema: Feature
+change_detection:
+  strategy: [source-hash]
+  watch:
+    - "**/*"

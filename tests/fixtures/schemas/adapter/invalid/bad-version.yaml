@@ -1,0 +1,13 @@
+# expect-error: /version must match pattern
+apiVersion: paved/v1
+kind: Adapter
+id: languages/sample
+version: "1.0"
+summary: Sample.
+requires:
+  core: ^0.1.0
+detect:
+  any_files: [sample.config]
+sources:
+  - { title: Sample documentation, url: https://example.org/docs, retrieved_at: 2026-01-01 }
+reviewed_at: 2026-01-01

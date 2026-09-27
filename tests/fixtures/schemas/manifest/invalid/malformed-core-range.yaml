@@ -1,0 +1,7 @@
+# expect-error: /paved/core must match pattern
+apiVersion: paved/v1
+kind: Project
+project:
+  name: sample
+paved:
+  core: latest

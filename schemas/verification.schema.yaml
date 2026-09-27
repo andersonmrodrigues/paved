@@ -1,0 +1,41 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:verification:v1
+title: Paved verification profile
+description: >
+  `.paved/verification/profile.yaml` in a consumer repository. Lists the checks this
+  project actually has, by id. Each check (check.schema.yaml) names the tool that runs
+  it; the tool holds the command. The Core never assumes a check exists; it asks the
+  profile. Workflows and skills ask for check *types*; the profile's checks provide them.
+  Evidence (evidence.schema.yaml) records what running them observed.
+type: object
+additionalProperties: false
+required: [apiVersion, kind, checks]
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { const: VerificationProfile }
+  checks:
+    description: Checks this project runs (Core, adapter or project checks).
+    type: array
+    uniqueItems: true
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/checkRef" }
+  policy:
+    description: >
+      Project requirements on evidence. `minimum_recorder` rejects evidence whose checks
+      were recorded by a less independent recorder (agent < paved < ci). Enforceable once
+      the Paved runner exists; until then only `agent` is achievable locally.
+    type: object
+    additionalProperties: false
+    properties:
+      minimum_recorder: { enum: [agent, paved, ci] }
+  unavailable:
+    description: >
+      Check types the project deliberately does not have, with the reason. Recording
+      this turns a silent gap into a known, reviewable decision.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [type, reason]
+      properties:
+        type: { $ref: "urn:paved:schema:common:v1#/$defs/checkType" }
+        reason: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }

@@ -1,0 +1,13 @@
+# expect-error: must be equal to one of the allowed values
+apiVersion: paved/v1
+kind: Skill
+id: project.development.sample
+version: 0.1.0
+status: experimental
+category: miscellaneous
+context:
+  required: []
+verification:
+  required: []
+evidence:
+  required: [review]

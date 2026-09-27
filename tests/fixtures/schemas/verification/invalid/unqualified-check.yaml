@@ -1,0 +1,4 @@
+# expect-error: /checks/0 must match pattern
+apiVersion: paved/v1
+kind: VerificationProfile
+checks: [unit]

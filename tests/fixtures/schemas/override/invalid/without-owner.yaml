@@ -1,0 +1,7 @@
+# expect-error: must have required property 'owner'
+apiVersion: paved/v1
+kind: Overrides
+rules:
+  - target: core.performance.measure-before-optimizing
+    action: disable
+    reason: Sample.

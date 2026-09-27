@@ -1,0 +1,66 @@
+apiVersion: paved/v1
+kind: Workflow
+id: core.incident
+title: Incident
+description: >-
+  Restores service when a shared or production system is impaired: triage, impact,
+  containment and mitigation approved by a human, runtime confirmation, follow-up. Use
+  when something is broken for users now; the permanent fix follows as a bug workflow.
+version: 0.2.0
+status: experimental
+change_type: incident
+inputs:
+  - id: signal
+    description: The alert, error report or observation that started the incident.
+    required: true
+  - id: affected-scope
+    description: Systems, users or regions known to be affected.
+    required: false
+  - id: started-at
+    description: When the impact began, if known.
+    required: false
+context:
+  required: []
+  optional: [architecture, integrations, tools]
+rules: [core.quality.unknowns-stay-unknown]
+phases:
+  - phase: context
+    goal: Triage the signal and assess impact, affected scope and timeline.
+    skills: [core.discovery.context-discovery]
+    gates:
+      - id: impact-assessed
+        condition: Impact, affected scope and severity are stated, with what is still unknown.
+  - phase: discovery
+    goal: Investigate enough of the cause to choose a safe containment or mitigation.
+    skills: [core.debugging.runtime-debugging, core.debugging.root-cause-analysis]
+    skip_when: Impact is growing and a known, reversible containment exists; investigation continues after containment.
+  - phase: planning
+    goal: Choose the least risky containment and mitigation that restore service.
+    gates:
+      - id: mitigation-approved
+        condition: A human responsible for the affected system approved the containment and mitigation.
+        approval: production-change
+  - phase: implementation
+    goal: Apply the approved containment and mitigation, and nothing else.
+    retry: { class: requires-human }
+  - phase: verification
+    goal: Confirm service is restored using runtime signals.
+    verification:
+      required: [runtime]
+  - phase: evidence
+    goal: Record timeline, impact, cause or current hypothesis, mitigation and runtime confirmation.
+  - phase: review
+    goal: Record the follow-up fix and what would have prevented or caught the incident.
+    skills: [core.gardener.gardener]
+  - phase: completion
+    goal: Confirm service is restored and the follow-ups are recorded.
+    gates:
+      - id: criteria-met
+        condition: The evidence record is complete and valid.
+evidence:
+  required: [log, check-result]
+outputs: [change, evidence, follow-up]
+completion:
+  criteria:
+    - Runtime signals show service restored.
+    - The permanent fix is recorded as a follow-up bug workflow, or the cause is proven to be fully removed.

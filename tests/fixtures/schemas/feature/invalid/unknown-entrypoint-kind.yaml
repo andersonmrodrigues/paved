@@ -1,0 +1,12 @@
+# expect-error: must be equal to one of the allowed values
+apiVersion: paved/v1
+kind: Feature
+id: sample
+name: Sample
+summary: Sample.
+status: active
+confidence: declared
+code:
+  paths: [src/sample/**]
+  entrypoints:
+    - { kind: webhook, name: sample, location: { path: src/sample/entry.ext } }

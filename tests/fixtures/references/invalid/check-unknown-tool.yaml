@@ -1,0 +1,11 @@
+# expect-error: references unknown tool "project.test.missing"
+apiVersion: paved/v1
+kind: Check
+id: project.test.unit
+title: Unit tests pass
+purpose: Existing behavior covered by the unit suite still holds.
+type: unit
+tool: project.test.missing
+expected: { description: Every test passes., exit_code: 0 }
+failure: A test failed; read the output.
+determinism: { class: deterministic }

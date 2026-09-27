@@ -1,0 +1,16 @@
+# expect-problem: copies the text of rule core.security.no-secrets-in-source
+apiVersion: paved/v1
+kind: Skill
+id: project.development.copies-rule
+version: 0.1.0
+status: experimental
+category: development
+context:
+  required: []
+tools:
+  required: [core.git.diff]
+rules: [core.security.no-secrets-in-source]
+verification:
+  required: [unit]
+evidence:
+  required: [check-result]

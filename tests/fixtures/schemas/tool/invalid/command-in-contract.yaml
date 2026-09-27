@@ -1,0 +1,44 @@
+# expect-error: / must NOT have additional properties
+apiVersion: paved/v1
+kind: Tool
+id: project.format.apply
+title: Apply formatting
+purpose: Sample.
+safety: safe-mutation
+inputs: []
+outputs:
+  format: none
+  description: Nothing.
+side_effects:
+  - filesystem
+confirmation: none
+examples:
+  - description: Sample.
+version: 0.1.0
+capability: format-apply
+permissions:
+  - repository-write
+environments:
+  - local
+  - ci
+  - ephemeral
+preconditions: []
+idempotency: unknown
+timeout_seconds: 300
+retry:
+  max_attempts: 1
+  backoff_seconds: 0
+errors:
+  - execution-failure
+  - failed-precondition
+  - timeout
+evidence:
+  capture:
+    - revision
+    - environment
+    - timestamps
+    - output-digest
+availability: available
+invocation:
+  type: command
+  command: ./script

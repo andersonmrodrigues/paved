@@ -1,0 +1,16 @@
+apiVersion: paved/v1
+kind: Skill
+id: project.testing.old-sample
+version: 1.4.0
+status: deprecated
+deprecation:
+  since: 1.4.0
+  replaced_by: project.testing.sample
+  migration: Activate project.testing.sample instead; its procedure covers the same cases.
+category: testing
+context:
+  required: []
+verification:
+  required: [unit]
+evidence:
+  required: [check-result]
