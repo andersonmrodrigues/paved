@@ -174,9 +174,10 @@ arbitrary command. Direct Tool invocation is not implemented, so `/paved:test`
 is reported unavailable even when a Tool contract exists. Testing is not
 treated as verification.
 
-**Bootstrap limitation:** integrations currently project command files from an
-available local Core checkout. They do not distribute or install the Core
-runtime. Because there is no published integrity-pinned runtime artifact, a
-clean consumer without access to a local Core checkout cannot yet complete
+**Bootstrap limitation:** integrations project command files from an available
+runtime, but do not yet distribute or install the Core runtime. The `paved-core`
+package has a constrained pack layout and its local artifact is checked for
+SHA-512 integrity metadata; no public artifact or independent agent bootstrap
+is configured. A clean consumer without an accessible runtime cannot complete
 `/paved:init` through the generated command alone. The integration reports this
 limitation rather than fetching or executing remote code.

@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": false,
+    "noEmit": false,
+    "outDir": "cli/build",
+    "rewriteRelativeImportExtensions": true
+  },
+  "include": ["cli/**/*.ts", "integrations/**/*.ts"]
+}
