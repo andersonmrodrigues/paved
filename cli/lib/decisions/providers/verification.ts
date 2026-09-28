@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { discoverSources } from "../../generator-runtime.ts";
@@ -25,6 +26,14 @@ const NPM_CHECKS = [
 ];
 
 const scopeOf = (path: string) => (path.includes("/") ? dirname(path) : ".");
+
+export function scopeOptionId(scope: string): string {
+  if (scope === ".") return "scope-root";
+  const prefix = scope.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+    .slice(0, 40).replace(/-$/, "");
+  const digest = createHash("sha256").update(scope).digest("hex").slice(0, 8);
+  return `scope-${prefix}-${digest}`;
+}
 
 export function detectCheckCandidates(projectRoot: string): CheckCandidate[] {
   const candidates: CheckCandidate[] = [];
@@ -76,7 +85,7 @@ export const verificationProvider: DecisionProvider = (context): readonly Decisi
       consequence: "Every detected check becomes a Paved verification gate.",
     },
     ...scopes.map((scope) => ({
-      id: `scope-${scope === "." ? "root" : scope.replace(/\//g, "-")}`,
+      id: scopeOptionId(scope),
       label: scope === "." ? "Repository root only" : `${scope} only`,
       description: candidates.filter((item) => item.scope === scope).map((item) => item.label).join(", "),
       consequence: `Only the checks detected in ${scope === "." ? "the repository root" : scope} become gates.`,
