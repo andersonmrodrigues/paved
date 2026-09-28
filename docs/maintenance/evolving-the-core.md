@@ -43,7 +43,8 @@ How to change this repository without breaking consumers.
 2. Update `VERSION`, `manifest.yaml` `version` and `package.json` `version` to the same
    value (a test enforces it).
 3. `npm run check`.
-4. Tag the release. The distribution channel is still open (see the bootstrap review).
+4. Tag the release. The current source-checkout distribution is documented in the
+   [README](../../README.md); update it if the release distribution changes.
 
 ## Receiving Gardener proposals
 

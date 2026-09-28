@@ -1,6 +1,10 @@
 # Gardener
 
-Phase 12 (`PAVED-P12-48371`) adds a local, read-only analysis service and `paved gardener` command. It reads one consumer's existing Evidence records from `.paved/generated/evidence/` and `.paved/verification/evidence/`, plus the last Generator Runtime run in `.paved/generated/state/last-run.json`. It does not run verification or generators. The existing Gardener skill remains the procedure for deeper human-led diagnosis.
+`paved gardener` is a local, read-only analysis command. It reads one consumer's
+existing Evidence records from `.paved/generated/evidence/` and
+`.paved/verification/evidence/`, plus the last generator run in
+`.paved/generated/state/last-run.json`. It does not run verification or generators.
+The Gardener skill remains the procedure for deeper human-led diagnosis.
 
 ## Observation and evidence
 

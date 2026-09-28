@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -487,6 +487,55 @@ describe("verification runner", () => {
       rmSync(missingTool, { recursive: true, force: true });
       rmSync(unauthorized, { recursive: true, force: true });
       rmSync(missingExecutable, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("verification process boundaries", () => {
+  it("does not pass arbitrary caller environment variables to configured executables", async () => {
+    const project = sandbox("environment-isolation");
+    const executable = join(project, ".paved/tools/marker.mjs");
+    const sentinelName = "PAVED_TEST_PRIVATE_SENTINEL";
+    const sentinelValue = "do-not-forward-this";
+    const previousValue = process.env[sentinelName];
+    try {
+      writeFileSync(executable, "#!/usr/bin/env node\nconsole.log(process.env.PAVED_TEST_PRIVATE_SENTINEL ?? \"unset\");\n");
+      process.env[sentinelName] = sentinelValue;
+
+      const result = await runVerification({ projectRoot: project, coreRoot: ROOT });
+      const output = readdirSync(join(project, ".paved/generated/evidence"))
+        .map(file => readFileSync(join(project, ".paved/generated/evidence", file), "utf8"))
+        .join("\n");
+
+      assert.equal(result.status, "success", resultText(result));
+      assert.match(output, /unset/);
+      assert.doesNotMatch(output, new RegExp(sentinelValue));
+    } finally {
+      if (previousValue === undefined) delete process.env[sentinelName];
+      else process.env[sentinelName] = previousValue;
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to write verification evidence through a symlinked output directory", async () => {
+    const project = sandbox("symlinked-evidence");
+    const outside = join(ROOT, "tests/verification/.sandbox-runner", `outside-${process.pid}-${++sandboxCounter}`);
+    rmSync(outside, { recursive: true, force: true });
+    mkdirSync(outside, { recursive: true });
+    try {
+      writeFileSync(join(project, ".paved/tools/marker.mjs"), "#!/usr/bin/env node\nconsole.log(\"verified\");\n");
+      mkdirSync(join(project, ".paved/generated"), { recursive: true });
+      symlinkSync(outside, join(project, ".paved/generated/evidence"));
+
+      await assert.rejects(
+        runVerification({ projectRoot: project, coreRoot: ROOT }),
+        /symbolic link/i,
+      );
+
+      assert.deepEqual(readdirSync(outside), []);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
     }
   });
 });
