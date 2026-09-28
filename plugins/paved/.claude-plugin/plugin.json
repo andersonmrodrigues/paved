@@ -1,0 +1,21 @@
+{
+  "name": "paved",
+  "version": "1.0.0",
+  "description": "Paved engineering commands for AI coding agents: repository context, governed workflows, explicit Tools, verification and evidence, executed by a pinned project-local Paved runtime.",
+  "author": {
+    "name": "Anderson Rodrigues",
+    "url": "https://github.com/andersonmrodrigues"
+  },
+  "homepage": "https://github.com/andersonmrodrigues/paved#readme",
+  "repository": "https://github.com/andersonmrodrigues/paved",
+  "license": "MIT",
+  "keywords": [
+    "paved",
+    "engineering",
+    "workflow",
+    "verification",
+    "evidence",
+    "coding-agent"
+  ],
+  "displayName": "Paved"
+}

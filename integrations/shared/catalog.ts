@@ -1,11 +1,13 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 
 export interface CanonicalSkill {
   readonly name: string;
   readonly id: string;
   readonly version: string;
   readonly body: string;
+  /** Absolute directory holding SKILL.md, skill.yaml and any supporting files. */
+  readonly directory: string;
 }
 
 function frontmatter(text: string): { name?: string } {
@@ -33,6 +35,20 @@ export function loadCanonicalSkills(coreRoot: string): CanonicalSkill[] {
       const contract = readFileSync(join(path, "..", "skill.yaml"), "utf8");
       const id = /^id:\s*(.+)$/m.exec(contract)?.[1]?.trim() ?? `paved.skill.${name}`;
       const version = /^version:\s*(.+)$/m.exec(contract)?.[1]?.trim() ?? "0.0.0";
-      return { name, id, version, body };
+      return { name, id, version, body, directory: dirname(path) };
     });
+}
+
+/** Files a skill's body may link to (references, examples), relative to its directory. */
+export function skillResources(skill: CanonicalSkill): string[] {
+  const found: string[] = [];
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir).sort()) {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) walk(path);
+      else if (dir !== skill.directory) found.push(relative(skill.directory, path).split(sep).join("/"));
+    }
+  };
+  walk(skill.directory);
+  return found;
 }

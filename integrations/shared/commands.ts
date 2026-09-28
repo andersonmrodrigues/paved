@@ -155,7 +155,11 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     requiredContext: [".paved/manifest.yaml", ".paved/paved.lock"],
     allowedSideEffects: ["Paved lock through update transaction", "affected generated context and proposals"],
     lifecycle: MANAGEMENT_STATES, cliCommand: "update",
-    failureSemantics: ["Unknown compatibility, migration requirements, and ownership conflicts stop before unsafe writes.", "Remote updates remain unsupported."],
+    failureSemantics: [
+      "Unknown compatibility, migration requirements, and ownership conflicts stop before unsafe writes.",
+      "Remote updates remain unsupported.",
+      "A different runtime version is never activated by update alone: the launcher's `runtime upgrade` verifies and activates it inside the update transaction, and `runtime rollback` restores the previous runtime and lock.",
+    ],
   },
   {
     id: "paved.doctor", name: "doctor", group: "management",

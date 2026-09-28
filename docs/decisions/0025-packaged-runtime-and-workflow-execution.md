@@ -20,7 +20,8 @@ letting each agent implement its own workflow would split command semantics.
 - `.paved/paved.lock` records the selected package name, version, integrity and
   installed content digest. The lock wins over a newer integration pin. Existing
   locks without a runtime field continue to work through the direct CLI and
-  require an explicit migration for the launcher.
+  require an explicit migration for the launcher, which
+  [ADR 0026](0026-native-plugin-distribution.md) provides as `runtime upgrade`.
 - `cli/runtime.ts` remains the canonical dispatcher for CLI and agent calls.
   `feature`, `fix`, and `refactor` advance the existing workflow contract's
   `WorkflowRun` through durable phase state. `plan`, `debug`, `implement`, and

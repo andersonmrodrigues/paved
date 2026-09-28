@@ -16,5 +16,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["cli/**/*.ts", "integrations/**/*.ts", "tests/**/*.ts"]
+  "include": ["cli/**/*.ts", "integrations/**/*.ts", "plugins/**/*.ts", "tests/**/*.ts"]
 }

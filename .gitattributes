@@ -1,0 +1,2 @@
+# The generated plugin is verified byte for byte against provenance.json.
+plugins/paved/** -text linguist-generated=true

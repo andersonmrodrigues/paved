@@ -1,0 +1,17 @@
+{
+  "name": "paved",
+  "description": "GitHub-backed marketplace for the Paved engineering plugin.",
+  "owner": {
+    "name": "Anderson Rodrigues",
+    "url": "https://github.com/andersonmrodrigues"
+  },
+  "plugins": [
+    {
+      "name": "paved",
+      "source": "./plugins/paved",
+      "description": "Paved engineering commands for AI coding agents, executed by a pinned project-local Paved runtime.",
+      "category": "development",
+      "homepage": "https://github.com/andersonmrodrigues/paved#readme"
+    }
+  ]
+}
