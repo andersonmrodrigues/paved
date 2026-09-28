@@ -6,7 +6,7 @@
 > shows the result of. Every entry marked `Ruling:` is a judgement call made during
 > execution, with its justification and what it costs if it turns out wrong.
 >
-> **This run is INCOMPLETE.** It covers Tasks 1–12 of 29. Tasks 13–29 remain.
+> **This run is INCOMPLETE.** It covers Tasks 1–13 of 29. Tasks 14–29 remain.
 >
 > **Known deviation:** two plugin-packaging tests fail on this branch by explicit decision.
 > Adding schemas makes the checked-in packaged plugin stale, and a git-dlp `ZippedFilePolicy`
@@ -624,4 +624,10 @@ answer can be applied.
 
 Task 12: implementation verified with 33/33 decision and agent-contract tests and
 typecheck. Full `npm run check` = 711 tests, 706 pass, the same 5 baseline failures.
-Tasks 13–29 remain.
+
+Task 13: Ruling: `running` rejects required `PENDING` as well as `ASKED` decisions, since
+both remain unanswered. The plan's draft only checked `ASKED`. Cost if wrong: a run with a
+dependent question still pending must remain paused until its dependency resolves.
+
+Task 13: workflow tests 35/35 and schema fixtures 61/61 passed. Full `npm run check` =
+715 tests, 710 pass, the same 5 baseline failures. Tasks 14–29 remain.

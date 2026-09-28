@@ -187,3 +187,51 @@ describe("evidence against workflow contracts", () => {
     }
   });
 });
+
+describe("workflow run decisions", () => {
+  const workflow = {
+    id: "core.feature", version: "1.0.0", status: "active", description: "Use when …",
+    change_type: "feature", inputs: [{ id: "request", required: true }],
+    phases: [{ phase: "context", goal: "g" }],
+    evidence: { required: [] }, outputs: [], completion: { criteria: [] },
+  } as never;
+
+  const baseRun = {
+    workflow: { id: "core.feature", version: "1.0.0" },
+    status: "running",
+    inputs: [{ id: "request" }],
+    phases: [{ phase: "context", status: "running" }],
+  };
+
+  it("allows awaiting-input when a decision is ASKED", () => {
+    const run = {
+      ...baseRun, status: "awaiting-input",
+      decisions: [{ id: "d-0123456789abcdef0123", status: "ASKED", required: true }],
+    } as never;
+    assert.deepEqual(assessRun(run, workflow), []);
+  });
+
+  it("rejects awaiting-input with no ASKED decision", () => {
+    const run = {
+      ...baseRun, status: "awaiting-input",
+      decisions: [{ id: "d-0123456789abcdef0123", status: "APPLIED", required: true }],
+    } as never;
+    assert.ok(assessRun(run, workflow).some((problem) => /awaiting input/i.test(problem)));
+  });
+
+  it("rejects running while a required decision is unanswered", () => {
+    const run = {
+      ...baseRun, status: "running",
+      decisions: [{ id: "d-0123456789abcdef0123", status: "ASKED", required: true }],
+    } as never;
+    assert.ok(assessRun(run, workflow).some((problem) => /unanswered required decision/i.test(problem)));
+  });
+
+  it("allows running while only an optional decision is open", () => {
+    const run = {
+      ...baseRun, status: "running",
+      decisions: [{ id: "d-0123456789abcdef0123", status: "ASKED", required: false }],
+    } as never;
+    assert.deepEqual(assessRun(run, workflow), []);
+  });
+});
