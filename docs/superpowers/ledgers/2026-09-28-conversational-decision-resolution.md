@@ -6,7 +6,7 @@
 > shows the result of. Every entry marked `Ruling:` is a judgement call made during
 > execution, with its justification and what it costs if it turns out wrong.
 >
-> **This run is INCOMPLETE.** It covers Tasks 1–11 of 29. Tasks 12–29 remain.
+> **This run is INCOMPLETE.** It covers Tasks 1–12 of 29. Tasks 13–29 remain.
 >
 > **Known deviation:** two plugin-packaging tests fail on this branch by explicit decision.
 > Adding schemas makes the checked-in packaged plugin stale, and a git-dlp `ZippedFilePolicy`
@@ -610,4 +610,18 @@ keeps dependent decisions PENDING, and refuses answers for unasked decisions or 
 handlers. Cost if wrong: a command must register its handler before accepting an answer.
 
 Task 11: implementation verified with 17/17 batching tests and typecheck. Full
-`npm run check` = 700 tests, 695 pass, the same 5 baseline failures. Tasks 12–29 remain.
+`npm run check` = 700 tests, 695 pass, the same 5 baseline failures.
+
+Task 12: Ruling: `decision raise` rejects run-scoped input until WorkflowRun owns those
+records (Task 13). The plan's draft wrote them under `.paved/decisions/`, contradicting
+the approved store split. Cost if wrong: an agent cannot raise a run-scoped question until
+the run store is integrated.
+
+Task 12: Ruling: repeated `raise` preserves an existing decision, and `revise` creates a
+distinct successor linked from the superseded record. The draft overwrote the old record
+and created no successor. Cost if wrong: a successor still needs a handler before its
+answer can be applied.
+
+Task 12: implementation verified with 33/33 decision and agent-contract tests and
+typecheck. Full `npm run check` = 711 tests, 706 pass, the same 5 baseline failures.
+Tasks 13–29 remain.
