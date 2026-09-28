@@ -22,6 +22,60 @@ function consumer(name: string): string {
 }
 function state(path: string) { return inspectConsumer({ projectRoot: path, coreRoot: core }).lifecycleState; }
 
+test("init asks for observed configuration and accepts an answer on a later invocation", async () => {
+  const project = temporaryDirectory("paved-conversational-init");
+  writeFileSync(join(project, "pom.xml"), "<project><artifactId>api</artifactId></project>");
+  writeFileSync(join(project, "checkstyle.xml"), '<module name="Checker"></module>');
+  writeFileSync(join(project, "README.md"), "# Sample service\n");
+  const asked = await dispatchCli({ argv: ["init", "--project", project, "--json"] });
+  assert.equal(asked.status, "awaiting_input", JSON.stringify(asked.diagnostics));
+  assert.equal(existsSync(join(project, ".paved/manifest.yaml")), true);
+  assert.ok((asked.decisions?.length ?? 0) >= 2);
+  const answers = (asked.decisions ?? []).flatMap((decision) => [
+    "--answer", `${decision.id}=${decision.recommended ?? decision.options[0]!.id}`,
+  ]);
+  const applied = await dispatchCli({
+    argv: ["init", "--project", project, ...answers, "--answered-by", "tester@example.com", "--json"],
+  });
+  assert.notEqual(applied.status, "failed");
+  assert.equal(existsSync(join(project, ".paved/verification/profile.yaml")), true);
+  assert.equal(existsSync(join(project, ".paved/rules/quality/checkstyle.yaml")), true);
+  const status = await dispatchCli({ argv: ["status", "--project", project, "--json"] });
+  assert.ok(["VALIDATED", "READY"].includes((status.data as { lifecycleState: string }).lifecycleState));
+});
+
+test("init asks which adapter supplies an ambiguous capability", async () => {
+  const project = temporaryDirectory("paved-ambiguous-init");
+  mkdirSync(join(project, "src"));
+  writeFileSync(join(project, "README.md"), "# Sample service\n");
+  writeFileSync(join(project, "pom.xml"), "<project><artifactId>api</artifactId></project>");
+  writeFileSync(join(project, "tsconfig.json"), '{"compilerOptions":{"strict":true}}');
+  writeFileSync(join(project, "src/App.java"), "class App {}\n");
+  const asked = await dispatchCli({ argv: ["init", "--project", project, "--json"] });
+  assert.equal(asked.status, "awaiting_input", JSON.stringify(asked.diagnostics));
+  assert.ok(asked.decisions?.some((decision) => decision.question.includes("source.build")));
+  const answers = (asked.decisions ?? []).flatMap((decision) => [
+    "--answer", `${decision.id}=${decision.recommended ?? decision.options[0]!.id}`,
+  ]);
+  const applied = await dispatchCli({
+    argv: ["init", "--project", project, ...answers, "--answered-by", "tester@example.com", "--json"],
+  });
+  assert.notEqual(applied.status, "failed", JSON.stringify(applied.diagnostics));
+  const lock = parse(readFileSync(join(project, ".paved/paved.lock"), "utf8")) as {
+    capabilities?: { id: string; providers: { source: string }[] }[];
+  };
+  assert.equal(lock.capabilities?.find((item) => item.id === "source.build")?.providers[0]?.source, "answered-decision");
+});
+
+test("init --no-generate still asks for detected checks", async () => {
+  const project = temporaryDirectory("paved-no-generate-conversation");
+  writeFileSync(join(project, "README.md"), "# Sample service\n");
+  writeFileSync(join(project, "pom.xml"), "<project><artifactId>api</artifactId></project>");
+  const result = await dispatchCli({ argv: ["init", "--no-generate", "--project", project, "--json"] });
+  assert.equal(result.status, "awaiting_input");
+  assert.equal((result.data as { generated: boolean }).generated, false);
+});
+
 test("consumer identity and lifecycle are derived from local manifest and evidence", () => {
   const a = consumer("consumer-a");
   const b = consumer("consumer-b");
