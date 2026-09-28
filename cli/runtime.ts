@@ -140,7 +140,8 @@ function takeValue(argv: readonly string[], index: number, flag: string, command
 
 function commandUsage(command: CommandName | undefined): string {
   if (command !== undefined) {
-    const selectors = command === "generate" ? " [generator-id...]" : command === "agent" ? " <operation> [integration]" : "";
+    const selectors = command === "generate" ? " [generator-id...]" : command === "agent"
+      ? " <operation> [integration|command-name]" : "";
     const commandOptions: string[] = [];
     const rule = COMMAND_RULES[command];
     if (rule.adapters) commandOptions.push("  --adapter <id>   Select an adapter for status, doctor, or verification content resolution; repeatable.");

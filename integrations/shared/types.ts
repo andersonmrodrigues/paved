@@ -1,5 +1,8 @@
 export type AgentId = "codex" | "claude-code";
 export type AgentOperation = "install" | "update" | "uninstall" | "status" | "validate";
+export type AgentCommandId =
+  | "init" | "status" | "plan" | "implement" | "test" | "verify" | "review"
+  | "debug" | "refactor" | "feature" | "fix" | "update" | "doctor" | "gardener";
 
 export interface IntegrationMetadata {
   readonly id: string;

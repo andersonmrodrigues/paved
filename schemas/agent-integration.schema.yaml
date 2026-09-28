@@ -47,7 +47,11 @@ properties:
     uniqueItems: true
     items:
       type: string
-      enum: [context, skills, workflows, tools, verification, status, diagnostics, lifecycle]
+      enum: [context, skills, workflows, tools, verification, status, diagnostics, lifecycle, command-discovery, command-invocation, compatibility]
+  commands:
+    type: array
+    uniqueItems: true
+    items: { $ref: "#/$defs/command" }
   scope:
     const: project
   provenance:
@@ -57,3 +61,58 @@ properties:
     properties:
       owner: { const: paved }
       generated: { const: true }
+$defs:
+  command:
+    type: object
+    additionalProperties: false
+    required:
+      - id
+      - group
+      - description
+      - input
+      - output
+      - required_context
+      - required_capabilities
+      - allowed_side_effects
+      - lifecycle
+      - cli_command
+      - failure_semantics
+    properties:
+      id:
+        type: string
+        pattern: "^paved\\.[a-z][a-z0-9-]*$"
+      group: { enum: [development, management] }
+      description: { type: string, minLength: 1 }
+      input:
+        type: object
+        additionalProperties: false
+        required: [required, description]
+        properties:
+          required: { type: boolean }
+          description: { type: string, minLength: 1 }
+      output: { type: string, minLength: 1 }
+      required_context:
+        type: array
+        uniqueItems: true
+        items: { type: string, minLength: 1 }
+      required_capabilities:
+        type: array
+        uniqueItems: true
+        items: { type: string, minLength: 1 }
+      allowed_side_effects:
+        type: array
+        uniqueItems: true
+        items: { type: string, minLength: 1 }
+      lifecycle:
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items:
+          enum: [UNINITIALIZED, INITIALIZED, RESOLVED, GENERATED, VALIDATED, READY, STALE, INCOMPATIBLE, BROKEN]
+      workflow: { type: string, minLength: 1 }
+      tool: { type: string, minLength: 1 }
+      cli_command: { type: string, minLength: 1 }
+      failure_semantics:
+        type: array
+        minItems: 1
+        items: { type: string, minLength: 1 }

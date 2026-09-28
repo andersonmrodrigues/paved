@@ -1,0 +1,185 @@
+export type AgentCommandLifecycleState =
+  | "UNINITIALIZED" | "INITIALIZED" | "RESOLVED" | "GENERATED"
+  | "VALIDATED" | "READY" | "STALE" | "INCOMPATIBLE" | "BROKEN";
+
+export type AgentCommandGroup = "development" | "management";
+
+export interface AgentCommandContract {
+  readonly id: `paved.${string}`;
+  readonly name: string;
+  readonly group: AgentCommandGroup;
+  readonly description: string;
+  readonly input: { readonly required: boolean; readonly description: string };
+  readonly output: string;
+  readonly requiredContext: readonly string[];
+  readonly requiredCapabilities: readonly string[];
+  readonly allowedSideEffects: readonly string[];
+  readonly lifecycle: readonly AgentCommandLifecycleState[];
+  readonly workflow?: string;
+  readonly tool?: string;
+  readonly cliCommand: string;
+  readonly failureSemantics: readonly string[];
+}
+
+export interface DiscoveredAgentCommand extends AgentCommandContract {
+  readonly available: boolean;
+  readonly reason?: string;
+  readonly recommendedNextAction?: string;
+}
+
+type AgentCommandDefinition = Omit<AgentCommandContract, "requiredCapabilities"> &
+  Partial<Pick<AgentCommandContract, "requiredCapabilities">>;
+
+const MANAGEMENT_STATES: readonly AgentCommandLifecycleState[] = [
+  "INITIALIZED", "RESOLVED", "GENERATED", "VALIDATED", "READY", "STALE", "INCOMPATIBLE", "BROKEN",
+];
+const DEVELOPMENT_STATES: readonly AgentCommandLifecycleState[] = ["RESOLVED", "GENERATED", "VALIDATED", "READY"];
+
+const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
+  {
+    id: "paved.init", name: "init", group: "management",
+    description: "Initialize Paved in the current repository using the available local Core runtime.",
+    input: { required: false, description: "No arguments." },
+    output: "Initialization result, detected adapters, lifecycle state, and diagnostics.",
+    requiredContext: [".paved/manifest.yaml", "repository evidence"],
+    allowedSideEffects: [".paved/ initialization state", "generated project context", "managed AGENTS.md block"],
+    lifecycle: ["UNINITIALIZED"], cliCommand: "init",
+    failureSemantics: ["Existing Paved state is never reset.", "Invalid partial state fails with diagnostics.", "No remote bootstrap or global install is attempted."],
+  },
+  {
+    id: "paved.status", name: "status", group: "management",
+    description: "Inspect Paved lifecycle, lock, adapters, context, verification profile, and diagnostics.",
+    input: { required: false, description: "No arguments." },
+    output: "Machine-readable consumer inspection and retained diagnostics.",
+    requiredContext: [".paved/manifest.yaml", ".paved/paved.lock"],
+    allowedSideEffects: ["none"],
+    lifecycle: ["UNINITIALIZED", ...MANAGEMENT_STATES], cliCommand: "status",
+    failureSemantics: ["Missing and invalid state is reported without writes."],
+  },
+  {
+    id: "paved.plan", name: "plan", group: "development",
+    description: "Create a context-grounded plan using the applicable project workflow.",
+    input: { required: true, description: "The requested change and acceptance constraints." },
+    output: "Affected areas, constraints, tasks, verification requirements, risks, dependencies, and unknowns.",
+    requiredContext: [".paved/manifest.yaml", ".paved/project/", ".paved/rules/", "applicable workflow", "verification profile"],
+    allowedSideEffects: ["agent response only"],
+    lifecycle: DEVELOPMENT_STATES, workflow: "core.feature", cliCommand: "agent command plan",
+    failureSemantics: ["Missing workflow or required context blocks with an actionable explanation.", "Observed patterns are not treated as desired architecture without supporting context."],
+  },
+  {
+    id: "paved.implement", name: "implement", group: "development",
+    description: "Implement an approved plan through the applicable workflow, rules, skills, and explicit tools.",
+    input: { required: true, description: "An approved plan or its stable reference." },
+    output: "Change summary, modified paths, evidence, and unresolved gaps.",
+    requiredContext: [".paved/project/", ".paved/rules/", "applicable workflow", "applicable skills", "tool bindings"],
+    allowedSideEffects: ["planned application changes", "disposable Paved evidence"],
+    lifecycle: DEVELOPMENT_STATES, workflow: "core.feature", cliCommand: "agent command implement",
+    failureSemantics: ["Missing approval, workflow, tool binding, or required context blocks implementation.", "Human-owned Paved files and protected application paths are not overwritten."],
+  },
+  {
+    id: "paved.test", name: "test", group: "development",
+    description: "Run only the project's explicitly bound testing capability and retain its structured result.",
+    input: { required: false, description: "Optional target or test scope declared by the selected testing tool." },
+    output: "Structured testing observations, execution metadata, and evidence.",
+    requiredContext: [".paved/tools/", ".paved/tool-implementations/", "applicable adapter and capability"],
+    requiredCapabilities: ["testing-run"],
+    allowedSideEffects: ["declared test process and its documented filesystem effects", "disposable Paved evidence"],
+    lifecycle: DEVELOPMENT_STATES, tool: "core.testing.run", cliCommand: "agent command test",
+    failureSemantics: ["An absent or ambiguous ToolImplementation blocks execution.", "Testing failure remains distinct from Paved verification failure.", "No command is inferred from repository scripts."],
+  },
+  {
+    id: "paved.verify", name: "verify", group: "development",
+    description: "Run the configured Paved verification profile through the existing verification engine.",
+    input: { required: false, description: "No arguments; check selection remains governed by the verification profile." },
+    output: "Verification result, evidence, artifacts, and diagnostics.",
+    requiredContext: [".paved/verification/profile.yaml", ".paved/tools/", ".paved/tool-implementations/"],
+    allowedSideEffects: [".paved/generated/evidence/"],
+    lifecycle: DEVELOPMENT_STATES, cliCommand: "verify",
+    failureSemantics: ["Missing profile, unresolved tools, and failed checks block with diagnostics.", "Verification is not inferred from a passing test run."],
+  },
+  {
+    id: "paved.review", name: "review", group: "development",
+    description: "Review the current change against Paved context, rules, workflow, and verification evidence.",
+    input: { required: false, description: "Optional change scope; defaults to the current change." },
+    output: "Findings, risks, missing evidence, and unresolved unknowns.",
+    requiredContext: [".paved/project/", ".paved/rules/", ".paved/verification/profile.yaml", "core.code-review.change-review"],
+    allowedSideEffects: ["agent response only"],
+    lifecycle: DEVELOPMENT_STATES, cliCommand: "agent command review",
+    failureSemantics: ["Missing required evidence is reported as a gap, not a pass.", "Review does not replace verification."],
+  },
+  {
+    id: "paved.debug", name: "debug", group: "development",
+    description: "Investigate a reported failure, separating observed evidence, hypotheses, and unknowns.",
+    input: { required: true, description: "Failure report, expected behavior, and available reproduction evidence." },
+    output: "Observed facts, hypotheses, unknowns, likely affected components, and a proposed next step.",
+    requiredContext: [".paved/project/feature-map/", "core.bug workflow", "debugging skills"],
+    allowedSideEffects: ["read-only investigation"],
+    lifecycle: DEVELOPMENT_STATES, workflow: "core.bug", cliCommand: "agent command debug",
+    failureSemantics: ["Unreproduced hypotheses remain explicitly unconfirmed.", "Missing evidence is reported rather than invented."],
+  },
+  {
+    id: "paved.refactor", name: "refactor", group: "development",
+    description: "Perform a behavior-preserving refactor in small, verified steps.",
+    input: { required: true, description: "Structural goal and code in scope." },
+    output: "Plan, implementation summary, non-regression evidence, and remaining risks.",
+    requiredContext: [".paved/project/architecture/", ".paved/rules/", "core.refactor workflow"],
+    allowedSideEffects: ["planned application changes", "disposable Paved evidence"],
+    lifecycle: DEVELOPMENT_STATES, workflow: "core.refactor", cliCommand: "agent command refactor",
+    failureSemantics: ["Unpinned behavior or unmet human approval gates block the refactor."],
+  },
+  {
+    id: "paved.feature", name: "feature", group: "development",
+    description: "Orchestrate a feature through understanding, planning, implementation, testing, verification, and review.",
+    input: { required: true, description: "Feature request and acceptance criteria." },
+    output: "Workflow outcome, change, test/verification evidence, review, and gaps.",
+    requiredContext: [".paved/project/", ".paved/rules/", "core.feature workflow", "verification profile"],
+    allowedSideEffects: ["planned application changes", "disposable Paved evidence"],
+    lifecycle: DEVELOPMENT_STATES, workflow: "core.feature", cliCommand: "agent command feature",
+    failureSemantics: ["The workflow stops at unmet approval gates or missing required tools/context.", "Current repository patterns are treated as evidence, not automatically as desired architecture."],
+  },
+  {
+    id: "paved.fix", name: "fix", group: "development",
+    description: "Orchestrate evidence-based diagnosis and a verified bug fix.",
+    input: { required: true, description: "Observed failure and expected behavior." },
+    output: "Reproduction, diagnosis, fix, regression-test evidence, verification, and review.",
+    requiredContext: [".paved/project/", ".paved/rules/", "core.bug workflow", "verification profile"],
+    allowedSideEffects: ["planned application changes", "disposable Paved evidence"],
+    lifecycle: DEVELOPMENT_STATES, workflow: "core.bug", cliCommand: "agent command fix",
+    failureSemantics: ["A fix without confirmed cause or regression evidence is incomplete.", "Unmet human approval gates block changes."],
+  },
+  {
+    id: "paved.update", name: "update", group: "management",
+    description: "Plan and apply a safe local Core, adapter, or input update.",
+    input: { required: false, description: "No arguments." },
+    output: "Compatibility result, planned changes, lock result, and diagnostics.",
+    requiredContext: [".paved/manifest.yaml", ".paved/paved.lock"],
+    allowedSideEffects: ["Paved lock through update transaction", "affected generated context and proposals"],
+    lifecycle: MANAGEMENT_STATES, cliCommand: "update",
+    failureSemantics: ["Unknown compatibility, migration requirements, and ownership conflicts stop before unsafe writes.", "Remote updates remain unsupported."],
+  },
+  {
+    id: "paved.doctor", name: "doctor", group: "management",
+    description: "Diagnose invalid or inconsistent Paved state without modifying it.",
+    input: { required: false, description: "No arguments." },
+    output: "Actionable diagnostics and recommended repairs.",
+    requiredContext: [".paved/manifest.yaml", ".paved/paved.lock", ".paved/verification/profile.yaml"],
+    allowedSideEffects: ["none"],
+    lifecycle: ["UNINITIALIZED", ...MANAGEMENT_STATES], cliCommand: "doctor",
+    failureSemantics: ["Missing or invalid state is reported; no repair is applied automatically."],
+  },
+  {
+    id: "paved.gardener", name: "gardener", group: "management",
+    description: "Analyze Paved evidence and report advisory improvement proposals for human review.",
+    input: { required: false, description: "No arguments." },
+    output: "Observations and proposals; no Core or project policy is changed.",
+    requiredContext: [".paved/generated/evidence/", ".paved/gardener/"],
+    allowedSideEffects: ["none"],
+    lifecycle: DEVELOPMENT_STATES, cliCommand: "gardener",
+    failureSemantics: ["Missing evidence remains a finding.", "A human must approve proposals before framework or policy changes."],
+  },
+];
+
+export const AGENT_COMMANDS: readonly AgentCommandContract[] = COMMAND_DEFINITIONS.map((command) => ({
+  ...command,
+  requiredCapabilities: command.requiredCapabilities ?? [],
+}));

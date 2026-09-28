@@ -20,7 +20,7 @@ this CLI yet.
 | [`paved status`](commands/status/README.md) | Report initialized state, lock health, adapters, generator state, proposals and verification profile state | nothing |
 | [`paved doctor`](commands/doctor/README.md) | Report actionable diagnostics for invalid or inconsistent Paved state | nothing |
 | `paved gardener` | Analyze existing consumer evidence and report review proposals | nothing |
-| `paved agent` | List, validate, install, update or uninstall project-local agent projections | `.agents/` or `.claude-plugin/` projection files |
+| `paved agent` | List, discover/resolve shared agent command contracts, validate, install, update or uninstall project-local agent projections | `.agents/`, `.claude/` or `.claude-plugin/` projection files |
 | `paved evidence ...` | **Contract-only.** Future evidence validation, show and list commands | not executable yet |
 | `paved tool ...` | **Contract-only.** Future Tool discovery, inspection, validation and diagnosis commands | not executable yet |
 
@@ -55,7 +55,7 @@ Command-specific options are intentionally narrow:
 | `status` | `--adapter <id>` repeatable; read-only |
 | `doctor` | `--adapter <id>` repeatable; read-only; no `--run-checks` |
 | `gardener` | `--dry-run`; read-only; no selectors or adapter selection |
-| `agent` | `<operation> [codex\|claude-code]`; project-local, ownership-aware projection lifecycle |
+| `agent` | `list`, `commands [codex\|claude-code]`, `command <name>`, or `<install\|update\|uninstall\|status\|validate> [codex\|claude-code]` |
 
 ## Output and exit codes
 
@@ -105,6 +105,14 @@ when a blocking diagnostic decides the exit code.
   and platform-required process variables; arbitrary caller environment values
   such as credentials are not inherited.
 - `status` and `doctor` are read-only.
+- Agent command discovery and contract resolution are read-only. The resolved
+  contract describes agent-orchestrated work; it does not execute prompts or
+  arbitrary commands. `paved test` remains unavailable because direct Tool
+  invocation is not implemented; a testing Tool contract does not authorize or
+  execute a process.
+- Agent projection writes remain ownership-aware and refuse to overwrite
+  user-owned command or skill files. Integrations project command prompts but
+  do not bootstrap or install the Paved runtime.
 
 ## Layout
 

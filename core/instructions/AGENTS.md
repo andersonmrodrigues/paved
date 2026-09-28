@@ -4,6 +4,15 @@ Paved gives you a predictable path for changing this repository: **context** tel
 how the project works, **constraints** tell you what must hold, and **verification**
 tells you how to prove your change is correct. Follow the path; improve it when it is wrong.
 
+When the supported project-local command projection is installed, start management
+tasks with the agent-native `/paved:init`, `/paved:status`, `/paved:update`,
+`/paved:doctor`, or `/paved:gardener` command. For engineering work use the
+project-development commands (`plan`, `implement`, `test`, `verify`, `review`,
+`debug`, `refactor`, `feature`, `fix`) and follow their shared contracts in
+`paved agent commands --json`. If the local Paved runtime is unavailable, report
+that blocker; do not install an unpinned runtime or substitute arbitrary shell
+commands.
+
 Load only what the current task needs. This file is the map, not the territory:
 
 | Load | When |
