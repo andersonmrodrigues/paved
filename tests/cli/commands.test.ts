@@ -519,6 +519,30 @@ function writeManifest(project: string, manifest: unknown): void {
 }
 
 describe("status and doctor commands", () => {
+  it("reports pending decisions and a conversational next action without mutating them", async () => {
+    const project = freshConsumer("status-decisions");
+    try {
+      const init = await run(project, "init");
+      assert.equal(init.status, "awaiting_input");
+      const before = snapshotFiles(join(project, ".paved/decisions"));
+      const result = await run(project, "status");
+      const data = dataOf(result) as {
+        pendingDecisions: { id: string }[]; pendingApprovals: string[];
+        verificationReadiness: string; unavailableCommands: { name: string; reason: string }[];
+        nextAction: string;
+      };
+      assert.notEqual(result.status, "awaiting_input");
+      assert.ok(data.pendingDecisions.length > 0);
+      assert.ok(Array.isArray(data.pendingApprovals));
+      assert.equal(data.verificationReadiness, "awaiting-decision");
+      assert.ok(Array.isArray(data.unavailableCommands));
+      assert.match(data.nextAction, /decision/i);
+      assert.doesNotMatch(data.nextAction, /edit|create .*\.yaml/i);
+      assert.deepEqual(snapshotFiles(join(project, ".paved/decisions")), before);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
   it("includes command files in the local Core digest", () => {
     const core = sandbox("core-digest-cli-commands");
     try {
