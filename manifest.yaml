@@ -22,6 +22,7 @@ schemas:
   Evidence: schemas/evidence.schema.yaml
   VerificationProfile: schemas/verification.schema.yaml
   Check: schemas/check.schema.yaml
+  Decision: schemas/decision.schema.yaml
   Feature: schemas/feature.schema.yaml
   ContextDocument: schemas/project-context.schema.yaml
   Overrides: schemas/override.schema.yaml

@@ -43,6 +43,7 @@ const KIND_TO_SCHEMA: Readonly<Record<string, string>> = {
   Workflow: "urn:paved:schema:workflow:v1",
   WorkflowRun: "urn:paved:schema:workflow-run:v1",
   Check: "urn:paved:schema:check:v1",
+  Decision: "urn:paved:schema:decision:v1",
   Tool: "urn:paved:schema:tool:v1",
   ToolImplementation: "urn:paved:schema:tool-implementation:v1",
   Evidence: "urn:paved:schema:evidence:v1",

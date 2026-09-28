@@ -1,0 +1,35 @@
+# expect-error: /answered_by must NOT be valid
+apiVersion: paved/v1
+kind: Decision
+id: d-0123456789abcdef0123
+scope: project
+command: verify
+category: material
+authored_by: runtime
+question: Should the detected checks become verification gates?
+reason: These checks already run in CI but are not authorized as Paved gates.
+options:
+  - id: all
+    label: All
+    description: Adopt every detected check.
+    consequence: All detected checks become gates.
+evidence:
+  - type: file
+    location: pom.xml
+    sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+required: true
+required_answer:
+  type: single-choice
+risk: low
+reversibility: reversible
+answer_channel: relayed
+status: ANSWERED
+answer: all
+answered_by: agent
+answer_source: agent-relayed
+answered_at: "2026-09-28T00:01:00.000Z"
+fingerprint:
+  inputs:
+    - "pom.xml@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+created_at: "2026-09-28T00:00:00.000Z"

@@ -1,0 +1,148 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:decision:v1
+title: Paved decision record
+description: >
+  One decision Paved encountered: what it asked, why it mattered, the evidence behind it,
+  the options offered, the answer received and its provenance, and the state that answer
+  produced. Material project-scoped decisions live under .paved/decisions/<id>.yaml;
+  run-scoped ones live inside the WorkflowRun. Deterministic decisions are projected into
+  results but persisted through paved.lock, never as Decision documents.
+  See docs/concepts/decisions.md.
+type: object
+additionalProperties: false
+required:
+  [apiVersion, kind, id, scope, command, category, authored_by, question, reason,
+   options, evidence, required, required_answer, risk, reversibility, answer_channel,
+   status, fingerprint, created_at]
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { const: Decision }
+  id:
+    description: Content-derived decision id; stable across re-raises of the same question.
+    type: string
+    pattern: "^d-[a-f0-9]{20}$"
+  scope:
+    description: "`project`: persisted under .paved/decisions/. `run`: persisted inside the WorkflowRun."
+    enum: [project, run]
+  command: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  run: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+  category:
+    description: "`material` is askable. `deterministic` is auto-applied. Unsafe conditions never become decisions."
+    enum: [deterministic, material]
+  authored_by:
+    description: "`runtime`: derived from repository evidence. `agent`: declared through `paved decision raise`."
+    enum: [runtime, agent]
+  question: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  reason:
+    description: Why this decision matters, in terms the project owner can act on.
+    $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+  options:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      additionalProperties: false
+      required: [id, label, description, consequence]
+      properties:
+        id: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+        label: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+        description: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+        consequence:
+          description: What happens to the project if this option is chosen.
+          $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+  recommended_option: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+  evidence:
+    description: The repository evidence that makes this decision meaningful.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [type, location, sha256]
+      properties:
+        type: { const: file }
+        location: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+        sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+  required:
+    description: Whether the originating command can proceed without an answer.
+    type: boolean
+  required_answer:
+    type: object
+    additionalProperties: false
+    required: [type]
+    properties:
+      type: { enum: [single-choice, multi-choice, boolean, free-text] }
+      pattern: { type: string }
+      max_length: { type: integer, minimum: 1, maximum: 4000 }
+  risk: { enum: [low, medium, high] }
+  reversibility: { enum: [reversible, recoverable, irreversible] }
+  answer_channel:
+    description: Derived from the apply handler's effect class; never supplied by a caller.
+    enum: [relayed, human-authored]
+  effect: { $ref: "#/$defs/effectClass" }
+  handler:
+    description: >
+      Key of the registered apply handler that materializes this decision's answer. The
+      handler's registered effect class governs risk, reversibility and answer channel.
+    $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+  depends_on:
+    type: array
+    items: { type: string, pattern: "^d-[a-f0-9]{20}$" }
+  status:
+    enum: [PENDING, ASKED, ANSWERED, APPLIED, REJECTED, CANCELLED, SUPERSEDED]
+  asked_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+  answer: {}
+  answered_by:
+    description: Who supplied the answer. An agent never answers on a human's behalf.
+    type: string
+    minLength: 1
+    not: { enum: [agent, paved, ci] }
+  answer_source: { enum: [derived, agent-relayed, human-authored] }
+  answered_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+  applied_changes:
+    type: array
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+  applied_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+  fingerprint:
+    type: object
+    additionalProperties: false
+    required: [inputs, sha256]
+    properties:
+      inputs:
+        type: array
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+  supersedes: { type: string, pattern: "^d-[a-f0-9]{20}$" }
+  superseded_by: { type: string, pattern: "^d-[a-f0-9]{20}$" }
+  superseded_reason: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  created_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+allOf:
+  - if:
+      properties: { scope: { const: run } }
+      required: [scope]
+    then:
+      required: [run]
+  - if:
+      properties: { status: { enum: [ANSWERED, APPLIED] } }
+      required: [status]
+    then:
+      required: [answer, answered_by, answer_source, answered_at]
+  - if:
+      properties: { status: { const: APPLIED } }
+      required: [status]
+    then:
+      required: [applied_at]
+  - if:
+      properties: { status: { const: SUPERSEDED } }
+      required: [status]
+    then:
+      required: [superseded_reason]
+  - if:
+      required: [recommended_option]
+    then:
+      properties: { evidence: { type: array, minItems: 1 } }
+$defs:
+  effectClass:
+    description: >
+      The registered effect class of this decision's apply handler. Determines risk,
+      reversibility and answer channel. Never settable per decision.
+    enum: [record-only, config-additive, config-mutating, lock-transaction, repository-mutating, destructive]

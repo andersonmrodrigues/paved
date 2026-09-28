@@ -1,0 +1,45 @@
+apiVersion: paved/v1
+kind: Decision
+id: d-0123456789abcdef0123
+scope: run
+run: sample-run
+command: verify
+category: material
+authored_by: agent
+question: Should the detected checks become verification gates?
+reason: These checks already run in CI but are not authorized as Paved gates.
+options:
+  - id: all
+    label: All
+    description: Adopt every detected check.
+    consequence: All detected checks become gates.
+  - id: none
+    label: None
+    description: Adopt nothing.
+    consequence: No verification profile is created.
+recommended_option: all
+evidence:
+  - type: file
+    location: pom.xml
+    sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+required: true
+required_answer:
+  type: single-choice
+risk: low
+reversibility: reversible
+answer_channel: relayed
+effect: config-additive
+handler: verification.adopt
+status: APPLIED
+answer: all
+answered_by: owner
+answer_source: human-authored
+answered_at: "2026-09-28T00:01:00.000Z"
+applied_changes:
+  - .paved/verification/profile.yaml
+applied_at: "2026-09-28T00:02:00.000Z"
+fingerprint:
+  inputs:
+    - "pom.xml@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+created_at: "2026-09-28T00:00:00.000Z"
