@@ -6,7 +6,7 @@
 > shows the result of. Every entry marked `Ruling:` is a judgement call made during
 > execution, with its justification and what it costs if it turns out wrong.
 >
-> **This run is INCOMPLETE.** It covers Tasks 1–13 of 29. Tasks 14–29 remain.
+> **This run is INCOMPLETE.** It covers Tasks 1–14 of 29. Tasks 15–29 remain.
 >
 > **Known deviation:** two plugin-packaging tests fail on this branch by explicit decision.
 > Adding schemas makes the checked-in packaged plugin stale, and a git-dlp `ZippedFilePolicy`
@@ -630,4 +630,10 @@ both remain unanswered. The plan's draft only checked `ASKED`. Cost if wrong: a 
 dependent question still pending must remain paused until its dependency resolves.
 
 Task 13: workflow tests 35/35 and schema fixtures 61/61 passed. Full `npm run check` =
-715 tests, 710 pass, the same 5 baseline failures. Tasks 14–29 remain.
+715 tests, 710 pass, the same 5 baseline failures.
+
+Task 14: Ruling: the draft pushed raw `discoverSources` entries for Maven checks, but
+DecisionEvidence requires `location`; use the normalized evidence object. Also require
+exact `pom.xml`/`package.json` basenames and nonempty npm scripts. Cost if wrong: a
+similarly named file or blank script will no longer be offered as a verification gate.
+Task 14: provider tests 9/9 and typecheck passed. Tasks 15–29 remain.
