@@ -56,6 +56,7 @@ const KIND_TO_SCHEMA: Readonly<Record<string, string>> = {
   GardenerProposal: "urn:paved:schema:gardener-proposal:v1",
   GardenerReviews: "urn:paved:schema:gardener-review:v1",
   CoreImprovementCandidate: "urn:paved:schema:core-improvement-candidate:v1",
+  AgentIntegration: "urn:paved:schema:agent-integration:v1",
 };
 
 export function schemaIdForKind(kind: string): string | undefined {

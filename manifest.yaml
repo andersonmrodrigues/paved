@@ -31,6 +31,7 @@ schemas:
   GardenerProposal: schemas/gardener-proposal.schema.yaml
   GardenerReviews: schemas/gardener-review.schema.yaml
   CoreImprovementCandidate: schemas/core-improvement-candidate.schema.yaml
+  AgentIntegration: schemas/agent-integration.schema.yaml
 
 # Schemas that define shared structures, not a document kind.
 schema_definitions:
@@ -77,8 +78,13 @@ components:
   - name: cli
     path: cli
     distributed: false
-    depends_on: [schemas, core, generators, adapters]
+    depends_on: [schemas, core, generators, adapters, integrations]
     responsibility: Command contracts and shared libraries that load, validate, resolve, generate and verify.
+  - name: integrations
+    path: integrations
+    distributed: false
+    depends_on: [schemas, core]
+    responsibility: Thin agent-specific projections of the public Paved integration contract.
   - name: docs
     path: docs
     distributed: false
@@ -87,7 +93,7 @@ components:
   - name: tests
     path: tests
     distributed: false
-    depends_on: [schemas, core, generators, adapters, cli]
+    depends_on: [schemas, core, generators, adapters, cli, integrations]
     responsibility: Self-tests of every contract in this repository.
 
 # Where each context area a skill declares (skill.yaml `context`) lives in a consumer.

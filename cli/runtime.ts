@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { doctorHandler } from "./commands/doctor.ts";
+import { agentHandler } from "./commands/agent.ts";
 import { generateHandler } from "./commands/generate.ts";
 import { gardenerHandler } from "./commands/gardener.ts";
 import { initHandler } from "./commands/init.ts";
@@ -11,7 +12,7 @@ import { verifyHandler } from "./commands/verify.ts";
 import { createDiagnostic, createResult, type CommandResult } from "./result.ts";
 import { CliPathError, resolveCoreRoot, resolveProjectRoot } from "./paths.ts";
 
-export const COMMAND_NAMES = ["init", "update", "generate", "verify", "status", "doctor", "gardener"] as const;
+export const COMMAND_NAMES = ["init", "update", "generate", "verify", "status", "doctor", "gardener", "agent"] as const;
 export type CommandName = (typeof COMMAND_NAMES)[number];
 
 export interface CliFlags {
@@ -77,6 +78,7 @@ const COMMAND_RULES: Record<CommandName, CommandRule> = {
   status: { adapters: true, dryRun: false, noGenerate: false, selectors: false },
   doctor: { adapters: true, dryRun: false, noGenerate: false, selectors: false },
   gardener: { adapters: false, dryRun: true, noGenerate: false, selectors: false },
+  agent: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
 };
 
 function usage(command: string, message: string, remediation = "Run paved --help to see supported commands and flags."): CommandResult {
@@ -138,7 +140,7 @@ function takeValue(argv: readonly string[], index: number, flag: string, command
 
 function commandUsage(command: CommandName | undefined): string {
   if (command !== undefined) {
-    const selectors = command === "generate" ? " [generator-id...]" : "";
+    const selectors = command === "generate" ? " [generator-id...]" : command === "agent" ? " <operation> [integration]" : "";
     const commandOptions: string[] = [];
     const rule = COMMAND_RULES[command];
     if (rule.adapters) commandOptions.push("  --adapter <id>   Select an adapter for status, doctor, or verification content resolution; repeatable.");
@@ -342,6 +344,7 @@ function defaultHandler(invocation: CommandInvocation): CommandResult {
 }
 
 const DEFAULT_HANDLERS: CommandHandlers = {
+  agent: agentHandler,
   doctor: doctorHandler,
   generate: generateHandler,
   gardener: gardenerHandler,

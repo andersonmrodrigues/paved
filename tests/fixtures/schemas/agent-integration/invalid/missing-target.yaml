@@ -1,0 +1,12 @@
+# expect-error: must have required property
+apiVersion: paved/v1
+kind: AgentIntegration
+id: paved.integration.codex
+version: 1.0.0
+supported_paved_api_versions: [paved/v1]
+supported_core_range: ">=0.2.0"
+capabilities: [skills]
+scope: project
+provenance:
+  owner: paved
+  generated: true

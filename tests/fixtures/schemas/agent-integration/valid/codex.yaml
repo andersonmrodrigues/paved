@@ -1,0 +1,14 @@
+apiVersion: paved/v1
+kind: AgentIntegration
+id: paved.integration.codex
+version: 1.0.0
+target:
+  agent: codex
+  version_range: ">=1.0.0"
+supported_paved_api_versions: [paved/v1]
+supported_core_range: ">=0.2.0"
+capabilities: [context, skills, workflows, tools, verification, status, diagnostics, lifecycle]
+scope: project
+provenance:
+  owner: paved
+  generated: true
