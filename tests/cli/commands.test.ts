@@ -5,7 +5,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse, stringify } from "yaml";
-import { copyProjectForInitDryRun, createInitDryRunWorkspace, initDryRunScratchPrefix } from "../../cli/commands/init.ts";
+import { copyProjectForInitDryRun, createInitDryRunWorkspace, initDryRunScratchPrefix, projectNameFor } from "../../cli/commands/init.ts";
 import { hashLocalCore, hashLocalFile, hashLocalTree } from "../../cli/lib/local-core.ts";
 import { initializeConsumer } from "../../cli/lib/generator-runtime.ts";
 import { acquireConsumerOperationLock } from "../../cli/lib/operation-lock.ts";
@@ -1211,5 +1211,15 @@ describe("init and generate commands", () => {
     } finally {
       rmSync(project, { recursive: true, force: true });
     }
+  });
+});
+
+describe("init project naming", () => {
+  it("maps any directory name onto a valid project slug", () => {
+    assert.equal(projectNameFor("/work/my-service"), "my-service");
+    assert.equal(projectNameFor("/work/My_Service.v2"), "my-service-v2");
+    assert.equal(projectNameFor("/tmp/tmp.AbC123"), "tmp-abc123");
+    assert.equal(projectNameFor("/work/--Paved--"), "paved");
+    assert.equal(projectNameFor("/work/___"), "project");
   });
 });

@@ -37,6 +37,7 @@ describe("core manifest", () => {
       ".paved/verification/x": "project-owned",
       ".paved/workflows/x": "project-owned",
       ".paved/paved.lock": "tool-managed",
+      ".paved/runtime/x": "tool-managed",
     };
     for (const [path, ownership] of Object.entries(expected)) {
       assert.equal(ownershipOf(path, manifest.consumer_layout), ownership, path);
