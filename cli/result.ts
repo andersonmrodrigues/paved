@@ -9,14 +9,15 @@ export const EXIT_CODES = {
   verification: 7,
   conflict: 8,
   internal: 9,
+  "awaiting-input": 10,
 } as const;
 
 export type ExitCategory = keyof typeof EXIT_CODES;
-export type DiagnosticCategory = Exclude<ExitCategory, "success">;
+export type DiagnosticCategory = Exclude<ExitCategory, "success" | "awaiting-input">;
 
 export type DiagnosticSeverity = "info" | "warning" | "error";
 
-export type ResultStatus = "success" | "warning" | "failed";
+export type ResultStatus = "success" | "warning" | "failed" | "awaiting_input";
 
 export interface Diagnostic {
   readonly severity: DiagnosticSeverity;
@@ -27,10 +28,31 @@ export interface Diagnostic {
   readonly remediation?: string;
 }
 
+export interface DecisionProjection {
+  readonly id: string;
+  readonly question: string;
+  readonly reason: string;
+  readonly options: readonly {
+    readonly id: string;
+    readonly label: string;
+    readonly description: string;
+    readonly consequence: string;
+  }[];
+  readonly recommended?: string;
+  readonly evidence: readonly { readonly type: "file"; readonly location: string; readonly sha256: string }[];
+  readonly required: boolean;
+  readonly risk: "low" | "medium" | "high";
+  readonly reversibility: "reversible" | "recoverable" | "irreversible";
+  readonly answerChannel: "relayed" | "human-authored";
+  readonly dependsOn?: readonly string[];
+  readonly runId?: string;
+}
+
 export interface CommandResult<TData = unknown> {
   readonly command: string;
   readonly status: ResultStatus;
   readonly data?: TData;
+  readonly decisions?: readonly DecisionProjection[];
   readonly diagnostics: readonly Diagnostic[];
 }
 
@@ -42,6 +64,7 @@ type ResultInput<TData> = {
   readonly command: string;
   readonly status: ResultStatus;
   readonly data?: TData;
+  readonly decisions?: readonly DecisionProjection[];
   readonly diagnostics?: readonly Diagnostic[];
 };
 
@@ -56,6 +79,7 @@ const CATEGORY_PRECEDENCE: Record<ExitCategory, number> = {
   verification: 7,
   conflict: 8,
   internal: 9,
+  "awaiting-input": 10,
 };
 
 export function createDiagnostic(input: DiagnosticInput): Diagnostic {
@@ -78,6 +102,35 @@ function hasBlockingDiagnostic(diagnostics: readonly Diagnostic[]): boolean {
 
 export function createResult<TData = unknown>(input: ResultInput<TData>): CommandResult<TData> {
   const diagnostics = input.diagnostics ?? [];
+  const decisions = input.decisions ?? [];
+
+  // Symmetric to the malformed-failure rule: awaiting_input is only meaningful when
+  // there is a required question and nothing that blocks acting on its answer.
+  if (input.status === "awaiting_input") {
+    const problem = !decisions.some((decision) => decision.required)
+      ? "awaiting_input requires at least one required decision."
+      : hasBlockingDiagnostic(diagnostics)
+        ? "awaiting_input cannot accompany a blocking diagnostic."
+        : undefined;
+    if (problem !== undefined) {
+      return createResult({
+        ...input,
+        status: "failed",
+        diagnostics: [
+          ...diagnostics,
+          createDiagnostic({
+            severity: "error",
+            category: "internal",
+            code: "PAVED_RESULT_MALFORMED_AWAITING_INPUT",
+            component: "cli.result",
+            message: `Malformed awaiting_input result: ${problem}`,
+            remediation: "Raise a required decision, or report the blocker as a diagnostic instead.",
+          }),
+        ],
+      });
+    }
+  }
+
   const normalizedDiagnostics = input.status === "failed" && !hasBlockingDiagnostic(diagnostics)
     ? [
         ...diagnostics,
@@ -95,12 +148,16 @@ export function createResult<TData = unknown>(input: ResultInput<TData>): Comman
     command: input.command,
     status: input.status,
     diagnostics: normalizedDiagnostics,
+    ...(decisions.length === 0 ? {} : { decisions }),
   };
 
   return input.data === undefined ? base : { ...base, data: input.data };
 }
 
 export function primaryCategory(result: CommandResult): ExitCategory {
+  // The awaiting_input invariant guarantees there is no blocking diagnostic to escalate.
+  if (result.status === "awaiting_input") return "awaiting-input";
+
   let primary: ExitCategory = result.status === "success" ? "success" : "findings";
 
   for (const diagnostic of result.diagnostics) {

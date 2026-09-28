@@ -17,7 +17,6 @@ import {
   createResult,
   type DiagnosticCategory,
   EXIT_CODES,
-  type ExitCategory,
   exitCode,
   primaryCategory,
 } from "../../cli/result.ts";
@@ -143,7 +142,7 @@ describe("CLI result exit behavior", () => {
 describe("CLI Task 7 output and dispatch regressions", () => {
   it("dispatches every command with every primary exit category without changing exit mapping", async () => {
     const commands: CommandName[] = ["init", "update", "generate", "verify", "status", "doctor"];
-    const categories: ExitCategory[] = [
+    const categories: ("success" | DiagnosticCategory)[] = [
       "success",
       "findings",
       "usage",
