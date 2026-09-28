@@ -245,7 +245,20 @@ describe("verification runner", () => {
 
         assert.equal(childSignal, null);
         assert.equal(code, expectedExitCode);
-        assert.throws(() => process.kill(checkPid!, 0), { code: "ESRCH" });
+        // The killed check is orphaned when the CLI exits and stays visible until init reaps it.
+        const checkGone = () => {
+          try {
+            process.kill(checkPid!, 0);
+            return false;
+          } catch (error) {
+            if (error instanceof Error && "code" in error && error.code === "ESRCH") return true;
+            throw error;
+          }
+        };
+        for (let attempt = 0; attempt < 200 && !checkGone(); attempt += 1) {
+          await new Promise((resolveDelay) => setTimeout(resolveDelay, 10));
+        }
+        assert.equal(checkGone(), true, "verification child is still running");
       } finally {
         if (cli !== undefined && cli.exitCode === null && cli.signalCode === null) cli.kill("SIGKILL");
         if (checkPid !== undefined) {
