@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createDiagnostic, createResult, exitCode, type DecisionProjection } from "../../cli/result.ts";
 import { renderHuman } from "../../cli/output.ts";
+import { dispatchCli } from "../../cli/runtime.ts";
 
 const projection: DecisionProjection = {
   id: "d-0123456789abcdef0123",
@@ -187,5 +188,45 @@ describe("human rendering of decisions", () => {
     assert.match(multiple, /d-0123456789abcdef0123/);
     assert.match(multiple, /d-2222222222222222222/);
     assert.match(multiple, /Should generated fixtures be committed\?/);
+  });
+});
+
+describe("answer flags", () => {
+  it("rejects --answer without --answered-by", async () => {
+    const result = await dispatchCli({ argv: ["verify", "--answer", "d-0123456789abcdef0123=all"] });
+    assert.equal(result.status, "failed");
+    assert.equal(result.diagnostics[0]?.category, "usage");
+    assert.match(result.diagnostics[0]?.message ?? "", /--answered-by/);
+  });
+
+  it("rejects a reserved --answered-by identity", async () => {
+    const result = await dispatchCli({
+      argv: ["verify", "--answer", "d-0123456789abcdef0123=all", "--answered-by", "agent"],
+    });
+    assert.equal(result.status, "failed");
+    assert.equal(result.diagnostics[0]?.category, "usage");
+  });
+
+  it("rejects a malformed --answer pair", async () => {
+    const result = await dispatchCli({
+      argv: ["verify", "--answer", "nonsense", "--answered-by", "anderson@example.com"],
+    });
+    assert.equal(result.status, "failed");
+    assert.equal(result.diagnostics[0]?.category, "usage");
+  });
+
+  it("passes parsed answers to the handler", async () => {
+    let seen: readonly string[] = [];
+    await dispatchCli({
+      argv: ["verify", "--answer", "d-0123456789abcdef0123=all", "--answered-by", "anderson@example.com"],
+      handlers: {
+        verify: (invocation) => {
+          seen = invocation.flags.answers;
+          assert.equal(invocation.flags.answeredBy, "anderson@example.com");
+          return createResult({ command: "verify", status: "success" });
+        },
+      },
+    });
+    assert.deepEqual(seen, ["d-0123456789abcdef0123=all"]);
   });
 });

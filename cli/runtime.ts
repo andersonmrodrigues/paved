@@ -14,6 +14,7 @@ import { workflowHandler } from "./commands/workflow.ts";
 import { workflowAliasHandler } from "./commands/workflow-alias.ts";
 import { createDiagnostic, createResult, type CommandResult } from "./result.ts";
 import { CliPathError, resolveCoreRoot, resolveProjectRoot } from "./paths.ts";
+import { assertAnswerIdentity, parseAnswerFlags } from "./lib/decisions/answers.ts";
 
 export const COMMAND_NAMES = ["init", "status", "plan", "implement", "test", "verify", "review", "debug", "refactor", "feature", "fix", "update", "doctor", "gardener", "generate", "agent"] as const;
 export type CommandName = (typeof COMMAND_NAMES)[number];
@@ -29,6 +30,8 @@ export interface CliFlags {
   readonly note?: string;
   readonly evidence?: string;
   readonly project?: string;
+  readonly answers: readonly string[];
+  readonly answeredBy?: string;
 }
 
 export interface CommandPaths {
@@ -172,6 +175,8 @@ function commandUsage(command: CommandName | undefined): string {
       "  --help, -h       Show help.",
       "  --project <dir>  Select a project directory.",
       "  --json           Render structured JSON output.",
+      "  --answer <id>=<value>    Answer a pending Paved decision; repeatable.",
+      "  --answered-by <identity> The person who decided; required with --answer.",
       "",
       "Command options:",
       ...(commandOptions.length === 0 ? ["  (none)"] : commandOptions),
@@ -239,6 +244,8 @@ function parse(argv: readonly string[]): Parsed {
   let evidence: string | undefined;
   const adapters: string[] = [];
   const selectors: string[] = [];
+  const answers: string[] = [];
+  let answeredBy: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -328,6 +335,15 @@ function parse(argv: readonly string[]): Parsed {
       continue;
     }
 
+    if (token === "--answer" || token === "--answered-by") {
+      const value = takeValue(argv, index, token, command ?? "cli");
+      if (typeof value !== "string") return { kind: "error", result: value };
+      if (token === "--answer") answers.push(value);
+      else answeredBy = value;
+      index += 1;
+      continue;
+    }
+
     if (token.startsWith("-")) {
       return { kind: "error", result: usage(command ?? "cli", `Unknown flag: ${token}.`) };
     }
@@ -355,12 +371,29 @@ function parse(argv: readonly string[]): Parsed {
     return { kind: "error", result: usage(command, `Unknown flag for ${command}: --adapter.`) };
   }
 
+  if (answers.length > 0) {
+    const parsed = parseAnswerFlags(answers);
+    if ("problems" in parsed) {
+      return { kind: "error", result: usage(command, parsed.problems.join(" ")) };
+    }
+    try {
+      assertAnswerIdentity(answeredBy);
+    } catch (error) {
+      return {
+        kind: "error",
+        result: usage(command, error instanceof Error ? error.message : "Invalid --answered-by."),
+      };
+    }
+  }
+
   const flags = {
     adapters,
     dryRun,
     json,
     noGenerate,
     advance,
+    answers,
+    ...(answeredBy === undefined ? {} : { answeredBy }),
     ...(run === undefined ? {} : { run }),
     ...(note === undefined ? {} : { note }),
     ...(evidence === undefined ? {} : { evidence }),
