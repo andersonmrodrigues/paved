@@ -42,7 +42,8 @@ machine-checkable instead of leaving correctness to prompt quality.
              │              │              │
              └──────────────┼──────────────┘
                             │
-                    Agent Integration
+                 Paved plugin (generated)
+          skills · launcher · pinned runtime
                             │
                   ┌─────────┴─────────┐
                   │                   │
@@ -51,69 +52,78 @@ machine-checkable instead of leaving correctness to prompt quality.
                   └─────────┬─────────┘
                             │
                           Agent
+                            │
+               Consumer repository .paved/
+          (lock, verified runtime, project state)
 ```
 
-The Core is agent-neutral. Agent integrations adapt its canonical behavior to an
-agent's local packaging and discovery model without becoming the source of truth
-for Paved itself.
+The Core is agent-neutral. The plugin adapts it to each agent's native plugin
+model without becoming the source of truth: workflows, Tools, verification and
+evidence run only in the version-pinned `paved-core` runtime that the plugin's
+launcher activates inside the consumer repository.
 
-## Consumer usage
+## Install
 
-Open an existing repository, install the Codex or Claude Code Paved integration,
-then invoke the native init command:
+Paved uses native plugin installation in Codex and Claude Code, with
+GitHub-backed marketplace distribution from this repository:
+
+```bash
+# Codex
+codex plugin marketplace add andersonmrodrigues/paved
+codex plugin add paved@paved
+
+# Claude Code
+claude plugin marketplace add andersonmrodrigues/paved
+claude plugin install paved@paved
+```
+
+Then open the repository you want Paved to manage and run the init command:
 
 ```text
-Codex:       $paved-init, $paved-status, $paved-plan, $paved-feature
 Claude Code: /paved:init, /paved:status, /paved:plan, /paved:feature
+Codex:       paved:init, paved:status, paved:plan, paved:feature (skills)
 ```
 
-See the [agent command reference](docs/concepts/agent-commands.md) for all
-commands, inputs, lifecycle requirements, context, side effects and failures.
-The integration's Node launcher acquires the exact `paved-core` package version
-pinned by the integration or `.paved/paved.lock`, checks its SHA-512 tarball
-integrity, installs it under `.paved/runtime/`, and invokes the packaged CLI.
-It never adds a dependency to the application. Subsequent commands use the
-verified local installation offline.
+The first command verifies the plugin's bundled `paved-core` runtime against its
+pinned SHA-512 integrity, installs it offline under `.paved/runtime/` (ignored by
+Git), and records it in `.paved/paved.lock`. Nothing is added to the
+application's dependencies, and later commands run offline. Updating the plugin
+never switches a repository's runtime silently; `runtime upgrade` and
+`runtime rollback` do that explicitly.
 
-**Release status:** `paved-core@1.0.0` has not been published to npm, and no
-standalone public integration installer has been released. Registry bootstrap
-therefore reports an acquisition diagnostic today. The packaged integration and
-bootstrap path are exercised end to end from a local tarball in
-`tests/package/bootstrap.test.ts`. Publication and integration distribution are
-the remaining public availability prerequisites.
+Full guide, including verification, updates, removal and troubleshooting:
+[Installing the Paved plugin](docs/getting-started/installing-the-plugin.md).
+All commands: [agent command reference](docs/concepts/agent-commands.md).
 
-For Paved development, the CLI requires Node.js 22.18+ and a local Core checkout:
+**Release status:** the plugin is installable from this GitHub repository today.
+It is not listed in the public Codex or Claude Code plugin directories, and
+`paved-core` is not published to npm; the plugin bundles the runtime it needs.
+
+## Developing Paved
+
+Contributors work from a checkout, which requires Node.js 22.18+:
 
 ```bash
 git clone https://github.com/andersonmrodrigues/paved.git
 cd paved
 npm ci
-node ./cli/index.ts --help
-node ./cli/index.ts --version
+npm run check          # strict type check and all tests
+npm run build:plugin   # regenerate plugins/paved/ after Core changes
 ```
 
-Run the CLI from the Paved checkout and pass the existing consumer repository
-explicitly. Do not initialize the Core checkout as a consumer:
+The CLI can also run straight from the checkout against another repository. Do
+not initialize the Core checkout as a consumer:
 
 ```bash
 node ./cli/index.ts init --project /absolute/path/to/existing-repository --json
 node ./cli/index.ts status --project /absolute/path/to/existing-repository --json
-node ./cli/index.ts generate --project /absolute/path/to/existing-repository --json
 ```
 
 `verify` requires a project-owned verification profile and approved Tool
-bindings; `init` does not create or approve checks. Configure those first by
-following [Integrating a repository](docs/getting-started/integrating-a-repository.md),
-then run:
-
-```bash
-node ./cli/index.ts verify --project /absolute/path/to/existing-repository --json
-```
-
-The packaged CLI uses the same handlers as the agent launcher. `paved agent
-commands --json` reports availability, and `paved agent command <name> --json`
-resolves one structured command contract. The `npm run paved -- <command>` script
-is a contributor convenience.
+bindings; `init` does not create or approve checks. Configure those by following
+[Integrating a repository](docs/getting-started/integrating-a-repository.md).
+`paved agent commands --json` reports command availability, and
+`paved agent command <name> --json` resolves one structured command contract.
 
 ## CLI surface
 
@@ -158,16 +168,13 @@ manifest rather than having Paved guess.
 
 ## Supported integrations
 
-Paved currently supports project-local integration projections for:
-
-- Codex
-- Claude Code
-
-These integrations project canonical Core skills and native command prompts
-into each agent's local discovery layout. Their prompts invoke the same
-project-local bootstrap launcher and CLI dispatcher. A packed CLI runs
-independently of its source checkout. Public registry acquisition requires the
-unpublished package release.
+Paved supports Codex and Claude Code through one generated plugin
+([`plugins/paved/`](plugins/paved/)), listed by
+[`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json) and
+[`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json). The same
+skills and launcher can also be projected into a single repository with
+`paved agent install codex|claude`. Every surface invokes the same launcher and
+CLI dispatcher.
 
 ## Repository structure
 
@@ -185,6 +192,9 @@ unpublished package release.
 ├── adapters/
 ├── generators/
 ├── integrations/
+├── plugins/          (plugin build and generated plugins/paved/)
+├── .agents/plugins/  (Codex marketplace)
+├── .claude-plugin/   (Claude Code marketplace)
 ├── schemas/
 ├── cli/
 ├── docs/
@@ -197,6 +207,7 @@ unpublished package release.
 
 Public documentation lives in:
 
+- [Installing the Paved plugin](docs/getting-started/installing-the-plugin.md)
 - [Integrating a repository](docs/getting-started/integrating-a-repository.md)
 - [Agent command reference](docs/concepts/agent-commands.md)
 - [docs/concepts](docs/concepts)
@@ -233,5 +244,6 @@ Paved is distributed under the MIT license. See [LICENSE](LICENSE).
 
 ## Status
 
-The source declares Core version 1.0.0. Its first npm and tagged GitHub releases
-have not been published. The Core remains agent-neutral.
+The source declares Core version 1.0.0 and plugin version 1.0.0. The plugin is
+installable from this repository; no npm package, tagged GitHub release or public
+plugin-directory listing has been published. The Core remains agent-neutral.

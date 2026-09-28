@@ -11,7 +11,7 @@ import { inspectOverrides } from "./override-safety.ts";
 import { assessProvenance } from "./provenance.ts";
 import { createRegistry, type SchemaRegistry } from "./schemas.ts";
 import { compatible } from "./tools.ts";
-import { readRuntimeSelection, type RuntimeLock } from "./runtime-lock.ts";
+import { readActiveRuntimeSelection, readRuntimeSelection, type RuntimeLock } from "./runtime-lock.ts";
 
 export interface InspectConsumerInput {
   readonly projectRoot: string;
@@ -873,10 +873,15 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
   }
 
   const compatibility = candidateCompatibility(lockResult.lock.core?.version, core.version);
-  if (lockResult.lock.runtime && lockResult.lock.runtime.version !== core.version) diagnostics.push(diagnostic({
+  // A runtime upgrade is staged by the launcher: it verifies and activates the new
+  // runtime, which then moves the lock here inside the same update transaction.
+  let activeRuntime: RuntimeLock | undefined;
+  try { activeRuntime = readActiveRuntimeSelection(input.projectRoot, input.coreRoot); } catch { activeRuntime = undefined; }
+  const nextRuntime = activeRuntime?.version === core.version ? activeRuntime : lockResult.lock.runtime;
+  if (nextRuntime && nextRuntime.version !== core.version) diagnostics.push(diagnostic({
     code: "PAVED_RUNTIME_UPDATE_REQUIRED", component: "cli.update", category: "resolution",
-    message: `The lock pins runtime ${lockResult.lock.runtime.version}; Core ${core.version} cannot be activated through a local content update.`,
-    remediation: "Acquire and validate a matching runtime package before changing the Core lock.",
+    message: `The lock pins runtime ${nextRuntime.version}; Core ${core.version} cannot be activated through a local content update.`,
+    remediation: "Run the Paved launcher with `runtime upgrade` so it verifies and activates a matching runtime before the lock changes.",
   }));
   if (compatibility === "unknown") diagnostics.push(diagnostic({ code: "PAVED_UPDATE_COMPATIBILITY_UNKNOWN",
     component: "cli.update", category: "resolution",
@@ -940,7 +945,7 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
       source: "local-core",
       sha256: hashLocalCore(input.coreRoot),
     },
-    ...(lockResult.lock.runtime === undefined ? {} : { runtime: lockResult.lock.runtime }),
+    ...(nextRuntime === undefined ? {} : { runtime: nextRuntime }),
     adapters: resolvedAdapters.map((detection) => ({
       id: detection.adapter.id,
       version: detection.adapter.version,
@@ -963,7 +968,8 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
   const coreChanged = entryChanged(lockResult.lock.core, nextLock.core);
   const adaptersChanged = entriesChanged(lockResult.lock.adapters, nextLock.adapters);
   const generatorsChanged = entriesChanged(lockResult.lock.generators, nextLock.generators);
-  const lockChanged = coreChanged || adaptersChanged || generatorsChanged;
+  const runtimeChanged = JSON.stringify(lockResult.lock.runtime) !== JSON.stringify(nextLock.runtime);
+  const lockChanged = coreChanged || adaptersChanged || generatorsChanged || runtimeChanged;
   const staleIds = staleGeneratorIds(input.projectRoot, input.coreRoot, resolvedAdapters, manifest);
   const priorAdapters = new Map((lockResult.lock.adapters ?? []).filter((entry) => entry.id).map((entry) => [entry.id as string, entry]));
   const nextAdapters = new Map((nextLock.adapters ?? []).filter((entry) => entry.id).map((entry) => [entry.id as string, entry]));

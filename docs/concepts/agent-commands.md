@@ -1,9 +1,10 @@
 # Agent command reference
 
 Paved defines one agent-neutral command contract and projects it into supported
-agent-native command surfaces. Codex exposes generated skills such as
-`$paved-feature`; Claude Code exposes `/paved:feature`. Names are presentation
-syntax only: both resolve the same stable `paved.<name>` contract.
+agent-native command surfaces. Through the installed plugin, Claude Code exposes
+`/paved:feature` and Codex exposes the `paved:feature` skill; the project-local
+Codex projection uses `$paved-feature`. Names are presentation syntax only: all
+resolve the same stable `paved.<name>` contract.
 
 The contract is discoverable with `paved agent commands --json`. Resolve an
 individual command and its current availability with
@@ -46,8 +47,10 @@ the integrity-checking launcher.
 
 ## Distribution status
 
-The launcher can acquire a pinned `paved-core` version from npm and run it
-without a global install. The packed tarball path is tested in a clean
-consumer. `paved-core@1.0.0` is not yet published, so registry acquisition
-remains unavailable until release. A public integration installer or download
-location is also still needed.
+Paved is distributed as a native Codex and Claude Code plugin through
+GitHub-backed marketplace distribution from this repository; see
+[Installing the Paved plugin](../getting-started/installing-the-plugin.md). The
+plugin bundles the `paved-core` runtime tarball, so activation needs no registry.
+`paved-core` is not published to npm and the plugin is not listed in a public
+plugin directory; the launcher's registry path applies only to a lock that pins a
+runtime the plugin does not bundle.

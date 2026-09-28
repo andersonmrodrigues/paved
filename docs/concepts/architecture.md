@@ -156,7 +156,10 @@ flowchart LR
   cli --> adapters
   cli --> core
   cli --> schemas
+  integrations --> core
+  plugins --> integrations
   tests --> cli
+  tests --> plugins
   docs --> tests
 ```
 
@@ -164,6 +167,37 @@ Transitive edges are omitted; `depends_on` in the manifest lists them all.
 
 `schemas`, `core` and `generators` are **distributed**: they form the Core release a
 consumer references. `adapters`, `cli`, `docs` and `tests` are not.
+
+## Plugin, runtime and consumer
+
+```text
+ GitHub repository (marketplace)          Consumer repository
+ ┌───────────────────────────────┐        ┌─────────────────────────────────────┐
+ │ .agents/plugins/marketplace   │        │ .paved/paved.lock   (committed pin) │
+ │ .claude-plugin/marketplace    │        │ .paved/runtime/     (ignored)       │
+ │ plugins/paved/  (generated)   │        │   cache/  versions/  selection.json │
+ │   skills/  bin/paved.mjs      │ launch │ .paved/ context, rules, workflows   │
+ │   runtime/paved-core-<v>.tgz ─┼───────►│ application code (never written     │
+ └───────────────────────────────┘ verify │   by the launcher)                  │
+        ▲ native plugin installation      └─────────────────────────────────────┘
+   Codex · Claude Code                         ▲ runtime executes workflows,
+                                               │ Tools, verification, evidence
+```
+
+- **Plugin ≠ Runtime.** The plugin carries skills, a launcher and one runtime
+  artifact. Workflows, Tools, verification, lifecycle and provenance run only in
+  the `paved-core` runtime the launcher activates under `.paved/runtime/`.
+- **Plugin ≠ Core source.** `plugins/paved/` is generated from the Core by
+  `npm run build:plugin`; it is never edited by hand and never read as the source
+  of truth. The launcher refuses to treat the Core checkout as a consumer.
+- **Plugin ≠ Consumer state.** Installing, updating or removing the plugin never
+  changes `.paved/`. A repository's runtime changes only through
+  `runtime upgrade`, which runs the Core's transactional update.
+- **Agent integration ≠ business logic.** Skills describe how to invoke Paved; they
+  hold no application entities, rules or domain behavior.
+
+See [Installing the Paved plugin](../getting-started/installing-the-plugin.md) and
+[ADR 0026](../decisions/0026-native-plugin-distribution.md).
 
 ## Machine-readable by default
 

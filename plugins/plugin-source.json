@@ -1,0 +1,21 @@
+{
+  "name": "paved",
+  "version": "1.0.0",
+  "displayName": "Paved",
+  "description": "Paved engineering commands for AI coding agents: repository context, governed workflows, explicit Tools, verification and evidence, executed by a pinned project-local Paved runtime.",
+  "longDescription": "Paved gives a repository a durable operating model for agent work. Invoke Paved commands (init, status, plan, feature, fix, refactor, test, verify, review and more) and the bundled launcher activates the version-pinned, integrity-checked Paved runtime under the repository's .paved/runtime/ directory. Workflows, Tool execution, verification and evidence are decided by that runtime; the plugin only distributes and invokes it.",
+  "author": {
+    "name": "Anderson Rodrigues",
+    "url": "https://github.com/andersonmrodrigues"
+  },
+  "homepage": "https://github.com/andersonmrodrigues/paved#readme",
+  "repository": "https://github.com/andersonmrodrigues/paved",
+  "license": "MIT",
+  "keywords": ["paved", "engineering", "workflow", "verification", "evidence", "coding-agent"],
+  "category": "Coding",
+  "defaultPrompts": [
+    "Initialize Paved in this repository",
+    "Show the Paved status of this repository",
+    "Plan this change with Paved"
+  ]
+}
