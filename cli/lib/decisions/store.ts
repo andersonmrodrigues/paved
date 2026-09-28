@@ -17,17 +17,28 @@ export function decisionPath(projectRoot: string, id: string): string {
   return resolveSafePath(projectRoot, `.paved/decisions/${id}.yaml`);
 }
 
-export function readDecision(projectRoot: string, id: string): Decision | undefined {
+// .paved/decisions/ is committed and human-editable (manifest.yaml: committed: true), so
+// content can reach the store without ever passing through writeDecision — a hand edit, a
+// bad merge, a stale checkout. Every read re-validates against the schema, mirroring the
+// discipline in cli/commands/workflow.ts's approval(): trust nothing that did not just pass
+// validation, and never silently treat a corrupt/tampered record as merely absent.
+export function readDecision(projectRoot: string, coreRoot: string, id: string): Decision | undefined {
   const path = decisionPath(projectRoot, id);
   if (!existsSync(path)) return undefined;
+  let raw: unknown;
   try {
-    return loadYaml(path) as Decision;
+    raw = loadYaml(path);
   } catch (error) {
     throw new DecisionStoreError(`Decision ${id} cannot be parsed: ${error instanceof Error ? error.message : "unknown"}`);
   }
+  const validation = createRegistry(join(coreRoot, "schemas"), ["paved/v1"]).validate(raw);
+  if (!validation.valid) {
+    throw new DecisionStoreError(`Decision ${id} at ${path} failed validation: ${validation.errors.join("; ")}`);
+  }
+  return raw as Decision;
 }
 
-export function listDecisions(projectRoot: string): Decision[] {
+export function listDecisions(projectRoot: string, coreRoot: string): Decision[] {
   const root = join(projectRoot, ".paved/decisions");
   if (!existsSync(root)) return [];
   const decisions: Decision[] = [];
@@ -35,7 +46,7 @@ export function listDecisions(projectRoot: string): Decision[] {
     if (!entry.isFile() || !entry.name.endsWith(".yaml")) continue;
     const id = entry.name.slice(0, -".yaml".length);
     if (!DECISION_ID.test(id)) continue;
-    const decision = readDecision(projectRoot, id);
+    const decision = readDecision(projectRoot, coreRoot, id);
     if (decision !== undefined) decisions.push(decision);
   }
   return decisions.sort((a, b) =>
