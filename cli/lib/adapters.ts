@@ -81,12 +81,14 @@ export function resolveAdapters(detections: Detection[], selected: { id: string;
     const detection = byId.get(id);
     if (!detection) { diagnostics.push({ code: 'missing-adapter', id, message: `Selected adapter ${id} is unavailable` }); return; }
     if (visiting.has(id)) { diagnostics.push({ code: 'cycle', id, message: `Adapter dependency cycle at ${id}` }); return; }
-    if (!compatible(detection.adapter.version, range) || !compatible(coreVersion, detection.adapter.requires.core)) { diagnostics.push({ code: 'incompatible', id, message: `Adapter ${id} is incompatible with the requested or Core version` }); return; }
-    if (detection.confidence === 'unknown') { diagnostics.push({ code: 'undetected', id, message: `Adapter ${id} has no matching repository evidence` }); return; }
     if (resolved.has(id)) return;
+    if (detection.confidence === 'unknown') { diagnostics.push({ code: 'undetected', id, message: `Adapter ${id} has no matching repository evidence` }); return; }
     visiting.add(id);
     for (const dependency of detection.adapter.requires.adapters ?? []) visit(dependency.id, dependency.version);
     visiting.delete(id);
+    if (!compatible(detection.adapter.version, range) || !compatible(coreVersion, detection.adapter.requires.core)) {
+      diagnostics.push({ code: 'incompatible', id, message: `Adapter ${id} is incompatible with the requested or Core version` }); return;
+    }
     if ((detection.adapter.requires.adapters ?? []).every(dep => resolved.has(dep.id))) resolved.set(id, detection);
     else diagnostics.push({ code: 'dependency', id, message: `Adapter ${id} has an unresolved dependency` });
   }
