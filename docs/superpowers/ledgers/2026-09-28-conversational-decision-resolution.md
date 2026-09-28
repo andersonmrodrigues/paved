@@ -703,3 +703,10 @@ expect `awaiting_input` (exit 10), while their file and generation assertions re
 The new tests cover answering in a later invocation, a healthy lifecycle, capability
 choice in the lock, and `--no-generate`. Full `npm run check` = 745 tests, 740 pass,
 the same 5 baseline failures. Tasks 19–29 remain.
+
+Task 19: Ruling: pending decision summaries also expose the originating command, so
+`status.nextAction` can tell the user which command accepts the answer. `status` only
+reads stored decisions and command availability; a test confirms it leaves decision
+files unchanged. Cost if wrong: the extra `command` property enlarges status output.
+Full `npm run check` = 746 tests, 741 pass, the same 5 baseline failures. Tasks 20–29
+remain.

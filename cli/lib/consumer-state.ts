@@ -12,6 +12,7 @@ import { assessProvenance } from "./provenance.ts";
 import { createRegistry, type SchemaRegistry } from "./schemas.ts";
 import { compatible } from "./tools.ts";
 import { answeredProviders } from "./decisions/capability-answers.ts";
+import { listDecisions } from "./decisions/store.ts";
 import { readActiveRuntimeSelection, readRuntimeSelection, type RuntimeLock } from "./runtime-lock.ts";
 
 export interface InspectConsumerInput {
@@ -85,6 +86,8 @@ export interface ConsumerInspection {
   };
   readonly proposals: readonly string[];
   readonly conflicts: readonly string[];
+  readonly pendingDecisions: readonly { id: string; question: string; required: boolean; command: string }[];
+  readonly pendingApprovals: readonly string[];
   readonly diagnostics: readonly Diagnostic[];
 }
 
@@ -1036,6 +1039,8 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
       verificationProfile: "missing",
       proposals: [],
       conflicts: [],
+      pendingDecisions: [],
+      pendingApprovals: [],
       diagnostics,
     };
   }
@@ -1054,6 +1059,8 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
       verificationProfile: "missing",
       proposals: [],
       conflicts: [],
+      pendingDecisions: [],
+      pendingApprovals: [],
       diagnostics,
     };
   }
@@ -1162,6 +1169,8 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
     generated: lastRun?.present === true || existsSync(join(input.projectRoot, ".paved/project")),
     diagnostics,
   });
+  const decisions = listDecisions(input.projectRoot, input.coreRoot);
+  const waiting = decisions.filter((decision) => decision.status === "PENDING" || decision.status === "ASKED");
 
   return {
     projectRoot: input.projectRoot,
@@ -1188,6 +1197,13 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
     ...(lastRun === undefined ? {} : { lastRun }),
     proposals: lastRun?.proposals ?? [],
     conflicts: lastRun?.conflicts ?? [],
+    pendingDecisions: waiting.map((decision) => ({
+      id: decision.id, question: decision.question, required: decision.required,
+      command: decision.command,
+    })),
+    pendingApprovals: waiting.filter((decision) =>
+      decision.status === "ASKED" && decision.answer_channel === "human-authored")
+      .map((decision) => decision.id),
     diagnostics,
   };
 }
