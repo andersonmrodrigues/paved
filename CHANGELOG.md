@@ -34,14 +34,33 @@ tagged yet.
   offline reuse, and rejects corrupt installed content.
 - Durable `feature`, `fix` and `refactor` workflow commands, with plan approval,
   governed test execution, authoritative verification, and evidence gates.
+- Native plugin installation for Codex and Claude Code through GitHub-backed
+  marketplace distribution from this repository: a generated `plugins/paved/`
+  plugin with one skill per command, the shared launcher, and a bundled,
+  integrity-pinned `paved-core` runtime that activates offline.
+- Launcher `runtime status`, `runtime upgrade` and `runtime rollback`. A different
+  runtime is activated only through the Core's transactional update, with the
+  previous lock and runtime kept for rollback; legacy locks without a runtime are
+  adopted the same way.
+- Pre-extraction archive inspection (links, traversal, special bits, unexpected
+  executables), stale bootstrap-lock recovery and structured I/O failures.
+
+### Fixed
+
+- The launcher resolves a nested repository instead of its parent's Paved state,
+  compares project paths physically, and passes the resolved project to the
+  runtime.
+- `init` derives a valid project name from any directory name instead of failing
+  schema validation.
+- Plugin skills ship the `references/` and `examples/` files their bodies link to.
 
 ### Compatibility and limitations
 
 - The Core and document API are at `1.0.0` and `paved/v1`; breaking document API
   changes require a new API version.
-- No package has been published. The agent launcher supports npm acquisition,
-  while the clean-room test uses a verified local tarball. A public integration
-  installer or download location is still required.
+- No package has been published to npm, and the plugin is not listed in the
+  public Codex or Claude Code plugin directories. It installs from this
+  repository as a marketplace source.
 - Consumers must review generated proposals and configure an explicit verification
   profile and approved Tool bindings. Initialization does not approve or run checks.
 - Automatic schema migrations and executable `paved evidence` and `paved tool`
@@ -49,5 +68,5 @@ tagged yet.
 - Application code changes and review observations remain agent actions recorded
   in the durable workflow. The runtime enforces phase order, required approval,
   governed testing, verification and evidence before completion.
-- Runtime version updates and rollback across published package versions are not
-  implemented; `paved update` still updates local Core inputs transactionally.
+- Runtime upgrades use artifacts carried by a plugin; there is no registry-side
+  release channel yet. `paved update` alone never activates a different runtime.

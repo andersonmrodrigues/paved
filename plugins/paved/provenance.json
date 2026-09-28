@@ -1,0 +1,73 @@
+{
+  "_paved_generated": true,
+  "generator": {
+    "id": "paved.plugin.build",
+    "version": "1.0.0"
+  },
+  "plugin": {
+    "name": "paved",
+    "version": "1.0.0"
+  },
+  "source": {
+    "package": "paved-core",
+    "version": "1.0.0",
+    "content_sha256": "a78c21ccb4d32d45cf85ac7c630ef86d1ca7fcc55ae8b272461efabd46f9fab3"
+  },
+  "runtime": {
+    "package": "paved-core",
+    "version": "1.0.0",
+    "file": "runtime/paved-core-1.0.0.tgz",
+    "integrity": "sha512-AFlGRSDt6Yn5miuK9m9i1vv5Q4xg0LjEhmaEhVygIjLqHRjPMuBrmVIChnf5lXtrBuMsP7CWkpggUjJ6jTXVgQ==",
+    "content_sha256": "a78c21ccb4d32d45cf85ac7c630ef86d1ca7fcc55ae8b272461efabd46f9fab3",
+    "bytes": 731272
+  },
+  "files": {
+    ".claude-plugin/plugin.json": "052ef0a116933cc4df9634c54c3691bdafe69b97a90b89d0dcaa972e5aa5663e",
+    ".codex-plugin/plugin.json": "587af1931f1487edec14ecd9b58c5e78f81b8ef710342f5d0b1110f88ba5fdd2",
+    "README.md": "69ca691470853a1906b726be7c9e3d4f0ea70dc31d2e97b306614690f55f25be",
+    "VERSION": "59854984853104df5c353e2f681a15fc7924742f9a2e468c29af248dce45ce03",
+    "bin/bootstrap.json": "f93fe2484aad14d976ca3053d6714489848bf36e522503595ff9cbbd92216d1f",
+    "bin/paved.mjs": "bfa6c07e5742f8a0bde7e2ee4b9b6e303a0539cdafe229e01a2a61869b3c68f8",
+    "plugin.json": "94b258a24daf81b997b14964bdd9dad91900bdd0745fce724267ead6962757da",
+    "runtime/paved-core-1.0.0.tgz": "3eb3a3a94f8755a27faf2a4d0d2cca5be501ca473fa70768dbb68e6d4ccb5219",
+    "skills/backend-performance/SKILL.md": "5a39297291c8d69d4e4c4cf1a57e23148393a07aab8902c9b657f1041a95e962",
+    "skills/bug-investigation/SKILL.md": "59d7a7a004327f636eaa48977d94b85fe4cfd1f25bf196c6f13aa7c43f206b2a",
+    "skills/bug-investigation/examples/investigation-log.md": "79e105f8a07ae446e818549d72d5dbb96e516c0d25db190e5a2ebe4bac0a736c",
+    "skills/change-review/SKILL.md": "1cb3cc1b538757467bbc43cca35f11010643a542717559c54b2e2402db76d80f",
+    "skills/context-discovery/SKILL.md": "0bfecfc051b91b1f2697aee26a8857bf8a8842c3fa5ca6fb6a959746c2c1c169",
+    "skills/context-discovery/references/repository-signals.md": "5b456d7e199356398f052fb9718eacd951ee56fac9db5a3b75f133c35ecfd1bd",
+    "skills/debug/SKILL.md": "3c8a4ab994e4deff5099b144b92eb915eb490e7d4377dd89bb35a5b25ece0bfe",
+    "skills/doctor/SKILL.md": "52fea2dd53bd2c0fa0e9a47ef434a13a0aa59c8af147bbea1bdffc7c8be259ad",
+    "skills/e2e-testing/SKILL.md": "95d4ac0ae1739228075cf85178cdb0d7fb61baf1ecaa418b31bdcefb074e5c83",
+    "skills/feature-development/SKILL.md": "980d7bcae3560c46a38e80b5ffe6e140df7963eabac50ea93d8bb9ef73070b29",
+    "skills/feature/SKILL.md": "ad177a2abdb9b9c04edd683c785cb9790d008665a405dc385c06d153d50736db",
+    "skills/fix/SKILL.md": "6cee7a6d7d944de6f509529b01087fd43413fbc2c3cd73231d02bbac1c0992f8",
+    "skills/frontend-performance/SKILL.md": "f876eec9c882069fbac233b2bb087cb357485d306288a1b8507877b0306fc843",
+    "skills/gardener/SKILL.md": "e0711ca84c0eb44396d86e09a31378178498d52388b1e4b1ca4254f0dcf1b176",
+    "skills/gardener/references/enforcement-layers.md": "cee040ba0d85df64d67eae64c1c55d86424f0f4722b497bdaa77c390464e17dc",
+    "skills/implement/SKILL.md": "7db7751d1d220770d3ae44232f955b6eaa1dc9fa5d3e51ab3cae5762b52dd106",
+    "skills/init/SKILL.md": "4515c718657868b75b58fc1bd0bdf0c7c4e3b831138bc029cce24b8c118c4bc9",
+    "skills/integration-testing/SKILL.md": "26df131888b02757d5e497e71513ab2ae236a07e013446cdc24e743178831699",
+    "skills/plan/SKILL.md": "4b851cd8974b55790bbd56fca5d44dd096bdf2384e6be1554d03d8d070cc0f0f",
+    "skills/profiling/SKILL.md": "8193c88bd04826591d7058419ce7e97c81c7b4cabe23d34c09eadef523d8fc96",
+    "skills/profiling/examples/measurement-report.md": "fc49d8b130c22a08784439c6b039f8a71dde59b6966d0537d41d4947c542aff3",
+    "skills/profiling/references/measurement-protocol.md": "16442e465c32c21d51da7a51e97c157a44e25ad6a5ecd11ba9e2d2b890763c34",
+    "skills/prototyping/SKILL.md": "17aa785c46a5c84decfed35cf74c8da746dfbb066ef85e378f4c664b8f568f51",
+    "skills/refactor/SKILL.md": "f38c8285ffec689c58de3537036a035e12ec5fbe4b382e3743c0cf16fc675d70",
+    "skills/refactoring/SKILL.md": "c63bffc0a0ede3a4ff4e1f1f6d174d66ccac84ffd61061a17d0d1ea55f359a78",
+    "skills/regression-testing/SKILL.md": "65f915cd2a521a5c41f7920fec743551a46bb3c117fe1fb40fec5d1dc2c47f29",
+    "skills/repository-onboarding/SKILL.md": "0b9623c3f094932344c23aeea35bd27145e6deb04bd2867bfabf52e5d2024783",
+    "skills/review/SKILL.md": "0ea2b21fa1cbd9025c4df4f32531105a5e438772f6b6e4675be2415f68bc1f9c",
+    "skills/root-cause-analysis/SKILL.md": "f2d7171e6278fcb366a592fa1c6406262c10f6160e768c0e0b7dbb71d0824b36",
+    "skills/runtime-debugging/SKILL.md": "7438ff11af390d50013f20d0b94483ea2a476c61888e5371a5ed3e3febbee2ac",
+    "skills/security-review/SKILL.md": "c2048bdefee2aa4e5737d9ba74f4ee7efb6a5c98149d32d3296365fbca40483f",
+    "skills/status/SKILL.md": "19aa61813042891ef7d56b0c575c4e2ed2339e3884b3d98d5f37aa2255d83d31",
+    "skills/test/SKILL.md": "83348d69b535e6e666c762458846194b3c17f72e0eb0e3d5594574a087c104a5",
+    "skills/threat-modeling/SKILL.md": "be477b2e968d631a7f34f4cb12213796b38e6f48299a0e8e1dfec6062f34bc5a",
+    "skills/threat-modeling/examples/threat-model.md": "2392c1e75e4f8eb35078cbc5b260e523943ffef79cd1dc3d5b7ea46d8314a837",
+    "skills/threat-modeling/references/stride.md": "b485065f3d6d86e26abe82585c616c20b9ed5e32a3365dd3cfded8408a4d53fd",
+    "skills/unit-testing/SKILL.md": "a43cf31f86310d40687e4ccc8d1c0cb7284488cc027a19fd15d5ac90d3c7a6aa",
+    "skills/update/SKILL.md": "a4b8eb3c6912144c3c601dbfc73b61ca85739c6fbe06610bb653f320db825970",
+    "skills/verify/SKILL.md": "c3bb42c92cce9f666245d5b771c01c677adb1f27acfff75ab499315fe3bcac73"
+  }
+}
