@@ -14,9 +14,44 @@
 > hook blocks committing the regenerated `.tgz`. The acceptance criteria *"plugin drift check
 > passes"* and *"clean-room plugin tests pass"* are therefore **not met on this branch**.
 >
-> **Reading the SHAs:** branch history was rewritten once, after Task 2, to change commit
-> authorship. The remap table below translates pre-rewrite SHAs; entries written before it
-> use the old values.
+> **Reading the SHAs.** Branch history was rewritten three times, so the SHAs quoted
+> throughout the body below are **generation-2** values and no longer resolve. Use the
+> table immediately under this box to translate them to the SHAs on the published branch.
+>
+> The three rewrites were: (1) `filter-branch` after Task 2 to change commit authorship —
+> this silently stripped GPG signatures, which is why a later pass was needed; (2) a rebase
+> re-signing every commit; (3) a rebase removing the `Co-Authored-By: Claude` trailer. Only
+> metadata changed in all three — `git diff` between the pre-rewrite and final trees is
+> empty, and the suite reports the same 676 tests / 674 passing before and after.
+
+## SHA translation — body values (gen 2) → published branch (final)
+
+| In the body below | On the branch | Subject |
+|---|---|---|
+| `20ec37c` | `bdce58e` | docs: spec and implementation plan |
+| `4ef4c91` | `8167b8e` | feat: Decision document schema |
+| `6e37279` | `0598e7b` | fix: shared sha256 def + allOf coverage |
+| `e18ebba` | `75bf928` | feat: decision record types and state machine |
+| `31e66c4` | `9b02166` | fix: type effect field with EffectClass union |
+| `a3d787a` | `8b72010` | fix: exhaustive enum parity tests |
+| `121f20e` | `45b39eb` | fix: restore effect field validation test |
+| `a6dca24` | `36d6342` | feat: narrow fingerprinting and supersession |
+| `b14f385` | `30c4558` | test: fingerprinting coverage |
+| `2147f85` | `30ce850` | feat: answer parsing and validation |
+| `4007de0` | `78adfc9` | feat: derive answer channel from effect class |
+| `e8dc307` | `2794ba3` | fix: harden effect tiers |
+| `c72be7a` | `5410e39` | test: freeze coverage for EFFECT_TIERS |
+| `3663244` | `9baf1cd` | fix: non-null assertion for test type safety |
+| `e305112` | `2f36c30` | feat: persist decisions + declare ownership |
+| `c0dc990` | `0b49333` | fix: validate decisions on read |
+| `48f2e7a` | `f5db54a` | feat: awaiting_input status + top-level decisions |
+| `d273ca7` | `9a300c4` | feat: render pending decisions |
+| `c04adf4` | `398b944` | fix: stop renderer asserting reversibility |
+| `e1a9ce2` | `ba01505` | feat: accept --answer and --answered-by |
+| `3adceae` | `f12129a` | docs: preserve the execution ledger |
+
+The generation-1 → generation-2 remap (the authorship rewrite) is recorded separately below
+and is only needed for entries written before that rewrite happened.
 
 ---
 
