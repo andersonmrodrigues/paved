@@ -10,6 +10,8 @@ tagged yet.
 
 ### Added
 
+- Shared lifecycle-aware agent command contracts for Codex and Claude Code, with
+  structured discovery, command resolution and agent-native command projections.
 - Stable `paved/v1` document contracts for Core and Project manifests, locks,
   adapters, capabilities, context, rules, skills, workflows, Tools, verification,
   evidence, generators, provenance and agent integrations.
@@ -22,7 +24,8 @@ tagged yet.
   TypeScript, Angular, Dart, Flutter and PostgreSQL adapters.
 - One verification and evidence model with explicit Tool bindings, bounded
   execution, output redaction and lifecycle-aware readiness.
-- Project-local Codex and Claude Code skill projections from canonical Core skills.
+- Project-local Codex and Claude Code skill and command projections from shared
+  Core contracts.
 
 ### Compatibility and limitations
 
@@ -34,5 +37,5 @@ tagged yet.
   profile and approved Tool bindings. Initialization does not approve or run checks.
 - Automatic schema migrations and executable `paved evidence` and `paved tool`
   command families are not implemented.
-- Agent projections package skills only; the local Core checkout and CLI remain
-  necessary for instructions, lifecycle operations and verification.
+- Agent projections include skills and command prompts; the local Core checkout
+  and CLI remain necessary for instructions, lifecycle operations and verification.

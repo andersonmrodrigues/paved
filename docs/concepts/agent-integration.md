@@ -46,6 +46,8 @@ not parse human output when JSON is available.
 | Capability | Public operation | Availability |
 |---|---|---|
 | Discovery | `paved --version`, manifest and lock | Always, subject to installation |
+| Command discovery | `paved agent commands --json` | Always when the local Core CLI is available; each command reports its own lifecycle/capability availability |
+| Command contract resolution | `paved agent command <name> --json` | When the command exists; unavailable commands include a reason and recommended next action |
 | Context | `status --json`, documented `.paved/project/` context paths | After initialization/generation |
 | Skills | resolved Core/project skill content and existing skill contracts | When the consumer is resolved |
 | Workflows | resolved Core/project workflow content and existing workflow contracts | When the consumer is resolved |
@@ -152,3 +154,29 @@ side effect of normal integration operations.
 
 Agent-specific projections must keep project-local `.paved/` state authoritative
 and must not silently upgrade Core, consumer state, or adapters.
+
+## Agent-first command contract
+
+The shared command catalog is stable under identifiers `paved.<name>` and
+contains development commands (`plan`, `implement`, `test`, `verify`, `review`,
+`debug`, `refactor`, `feature`, `fix`) and management commands (`init`, `status`,
+`update`, `doctor`, `gardener`). Each entry reports input/output contracts,
+required context, allowed side effects, lifecycle states, workflow/Tool
+mapping, and failure semantics. The agent may present commands as Codex skills
+or Claude slash commands, but the semantics and `.paved/` source of truth are
+shared.
+
+The catalog is descriptive and agent-neutral. Development tasks remain
+orchestrated by the coding agent through the existing Paved workflows, Skills,
+Tools, context and verification engine. `paved agent command` resolves the
+contract and checks current availability; it does not execute a prompt or
+arbitrary command. Direct Tool invocation is not implemented, so `/paved:test`
+is reported unavailable even when a Tool contract exists. Testing is not
+treated as verification.
+
+**Bootstrap limitation:** integrations currently project command files from an
+available local Core checkout. They do not distribute or install the Core
+runtime. Because there is no published integrity-pinned runtime artifact, a
+clean consumer without access to a local Core checkout cannot yet complete
+`/paved:init` through the generated command alone. The integration reports this
+limitation rather than fetching or executing remote code.

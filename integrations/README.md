@@ -1,17 +1,22 @@
 # Agent integrations
 
-Agent integrations are thin projections of Paved Core. They may package the
-canonical `SKILL.md` documents and expose the existing `paved --json` CLI
-contract, but they must not implement lifecycle, verification, generators,
-adapters, provenance or arbitrary command execution.
+Agent integrations are thin projections of Paved Core. They package canonical
+`SKILL.md` documents and agent-native command prompts from one shared semantic
+catalog, and expose the existing `paved --json` CLI contract. They must not
+implement lifecycle, verification, generators, adapters, provenance or
+arbitrary command execution.
 
-The current Codex projection installs canonical skills under `.agents/skills/`;
-the Claude Code projection installs its plugin descriptor and skills in the
-project-local layout. `paved agent list`, `status`, `validate`, `install`,
-`update` and `uninstall` expose their lifecycle. These projections do not install
-the Core CLI or copy Core instructions into the consumer.
+The Codex projection installs canonical skills and `$paved-<command>` command
+skills under `.agents/skills/`. The Claude Code projection installs canonical
+skills and `/paved:<command>` project commands under `.claude/commands/paved/`.
+Both use the same command contract. `paved agent commands --json` discovers
+lifecycle-aware availability; `paved agent command <name> --json` resolves one
+contract. The existing `paved agent list`, `status`, `validate`, `install`,
+`update` and `uninstall` operations remain supported.
 
 Each projection is deterministic and ownership-aware. The consumer's `.paved/`
 state remains authoritative; generated agent files are disposable Paved-owned
 projections and are never application source. The repository's agent contract and
-onboarding guide describe the local-checkout prerequisite.
+onboarding guide describe the local-checkout prerequisite. Projections do not
+install the Core runtime: current use requires an accessible local Core checkout,
+and no remote or global bootstrap is provided.
