@@ -1,0 +1,69 @@
+apiVersion: paved/v1
+kind: WorkflowRun
+id: 2026-09-27-sample
+workflow:
+  id: core.bug
+  version: 0.2.0
+revision: 3f2a9c1
+started_at: 2026-09-27T10:00:00Z
+status: awaiting-input
+inputs:
+  - id: report
+    value: Export fails for archived items.
+    source: ticket
+phases:
+  - phase: context
+    status: completed
+    attempts: 1
+    skills:
+      - id: core.discovery.context-discovery
+        status: activated
+    gates:
+      - id: expected-behavior-known
+        status: passed
+  - phase: discovery
+    status: running
+    attempts: 1
+events:
+  - at: 2026-09-27T10:00:00Z
+    type: run-started
+  - at: 2026-09-27T10:05:00Z
+    type: phase-started
+    phase: discovery
+
+decisions:
+  - apiVersion: paved/v1
+    kind: Decision
+    id: d-0123456789abcdef0123
+    scope: run
+    command: feature
+    run: 2026-09-27-sample
+    category: material
+    authored_by: runtime
+    question: Should the detected checks become verification gates?
+    reason: These checks already run in CI but are not authorized as Paved gates.
+    options:
+      - id: all
+        label: All
+        description: Adopt every detected check.
+        consequence: All detected checks become gates.
+      - id: none
+        label: None
+        description: Adopt nothing.
+        consequence: No verification profile is created.
+    evidence:
+      - type: file
+        location: pom.xml
+        sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    required: true
+    required_answer:
+      type: single-choice
+    risk: low
+    reversibility: reversible
+    answer_channel: relayed
+    status: ASKED
+    fingerprint:
+      inputs:
+        - "pom.xml@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    created_at: "2026-09-28T00:00:00.000Z"
