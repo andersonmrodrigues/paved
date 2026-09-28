@@ -30,6 +30,9 @@ verification of the real action.
 
 Inputs are validated before argv construction. Secret inputs are redacted from output
 and evidence, and environment credential values are never embedded in Tool contracts.
+Verification executables inherit only `PATH`, temporary-directory variables and
+platform-required process variables. Other caller environment variables are not passed
+to checks.
 Output and error fields with secret-like names are redacted; a runner must also strip
 authorization headers and sensitive values before storage. Redaction is a fallback,
 not permission for a Tool to return secrets. Unknown permission, environment or

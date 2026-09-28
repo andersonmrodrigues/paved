@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -310,4 +310,17 @@ test('unavailable selected adapter is reported and generic analysis continues', 
   assert.ok(result.adapterWarnings.some(w => w.includes('frameworks/angular')));
   assert.equal(result.errors.length, 0);
   assert.ok(result.executions.some(e => e.generator === 'project-context/architecture' && e.status === 'written'));
+});
+
+test('generation refuses to write through a symlinked output directory', () => {
+  const dir = fixture();
+  const outside = temporaryDirectory('paved-generator-outside');
+  initializeConsumer(core, dir, 'example');
+  mkdirSync(join(dir, '.paved/project'), { recursive: true });
+  symlinkSync(outside, join(dir, '.paved/project/architecture'));
+
+  const result = runGenerators(core, dir, { generators: ['project-context/architecture'] });
+
+  assert.ok(result.errors.some(error => /symbolic link/i.test(error)));
+  assert.equal(existsSync(join(outside, 'overview.md')), false);
 });

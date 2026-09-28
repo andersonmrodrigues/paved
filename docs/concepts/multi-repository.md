@@ -137,5 +137,4 @@ The design choices that let this scale to hundreds of repositories:
 - **Evidence.** It is about one change in one repository.
 
 Cross-repository knowledge (service maps, shared contracts, organization policy) is a
-real need, deliberately not addressed in `paved/v1`. It is listed as an open decision in
-the [architecture review](../getting-started/architecture-review.md).
+real need, deliberately not addressed in `paved/v1`; it requires a future extension.

@@ -43,10 +43,10 @@ a Paved capability. Node package scripts and CI configuration may remain unmodel
 Their detection is useful context but does not require Node or CI adapters. An unmatched
 or unmodeled item is not an error by itself.
 
-The initial adapter set separates Java source and build knowledge, Quarkus runtime and
-HTTP declarations, Angular workspace, lockfile-resolved core versions and UI routes, PostgreSQL database declarations,
-and Git source control. Quarkus depends on Java; Angular and PostgreSQL are independent
-of the application language and framework. Maven is covered inside the Java adapter's
-build evidence because no separate Paved capability currently requires a Maven adapter.
-The selected adapters describe evidence; project architecture and business meaning stay
-in the consumer's `.paved/project/` documents.
+The current adapter set covers Git source control, Java source/builds, Quarkus runtime
+and HTTP declarations, TypeScript, Angular workspaces and routes, Dart, Flutter, and
+PostgreSQL declarations. Quarkus depends on Java and Flutter depends on Dart; Angular
+and PostgreSQL remain independent of the application language and framework. Maven is
+covered inside the Java adapter because no separate Paved capability currently requires
+a Maven adapter. The selected adapters describe evidence; project architecture and
+business meaning stay in the consumer's `.paved/project/` documents.

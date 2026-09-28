@@ -37,7 +37,7 @@ script alone cannot become an approved check or recommended Tool.
   replacement.
 - Source and output hashes explain staleness and edits; timestamps remain execution
   metadata and do not cause unchanged files to be rewritten.
-- Technology-specific interpretation awaits adapters; the Phase 08 runtime is generic.
+- Technology-specific interpretation belongs in adapters; the runtime remains generic.
 
 ## Alternatives considered
 

@@ -26,11 +26,11 @@ The rest is versioned by reference rather than by number:
 The project declares requirements: `.paved/manifest.yaml` has an `apiVersion`, a Core
 range (`paved.core`) and adapter ranges; `.paved/paved.lock` records exactly what was
 resolved. The optional `generators` list identifies available contracts and their
-digests; it does not mean each generator ran. Phase 11 local locks use `local-core` as
-their source. Phase 09 records exact versions and digests for the five local adapters;
-manifest `capability_providers` resolves provider ambiguity without changing adapter
-versions. Distribution resolution belongs to a later phase. `resolved_at` is metadata
-and does not affect resolution, compatibility or staleness.
+digests; it does not mean each generator ran. The current local lock records the local
+Core and each selected adapter by version and digest. Manifest
+`capability_providers` resolves provider ambiguity without changing adapter versions;
+remote distribution resolution is not implemented. `resolved_at` is metadata and does
+not affect resolution, compatibility or staleness.
 
 ## Change classification
 
@@ -56,7 +56,7 @@ previously complete task into an incomplete one.
 |---|---|
 | **Compatible change** | `paved update` within the range; revalidate; no human action |
 | **Breaking change** | New Core major (or minor while `0.x`); outside existing ranges, so no project gets it without editing its manifest |
-| **Migration** | Phase 11 detects documents that require migration and blocks update. Automatic transforms remain planned. |
+| **Migration** | Documents that require migration block `update`; automatic transforms are not implemented. |
 | **Regeneration** | Needed when a generator's output format changes (`generator_version` bump) or its sources change (stale hashes). Follows the merge strategy; never a migration of human content |
 | **Validation failure** | After update or migration, any invalid document stops the update and restores the previous lock ([failure handling](failure-handling.md)) |
 | **Override target changed** | Subtractive overrides suspended until re-confirmed ([inheritance](inheritance.md)) |
@@ -115,7 +115,7 @@ problem is reported as one message instead of a list of unrelated field errors.
 
 - **Migration policy.** A future Core that introduces `paved/v2` should keep reading
   `paved/v1` for a transition period and ship a reviewed deterministic migration.
-  Phase 11 has no automatic schema migration; unknown compatibility or invalid
+  Automatic schema migration is not implemented; unknown compatibility or invalid
   existing documents block a local update and leave human-owned content untouched.
 - **Deprecation.** A deprecated field stays valid, its schema `description` starts with
   `Deprecated:` and names the replacement, and the changelog records it. It is removed

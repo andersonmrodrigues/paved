@@ -37,7 +37,7 @@ test('detection uses content evidence and preserves weak and unknown states', ()
   assert.equal(detectAdapters(root, adapters, sources).find(d => d.adapter.id === 'technology/java')?.confidence, 'weak');
 });
 
-test('Phase 18 language adapters distinguish TypeScript, Dart and Flutter evidence', () => {
+test('language adapters distinguish TypeScript, Dart and Flutter evidence', () => {
   const root = temporaryDirectory('paved-phase18-languages');
   writeFileSync(join(root, 'tsconfig.json'), '{"compilerOptions":{"strict":true}}');
   writeFileSync(join(root, 'pubspec.yaml'), [
@@ -64,7 +64,7 @@ test('Phase 18 language adapters distinguish TypeScript, Dart and Flutter eviden
   assert.ok(evidence.evidence.some(item => item.capability === 'testing.structure') === false);
 });
 
-test('Phase 18 negative detection does not resolve Flutter for a Dart-only project', () => {
+test('negative detection does not resolve Flutter for a Dart-only project', () => {
   const root = temporaryDirectory('paved-phase18-dart-only');
   writeFileSync(join(root, 'pubspec.yaml'), [
     'name: sample',

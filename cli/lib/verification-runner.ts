@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join } from "node:path";
 import { parse as parseYaml, stringify } from "yaml";
 import { createDiagnostic, type Diagnostic } from "../result.ts";
 import { loadYaml } from "./documents.ts";
@@ -16,6 +16,7 @@ import {
 import { createRegistry, type SchemaRegistry } from "./schemas.ts";
 import { atomicWriteFileSync } from "./atomic-write.ts";
 import { acquireConsumerOperationLock } from "./operation-lock.ts";
+import { resolveSafePath } from "./safe-path.ts";
 import {
   authorizeTool,
   buildArgv,
@@ -34,6 +35,16 @@ import {
 
 const OUTPUT_LIMIT_BYTES = 16 * 1024;
 const RUNTIME_VERSION = "paved-cli-verification-runner/0.1.0";
+const verificationEnvironmentAllowlist = new Set([
+  "PATH",
+  "TMPDIR",
+  "TMP",
+  "TEMP",
+  "SYSTEMROOT",
+  "WINDIR",
+  "COMSPEC",
+  "PATHEXT",
+]);
 
 interface VerificationProfile {
   readonly checks: readonly string[];
@@ -97,12 +108,7 @@ function diagnostic(input: {
 }
 
 function safe(root: string, path: string): string {
-  const full = resolve(root, path);
-  const resolvedRoot = resolve(root);
-  if (full !== resolvedRoot && !full.startsWith(resolvedRoot + sep)) {
-    throw new Error(`Path escapes root: ${path}`);
-  }
-  return full;
+  return resolveSafePath(root, path);
 }
 
 function sha(value: string | Buffer): string {
@@ -324,6 +330,13 @@ async function spawnApproved(args: {
   stderr: string;
   truncated: boolean;
 }> {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value !== undefined && verificationEnvironmentAllowlist.has(name.toUpperCase())) {
+      env[name] = value;
+    }
+  }
+
   return new Promise((resolveRun) => {
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
@@ -333,6 +346,7 @@ async function spawnApproved(args: {
 
     const child = spawn(args.executable, args.argv, {
       cwd: args.cwd,
+      env,
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
       detached: process.platform !== "win32",

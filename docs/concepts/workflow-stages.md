@@ -63,6 +63,5 @@ workflow keeps the canonical order and says in `WORKFLOW.md` where the work happ
 - **Release:** publishing and post-release verification happen in `completion`, after
   the `release` approval, because publishing must follow every check on the candidate.
   The post-release `runtime` check is a required check of the completion phase and is
-  appended to the same evidence record. This is an unresolved design point
-  ([workflows review](../getting-started/workflows-review.md)).
+  appended to the same evidence record.
 - **Incident:** containment may precede investigation (the `discovery` skip above).

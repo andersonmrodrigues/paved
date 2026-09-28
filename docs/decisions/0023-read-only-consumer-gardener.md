@@ -5,7 +5,8 @@
 
 ## Context
 
-Evidence and Generator Runtime state already record failures and conflicts. Phase 12 needs to find recurrence without turning existing repository behavior into policy or bypassing consumer ownership.
+Evidence and generator state record failures and conflicts. Gardener finds recurrence
+without turning existing repository behavior into policy or bypassing consumer ownership.
 
 ## Decision
 

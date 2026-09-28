@@ -59,23 +59,39 @@ for Paved itself.
 
 ## Quick start
 
-Requires Node.js 22.18+.
+Requires Node.js 22.18+. Paved is currently distributed as a Core repository
+checkout, not as a published npm package:
 
 ```bash
+git clone https://github.com/andersonmrodrigues/paved.git
+cd paved
 npm ci
-npm run paved -- --help
+node ./cli/index.ts --help
+node ./cli/index.ts --version
 ```
 
-From a repository root:
+Run the CLI from the Paved checkout and pass the existing consumer repository
+explicitly. Do not initialize the Core checkout as a consumer:
 
 ```bash
-node ./cli/index.ts init --project . --json
-node ./cli/index.ts status --project . --json
-node ./cli/index.ts generate --project . --json
-node ./cli/index.ts verify --project . --json
+node ./cli/index.ts init --project /absolute/path/to/existing-repository --json
+node ./cli/index.ts status --project /absolute/path/to/existing-repository --json
+node ./cli/index.ts generate --project /absolute/path/to/existing-repository --json
 ```
 
-The CLI also supports `doctor`, `update`, `gardener` and `agent`.
+`verify` requires a project-owned verification profile and approved Tool
+bindings; `init` does not create or approve checks. Configure those first by
+following [Integrating a repository](docs/getting-started/integrating-a-repository.md),
+then run:
+
+```bash
+node ./cli/index.ts verify --project /absolute/path/to/existing-repository --json
+```
+
+The CLI also supports `doctor`, `update`, `gardener` and `agent`. The `npm run
+paved -- <command>` script is a convenience for human-readable output. To make
+the `paved` executable available to an agent launched from that shell, add
+`<Core checkout>/node_modules/.bin` to `PATH`.
 
 ## CLI surface
 
@@ -94,6 +110,14 @@ The `--json` option renders the same data model for scripts and integrations.
 The command family `paved evidence ...` and `paved tool ...` remains
 contract-only in this release.
 
+## Supported adapters and capabilities
+
+The current adapters are Git, Java, Quarkus, TypeScript, Angular, Dart, Flutter
+and PostgreSQL. Reusable Core capabilities include testing structure, HTTP/REST
+API evidence and OpenAPI evidence. Evidence providers vary by adapter; when
+selected adapters overlap, a project must choose a provider explicitly in its
+manifest rather than having Paved guess.
+
 ## Supported integrations
 
 Paved currently supports project-local integration projections for:
@@ -101,8 +125,9 @@ Paved currently supports project-local integration projections for:
 - Codex
 - Claude Code
 
-These integrations package the Core's canonical behavior without changing the
-Core's agent-neutral contract.
+These integrations project canonical Core skills into each agent's local
+discovery layout. The CLI remains authoritative for lifecycle and verification;
+the local Core checkout must be available to the agent environment.
 
 ## Repository structure
 
@@ -132,7 +157,7 @@ Core's agent-neutral contract.
 
 Public documentation lives in:
 
-- [docs/getting-started](docs/getting-started)
+- [Integrating a repository](docs/getting-started/integrating-a-repository.md)
 - [docs/concepts](docs/concepts)
 - [docs/decisions](docs/decisions)
 - [docs/maintenance](docs/maintenance)
@@ -167,7 +192,6 @@ Paved is distributed under the MIT license. See [LICENSE](LICENSE).
 
 ## Status
 
-Paved Core is version 1.0.0 and is intended as the stable public release of the
-current implementation. It remains intentionally narrow in scope: the Core stays
-agent-neutral, and remote distribution or marketplace installation remains future
-work.
+The source declares Core version 1.0.0. Its first tagged GitHub release has not yet
+been published. Paved remains intentionally narrow in scope: the Core stays
+agent-neutral, and remote distribution or marketplace installation is not available.

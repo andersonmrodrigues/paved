@@ -2,8 +2,10 @@
 
 ## Supported versions
 
-Paved currently supports the 1.0.0 release line and later. Security fixes are
-prioritized for the current release and the latest stable maintenance line.
+The first tagged release has not yet been published. Until then, report
+vulnerabilities against the default branch. After the first release, the latest
+stable release line will receive security fixes; support for older lines will be
+announced with their release policy.
 
 ## Reporting a vulnerability
 

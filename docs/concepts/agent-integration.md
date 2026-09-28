@@ -1,8 +1,9 @@
 # Agent Integration Contract
 
 **Contract version:** `paved/agent/v1`  
-**Status:** stable for the local CLI surface; agent integrations are not included
-in Core.
+**Status:** stable for the local CLI surface. Codex and Claude Code projections
+are included in this repository as project-local skill packages; they do not
+install the CLI or materialize a Core cache in consumer state.
 
 This document defines the boundary between an external AI agent and Paved Core.
 An integration may translate an agent's conventions into these operations, but
@@ -149,6 +150,5 @@ side effect of normal integration operations.
 7. Consume diagnostics and remediation.
 8. Correct and verify again until the contract permits completion.
 
-Phase 16 may package this contract for individual agents. It must keep
-project-local `.paved/` state authoritative and must not silently upgrade Core,
-consumer state, or adapters.
+Agent-specific projections must keep project-local `.paved/` state authoritative
+and must not silently upgrade Core, consumer state, or adapters.
