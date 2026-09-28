@@ -69,4 +69,25 @@ describe("Decision schema", () => {
     const result = registry().validate(minimalDecision({ handler: "verification.adopt" }));
     assert.equal(result.valid, true, result.errors.join("; "));
   });
+
+  it("requires run when scope is run", () => {
+    const decision = minimalDecision({ scope: "run" });
+    assert.equal(registry().validate(decision).valid, false);
+  });
+
+  it("requires applied_at once the decision is APPLIED", () => {
+    const decision = minimalDecision({
+      status: "APPLIED",
+      answer: "all",
+      answered_by: "owner",
+      answer_source: "human-authored",
+      answered_at: "2026-09-28T00:01:00.000Z",
+    });
+    assert.equal(registry().validate(decision).valid, false);
+  });
+
+  it("requires superseded_reason once the decision is SUPERSEDED", () => {
+    const decision = minimalDecision({ status: "SUPERSEDED" });
+    assert.equal(registry().validate(decision).valid, false);
+  });
 });
