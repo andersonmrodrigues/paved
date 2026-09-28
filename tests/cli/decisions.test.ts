@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createDiagnostic, createResult, exitCode, type DecisionProjection } from "../../cli/result.ts";
+import { renderHuman } from "../../cli/output.ts";
 
 const projection: DecisionProjection = {
   id: "d-0123456789abcdef0123",
@@ -78,5 +79,41 @@ describe("awaiting_input result contract", () => {
       })],
     });
     assert.equal(exitCode(failed), 4);
+  });
+});
+
+describe("human rendering of decisions", () => {
+  it("renders the question, reason, numbered options and resume command", () => {
+    const result = createResult({ command: "verify", status: "awaiting_input", decisions: [projection] });
+    const text = renderHuman(result);
+    assert.match(text, /d-0123456789abcdef0123/);
+    assert.match(text, /Should the detected checks become verification gates\?/);
+    assert.match(text, /already run in CI/);
+    assert.match(text, /1\. all/);
+    assert.match(text, /--answer d-0123456789abcdef0123=/);
+    assert.match(text, /--answered-by/);
+  });
+
+  it("marks the recommendation and shows its evidence", () => {
+    const recommended = { ...projection, recommended: "all" };
+    const text = renderHuman(createResult({
+      command: "verify", status: "awaiting_input", decisions: [recommended],
+    }));
+    assert.match(text, /recommended/i);
+    assert.match(text, /pom\.xml/);
+  });
+
+  it("marks human-authored decisions as needing an approval file", () => {
+    const approval = { ...projection, answerChannel: "human-authored" as const };
+    const text = renderHuman(createResult({
+      command: "doctor", status: "awaiting_input", decisions: [approval],
+    }));
+    assert.match(text, /\.paved\/approvals\/d-0123456789abcdef0123\.json/);
+  });
+
+  it("labels optional decisions so they do not read as blocking", () => {
+    const optional = { ...projection, required: false };
+    const text = renderHuman(createResult({ command: "doctor", status: "success", decisions: [optional] }));
+    assert.match(text, /optional/i);
   });
 });
