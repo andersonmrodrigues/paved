@@ -123,6 +123,11 @@ export function createInitDryRunWorkspace(tempRoot = tmpdir()): string {
   return mkdtempSync(initDryRunScratchPrefix(tempRoot));
 }
 
+// The manifest requires a lowercase slug; any directory name maps onto one.
+export function projectNameFor(projectRoot: string): string {
+  return basename(projectRoot).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "project";
+}
+
 function planDryRunGeneration(invocation: CommandInvocation, projectName: string) {
   const workspace = createInitDryRunWorkspace();
   const copy = join(workspace, "consumer");
@@ -175,7 +180,7 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
     return usage("init detects adapters from repository evidence; --adapter is not supported for this command.");
   }
 
-  const projectName = basename(invocation.paths.projectRoot);
+  const projectName = projectNameFor(invocation.paths.projectRoot);
   const plan = planConsumerInitialization(invocation.paths.coreRoot, invocation.paths.projectRoot, projectName);
   const planningDiagnostics = adapterDiagnostics(plan.adapterDiagnostics);
   if (invocation.flags.dryRun) {

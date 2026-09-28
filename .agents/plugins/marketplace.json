@@ -1,0 +1,20 @@
+{
+  "name": "paved",
+  "interface": {
+    "displayName": "Paved"
+  },
+  "plugins": [
+    {
+      "name": "paved",
+      "source": {
+        "source": "local",
+        "path": "./plugins/paved"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Coding"
+    }
+  ]
+}

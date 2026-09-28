@@ -24,6 +24,7 @@ How to change this repository without breaking consumers.
 | Document kind | Schema in `schemas/`, entry in `manifest.yaml` `schemas`, entry in `KIND_TO_SCHEMA` in `cli/lib/schemas.ts`, template, valid and invalid fixtures in `tests/fixtures/schemas/<schema-name>/`. A shared definition without a kind goes in `schema_definitions` instead ([schemas](../concepts/schemas.md)) | `tests/schemas/` |
 | Top-level directory | An entry in `components` in `manifest.yaml` with its `depends_on` | `tests/core/boundaries.test.ts` |
 | Architectural decision | A record in `docs/decisions/` ([format](../decisions/README.md)) | review |
+| Plugin change | Edit `plugins/plugin-source.json` (identity) or the Core sources it projects, never `plugins/paved/`; run `npm run build:plugin` and commit the result | `tests/plugins/` (drift, manifests, install, failure modes) |
 
 ## Changing contracts
 
@@ -41,10 +42,14 @@ How to change this repository without breaking consumers.
 
 1. Move `[Unreleased]` entries under a new version heading in `CHANGELOG.md`.
 2. Update `VERSION`, `manifest.yaml` `version` and `package.json` `version` to the same
-   value (a test enforces it).
-3. `npm run check`.
-4. Tag the release. The current source-checkout distribution is documented in the
-   [README](../../README.md); update it if the release distribution changes.
+   value (a test enforces it). Bump `plugins/plugin-source.json` `version` whenever the
+   plugin content changes.
+3. `npm run build:plugin`, commit `plugins/paved/`, then `npm run check`. Any change to
+   the Core sources the plugin projects (skills, commands, launcher, runtime package)
+   must be followed by `npm run build:plugin`; the drift test fails otherwise.
+4. Tag the release. Consumers install through the repository marketplaces
+   ([installing the plugin](../getting-started/installing-the-plugin.md)); update that
+   guide if the distribution changes.
 
 ## Receiving Gardener proposals
 
