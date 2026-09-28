@@ -6,7 +6,7 @@ description: >-
   Changes the structure of code while preserving its behavior, in small verified steps.
   Use when code must be renamed, moved, split, merged or simplified and nothing it does
   should change.
-version: 0.2.0
+version: 0.3.0
 status: experimental
 change_type: refactor
 inputs:
@@ -37,6 +37,10 @@ phases:
   - phase: planning
     goal: Split the refactor into small steps that each keep tests passing.
     skills: [core.development.refactoring]
+    gates:
+      - id: plan-approved
+        condition: A human approved the structural plan before implementation.
+        approval: implementation-plan
   - phase: implementation
     goal: Apply the steps, running the covering tests after each one.
     skills: [core.development.refactoring]

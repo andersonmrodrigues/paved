@@ -11,6 +11,7 @@ import { inspectOverrides } from "./override-safety.ts";
 import { assessProvenance } from "./provenance.ts";
 import { createRegistry, type SchemaRegistry } from "./schemas.ts";
 import { compatible } from "./tools.ts";
+import { readRuntimeSelection, type RuntimeLock } from "./runtime-lock.ts";
 
 export interface InspectConsumerInput {
   readonly projectRoot: string;
@@ -37,6 +38,7 @@ export interface UpdateLockDocument {
   readonly kind: "Lock";
   readonly resolved_at: string;
   readonly core: UpdateLockEntry;
+  readonly runtime?: RuntimeLock;
   readonly adapters?: readonly UpdateLockEntry[];
   readonly generators?: readonly UpdateLockEntry[];
 }
@@ -136,6 +138,7 @@ interface ResolvedLockEntry {
 interface LockDocument {
   readonly apiVersion?: string;
   readonly core?: ResolvedLockEntry;
+  readonly runtime?: RuntimeLock;
   readonly adapters?: readonly ResolvedLockEntry[];
   readonly generators?: readonly ResolvedLockEntry[];
 }
@@ -870,6 +873,11 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
   }
 
   const compatibility = candidateCompatibility(lockResult.lock.core?.version, core.version);
+  if (lockResult.lock.runtime && lockResult.lock.runtime.version !== core.version) diagnostics.push(diagnostic({
+    code: "PAVED_RUNTIME_UPDATE_REQUIRED", component: "cli.update", category: "resolution",
+    message: `The lock pins runtime ${lockResult.lock.runtime.version}; Core ${core.version} cannot be activated through a local content update.`,
+    remediation: "Acquire and validate a matching runtime package before changing the Core lock.",
+  }));
   if (compatibility === "unknown") diagnostics.push(diagnostic({ code: "PAVED_UPDATE_COMPATIBILITY_UNKNOWN",
     component: "cli.update", category: "resolution",
     message: `No local migration evidence proves Core ${lockResult.lock.core?.version} can update to ${core.version}.`,
@@ -932,6 +940,7 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
       source: "local-core",
       sha256: hashLocalCore(input.coreRoot),
     },
+    ...(lockResult.lock.runtime === undefined ? {} : { runtime: lockResult.lock.runtime }),
     adapters: resolvedAdapters.map((detection) => ({
       id: detection.adapter.id,
       version: detection.adapter.version,
@@ -1049,6 +1058,20 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
   }
 
   const lockResult = readLock(registry, input.projectRoot, diagnostics);
+  try {
+    const selectedRuntime = readRuntimeSelection(input.projectRoot);
+    if (selectedRuntime && JSON.stringify(selectedRuntime) !== JSON.stringify(lockResult.lock?.runtime)) {
+      diagnostics.push(diagnostic({ code: "PAVED_RUNTIME_LOCK_MISMATCH", component: "consumer.lock", category: "resolution",
+        message: "The selected project-local runtime differs from paved.lock.", remediation: "Restore the runtime version and integrity pinned by paved.lock." }));
+    }
+    if (selectedRuntime && core && selectedRuntime.version !== core.version) {
+      diagnostics.push(diagnostic({ code: "PAVED_RUNTIME_CORE_VERSION_MISMATCH", component: "consumer.lock", category: "resolution",
+        message: `Selected runtime ${selectedRuntime.version} does not match Core ${core.version}.`, remediation: "Restore the runtime and Core versions pinned together by paved.lock." }));
+    }
+  } catch (error) {
+    diagnostics.push(diagnostic({ code: "PAVED_RUNTIME_STATE_INVALID", component: "consumer.lock", category: "resolution",
+      message: messageOf(error), remediation: "Restore a verified project-local runtime selection." }));
+  }
   const coreDigestMatches = compareCoreLock(lockResult.lock, core, input.coreRoot, diagnostics);
   const generators = discoverGenerators(input.coreRoot, registry, diagnostics);
   compareGeneratorLocks(lockResult.lock, input.coreRoot, generators, diagnostics);

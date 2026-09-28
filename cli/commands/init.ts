@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { basename, join } from "node:path";
@@ -149,7 +149,11 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
     });
   }
 
-  if (existsSync(manifestPath) || existsSync(lockPath) || existsSync(pavedDir)) {
+  const bootstrapOnly = existsSync(pavedDir)
+    && !lstatSync(pavedDir).isSymbolicLink()
+    && readdirSync(pavedDir).every((entry) => entry === "runtime")
+    && existsSync(join(pavedDir, "runtime", "selection.json"));
+  if (existsSync(manifestPath) || existsSync(lockPath) || (existsSync(pavedDir) && !bootstrapOnly)) {
     return createResult({
       command: "init",
       status: "failed",

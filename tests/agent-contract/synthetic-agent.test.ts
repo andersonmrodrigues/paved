@@ -125,7 +125,7 @@ describe("synthetic agent black-box contract", () => {
       assert.equal(afterData.integration, "codex");
       assert.equal(afterData.commands.find((command) => command.name === "plan")?.available, true);
       assert.equal(afterData.commands.find((command) => command.name === "test")?.available, false);
-      assert.match(afterData.commands.find((command) => command.name === "test")?.reason ?? "", /Direct Tool invocation/);
+      assert.match(afterData.commands.find((command) => command.name === "test")?.reason ?? "", /cannot be executed/);
       assert.equal(afterData.commands.find((command) => command.name === "verify")?.available, false);
     } finally {
       rmSync(project, { recursive: true, force: true });
