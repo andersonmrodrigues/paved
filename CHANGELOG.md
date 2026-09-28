@@ -14,6 +14,11 @@ Contains breaking schema changes, allowed within `0.x` (see versioning).
 
 ### Added
 
+- Phase 15 agent-neutral integration contract `paved/agent/v1`, black-box
+  synthetic-agent coverage over the public CLI, and final validation/readiness
+  documentation. Agent-specific integrations and remote distribution remain
+  deferred to Phase 16.
+
 - Phase 12 read-only Gardener analysis, consumer-scoped observations and proposals,
   review lifecycle schema, deterministic recurrence detection, and `paved gardener`.
 
