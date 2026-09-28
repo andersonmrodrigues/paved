@@ -6,8 +6,7 @@
 > shows the result of. Every entry marked `Ruling:` is a judgement call made during
 > execution, with its justification and what it costs if it turns out wrong.
 >
-> **This run is INCOMPLETE.** It covers Tasks 1–9 of 29. Task 9 is committed but was never
-> reviewed — its review was interrupted. Tasks 10–29 were not started.
+> **This run is INCOMPLETE.** It covers Tasks 1–11 of 29. Tasks 12–29 remain.
 >
 > **Known deviation:** two plugin-packaging tests fail on this branch by explicit decision.
 > Adding schemas makes the checked-in packaged plugin stale, and a git-dlp `ZippedFilePolicy`
@@ -582,3 +581,33 @@ Task 8: re-review — all 6 findings ADDRESSED, no new breakage. Recommendation 
   Actionability preserved — the reworded text still names .paved/approvals/<id>.json.
 Task 8: complete (commits 48f2e7a..c04adf4, review clean)
 
+## Resumed in Codex on 2026-09-28
+
+Task 9: complete (commit 92a476f; 87/87 CLI tests passed). Reviewed the flag parser and its
+four dedicated tests after resuming the branch.
+
+Baseline: `npm run check` = 676 tests, 671 pass, 5 fail. Two are the known plugin drift
+failures. Three package and clean-room tests reject an absolute Node executable path under
+the current workspace because the ToolImplementation schema only accepts
+`^[A-Za-z0-9._/-]+$`. This differs from the original ledger's 2-failure baseline.
+
+Task 10: complete (commit 3955e07; 17/17 security tests passed; typecheck passed).
+Added digest-bound human approval loading and rejection for missing, mismatched,
+self-approved or non-ASKED records.
+
+Task 11: Ruling: a changed fingerprint cannot supersede a decision using the same id,
+because that would overwrite the old audit record. A successor receives a distinct id
+derived from the new fingerprint, while the old record becomes SUPERSEDED. Cost if wrong:
+the successor id differs from the plan's simple question/scope/candidates derivation.
+
+Task 11: Ruling: a relayed `--answer` may not differ from the human-authored approval's
+answer. The plan checked the approval digest but never compared the two answers. Cost if
+wrong: a valid human approval could be rejected if answer encodings differ.
+
+Task 11: Ruling: the gate uses the registered handler's effect class when available and
+persists its key for crash recovery. It holds the consumer lock over the full transaction,
+keeps dependent decisions PENDING, and refuses answers for unasked decisions or absent
+handlers. Cost if wrong: a command must register its handler before accepting an answer.
+
+Task 11: implementation verified with 17/17 batching tests and typecheck. Full
+`npm run check` = 700 tests, 695 pass, the same 5 baseline failures. Tasks 12–29 remain.
