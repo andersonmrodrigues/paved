@@ -1013,7 +1013,8 @@ describe("init and generate commands", () => {
 
       const result = await run(project, "init", ["--no-generate"]);
 
-      assert.equal(exitCode(result), 0);
+      assert.equal(exitCode(result), 10);
+      assert.ok((result.decisions?.length ?? 0) > 0);
       assert.equal(existsSync(join(project, ".paved/manifest.yaml")), true);
       assert.equal(existsSync(join(project, ".paved/paved.lock")), true);
       assert.equal(existsSync(join(project, ".paved/project")), false);
@@ -1031,7 +1032,8 @@ describe("init and generate commands", () => {
 
       const result = await run(project, "init");
 
-      assert.equal(exitCode(result), 1);
+      assert.equal(exitCode(result), 10);
+      assert.ok((result.decisions?.length ?? 0) > 0);
       assertCode(result, "PAVED_GENERATOR_PROPOSAL_CREATED");
       assert.equal(existsSync(join(project, ".paved/manifest.yaml")), true);
       assert.equal(existsSync(join(project, ".paved/paved.lock")), true);

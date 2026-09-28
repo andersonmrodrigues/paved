@@ -689,3 +689,17 @@ project cannot accept one of multiple conventions independently in the same answ
 
 Task 17: provider tests 22/22 and typecheck passed. Full `npm run check` = 742 tests,
 737 pass, the same 5 baseline failures. Tasks 18–29 remain.
+
+Task 18: Ruling: `init` may resume only while one of its decisions is PENDING, ASKED
+or ANSWERED. This preserves the existing guard against resetting a completed project
+while allowing a later command to relay answers. The gate runs after initial manifest
+creation and before generation; an applied capability choice refreshes the lock so
+generation sees the selected provider. `--no-generate` still runs the decision gate.
+Cost if wrong: an initialized project with no pending init decision must use another
+command to change its answers.
+
+Task 18: the two existing CLI tests that asserted legacy exit codes were updated to
+expect `awaiting_input` (exit 10), while their file and generation assertions remain.
+The new tests cover answering in a later invocation, a healthy lifecycle, capability
+choice in the lock, and `--no-generate`. Full `npm run check` = 745 tests, 740 pass,
+the same 5 baseline failures. Tasks 19–29 remain.

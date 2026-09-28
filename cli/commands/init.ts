@@ -6,6 +6,13 @@ import { loadYaml } from "../lib/documents.ts";
 import { initializeConsumer, isIgnoredSourceEntry, planConsumerInitialization, runGenerators } from "../lib/generator-runtime.ts";
 import { createRegistry } from "../lib/schemas.ts";
 import { inspectConsumer } from "../lib/consumer-state.ts";
+import { runDecisionGate } from "../lib/decisions/gate.ts";
+import { listDecisions } from "../lib/decisions/store.ts";
+import { verificationProvider } from "../lib/decisions/providers/verification.ts";
+import { verificationHandler } from "../lib/decisions/handlers/verification.ts";
+import { rulesProvider } from "../lib/decisions/providers/rules.ts";
+import { rulesHandler } from "../lib/decisions/handlers/rules.ts";
+import { capabilityProvider, capabilityHandler } from "../lib/decisions/providers/capability.ts";
 import { createDiagnostic, createResult, type CommandResult, type Diagnostic, type ResultStatus } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
 import { diagnosticsForRun, generateData } from "./generate.ts";
@@ -158,7 +165,11 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
     && !lstatSync(pavedDir).isSymbolicLink()
     && readdirSync(pavedDir).every((entry) => entry === "runtime")
     && existsSync(join(pavedDir, "runtime", "selection.json"));
-  if (existsSync(manifestPath) || existsSync(lockPath) || (existsSync(pavedDir) && !bootstrapOnly)) {
+  const resumingDecision = existsSync(manifestPath) && existsSync(lockPath)
+    && listDecisions(invocation.paths.projectRoot, invocation.paths.coreRoot)
+      .some((decision) => decision.command === "init"
+        && ["PENDING", "ASKED", "ANSWERED"].includes(decision.status));
+  if (!resumingDecision && (existsSync(manifestPath) || existsSync(lockPath) || (existsSync(pavedDir) && !bootstrapOnly))) {
     return createResult({
       command: "init",
       status: "failed",
@@ -207,42 +218,56 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
   }
 
   initializeConsumer(invocation.paths.coreRoot, invocation.paths.projectRoot, projectName);
-  if (invocation.flags.noGenerate) {
-    const lifecycleState = inspectConsumer({ projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot }).lifecycleState;
-    return createResult({
+  const outcome = runDecisionGate({
+    context: {
+      projectRoot: invocation.paths.projectRoot,
+      coreRoot: invocation.paths.coreRoot,
       command: "init",
-      status: statusFor(planningDiagnostics),
-      data: {
-        initialized: true,
-        dryRun: false,
-        projectName,
-        selectedAdapters: plan.selectedAdapters,
-        resolvedAdapters: plan.resolvedAdapters,
-        capabilityProviders: plan.capabilityProviders,
-        generated: false,
-        lifecycleState,
-      },
-      diagnostics: planningDiagnostics,
+      answers: invocation.flags.answers,
+      ...(invocation.flags.answeredBy === undefined ? {} : { answeredBy: invocation.flags.answeredBy }),
+    },
+    providers: [verificationProvider, rulesProvider, capabilityProvider],
+    handlers: new Map([
+      ["verification.adopt", verificationHandler],
+      ["rules.adopt", rulesHandler],
+      ["capability.select", capabilityHandler],
+    ]),
+    persist: true,
+  });
+  if (outcome.applied.some((decision) => decision.handler === "capability.select")) {
+    initializeConsumer(invocation.paths.coreRoot, invocation.paths.projectRoot, projectName);
+  }
+  const generation = invocation.flags.noGenerate
+    ? undefined
+    : runGenerators(invocation.paths.coreRoot, invocation.paths.projectRoot);
+  const diagnostics = [
+    ...planningDiagnostics,
+    ...(generation === undefined ? [] : diagnosticsForRun(generation, false)),
+  ];
+  diagnostics.push(...outcome.problems.map((message) => createDiagnostic({
+    severity: "error", category: "usage", code: "PAVED_DECISION_ANSWER_INVALID",
+    component: "cli.init", message,
+    remediation: "Answer with one of the offered option ids.",
+  })));
+  const lifecycleState = inspectConsumer({ projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot }).lifecycleState;
+  const data = {
+    initialized: true, dryRun: false, projectName,
+    selectedAdapters: plan.selectedAdapters, resolvedAdapters: plan.resolvedAdapters,
+    capabilityProviders: plan.capabilityProviders, generated: generation !== undefined, lifecycleState,
+    ...(generation === undefined ? {} : { generation: generateData(generation, false) }),
+  };
+  if (outcome.status === "awaiting-input" && statusFor(diagnostics) !== "failed") {
+    return createResult({
+      command: "init", status: "awaiting_input", data,
+      decisions: outcome.projections,
+      diagnostics: diagnostics.filter((item) => item.category === "findings"),
     });
   }
-
-  const generation = runGenerators(invocation.paths.coreRoot, invocation.paths.projectRoot);
-  const lifecycleState = inspectConsumer({ projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot }).lifecycleState;
-  const diagnostics = [...planningDiagnostics, ...diagnosticsForRun(generation, false)];
   return createResult({
     command: "init",
     status: statusFor(diagnostics),
-    data: {
-      initialized: true,
-      dryRun: false,
-      projectName,
-      selectedAdapters: plan.selectedAdapters,
-      resolvedAdapters: plan.resolvedAdapters,
-      capabilityProviders: plan.capabilityProviders,
-      generated: true,
-      lifecycleState,
-      generation: generateData(generation, false),
-    },
+    data,
+    decisions: outcome.projections,
     diagnostics,
   });
 }
