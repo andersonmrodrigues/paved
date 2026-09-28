@@ -636,4 +636,13 @@ Task 14: Ruling: the draft pushed raw `discoverSources` entries for Maven checks
 DecisionEvidence requires `location`; use the normalized evidence object. Also require
 exact `pom.xml`/`package.json` basenames and nonempty npm scripts. Cost if wrong: a
 similarly named file or blank script will no longer be offered as a verification gate.
-Task 14: provider tests 9/9 and typecheck passed. Tasks 15–29 remain.
+Task 14: provider tests 9/9 and typecheck passed. Full `npm run check` = 724 tests,
+719 pass, the same 5 baseline failures. Tasks 15–29 remain.
+
+Task 15: BLOCKED ON DESIGN CHOICE. The draft handler writes objects into
+`VerificationProfile.checks`, but `schemas/verification.schema.yaml` requires an array
+of Check ids. `runVerification` then resolves each id to a Check document, its Tool
+contract and a ToolImplementation. Merely changing the objects to strings still leaves
+verification unable to run. Asked whether adopting detected commands should generate
+all required contracts and bindings, or only select already configured checks. No Task 15
+implementation was started pending that choice.
