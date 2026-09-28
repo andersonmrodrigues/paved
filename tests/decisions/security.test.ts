@@ -46,11 +46,33 @@ describe("effect class tiering", () => {
     );
   });
 
-  it("prevents mutations of the returned tier from affecting the canonical singleton", () => {
+  it("returns a defensive copy that can be mutated without affecting the table", () => {
     const tier = tierFor("destructive");
-    // Attempt to mutate the returned tier
+    // Attempt to mutate the returned tier (copy, not frozen)
     (tier as any).channel = "relayed";
     // Verify the mutation did not persist to the canonical entry
+    assert.equal(tierFor("destructive").channel, "human-authored");
+  });
+
+  it("freezes EFFECT_TIERS to prevent direct mutation of existing entries", () => {
+    assert.throws(
+      () => {
+        (EFFECT_TIERS as never as Record<string, { channel: string }>).destructive.channel = "relayed";
+      },
+      TypeError
+    );
+    // Verify the entry survived the attack intact
+    assert.equal(tierFor("destructive").channel, "human-authored");
+  });
+
+  it("freezes EFFECT_TIERS to prevent adding new keys to the table", () => {
+    assert.throws(
+      () => {
+        (EFFECT_TIERS as never as Record<string, unknown>)["invented"] = {};
+      },
+      TypeError
+    );
+    // Verify the table survived the attack intact
     assert.equal(tierFor("destructive").channel, "human-authored");
   });
 });
