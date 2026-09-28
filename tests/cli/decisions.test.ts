@@ -1,5 +1,8 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { createDiagnostic, createResult, exitCode, type DecisionProjection } from "../../cli/result.ts";
 import { renderHuman } from "../../cli/output.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
@@ -228,5 +231,139 @@ describe("answer flags", () => {
       },
     });
     assert.deepEqual(seen, ["d-0123456789abcdef0123=all"]);
+  });
+});
+
+
+const commandWorkspaces: string[] = [];
+after(() => { for (const path of commandWorkspaces) rmSync(path, { recursive: true, force: true }); });
+function commandWorkspace(): string {
+  const path = mkdtempSync(join(tmpdir(), "paved-decision-cmd-"));
+  commandWorkspaces.push(path);
+  return path;
+}
+
+const agentDecision = (over: Record<string, unknown> = {}) => JSON.stringify({
+  question: "Which identity provider should SSO use?",
+  reason: "Repository evidence does not determine the intended product behaviour.",
+  options: [
+    { id: "keycloak", label: "Keycloak", description: "Self-hosted.", consequence: "Adds a Keycloak dependency." },
+    { id: "auth0", label: "Auth0", description: "Hosted.", consequence: "Adds an external dependency." },
+  ],
+  evidence: [{ type: "file", location: "README.md", sha256: "a".repeat(64) }],
+  required: true,
+  requiredAnswer: { type: "single-choice" },
+  effect: "record-only",
+  candidates: ["keycloak", "auth0"],
+  ...over,
+});
+
+describe("decision command", () => {
+  it("raises an agent-authored decision", async () => {
+    const project = commandWorkspace();
+    const result = await dispatchCli({
+      argv: ["decision", "raise", "--decision", agentDecision(), "--project", project],
+    });
+    assert.equal(result.status, "success");
+    assert.match(String((result.data as { id?: string }).id), /^d-[a-f0-9]{20}$/);
+  });
+
+  it("stamps agent-raised decisions as authored_by agent", async () => {
+    const project = commandWorkspace();
+    await dispatchCli({ argv: ["decision", "raise", "--decision", agentDecision(), "--project", project] });
+    const list = await dispatchCli({ argv: ["decision", "list", "--project", project] });
+    const decisions = (list.data as { decisions: { authoredBy: string }[] }).decisions;
+    assert.equal(decisions[0]?.authoredBy, "agent");
+  });
+
+  it("rejects an agent decision claiming runtime authorship", async () => {
+    const project = commandWorkspace();
+    const result = await dispatchCli({
+      argv: ["decision", "raise", "--decision", agentDecision({ authored_by: "runtime" }), "--project", project],
+    });
+    assert.equal(result.status, "failed");
+  });
+
+  it("rejects an agent decision claiming the deterministic category", async () => {
+    const project = commandWorkspace();
+    const result = await dispatchCli({
+      argv: ["decision", "raise", "--decision", agentDecision({ category: "deterministic" }), "--project", project],
+    });
+    assert.equal(result.status, "failed");
+  });
+
+  it("rejects an agent decision referencing an irreversible effect class", async () => {
+    const project = commandWorkspace();
+    const result = await dispatchCli({
+      argv: ["decision", "raise", "--decision", agentDecision({ effect: "destructive" }), "--project", project],
+    });
+    assert.equal(result.status, "failed");
+    assert.match(result.diagnostics[0]?.message ?? "", /effect/i);
+  });
+
+  it("rejects an agent decision with empty reason or evidence", async () => {
+    const project = commandWorkspace();
+    assert.equal((await dispatchCli({
+      argv: ["decision", "raise", "--decision", agentDecision({ reason: "" }), "--project", project],
+    })).status, "failed");
+    assert.equal((await dispatchCli({
+      argv: ["decision", "raise", "--decision", agentDecision({ evidence: [] }), "--project", project],
+    })).status, "failed");
+  });
+
+  it("shows a stored decision", async () => {
+    const project = commandWorkspace();
+    const raised = await dispatchCli({
+      argv: ["decision", "raise", "--decision", agentDecision(), "--project", project],
+    });
+    const id = (raised.data as { id: string }).id;
+    const shown = await dispatchCli({ argv: ["decision", "show", id, "--project", project] });
+    assert.equal(shown.status, "success");
+    assert.equal((shown.data as { decision: { id: string } }).decision.id, id);
+  });
+
+  it("revises a decision into SUPERSEDED", async () => {
+    const project = commandWorkspace();
+    const raised = await dispatchCli({
+      argv: ["decision", "raise", "--decision", agentDecision(), "--project", project],
+    });
+    const id = (raised.data as { id: string }).id;
+    const revised = await dispatchCli({
+      argv: ["decision", "revise", id, "--reason", "Requirements changed.", "--project", project],
+    });
+    assert.equal(revised.status, "success");
+    const shown = await dispatchCli({ argv: ["decision", "show", id, "--project", project] });
+    assert.equal((shown.data as { decision: { status: string } }).decision.status, "SUPERSEDED");
+    const successorId = (revised.data as { successorId?: string }).successorId;
+    assert.match(successorId ?? "", /^d-[a-f0-9]{20}$/);
+    const successor = await dispatchCli({ argv: ["decision", "show", successorId!, "--project", project] });
+    assert.equal((successor.data as { decision: { supersedes: string } }).decision.supersedes, id);
+  });
+
+  it("reports a JSON null payload as a usage error", async () => {
+    const result = await dispatchCli({
+      argv: ["decision", "raise", "--decision", "null", "--project", commandWorkspace()],
+    });
+    assert.equal(result.status, "failed");
+    assert.equal(result.diagnostics[0]?.category, "usage");
+  });
+
+  it("does not overwrite an existing decision when the same question is raised again", async () => {
+    const project = commandWorkspace();
+    const raised = await dispatchCli({ argv: ["decision", "raise", "--decision", agentDecision(), "--project", project] });
+    const id = (raised.data as { id: string }).id;
+    await dispatchCli({ argv: ["decision", "revise", id, "--reason", "Requirements changed.", "--project", project] });
+    await dispatchCli({ argv: ["decision", "raise", "--decision", agentDecision(), "--project", project] });
+    const shown = await dispatchCli({ argv: ["decision", "show", id, "--project", project] });
+    assert.equal((shown.data as { decision: { status: string } }).decision.status, "SUPERSEDED");
+  });
+
+  it("does not place a run-scoped question in the project decision store", async () => {
+    const project = commandWorkspace();
+    const result = await dispatchCli({
+      argv: ["decision", "raise", "--decision", agentDecision({ run: "feature-123" }), "--project", project],
+    });
+    assert.equal(result.status, "failed");
+    assert.equal(result.diagnostics[0]?.category, "usage");
   });
 });
