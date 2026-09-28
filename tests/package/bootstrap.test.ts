@@ -7,6 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { parse, stringify } from "yaml";
+import { CORE_VERSION } from "../helpers.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -50,7 +51,7 @@ describe("project-local agent bootstrap", () => {
         cwd: rejectedConsumer, encoding: "utf8", shell: false, env: { ...process.env, npm_config_offline: "true" },
       });
       writeFileSync(join(rejectedIntegration, "bootstrap.json"), JSON.stringify({
-        package: "paved-core", version: "1.0.0", integrity: "sha512-AAAA", tarball: join(workspace, artifact.filename),
+        package: "paved-core", version: CORE_VERSION, integrity: "sha512-AAAA", tarball: join(workspace, artifact.filename),
       }));
       assert.equal((JSON.parse(rejectInvoke().stdout) as { diagnostics: { code: string }[] }).diagnostics[0]?.code, "PAVED_RUNTIME_INTEGRITY_MISMATCH");
       writeFileSync(join(rejectedIntegration, "bootstrap.json"), JSON.stringify({
@@ -58,7 +59,7 @@ describe("project-local agent bootstrap", () => {
       }));
       assert.equal((JSON.parse(rejectInvoke().stdout) as { diagnostics: { code: string }[] }).diagnostics[0]?.code, "PAVED_RUNTIME_VERSION_MISMATCH");
       writeFileSync(join(rejectedIntegration, "bootstrap.json"), JSON.stringify({
-        package: "paved-core", version: "1.0.0", integrity: artifact.integrity, tarball: join(workspace, artifact.filename),
+        package: "paved-core", version: CORE_VERSION, integrity: artifact.integrity, tarball: join(workspace, artifact.filename),
       }));
       mkdirSync(join(rejectedConsumer, ".paved", "runtime", ".bootstrap-lock"), { recursive: true });
       assert.equal((JSON.parse(rejectInvoke().stdout) as { diagnostics: { code: string }[] }).diagnostics[0]?.code, "PAVED_RUNTIME_CONCURRENT_BOOTSTRAP");
@@ -73,7 +74,7 @@ describe("project-local agent bootstrap", () => {
       symlinkSync(join(workspace, "missing-target"), join(rejectedConsumer, ".paved"));
       assert.equal((JSON.parse(rejectInvoke().stdout) as { diagnostics: { code: string }[] }).diagnostics[0]?.code, "PAVED_RUNTIME_SYMLINK");
       writeFileSync(join(integration, "bootstrap.json"), JSON.stringify({
-        package: "paved-core", version: "1.0.0", integrity: artifact.integrity,
+        package: "paved-core", version: CORE_VERSION, integrity: artifact.integrity,
         tarball: join(workspace, artifact.filename),
       }));
       const invoke = (...args: string[]) => spawnSync(process.execPath, [join(integration, "bootstrap.mjs"), ...args], {
@@ -87,7 +88,7 @@ describe("project-local agent bootstrap", () => {
         runtime: { package: string; version: string; integrity: string; content_sha256: string };
       };
       assert.equal(lock.runtime.package, "paved-core");
-      assert.equal(lock.runtime.version, "1.0.0");
+      assert.equal(lock.runtime.version, CORE_VERSION);
       assert.equal(lock.runtime.integrity, artifact.integrity);
       const selection = JSON.parse(readFileSync(join(consumer, ".paved", "runtime", "selection.json"), "utf8")) as { directory: string };
       const activePackage = join(consumer, ".paved", "runtime", "versions", selection.directory, "node_modules", "paved-core");

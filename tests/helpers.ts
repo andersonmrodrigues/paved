@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -7,6 +7,10 @@ import { loadYaml } from "../cli/lib/documents.ts";
 import { createRegistry, type SchemaRegistry } from "../cli/lib/schemas.ts";
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+export const CORE_VERSION = readFileSync(join(ROOT, "VERSION"), "utf8").trim();
+const [coreMajor, coreMinor, corePatch] = CORE_VERSION.split(".").map(Number) as [number, number, number];
+export const NEXT_PATCH_VERSION = `${coreMajor}.${coreMinor}.${corePatch + 1}`;
+export const NEXT_MAJOR_VERSION = `${coreMajor + 1}.0.0`;
 
 const temporaryDirectories = new Set<string>();
 
