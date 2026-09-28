@@ -722,3 +722,11 @@ Task 20: targeted Tool and agent tests 28/28 and typecheck passed. One full suit
 had a transient npm ETIMEDOUT in a plugin bootstrap test; that test passed in isolation
 and the next full `npm run check` returned the five baseline failures: 748 tests, 743
 pass. Tasks 21–29 remain.
+
+Task 19 follow-up: honored the carried Task 6 design note. `inspectConsumer` now
+converts a corrupt stored decision to `PAVED_DECISION_INVALID` while retaining the
+rest of its status data. It shares one validated decision read with capability answer
+resolution. A regression test first reproduced the generic `PAVED_CLI_INTERNAL` and
+then passed with the specific diagnostic. Typecheck passed. One full suite run had
+two additional plugin npm timeout failures while the five baseline failures remained;
+these occurred during runtime acquisition, outside the changed status path.

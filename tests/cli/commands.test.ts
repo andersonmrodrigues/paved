@@ -543,6 +543,19 @@ describe("status and doctor commands", () => {
       rmSync(project, { recursive: true, force: true });
     }
   });
+
+  it("reports a corrupt decision as a diagnostic while retaining status data", async () => {
+    const project = freshConsumer("status-corrupt-decision");
+    try {
+      const init = await run(project, "init");
+      assert.ok(init.decisions?.[0]);
+      writeFileSync(join(project, `.paved/decisions/${init.decisions[0].id}.yaml`), "invalid: [");
+      const result = await run(project, "status");
+      assert.equal(result.status, "failed");
+      assertCode(result, "PAVED_DECISION_INVALID");
+      assert.equal((dataOf(result) as { initialized: boolean }).initialized, true);
+    } finally { rmSync(project, { recursive: true, force: true }); }
+  });
   it("includes command files in the local Core digest", () => {
     const core = sandbox("core-digest-cli-commands");
     try {
