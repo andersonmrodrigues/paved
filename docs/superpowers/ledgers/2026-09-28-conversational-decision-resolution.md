@@ -6,7 +6,7 @@
 > shows the result of. Every entry marked `Ruling:` is a judgement call made during
 > execution, with its justification and what it costs if it turns out wrong.
 >
-> **This run is INCOMPLETE.** It covers Tasks 1–14 of 29. Tasks 15–29 remain.
+> **This run is INCOMPLETE.** It covers Tasks 1–15 of 29. Tasks 16–29 remain.
 >
 > **Known deviation:** two plugin-packaging tests fail on this branch by explicit decision.
 > Adding schemas makes the checked-in packaged plugin stale, and a git-dlp `ZippedFilePolicy`
@@ -639,10 +639,26 @@ similarly named file or blank script will no longer be offered as a verification
 Task 14: provider tests 9/9 and typecheck passed. Full `npm run check` = 724 tests,
 719 pass, the same 5 baseline failures. Tasks 15–29 remain.
 
-Task 15: BLOCKED ON DESIGN CHOICE. The draft handler writes objects into
+Task 15: DESIGN CONFLICT RESOLVED. The draft handler writes objects into
 `VerificationProfile.checks`, but `schemas/verification.schema.yaml` requires an array
 of Check ids. `runVerification` then resolves each id to a Check document, its Tool
 contract and a ToolImplementation. Merely changing the objects to strings still leaves
 verification unable to run. Asked whether adopting detected commands should generate
-all required contracts and bindings, or only select already configured checks. No Task 15
-implementation was started pending that choice.
+all required contracts and bindings, or only select already configured checks. The user
+chose generating the full contract set.
+
+Task 15: Ruling: the answer generates schema-valid project Check, Tool and
+ToolImplementation documents for each selected Maven/npm command, then writes a profile
+listing Check ids last. The profile is a commit marker; crash recovery re-applies an
+ANSWERED decision even if the provider disappears after profile creation. Cost if wrong:
+this creates more committed Paved documents than the plan listed, and selected commands
+become executable verification checks after the answer.
+
+Task 15: Ruling: `none` records REJECTED, preserving the user's refusal, and writes no
+profile. Option ids for scopes use a short digest so long or colliding paths remain valid.
+Cost if wrong: a future revisit needs explicit revision rather than silently re-asking.
+
+Task 15: provider/gate tests 34/34, verification tests 35/35, typecheck passed. The end-to-end
+CLI test raised a decision, accepted an answer, generated all documents, executed an npm
+check and observed `passed`. Full `npm run check` = 732 tests, 727 pass, the same 5 baseline
+failures. Tasks 16–29 remain.
