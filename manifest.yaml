@@ -249,3 +249,20 @@ consumer_layout:
       Evidence records of local and CI runs (<id>.yaml, retention `local` or `change`)
       and their small artifacts. Attached to the change request or CI run; kept records
       move to .paved/verification/evidence/.
+  - path: .paved/decisions/
+    ownership: tool-managed
+    required: false
+    committed: true
+    schema: Decision
+    description: >
+      Material project-scoped decisions Paved asked and the project answered, with their
+      evidence, answer provenance and the state each answer produced. Written only by
+      Paved commands; the authority for configuration Paved wrote on the project's behalf.
+  - path: .paved/approvals/
+    ownership: human-owned
+    required: false
+    committed: true
+    description: >
+      Human-authored approval records for irreversible decisions and plan approval
+      (<run-id>.json, <decision-id>.json), bound by digest to the exact content approved.
+      Paved never writes this path.
