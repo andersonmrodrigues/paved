@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { parse as parseYaml, stringify } from "yaml";
@@ -318,6 +318,20 @@ function evidenceCheckId(checkId: string): string {
   return `${prefix}-${sha(checkId).slice(0, 12)}-run`;
 }
 
+export function signalProcessGroup(child: ChildProcess, signal: NodeJS.Signals): boolean {
+  try {
+    if (process.platform !== "win32" && child.pid !== undefined) {
+      process.kill(-child.pid, signal);
+      return true;
+    }
+    return child.kill(signal);
+  } catch (error) {
+    // macOS reports EPERM instead of ESRCH when the group only holds an exited, unreaped child.
+    if (error instanceof Error && "code" in error && (error.code === "ESRCH" || error.code === "EPERM")) return false;
+    throw error;
+  }
+}
+
 export async function spawnApproved(args: {
   executable: string;
   argv: string[];
@@ -352,18 +366,7 @@ export async function spawnApproved(args: {
       detached: process.platform !== "win32",
     });
 
-    const signalGroup = (signal: NodeJS.Signals): boolean => {
-      try {
-        if (process.platform !== "win32" && child.pid !== undefined) {
-          process.kill(-child.pid, signal);
-          return true;
-        }
-        return child.kill(signal);
-      } catch (error) {
-        if (error instanceof Error && "code" in error && error.code === "ESRCH") return false;
-        throw error;
-      }
-    };
+    const signalGroup = (signal: NodeJS.Signals): boolean => signalProcessGroup(child, signal);
     const signalHandlers: { signal: NodeJS.Signals; handler: () => void }[] = [];
     const forwardSignal = (signal: NodeJS.Signals, exitCode: number): void => {
       signalGroup(signal);

@@ -7,7 +7,7 @@ import { join, relative, resolve } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse, stringify } from "yaml";
-import { runVerification } from "../../cli/lib/verification-runner.ts";
+import { runVerification, signalProcessGroup } from "../../cli/lib/verification-runner.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
 import { exitCode, primaryCategory, type CommandResult } from "../../cli/result.ts";
 import { schemas } from "../helpers.ts";
@@ -576,3 +576,22 @@ function readAllFiles(root: string): string[] {
   walk(root);
   return output;
 }
+
+describe("process group signalling", () => {
+  it("treats an exited but unreaped process group as gone", { skip: process.platform === "win32" }, async () => {
+    const child = spawn("sleep", ["30"], { detached: true, stdio: "ignore" });
+    const exited = once(child, "exit");
+    try {
+      await once(child, "spawn");
+      assert.equal(signalProcessGroup(child, "SIGINT"), true);
+      // Block the event loop so the dead child stays unreaped when it is signalled again,
+      // the same window a verification run hits when it forwards a signal and then SIGKILL.
+      const until = Date.now() + 200;
+      while (Date.now() < until);
+      assert.doesNotThrow(() => signalProcessGroup(child, "SIGKILL"));
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+      await exited;
+    }
+  });
+});
