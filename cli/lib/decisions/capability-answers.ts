@@ -1,9 +1,10 @@
 import { listDecisions } from "./store.ts";
+import type { Decision } from "./record.ts";
 
 /** Capability and scope to provider, from applied material decisions only. */
-export function answeredProviders(projectRoot: string, coreRoot: string): ReadonlyMap<string, string> {
+export function answeredProviders(projectRoot: string, coreRoot: string, records?: readonly Decision[]): ReadonlyMap<string, string> {
   const answers = new Map<string, string>();
-  for (const decision of listDecisions(projectRoot, coreRoot)) {
+  for (const decision of records ?? listDecisions(projectRoot, coreRoot)) {
     if (decision.status !== "APPLIED" || decision.handler !== "capability.select") continue;
     const marker = decision.fingerprint.inputs.find((item) => item.startsWith("candidate:capability:"));
     const key = marker?.slice("candidate:capability:".length);

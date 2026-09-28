@@ -12,7 +12,8 @@ import { assessProvenance } from "./provenance.ts";
 import { createRegistry, type SchemaRegistry } from "./schemas.ts";
 import { compatible } from "./tools.ts";
 import { answeredProviders } from "./decisions/capability-answers.ts";
-import { listDecisions } from "./decisions/store.ts";
+import { DecisionStoreError, listDecisions } from "./decisions/store.ts";
+import type { Decision } from "./decisions/record.ts";
 import { readActiveRuntimeSelection, readRuntimeSelection, type RuntimeLock } from "./runtime-lock.ts";
 
 export interface InspectConsumerInput {
@@ -1065,6 +1066,18 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
     };
   }
 
+  let decisions: Decision[] = [];
+  try {
+    decisions = listDecisions(input.projectRoot, input.coreRoot);
+  } catch (error) {
+    if (!(error instanceof DecisionStoreError)) throw error;
+    diagnostics.push(diagnostic({
+      code: "PAVED_DECISION_INVALID", component: "consumer.decisions", category: "config",
+      message: error.message,
+      remediation: "Repair the invalid decision record before answering or applying decisions.",
+    }));
+  }
+
   const manifest = readValidated<ProjectManifest>(registry, manifestPath, "PAVED_MANIFEST_INVALID", "consumer.manifest", diagnostics);
   const selectedAdapters = [
     ...(manifest?.adapters ?? []),
@@ -1120,7 +1133,7 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
           remediation: "Adjust .paved/manifest.yaml adapter selections or add the missing repository evidence.",
         }));
       }
-      const capabilities = capabilityEvidence(input.projectRoot, sources, resolvedAdapters, manifest.capability_providers, answeredProviders(input.projectRoot, input.coreRoot));
+      const capabilities = capabilityEvidence(input.projectRoot, sources, resolvedAdapters, manifest.capability_providers, answeredProviders(input.projectRoot, input.coreRoot, decisions));
       adapterEvidence = capabilities.evidence;
       capabilityProviders = providerReport(capabilities.resolutions);
       // A lock without a capabilities section recorded no decisions, which is exact for single-provider repositories.
@@ -1169,7 +1182,6 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
     generated: lastRun?.present === true || existsSync(join(input.projectRoot, ".paved/project")),
     diagnostics,
   });
-  const decisions = listDecisions(input.projectRoot, input.coreRoot);
   const waiting = decisions.filter((decision) => decision.status === "PENDING" || decision.status === "ASKED");
 
   return {
