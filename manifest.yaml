@@ -85,15 +85,20 @@ components:
     distributed: false
     depends_on: [schemas, core]
     responsibility: Thin agent-specific projections of the public Paved integration contract.
+  - name: plugins
+    path: plugins
+    distributed: false
+    depends_on: [schemas, core, integrations]
+    responsibility: The generated, installable Paved plugin for Codex and Claude Code and the build that produces it from the Core.
   - name: docs
     path: docs
     distributed: false
-    depends_on: [schemas, core, generators, adapters, cli, tests]
+    depends_on: [schemas, core, generators, adapters, cli, integrations, plugins, tests]
     responsibility: Architecture, decisions and guides for maintainers and integrators.
   - name: tests
     path: tests
     distributed: false
-    depends_on: [schemas, core, generators, adapters, cli, integrations]
+    depends_on: [schemas, core, generators, adapters, cli, integrations, plugins]
     responsibility: Self-tests of every contract in this repository.
 
 # Where each context area a skill declares (skill.yaml `context`) lives in a consumer.
@@ -134,6 +139,15 @@ consumer_layout:
     committed: true
     schema: Lock
     description: Exact Core and adapter versions and digests resolved by the CLI. Written only by `paved init` and `paved update`.
+  - path: .paved/runtime/
+    ownership: tool-managed
+    required: false
+    committed: false
+    description: >
+      Project-local Paved runtime activated by the agent launcher: verified installations
+      under versions/, the selection pinned by paved.lock, a disposable artifact cache and
+      an optional rollback record. Written only by the launcher; ignores itself in Git and
+      is reacquired from the lock.
   - path: .paved/project/
     ownership: generated-reviewed
     required: false

@@ -20,5 +20,9 @@ tarball and installed content, and invokes the packaged CLI under
 `.paved/runtime/`. It refuses mismatched or corrupt state. The consumer's
 `.paved/` state remains authoritative; generated agent files are disposable
 Paved-owned projections and are never application source. `paved agent install`
-can project both integrations from a packed artifact. Public use awaits an npm
-release and a distributable integration installer.
+can project both integrations from a packed artifact.
+
+The installable plugin in `plugins/` reuses this layer: its skills are rendered by
+`shared/projection.ts` from the same catalog, and its `bin/paved.mjs` is
+`shared/bootstrap.mjs` unchanged. Consumers normally install that plugin through
+native plugin installation instead of committing a project-local projection.

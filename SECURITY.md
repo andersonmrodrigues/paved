@@ -50,3 +50,24 @@ normal contract checks.
 Agent integrations are thin projections. They must not silently upgrade Core,
 modify consumer source outside the documented contract, or add hidden execution
 capabilities.
+
+## Plugin distribution
+
+The Codex and Claude Code plugin in `plugins/paved/` is generated and committed; it
+is installed through each agent's native plugin installation from this repository.
+
+- No install hooks, MCP server or `curl | sh` step. Code runs only when a Paved
+  command is invoked.
+- The bundled runtime tarball is pinned by SHA-512 in `bin/bootstrap.json` and in
+  `provenance.json`, which also records a digest for every plugin file. The test
+  suite fails when the committed plugin differs from a fresh build.
+- Before extraction the launcher accepts only regular files and directories under
+  `package/`, and rejects links, absolute paths, `..` segments, special permission
+  bits and non-JavaScript executables. npm runs with `--ignore-scripts`; resolved
+  dependencies must come from the artifact itself.
+- The launcher writes only under the consumer's `.paved/runtime/` and refuses the
+  plugin directory and the Core checkout as consumers. A different runtime is
+  activated only by `runtime upgrade`, with rollback.
+- Integrity pins protect against tampering in transit and at rest; they do not
+  protect against a compromised repository. Pin a reviewed ref (`--ref`) when that
+  matters.
