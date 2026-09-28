@@ -14,7 +14,7 @@ let counter = 0;
 
 type Result = {
   command: string;
-  status: "success" | "warning" | "failed";
+  status: "success" | "warning" | "failed" | "awaiting_input";
   data?: Record<string, unknown>;
   diagnostics: { category: string; code: string; severity: string; message: string }[];
 };
