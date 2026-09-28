@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { parse } from "yaml";
+import { runDecisionGate } from "../../cli/lib/decisions/gate.ts";
+import { verificationHandler } from "../../cli/lib/decisions/handlers/verification.ts";
+import { createRegistry } from "../../cli/lib/schemas.ts";
+import { listDecisions, writeDecision } from "../../cli/lib/decisions/store.ts";
+import { transition } from "../../cli/lib/decisions/record.ts";
+import { dispatchCli } from "../../cli/runtime.ts";
 import { detectCheckCandidates, verificationProvider } from "../../cli/lib/decisions/providers/verification.ts";
 
 const coreRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -99,5 +106,117 @@ describe("verification provider", () => {
   it("raises nothing when the repository has no detectable check", () => {
     const project = workspace({ "README.md": "# nothing to verify\n" });
     assert.deepEqual(verificationProvider(context(project)), []);
+  });
+
+  it("keeps scope option ids unique and within the schema limit", () => {
+    const long = "nested-".repeat(12);
+    const project = workspace({
+      "a/b/package.json": JSON.stringify({ scripts: { test: "node --version" } }),
+      "a-b/package.json": JSON.stringify({ scripts: { test: "node --version" } }),
+      [`${long}/package.json`]: JSON.stringify({ scripts: { test: "node --version" } }),
+    });
+    const ids = verificationProvider(context(project))[0]!.options.map((option) => option.id)
+      .filter((id) => id.startsWith("scope-"));
+    assert.equal(ids.length, 3);
+    assert.equal(new Set(ids).size, 3);
+    assert.ok(ids.every((id) => id.length <= 64 && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(id)));
+  });
+});
+
+
+describe("verification apply handler", () => {
+  function adopt(project: string, answer: string) {
+    const handlers = new Map([["verification.adopt", verificationHandler]]);
+    const providers = [verificationProvider];
+    const first = runDecisionGate({ context: context(project), providers, handlers, persist: true });
+    const id = first.projections[0]!.id;
+    return runDecisionGate({
+      context: { ...context(project), answers: [`${id}=${answer}`], answeredBy: "anderson@example.com" },
+      providers, handlers, persist: true,
+    });
+  }
+
+  it("writes a verification profile Paved can read back", () => {
+    const project = workspace({ "pom.xml": "<project><artifactId>api</artifactId></project>" });
+    const outcome = adopt(project, "all");
+    assert.equal(outcome.status, "continue");
+    const profile = parse(readFileSync(join(project, ".paved/verification/profile.yaml"), "utf8")) as {
+      kind: string; checks: string[];
+    };
+    assert.equal(profile.kind, "VerificationProfile");
+    assert.ok(profile.checks.length > 0);
+    assert.match(profile.checks[0] ?? "", /^project\.detected\./);
+    const registry = createRegistry(join(coreRoot, "schemas"), ["paved/v1"]);
+    for (const path of outcome.applied[0]?.applied_changes ?? []) {
+      const document = parse(readFileSync(join(project, path), "utf8"));
+      assert.equal(registry.validate(document).valid, true, path);
+    }
+  });
+
+  it("records the written path as the decision's applied change", () => {
+    const project = workspace({ "pom.xml": "<project><artifactId>api</artifactId></project>" });
+    const outcome = adopt(project, "all");
+    assert.equal(outcome.applied[0]?.applied_changes?.length, 7);
+    assert.ok(outcome.applied[0]?.applied_changes?.includes(".paved/verification/profile.yaml"));
+  });
+
+  it("is idempotent — applying twice produces the same file", () => {
+    const project = workspace({ "pom.xml": "<project><artifactId>api</artifactId></project>" });
+    adopt(project, "all");
+    const first = readFileSync(join(project, ".paved/verification/profile.yaml"), "utf8");
+    verificationHandler.apply("all", context(project));
+    assert.equal(readFileSync(join(project, ".paved/verification/profile.yaml"), "utf8"), first);
+  });
+
+  it("writes no profile when the answer is none, and records the rejection", () => {
+    const project = workspace({ "pom.xml": "<project><artifactId>api</artifactId></project>" });
+    const outcome = adopt(project, "none");
+    assert.equal(existsSync(join(project, ".paved/verification/profile.yaml")), false);
+    assert.equal(outcome.applied.length, 0);
+    assert.equal(listDecisions(project, coreRoot)[0]?.status, "REJECTED");
+  });
+
+  it("never marks verification as passed — it only writes the profile", () => {
+    const project = workspace({ "pom.xml": "<project><artifactId>api</artifactId></project>" });
+    const outcome = adopt(project, "all");
+    assert.ok(outcome.applied.length > 0);
+    assert.equal(existsSync(join(project, ".paved/generated/evidence")), false,
+      "adopting checks must not produce verification evidence");
+  });
+
+  it("finishes an ANSWERED record after a crash following the profile write", () => {
+    const project = workspace({ "pom.xml": "<project><artifactId>api</artifactId></project>" });
+    const handlers = new Map([["verification.adopt", verificationHandler]]);
+    runDecisionGate({ context: context(project), providers: [verificationProvider], handlers, persist: true });
+    const asked = listDecisions(project, coreRoot)[0]!;
+    const answered = transition(asked, "ANSWERED", {
+      answer: "all", answered_by: "anderson@example.com", answer_source: "agent-relayed",
+      answered_at: "2026-09-28T00:05:00.000Z",
+    });
+    writeDecision(project, coreRoot, answered);
+    verificationHandler.apply("all", context(project));
+    const recovered = runDecisionGate({
+      context: context(project), providers: [verificationProvider], handlers, persist: true,
+    });
+    assert.equal(recovered.applied[0]?.status, "APPLIED");
+    assert.equal(listDecisions(project, coreRoot)[0]?.status, "APPLIED");
+  });
+});
+
+describe("conversational verify", () => {
+  it("asks for detected checks, then runs the adopted check", async () => {
+    const project = workspace({
+      "package.json": JSON.stringify({ name: "check-pilot", version: "1.0.0", scripts: { test: "node --version" } }),
+    });
+    const first = await dispatchCli({ argv: ["verify", "--project", project] });
+    assert.equal(first.status, "awaiting_input");
+    const id = first.decisions?.[0]?.id;
+    assert.ok(id);
+    const second = await dispatchCli({
+      argv: ["verify", "--project", project, "--answer", `${id}=all`, "--answered-by", "anderson@example.com"],
+    });
+    assert.ok(existsSync(join(project, ".paved/verification/profile.yaml")));
+    assert.equal(second.status, "success", JSON.stringify(second));
+    assert.equal((second.data as { checks?: { status: string }[] } | undefined)?.checks?.[0]?.status, "passed");
   });
 });

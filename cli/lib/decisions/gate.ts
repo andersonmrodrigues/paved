@@ -42,6 +42,7 @@ export type DecisionProvider = (context: DecisionContext) => readonly DecisionCa
 export interface HandlerRegistration {
   readonly effect: EffectClass;
   readonly apply: (answer: AnswerValue, context: DecisionContext) => readonly string[];
+  readonly reject?: (answer: AnswerValue) => boolean;
 }
 
 export interface DecisionGateOutcome {
@@ -175,6 +176,13 @@ function runDecisionGateUnlocked(input: {
     live.set(existing.id, existing);
   }
 
+  // A crash after a handler wrote its configuration can make its provider disappear
+  // before APPLIED was recorded. Resume the durable ANSWERED transaction anyway.
+  for (const decision of stored.values()) {
+    if (decision.command === context.command && decision.status === "ANSWERED"
+      && !live.has(decision.id)) live.set(decision.id, decision);
+  }
+
   // 3. ANSWER
   const answers = new Map<string, string[]>();
   for (const entry of context.answers) {
@@ -245,6 +253,15 @@ function runDecisionGateUnlocked(input: {
         identity = approval.decided_by;
       }
       if (identity === undefined) { problems.push(`Decision ${id} has no answering identity.`); continue; }
+
+      if (registration.reject?.(validated.value) === true) {
+        const rejected = transition(asked, "REJECTED", {
+          answer: validated.value, answered_by: identity, answer_source: source, answered_at: now(),
+        });
+        if (persist) writeDecision(context.projectRoot, context.coreRoot, rejected);
+        live.set(id, rejected);
+        continue;
+      }
 
       const answered = transition(asked, "ANSWERED", {
         answer: validated.value, answered_by: identity, answer_source: source, answered_at: now(),
