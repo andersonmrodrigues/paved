@@ -214,6 +214,7 @@ export interface WorkflowRunRecord {
     gates?: { id: string; status: string }[];
     failure?: RunFailure;
   }[];
+  decisions?: { id: string; status: string; required: boolean }[];
   failure?: RunFailure;
 }
 
@@ -295,6 +296,14 @@ export function assessRun(run: WorkflowRunRecord, workflow: WorkflowContract): s
   if (run.status === "running" && allDone) problems.push("run is running but every phase is done");
   if (run.status === "awaiting-approval" && !run.phases.some((p) => (p.gates ?? []).some((g) => g.status === "awaiting-approval"))) {
     problems.push("run is awaiting approval but no gate is");
+  }
+  const decisions = run.decisions ?? [];
+  const askedRequired = decisions.filter((item) => item.required && item.status === "ASKED");
+  if (run.status === "awaiting-input" && askedRequired.length === 0) {
+    problems.push("run is awaiting input but no required decision is ASKED");
+  }
+  if (run.status === "running" && decisions.some((item) => item.required && (item.status === "ASKED" || item.status === "PENDING"))) {
+    problems.push("run is running with an unanswered required decision");
   }
   if (run.failure !== undefined) {
     problems.push(...failureProblems(run.failure));
