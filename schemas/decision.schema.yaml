@@ -61,7 +61,7 @@ properties:
       properties:
         type: { const: file }
         location: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
-        sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+        sha256: { $ref: "urn:paved:schema:common:v1#/$defs/sha256" }
   required:
     description: Whether the originating command can proceed without an answer.
     type: boolean
@@ -110,7 +110,7 @@ properties:
       inputs:
         type: array
         items: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
-      sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+      sha256: { $ref: "urn:paved:schema:common:v1#/$defs/sha256" }
   supersedes: { type: string, pattern: "^d-[a-f0-9]{20}$" }
   superseded_by: { type: string, pattern: "^d-[a-f0-9]{20}$" }
   superseded_reason: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
