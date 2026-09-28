@@ -194,7 +194,7 @@ test('evidence-driven generators treat absent routes and integration settings as
 test('combined repository resolves five adapters and all declared evidence capabilities', () => {
   const {root, sources, detection} = inspect('combined-project');
   const selected = detection.filter(d => d.confidence === 'strong' || d.adapter.id === 'infrastructure/git').map(d => ({ id: d.adapter.id, version: '^0.1.0' }));
-  const result = resolveAdapters(detection, selected, '0.2.0');
+  const result = resolveAdapters(detection, selected, '1.0.0');
   assert.deepEqual(result.diagnostics, []);
   assert.deepEqual(result.adapters.map(d => d.adapter.id), adapters.map(a => a.id));
   const capabilities = capabilityEvidence(root, sources, result.adapters);
@@ -208,8 +208,8 @@ test('combined repository resolves five adapters and all declared evidence capab
 
 test('resolution diagnoses missing, incompatible, cyclic and ambiguous providers', () => {
   const base = detected('java-project', 'technology/java');
-  assert.equal(resolveAdapters([base], [{ id: 'technology/missing', version: '^0.1.0' }], '0.2.0').diagnostics[0]?.code, 'missing-adapter');
-  assert.equal(resolveAdapters([base], [{ id: base.adapter.id, version: '^1.0.0' }], '0.2.0').diagnostics[0]?.code, 'incompatible');
+  assert.equal(resolveAdapters([base], [{ id: 'technology/missing', version: '^0.1.0' }], '1.0.0').diagnostics[0]?.code, 'missing-adapter');
+  assert.equal(resolveAdapters([base], [{ id: base.adapter.id, version: '^1.0.0' }], '1.0.0').diagnostics[0]?.code, 'incompatible');
   const duplicate: AdapterContract = { ...base.adapter, id: 'technology/other' };
   const duplicateDetection = { ...base, adapter: duplicate };
   const providers = [base, duplicateDetection];
@@ -218,9 +218,9 @@ test('resolution diagnoses missing, incompatible, cyclic and ambiguous providers
   assert.equal(resolveCapability('source.build', providers, 'technology/missing').status, 'unavailable');
   assert.equal(resolveCapability('missing.capability', providers).status, 'unavailable');
   const cyclic: AdapterContract = { ...base.adapter, requires: { core: '^0.2.0', adapters: [{ id: base.adapter.id, version: '^0.1.0' }] } };
-  assert.equal(resolveAdapters([{ ...base, adapter: cyclic }], [{ id: cyclic.id, version: '^0.1.0' }], '0.2.0').diagnostics[0]?.code, 'cycle');
-  const broken: AdapterContract = { ...base.adapter, requires: { core: '^0.2.0', adapters: [{ id: 'technology/missing', version: '^0.1.0' }] } };
-  assert.ok(resolveAdapters([{ ...base, adapter: broken }], [{ id: broken.id, version: '^0.1.0' }], '0.2.0').diagnostics.some(d => d.code === 'dependency'));
+  assert.equal(resolveAdapters([{ ...base, adapter: cyclic }], [{ id: cyclic.id, version: '^0.1.0' }], '1.0.0').diagnostics[0]?.code, 'cycle');
+  const broken: AdapterContract = { ...base.adapter, requires: { core: '^1.0.0', adapters: [{ id: 'technology/missing', version: '^0.1.0' }] } };
+  assert.ok(resolveAdapters([{ ...base, adapter: broken }], [{ id: broken.id, version: '^0.1.0' }], '1.0.0').diagnostics.some(d => d.code === 'dependency'));
 });
 
 test('adapter evidence omits sensitive values and generators consume resolved evidence', () => {
@@ -232,7 +232,7 @@ test('adapter evidence omits sensitive values and generators consume resolved ev
   writeFileSync(join(root, 'frontend/src/app/app-routing.module.ts'), "const routes = [{path: 'items', component: Page}];");
   writeFileSync(join(root, 'frontend/application.properties'), 'password=TOP_SECRET_VALUE\nquarkus.datasource.jdbc.url=jdbc:postgresql://secret-host/database\n');
   const sources = discoverSources(root), detection = detectAdapters(root, adapters, sources);
-  const selected = resolveAdapters(detection, [{ id: 'technology/angular', version: '^0.1.0' }, { id: 'technology/postgresql', version: '^0.1.0' }], '0.2.0');
+  const selected = resolveAdapters(detection, [{ id: 'technology/angular', version: '^0.1.0' }, { id: 'technology/postgresql', version: '^0.1.0' }], '1.0.0');
   const evidence = capabilityEvidence(root, sources, selected.adapters).evidence;
   assert.doesNotMatch(JSON.stringify(evidence), /TOP_SECRET_VALUE|secret-host/);
   assert.ok(evidence.some(e => e.capability === 'application.modules' && e.value === '^19.2.15'));
@@ -289,8 +289,8 @@ test('generator code does not select a concrete adapter by technology name', () 
 test('incompatible adapter dependency is diagnosed without selecting dependent adapter', () => {
   const base = detected('quarkus-project', 'technology/quarkus');
   const java = detected('quarkus-project', 'technology/java');
-  const incompatible: AdapterContract = { ...base.adapter, requires: { core: '^0.2.0', adapters: [{ id: 'technology/java', version: '^9.0.0' }] } };
-  const result = resolveAdapters([{...base, adapter: incompatible}, java], [{id: incompatible.id, version: '^0.1.0'}], '0.2.0');
+  const incompatible: AdapterContract = { ...base.adapter, requires: { core: '^1.0.0', adapters: [{ id: 'technology/java', version: '^9.0.0' }] } };
+  const result = resolveAdapters([{...base, adapter: incompatible}, java], [{id: incompatible.id, version: '^0.1.0'}], '1.0.0');
   assert.ok(result.diagnostics.some(d => d.code === 'incompatible'));
   assert.ok(result.diagnostics.some(d => d.code === 'dependency'));
   assert.ok(!result.adapters.some(d => d.adapter.id === incompatible.id));
