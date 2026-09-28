@@ -71,12 +71,12 @@ See the [agent command reference](docs/concepts/agent-commands.md) for all
 commands, inputs, lifecycle requirements, context, side effects and failures.
 Both integrations expose the same agent-neutral command catalog.
 
-**Current bootstrap limitation:** Paved is distributed as a local Core checkout,
-not a published runtime artifact. Installing the project-local integration and
-using management commands still requires an accessible local Core checkout and
-its dependencies. Generated commands do not install Paved, modify application
-dependencies, or fetch remote code. A clean consumer cannot yet bootstrap itself
-from only an agent slash command.
+**Current bootstrap limitation:** The repository now defines a packable
+`paved-core` runtime package, but no public package release or standalone
+agent-integration installer has been published. Generated project-local
+commands still require an accessible runtime. A clean consumer cannot yet
+bootstrap itself from only an agent command; the package artifact is currently
+validated locally and is not automatically fetched.
 
 For maintainers and environments without a supported agent, the CLI remains
 available. It requires Node.js 22.18+ and a local Paved Core checkout:

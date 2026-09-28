@@ -42,10 +42,10 @@ checks configured in the project verification profile.
 
 ## Runtime and bootstrap limitation
 
-The current distribution is a local Paved Core checkout. The integration
-projection can install command files from that checkout, but it does not bundle
-the runtime or install a global `paved` executable. Thus a clean consumer with
-only generated command files cannot yet bootstrap itself through `/paved:init`;
-the local Core checkout and its runtime must already be accessible. No remote
-bootstrap is attempted because this release has no published, integrity-pinned
-runtime artifact or supported registry.
+The runtime source now has a public-package layout (`paved-core`) and pack
+allowlist. Until an artifact is published and a separately installable agent
+bootstrap is available, the integration projection still requires an accessible
+runtime. A clean consumer with only generated command files cannot yet
+bootstrap itself through `/paved:init`. The local package artifact is tested for
+contents and npm supplies its SHA-512 integrity metadata, but no remote
+acquisition or installation is performed by the generated command.
