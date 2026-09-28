@@ -61,7 +61,7 @@ function renderDecision(decision: DecisionProjection, command: string): string {
     lines.push(`    Recommended because of: ${decision.evidence.map((item) => item.location).join(", ")}`);
   }
   if (decision.answerChannel === "human-authored") {
-    lines.push("    This decision is irreversible, so a person must author");
+    lines.push("    This decision requires a person to approve it, so a person must author");
     lines.push(`    .paved/approvals/${decision.id}.json before it can be applied.`);
   } else {
     const run = decision.runId === undefined ? "" : ` --run ${decision.runId}`;

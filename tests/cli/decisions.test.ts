@@ -94,26 +94,98 @@ describe("human rendering of decisions", () => {
     assert.match(text, /--answered-by/);
   });
 
-  it("marks the recommendation and shows its evidence", () => {
-    const recommended = { ...projection, recommended: "all" };
+  it("marks only the recommended option, not the other one, and shows its evidence", () => {
+    const twoOptions = {
+      ...projection,
+      options: [
+        { id: "all", label: "All", description: "Adopt every check.", consequence: "All become gates." },
+        { id: "none", label: "None", description: "Adopt nothing.", consequence: "Nothing changes." },
+      ],
+      recommended: "all",
+    };
     const text = renderHuman(createResult({
-      command: "verify", status: "awaiting_input", decisions: [recommended],
+      command: "verify", status: "awaiting_input", decisions: [twoOptions],
     }));
-    assert.match(text, /recommended/i);
+    const lines = text.split("\n");
+    const recommendedLine = lines.find((line) => line.includes("1. all"));
+    const otherLine = lines.find((line) => line.includes("2. none"));
+    assert.ok(recommendedLine);
+    assert.ok(otherLine);
+    assert.match(recommendedLine, /\(recommended\)/);
+    assert.doesNotMatch(otherLine, /\(recommended\)/);
     assert.match(text, /pom\.xml/);
   });
 
-  it("marks human-authored decisions as needing an approval file", () => {
+  it("marks human-authored decisions as needing an approval file, with no relayed resume command", () => {
     const approval = { ...projection, answerChannel: "human-authored" as const };
     const text = renderHuman(createResult({
       command: "doctor", status: "awaiting_input", decisions: [approval],
     }));
     assert.match(text, /\.paved\/approvals\/d-0123456789abcdef0123\.json/);
+    assert.doesNotMatch(text, /--answer/);
+    assert.doesNotMatch(text, /Resume:/);
   });
 
-  it("labels optional decisions so they do not read as blocking", () => {
+  it("does not claim a human-authored decision is irreversible when it is not", () => {
+    // planApproval can force the human-authored channel onto an otherwise reversible,
+    // low-risk decision (see cli/lib/decisions/effects.ts tierFor). The renderer must not
+    // assert reversibility it cannot support.
+    const approval = {
+      ...projection,
+      answerChannel: "human-authored" as const,
+      reversibility: "reversible" as const,
+      risk: "low" as const,
+    };
+    const text = renderHuman(createResult({
+      command: "doctor", status: "awaiting_input", decisions: [approval],
+    }));
+    assert.doesNotMatch(text, /irreversible/i);
+    assert.match(text, /\.paved\/approvals\/d-0123456789abcdef0123\.json/);
+  });
+
+  it("labels optional decisions on their own line, distinct from the heading's wording", () => {
     const optional = { ...projection, required: false };
     const text = renderHuman(createResult({ command: "doctor", status: "success", decisions: [optional] }));
-    assert.match(text, /optional/i);
+    const lines = text.split("\n");
+    const decisionLine = lines.find((line) => line.includes(optional.question));
+    assert.ok(decisionLine);
+    assert.match(decisionLine, /\(optional\)/);
+  });
+
+  it("includes --run at the right position when the decision carries a runId", () => {
+    const withRun = { ...projection, runId: "r-abc123" };
+    const text = renderHuman(createResult({
+      command: "verify", status: "awaiting_input", decisions: [withRun],
+    }));
+    assert.match(text, /--run r-abc123 --answer d-0123456789abcdef0123=/);
+  });
+
+  it("omits --run entirely when the decision has no runId", () => {
+    const text = renderHuman(createResult({
+      command: "verify", status: "awaiting_input", decisions: [projection],
+    }));
+    assert.doesNotMatch(text, /--run/);
+    assert.doesNotMatch(text, /--run undefined/);
+  });
+
+  it("pluralizes the heading count for one decision vs many", () => {
+    const single = renderHuman(createResult({
+      command: "verify", status: "awaiting_input", decisions: [projection],
+    }));
+    assert.match(single, /Paved needs 1 decision before continuing:/);
+    assert.doesNotMatch(single, /Paved needs 1 decisions/);
+
+    const second = {
+      ...projection,
+      id: "d-2222222222222222222",
+      question: "Should generated fixtures be committed?",
+    };
+    const multiple = renderHuman(createResult({
+      command: "verify", status: "awaiting_input", decisions: [projection, second],
+    }));
+    assert.match(multiple, /Paved needs 2 decisions before continuing:/);
+    assert.match(multiple, /d-0123456789abcdef0123/);
+    assert.match(multiple, /d-2222222222222222222/);
+    assert.match(multiple, /Should generated fixtures be committed\?/);
   });
 });
