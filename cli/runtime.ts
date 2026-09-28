@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { doctorHandler } from "./commands/doctor.ts";
+import { decisionHandler } from "./commands/decision.ts";
 import { agentHandler } from "./commands/agent.ts";
 import { generateHandler } from "./commands/generate.ts";
 import { gardenerHandler } from "./commands/gardener.ts";
@@ -16,7 +17,7 @@ import { createDiagnostic, createResult, type CommandResult } from "./result.ts"
 import { CliPathError, resolveCoreRoot, resolveProjectRoot } from "./paths.ts";
 import { assertAnswerIdentity, parseAnswerFlags } from "./lib/decisions/answers.ts";
 
-export const COMMAND_NAMES = ["init", "status", "plan", "implement", "test", "verify", "review", "debug", "refactor", "feature", "fix", "update", "doctor", "gardener", "generate", "agent"] as const;
+export const COMMAND_NAMES = ["init", "status", "plan", "implement", "test", "verify", "review", "debug", "refactor", "feature", "fix", "update", "doctor", "gardener", "generate", "agent", "decision"] as const;
 export type CommandName = (typeof COMMAND_NAMES)[number];
 
 export interface CliFlags {
@@ -32,6 +33,7 @@ export interface CliFlags {
   readonly project?: string;
   readonly answers: readonly string[];
   readonly answeredBy?: string;
+  readonly decision?: string;
 }
 
 export interface CommandPaths {
@@ -91,6 +93,7 @@ const COMMAND_RULES: Record<CommandName, CommandRule> = {
   gardener: { adapters: false, dryRun: true, noGenerate: false, selectors: false },
   test: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
   agent: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
+  decision: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   feature: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   fix: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   refactor: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
@@ -167,6 +170,7 @@ function commandUsage(command: CommandName | undefined): string {
     if (rule.dryRun) commandOptions.push("  --dry-run        Plan without writes.");
     if (rule.noGenerate) commandOptions.push("  --no-generate    Initialize without running generators.");
     if (command === "test") commandOptions.push("  --inputs <json>  Supply declared Tool inputs as a JSON object.");
+    if (command === "decision") commandOptions.push("  --decision <json>  Raise an agent-authored question.", "  --reason <text>   Explain a revision.");
     if (["feature", "fix", "refactor", "plan", "implement", "review", "debug"].includes(command)) commandOptions.push("  --run <id> --advance --note <text> --evidence <path>  Resume the durable workflow.");
     return [
       `Usage: paved ${command}${selectors} [options]`,
@@ -246,6 +250,7 @@ function parse(argv: readonly string[]): Parsed {
   const selectors: string[] = [];
   const answers: string[] = [];
   let answeredBy: string | undefined;
+  let decision: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -293,6 +298,28 @@ function parse(argv: readonly string[]): Parsed {
       const value = takeValue(argv, index, token, command);
       if (typeof value !== "string") return { kind: "error", result: value };
       inputs = value;
+      index += 1;
+      continue;
+    }
+
+    if (token === "--decision") {
+      if (command !== "decision") {
+        return { kind: "error", result: usage(command ?? "cli", "Flag --decision is supported only by decision.") };
+      }
+      const value = takeValue(argv, index, token, command);
+      if (typeof value !== "string") return { kind: "error", result: value };
+      decision = value;
+      index += 1;
+      continue;
+    }
+
+    if (token === "--reason") {
+      if (command !== "decision") {
+        return { kind: "error", result: usage(command ?? "cli", "Flag --reason is supported only by decision.") };
+      }
+      const value = takeValue(argv, index, token, command);
+      if (typeof value !== "string") return { kind: "error", result: value };
+      note = value;
       index += 1;
       continue;
     }
@@ -399,6 +426,7 @@ function parse(argv: readonly string[]): Parsed {
     ...(evidence === undefined ? {} : { evidence }),
     ...(project === undefined ? {} : { project }),
     ...(inputs === undefined ? {} : { inputs }),
+    ...(decision === undefined ? {} : { decision }),
   };
 
   return {
@@ -432,6 +460,7 @@ function defaultHandler(invocation: CommandInvocation): CommandResult {
 
 const DEFAULT_HANDLERS: CommandHandlers = {
   agent: agentHandler,
+  decision: decisionHandler,
   doctor: doctorHandler,
   generate: generateHandler,
   gardener: gardenerHandler,
