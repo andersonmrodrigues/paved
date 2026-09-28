@@ -71,7 +71,7 @@ properties:
             properties:
               scope: { type: string, minLength: 1 }
               provider: { $ref: "urn:paved:schema:common:v1#/$defs/adapterId" }
-              source: { enum: [explicit, explicit-scoped, inferred] }
+              source: { enum: [explicit, explicit-scoped, answered-decision, inferred] }
               evidence:
                 description: Repository files whose detection established the provider in this scope.
                 type: array

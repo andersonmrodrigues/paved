@@ -662,3 +662,15 @@ Task 15: provider/gate tests 34/34, verification tests 35/35, typecheck passed. 
 CLI test raised a decision, accepted an answer, generated all documents, executed an npm
 check and observed `passed`. Full `npm run check` = 732 tests, 727 pass, the same 5 baseline
 failures. Tasks 16–29 remain.
+
+Task 16: Ruling: capability decisions use schema-valid option ids derived from adapter ids,
+while option labels retain the canonical adapter ids used by the resolver. Answers may
+target an ambiguous scope; a root answer does not erase a deterministic child scope.
+Manifest selections take precedence, including when discovering questions, and a stale
+answer whose adapter no longer supplies the capability is ignored. Cost if wrong: the
+decision record remains APPLIED while changed adapter topology can make the capability
+ambiguous again, requiring a new decision after the provider is wired into commands.
+
+Task 16: capability/scoped tests 21/21 and typecheck passed. Full `npm run check` before
+the final manifest-selection fix = 736 tests, 731 pass, the same 5 baseline failures.
+Tasks 17–29 remain.
