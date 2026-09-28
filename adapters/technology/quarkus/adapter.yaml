@@ -30,6 +30,23 @@ provides:
           pattern: '@Path\s*\(\s*"([a-zA-Z0-9_./:{}-]+)"\s*\)'
           statement: Quarkus REST path annotation
           capture: 1
+    - id: api.http
+      evidence:
+        - glob: '**/*.java'
+          pattern: '@(?:Path|Route)\s*\(\s*"([a-zA-Z0-9_./:{}-]+)"\s*\)'
+          statement: HTTP API route declaration
+          capture: 1
+    - id: api.openapi
+      evidence:
+        - glob: '**/openapi.yaml'
+          pattern: '["'']?openapi["'']?\s*:'
+          statement: OpenAPI contract document
+        - glob: '**/openapi.yml'
+          pattern: '["'']?openapi["'']?\s*:'
+          statement: OpenAPI contract document
+        - glob: '**/openapi.json'
+          pattern: '"openapi"\s*:'
+          statement: OpenAPI contract document
 sources:
   - title: Quarkus guides
     url: https://quarkus.io/guides/

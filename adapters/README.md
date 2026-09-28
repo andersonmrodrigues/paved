@@ -5,10 +5,18 @@ projects using it are usually structured, which checks it offers, and technology
 skills, rules and tools. Adapters sit between the domain-agnostic Core and the
 project-specific context.
 
-The Git adapter binds Core repository status, diff and history Tools. The initial
-technology adapters are `technology/java`, `technology/quarkus`, `technology/angular`
-and `technology/postgresql`. Adapter detection, resolution, conflicts and evidence are described in the
+The Git adapter binds Core repository status, diff and history Tools. Technology
+adapters include `technology/java`, `technology/quarkus`, `technology/angular`,
+`technology/postgresql`, `technology/typescript`, `technology/dart` and
+`technology/flutter`. TypeScript, Dart and Flutter are independent adapters;
+framework adapters may depend on their language adapter where that dependency is
+required by the selected project. Adapter detection, resolution, conflicts and evidence are described in the
 maintainer documentation.
+
+Reusable meanings remain capabilities rather than technology adapters. The Core
+capability registry includes testing evidence, HTTP API evidence and OpenAPI
+contract evidence. Providers report observed repository evidence only; detection
+does not recommend a technology, infer quality, or create verification policy.
 
 ## Layout
 

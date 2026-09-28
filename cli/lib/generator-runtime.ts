@@ -40,9 +40,9 @@ export function discoverSources(root: string): Source[] {
       if (isIgnoredSourceEntry(entry.name) || entry.isSymbolicLink()) continue;
       const full = join(dir, entry.name);
       if (entry.isDirectory()) { walk(full); continue; }
-      if (!entry.isFile() || !/\.(md|txt|yaml|yml|json|xml|properties|java|ts|tsx|js|jsx|sql|gradle|kts|sh|py)$/i.test(entry.name) || statSync(full).size > 1024 * 1024) continue;
+      if (!entry.isFile() || !/\.(md|txt|yaml|yml|json|xml|properties|java|ts|tsx|js|jsx|sql|gradle|kts|sh|py|dart|toml)$/i.test(entry.name) || statSync(full).size > 1024 * 1024) continue;
       const path = relative(root, full).split(sep).join('/');
-      const kind = /README|docs\//i.test(path) ? 'documentation' : /src\/test\/|\.spec\./.test(path) ? 'test' : /\.gitlab-ci|\.github\/workflows/.test(path) ? 'ci' : /package\.json$|pom\.xml$|angular\.json$/.test(path) ? 'manifest' : /application\.|\.properties$/.test(path) ? 'configuration' : /Dockerfile|compose/.test(path) ? 'infrastructure' : 'source-module';
+      const kind = /README|docs\//i.test(path) ? 'documentation' : /(^|\/)(test|tests|integration_test)\//.test(path) || /\.spec\./.test(path) ? 'test' : /\.gitlab-ci|\.github\/workflows/.test(path) ? 'ci' : /package\.json$|package-lock\.json$|pubspec\.yaml$|tsconfig(?:\.[^/]+)?\.json$|pom\.xml$|angular\.json$/.test(path) ? 'manifest' : /application\.|analysis_options\.yaml$|\.properties$/.test(path) ? 'configuration' : /Dockerfile|compose/.test(path) ? 'infrastructure' : 'source-module';
       result.push({ path, kind, sha256: hashSource(root, path) });
     }
   }
@@ -112,17 +112,17 @@ export function sourcesFor(id: string, all: Source[]): Source[] {
   if (id === 'project-context/architecture') return all.filter(s => s.kind === 'manifest' || s.path === 'README.md').slice(0, 80);
   if (id === 'project-context/domain') return all.filter(s => s.path === 'README.md').slice(0, 20);
   if (id === 'project-context/product') return all.filter(s => /(^|\/)README\.md$/.test(s.path)).slice(0, 25);
-  if (id === 'project-context/integrations') return all.filter(s => s.kind === 'configuration').slice(0, 30);
+  if (id === 'project-context/integrations') return all.filter(s => s.kind === 'configuration' || ['api.http', 'api.openapi'].includes(s.capability ?? '')).slice(0, 30);
   if (id === 'project-context/feature-map') return [];
   return all.filter(s => patterns[id]?.test(s.path) ?? false).slice(0, 80);
 }
 export function relevantEvidenceFor(id: string, evidence: readonly AdapterEvidence[]): AdapterEvidence[] {
   return evidence.filter(e => id.endsWith('/architecture') ? ['source.build','source.dependencies','application.runtime','application.modules','database.configuration'].includes(e.capability)
     : id.endsWith('/domain') ? ['source.structure','database.migrations'].includes(e.capability)
-    : id.endsWith('/integrations') ? ['application.http-routes','application.ui-routes','database.configuration'].includes(e.capability)
+    : id.endsWith('/integrations') ? ['application.http-routes','application.ui-routes','database.configuration','api.http','api.openapi'].includes(e.capability)
     : id.endsWith('/feature-map') ? ['application.ui-routes','application.http-routes'].includes(e.capability)
     : id.endsWith('/product') ? e.capability === 'application.ui-routes'
-    : id === 'verification' ? e.capability === 'source.test' : false);
+    : id === 'verification' ? ['source.test', 'testing.structure'].includes(e.capability) : false);
 }
 function provenance(contract: Contract, sources: Source[], at: string, rev: string | undefined, hash: string) { return { generator: contract.id, generator_version: contract.version, generated_at: at, ...(rev ? { source_revision: rev } : {}), sources: sources.map((s, i) => ({ id: `s${i + 1}`, type: 'file', location: s.path, sha256: s.sha256, ...(s.adapter ? { adapter: s.adapter, adapter_version: s.adapterVersion, capability: s.capability, detection_confidence: s.detectionConfidence, detection_evidence: [...(s.detectionEvidence ?? [])], classification: s.classification, adapter_evidence: s.adapterEvidence?.map(e => ({ ...e })) } : {}) })), output_sha256: hash, review: { status: 'unreviewed' } }; }
 function context(contract: Contract, sources: Source[], evidence: AdapterEvidence[], root: string, at: string, rev: string | undefined): { output: Output; unknowns: string[] } {

@@ -43,3 +43,12 @@ capabilities:
   - id: database.migrations
     meaning: Observe database objects declared in repository migrations.
     consumer: project-context/domain
+  - id: testing.structure
+    meaning: Observe test organization and test-related configuration without inferring quality.
+    consumer: verification
+  - id: api.http
+    meaning: Observe HTTP API implementation and consumption evidence without inferring runtime connections.
+    consumer: project-context/integrations
+  - id: api.openapi
+    meaning: Observe OpenAPI contracts and related declarations without inferring generated code.
+    consumer: project-context/integrations

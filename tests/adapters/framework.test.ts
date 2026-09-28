@@ -17,7 +17,7 @@ function detected(name: string, id: string) { return inspect(name).detection.fin
 
 test('adapter contracts validate and maintain independent versions and compatibility', () => {
   const registry = createRegistry(join(core, 'schemas'), ['paved/v1']);
-  assert.equal(adapters.length, 5);
+  assert.equal(adapters.length, 8);
   for (const adapter of adapters) assert.equal(registry.validate(adapter).valid, true, adapter.id);
   const bad = { ...adapters[0], version: 'latest' };
   assert.equal(registry.validate(bad).valid, false);
@@ -35,6 +35,51 @@ test('detection uses content evidence and preserves weak and unknown states', ()
   writeFileSync(join(root, 'pom.xml'), 'ambiguous file');
   const sources = discoverSources(root);
   assert.equal(detectAdapters(root, adapters, sources).find(d => d.adapter.id === 'technology/java')?.confidence, 'weak');
+});
+
+test('Phase 18 language adapters distinguish TypeScript, Dart and Flutter evidence', () => {
+  const root = temporaryDirectory('paved-phase18-languages');
+  writeFileSync(join(root, 'tsconfig.json'), '{"compilerOptions":{"strict":true}}');
+  writeFileSync(join(root, 'pubspec.yaml'), [
+    'name: sample',
+    'environment:',
+    '  sdk: ">=3.0.0 <4.0.0"',
+    'dependencies:',
+    '  flutter:',
+    '    sdk: flutter',
+  ].join('\n'));
+  writeFileSync(join(root, 'lib.dart'), 'class Sample {}');
+  const sources = discoverSources(root);
+  const detection = detectAdapters(root, adapters, sources);
+  assert.equal(detection.find(d => d.adapter.id === 'technology/typescript')?.confidence, 'strong');
+  assert.equal(detection.find(d => d.adapter.id === 'technology/dart')?.confidence, 'strong');
+  assert.equal(detection.find(d => d.adapter.id === 'technology/flutter')?.confidence, 'strong');
+  const resolved = resolveAdapters(detection, [
+    { id: 'technology/typescript', version: '^0.1.0' },
+    { id: 'technology/flutter', version: '^0.1.0' },
+  ], '1.0.0');
+  assert.deepEqual(resolved.diagnostics, []);
+  assert.deepEqual(resolved.adapters.map(item => item.adapter.id), ['technology/dart', 'technology/flutter', 'technology/typescript']);
+  const evidence = capabilityEvidence(root, sources, resolved.adapters);
+  assert.ok(evidence.evidence.some(item => item.capability === 'testing.structure') === false);
+});
+
+test('Phase 18 negative detection does not resolve Flutter for a Dart-only project', () => {
+  const root = temporaryDirectory('paved-phase18-dart-only');
+  writeFileSync(join(root, 'pubspec.yaml'), [
+    'name: sample',
+    'environment:',
+    '  sdk: ">=3.0.0 <4.0.0"',
+    'dependencies:',
+    '  http: ^1.0.0',
+  ].join('\n'));
+  const sources = discoverSources(root);
+  const detection = detectAdapters(root, adapters, sources);
+  assert.equal(detection.find(d => d.adapter.id === 'technology/dart')?.confidence, 'strong');
+  assert.equal(detection.find(d => d.adapter.id === 'technology/flutter')?.confidence, 'unknown');
+  const resolved = resolveAdapters(detection, [{ id: 'technology/dart', version: '^0.1.0' }], '1.0.0');
+  assert.deepEqual(resolved.diagnostics, []);
+  assert.deepEqual(resolved.adapters.map(item => item.adapter.id), ['technology/dart']);
 });
 
 test('evidence globs with a recursive prefix include files at the repository root', () => {
@@ -196,13 +241,13 @@ test('combined repository resolves five adapters and all declared evidence capab
   const selected = detection.filter(d => d.confidence === 'strong' || d.adapter.id === 'infrastructure/git').map(d => ({ id: d.adapter.id, version: '^0.1.0' }));
   const result = resolveAdapters(detection, selected, '1.0.0');
   assert.deepEqual(result.diagnostics, []);
-  assert.deepEqual(result.adapters.map(d => d.adapter.id), adapters.map(a => a.id));
+  assert.deepEqual(result.adapters.map(d => d.adapter.id), adapters.filter(a => !['technology/typescript', 'technology/dart', 'technology/flutter'].includes(a.id)).map(a => a.id));
   const capabilities = capabilityEvidence(root, sources, result.adapters);
   assert.ok(capabilities.evidence.some(e => e.capability === 'application.ui-routes' && e.value === 'items'));
   assert.ok(capabilities.evidence.some(e => e.statement === 'Angular core resolved version in package lock' && e.value === '19.2.15'));
   assert.ok(!capabilities.evidence.some(e => e.statement === 'Angular core resolved version in package lock' && e.value === '7.2.16'));
   assert.ok(capabilities.evidence.some(e => e.capability === 'database.migrations' && e.value === 'items'));
-  assert.ok(Object.values(capabilities.resolutions).every(r => r.status === 'resolved'));
+  assert.ok(Object.values(capabilities.resolutions).every(r => r.status === 'resolved' || r.status === 'unavailable'));
   assert.ok(capabilities.evidence.every(e => e.adapterVersion === '0.1.0' && e.source.sha256.length === 64 && e.detectionEvidence.length > 0 && e.classification === 'observed'));
 });
 
