@@ -144,6 +144,7 @@ function freshConsumer(name: string): string {
     scripts: { test: "node --test" },
   }));
   writeFileSync(join(dir, "web/angular.json"), "{\"projects\":{}}");
+  writeFileSync(join(dir, "web/tsconfig.json"), "{\"compilerOptions\":{\"strict\":true}}");
   writeFileSync(join(dir, "web/src/app-routing.module.ts"), "const routes = [{ path: 'courses', component: CoursesPage }];\n");
   return dir;
 }
@@ -652,7 +653,7 @@ describe("status and doctor commands", () => {
         kind: "Project",
         project: { name: "undetected-adapter" },
         paved: { core: "^0.2.0" },
-        adapters: [{ id: "technology/angular", version: "^0.1.0" }],
+        adapters: [{ id: "technology/angular", version: "^0.2.0" }],
       });
       writeCurrentLock(undetected, ["technology/angular"]);
       const lock = currentLock();
