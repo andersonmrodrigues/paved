@@ -84,49 +84,49 @@ describe("enum parity between TypeScript and schema", () => {
   it("DecisionStatus union matches properties.status.enum", () => {
     const tsMembers = Object.keys(DECISION_STATUS).sort();
     const schemaEnum = ((schema.properties as Record<string, unknown>)?.status as Record<string, unknown>)?.enum as string[];
-    const schemaMembers = (schemaEnum || []).sort();
+    const schemaMembers = [...(schemaEnum ?? [])].sort();
     assert.deepEqual(tsMembers, schemaMembers, `DecisionStatus diverges from schema: TS has ${tsMembers}, schema has ${schemaMembers}`);
   });
 
   it("DecisionCategory union matches properties.category.enum", () => {
     const tsMembers = Object.keys(DECISION_CATEGORY).sort();
     const schemaEnum = ((schema.properties as Record<string, unknown>)?.category as Record<string, unknown>)?.enum as string[];
-    const schemaMembers = (schemaEnum || []).sort();
+    const schemaMembers = [...(schemaEnum ?? [])].sort();
     assert.deepEqual(tsMembers, schemaMembers, `DecisionCategory diverges from schema: TS has ${tsMembers}, schema has ${schemaMembers}`);
   });
 
   it("DecisionAuthor union matches properties.authored_by.enum", () => {
     const tsMembers = Object.keys(DECISION_AUTHOR).sort();
     const schemaEnum = ((schema.properties as Record<string, unknown>)?.authored_by as Record<string, unknown>)?.enum as string[];
-    const schemaMembers = (schemaEnum || []).sort();
+    const schemaMembers = [...(schemaEnum ?? [])].sort();
     assert.deepEqual(tsMembers, schemaMembers, `DecisionAuthor diverges from schema: TS has ${tsMembers}, schema has ${schemaMembers}`);
   });
 
   it("AnswerSource union matches properties.answer_source.enum", () => {
     const tsMembers = Object.keys(ANSWER_SOURCE).sort();
     const schemaEnum = ((schema.properties as Record<string, unknown>)?.answer_source as Record<string, unknown>)?.enum as string[];
-    const schemaMembers = (schemaEnum || []).sort();
+    const schemaMembers = [...(schemaEnum ?? [])].sort();
     assert.deepEqual(tsMembers, schemaMembers, `AnswerSource diverges from schema: TS has ${tsMembers}, schema has ${schemaMembers}`);
   });
 
   it("AnswerChannel union matches properties.answer_channel.enum", () => {
     const tsMembers = Object.keys(ANSWER_CHANNEL).sort();
     const schemaEnum = ((schema.properties as Record<string, unknown>)?.answer_channel as Record<string, unknown>)?.enum as string[];
-    const schemaMembers = (schemaEnum || []).sort();
+    const schemaMembers = [...(schemaEnum ?? [])].sort();
     assert.deepEqual(tsMembers, schemaMembers, `AnswerChannel diverges from schema: TS has ${tsMembers}, schema has ${schemaMembers}`);
   });
 
   it("DecisionRisk union matches properties.risk.enum", () => {
     const tsMembers = Object.keys(DECISION_RISK).sort();
     const schemaEnum = ((schema.properties as Record<string, unknown>)?.risk as Record<string, unknown>)?.enum as string[];
-    const schemaMembers = (schemaEnum || []).sort();
+    const schemaMembers = [...(schemaEnum ?? [])].sort();
     assert.deepEqual(tsMembers, schemaMembers, `DecisionRisk diverges from schema: TS has ${tsMembers}, schema has ${schemaMembers}`);
   });
 
   it("DecisionReversibility union matches properties.reversibility.enum", () => {
     const tsMembers = Object.keys(DECISION_REVERSIBILITY).sort();
     const schemaEnum = ((schema.properties as Record<string, unknown>)?.reversibility as Record<string, unknown>)?.enum as string[];
-    const schemaMembers = (schemaEnum || []).sort();
+    const schemaMembers = [...(schemaEnum ?? [])].sort();
     assert.deepEqual(tsMembers, schemaMembers, `DecisionReversibility diverges from schema: TS has ${tsMembers}, schema has ${schemaMembers}`);
   });
 
@@ -135,7 +135,7 @@ describe("enum parity between TypeScript and schema", () => {
     const requiredAnswer = (schema.properties as Record<string, unknown>)?.required_answer as Record<string, unknown>;
     const typeProps = (requiredAnswer?.properties as Record<string, unknown>)?.type as Record<string, unknown>;
     const schemaEnum = (typeProps?.enum as string[]) || [];
-    const schemaMembers = schemaEnum.sort();
+    const schemaMembers = [...schemaEnum].sort();
     assert.deepEqual(tsMembers, schemaMembers, `RequiredAnswerType diverges from schema: TS has ${tsMembers}, schema has ${schemaMembers}`);
   });
 
@@ -143,7 +143,7 @@ describe("enum parity between TypeScript and schema", () => {
     const tsMembers = Object.keys(EFFECT_CLASS).sort();
     const effectClass = ((schema as Record<string, unknown>).$defs as Record<string, unknown>)?.effectClass as Record<string, unknown>;
     const schemaEnum = (effectClass?.enum as string[]) || [];
-    const schemaMembers = schemaEnum.sort();
+    const schemaMembers = [...schemaEnum].sort();
     assert.deepEqual(tsMembers, schemaMembers, `EffectClass diverges from schema: TS has ${tsMembers}, schema has ${schemaMembers}`);
   });
 });

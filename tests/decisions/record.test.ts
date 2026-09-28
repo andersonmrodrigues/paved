@@ -70,6 +70,19 @@ describe("Decision schema", () => {
     assert.equal(result.valid, true, result.errors.join("; "));
   });
 
+  it("accepts each valid effect class value through schema validation", () => {
+    const effectValues = ["record-only", "config-additive", "config-mutating", "lock-transaction", "repository-mutating", "destructive"] as const;
+    for (const effect of effectValues) {
+      const result = registry().validate(minimalDecision({ effect }));
+      assert.equal(result.valid, true, `effect: ${effect} failed validation: ${result.errors.join("; ")}`);
+    }
+  });
+
+  it("rejects an invalid effect value", () => {
+    const result = registry().validate(minimalDecision({ effect: "not-an-effect" as never }));
+    assert.equal(result.valid, false);
+  });
+
   it("requires run when scope is run", () => {
     const decision = minimalDecision({ scope: "run" });
     assert.equal(registry().validate(decision).valid, false);
