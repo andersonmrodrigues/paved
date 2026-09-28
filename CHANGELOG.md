@@ -3,6 +3,12 @@
 Notable user-facing changes to Paved Core are recorded here. This file describes
 releases, not the development sequence used to build them.
 
+## [1.1.0] - Unreleased
+
+### Changed
+
+- Automatic scoped capability provider resolution for multi-stack repositories.
+
 ## [1.0.0] - Unreleased
 
 This is the planned first stable public release. It has not been published or
