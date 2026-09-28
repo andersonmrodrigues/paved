@@ -57,7 +57,7 @@ describe("effect class tiering", () => {
   it("freezes EFFECT_TIERS to prevent direct mutation of existing entries", () => {
     assert.throws(
       () => {
-        (EFFECT_TIERS as never as Record<string, { channel: string }>).destructive.channel = "relayed";
+        (EFFECT_TIERS as never as Record<string, { channel: string }>).destructive!.channel = "relayed";
       },
       TypeError
     );
