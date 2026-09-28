@@ -91,3 +91,53 @@ describe("Decision schema", () => {
     assert.equal(registry().validate(decision).valid, false);
   });
 });
+
+import { canTransition, decisionId, DecisionStateError, transition } from "../../cli/lib/decisions/record.ts";
+
+describe("decision id derivation", () => {
+  it("is stable for the same question, scope and candidate set", () => {
+    const a = decisionId("Adopt checks?", "project:verify", ["mvn-validate", "mvn-test"]);
+    const b = decisionId("Adopt checks?", "project:verify", ["mvn-test", "mvn-validate"]);
+    assert.equal(a, b, "candidate order must not change the id");
+    assert.match(a, /^d-[a-f0-9]{20}$/);
+  });
+
+  it("differs when the candidate set differs", () => {
+    const a = decisionId("Adopt checks?", "project:verify", ["mvn-validate"]);
+    const b = decisionId("Adopt checks?", "project:verify", ["mvn-validate", "mvn-test"]);
+    assert.notEqual(a, b);
+  });
+});
+
+describe("decision state machine", () => {
+  it("allows the happy path", () => {
+    assert.equal(canTransition("PENDING", "ASKED"), true);
+    assert.equal(canTransition("ASKED", "ANSWERED"), true);
+    assert.equal(canTransition("ANSWERED", "APPLIED"), true);
+  });
+
+  it("forbids skipping ASKED", () => {
+    assert.equal(canTransition("PENDING", "ANSWERED"), false);
+  });
+
+  it("forbids leaving terminal states except by supersession", () => {
+    assert.equal(canTransition("APPLIED", "ANSWERED"), false);
+    assert.equal(canTransition("APPLIED", "SUPERSEDED"), true);
+    assert.equal(canTransition("REJECTED", "SUPERSEDED"), false);
+    assert.equal(canTransition("CANCELLED", "ASKED"), false);
+  });
+
+  it("throws on an illegal transition and does not mutate the input", () => {
+    const decision = { ...minimalDecision(), status: "APPLIED" } as never;
+    assert.throws(() => transition(decision, "ASKED"), DecisionStateError);
+    assert.equal((decision as { status: string }).status, "APPLIED");
+  });
+
+  it("returns a new record carrying the patch", () => {
+    const decision = minimalDecision() as never;
+    const asked = transition(decision, "ASKED", { asked_at: "2026-09-28T00:02:00.000Z" });
+    assert.equal(asked.status, "ASKED");
+    assert.equal(asked.asked_at, "2026-09-28T00:02:00.000Z");
+    assert.equal((decision as { status: string }).status, "PENDING");
+  });
+});
