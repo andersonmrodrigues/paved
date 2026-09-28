@@ -7,6 +7,7 @@ import {
 } from "../../integrations/shared/commands.ts";
 import { inspectConsumer, type ConsumerInspection } from "./consumer-state.ts";
 import { resolveTestingTool } from "./test-runner.ts";
+import { detectCheckCandidates } from "./decisions/providers/verification.ts";
 
 export interface AgentCommandDiscovery {
   readonly lifecycleState: ConsumerInspection["lifecycleState"];
@@ -73,7 +74,7 @@ function availability(
   }
   if (command.name === "test") {
     const resolution = resolveTestingTool(projectRoot, coreRoot);
-    if (resolution.status !== "resolved") {
+    if (resolution.status === "unavailable") {
       return {
         available: false,
         reason: resolution.message,
@@ -83,15 +84,19 @@ function availability(
   }
   if (["feature", "fix", "refactor", "implement"].includes(command.name)) {
     if (inspection.verificationProfile !== "present") {
-      return { available: false, reason: "An executable workflow needs a valid verification profile.", recommendedNextAction: "Configure .paved/verification/profile.yaml with approved checks before starting implementation." };
+      if (detectCheckCandidates(projectRoot).length === 0) {
+        return { available: false, reason: "An executable workflow needs a verification profile, and no repository check was detected.", recommendedNextAction: "Add a build or test command to the repository, then run /paved:init." };
+      }
     }
     const resolution = resolveTestingTool(projectRoot, coreRoot);
-    if (resolution.status !== "resolved") {
+    if (resolution.status === "unavailable") {
       return { available: false, reason: resolution.message, recommendedNextAction: resolution.remediation };
     }
   }
   if (command.name === "verify" && inspection.verificationProfile !== "present") {
-    return { available: false, reason: "A valid project verification profile is required.", recommendedNextAction: "Configure .paved/verification/profile.yaml, then run /paved:verify." };
+    if (detectCheckCandidates(projectRoot).length === 0) {
+      return { available: false, reason: "No repository check was detected for a verification profile.", recommendedNextAction: "Add a build or test command to the repository, then run /paved:verify." };
+    }
   }
   if (command.group === "development" && !inspection.initialized) {
     return { available: false, reason: "Paved is not initialized.", recommendedNextAction: "/paved:init" };

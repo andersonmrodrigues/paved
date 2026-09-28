@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join, relative, sep } from "node:path";
 import { parse, stringify } from "yaml";
@@ -25,6 +25,7 @@ import {
   type ToolOverride,
 } from "./tools.ts";
 import { spawnApproved } from "./verification-runner.ts";
+import { listDecisions } from "./decisions/store.ts";
 
 const TEST_RUNTIME_VERSION = "paved-test-runner/0.1.0";
 const TEST_PERMISSIONS = ["repository-read", "process-read", "process-control"];
@@ -132,6 +133,13 @@ export type TestingToolResolution =
       readonly override?: ToolOverride;
     }
   | {
+      readonly status: "ambiguous";
+      readonly candidates: readonly string[];
+      readonly code: string;
+      readonly message: string;
+      readonly remediation: string;
+    }
+  | {
       readonly status: "unavailable";
       readonly code: string;
       readonly message: string;
@@ -139,6 +147,10 @@ export type TestingToolResolution =
     };
 
 export function resolveTestingTool(projectRoot: string, coreRoot: string): TestingToolResolution {
+  return resolveTestingToolCandidate(projectRoot, coreRoot);
+}
+
+function resolveTestingToolCandidate(projectRoot: string, coreRoot: string, selectedId?: string): TestingToolResolution {
   const registry = createRegistry(join(coreRoot, "schemas"), ["paved/v1"]);
   let roots: ToolRoots;
   let tools: (ToolContract & { kind: "Tool" })[];
@@ -159,12 +171,41 @@ export function resolveTestingTool(projectRoot: string, coreRoot: string): Testi
       remediation: "Fix the Tool documents and references before retrying.",
     };
   }
+  if (selectedId !== undefined) tools = tools.filter((tool) => tool.id === selectedId);
+  if (tools.length > 1) {
+    const candidates = tools.flatMap((tool) => {
+      const resolution = resolveTestingToolCandidate(projectRoot, coreRoot, tool.id);
+      return resolution.status === "resolved" ? [tool.id] : [];
+    }).sort((a, b) => a.localeCompare(b, "en"));
+    if (candidates.length === 1) return resolveTestingToolCandidate(projectRoot, coreRoot, candidates[0]);
+    if (candidates.length > 1) {
+      const candidateInputs = candidates.map((id) => `candidate:${id}`);
+      const manifestHash = sha(readFileSync(join(projectRoot, ".paved/manifest.yaml")));
+      const selected = listDecisions(projectRoot, coreRoot)
+        .filter((decision) => decision.handler === "testing.select" && decision.status === "APPLIED")
+        .filter((decision) => {
+          const recorded = decision.fingerprint.inputs.filter((item) => item.startsWith("candidate:"));
+          return JSON.stringify(recorded) === JSON.stringify(candidateInputs)
+            && decision.fingerprint.inputs.includes(`evidence:.paved/manifest.yaml@${manifestHash}`);
+        })
+        .flatMap((decision) => {
+          const option = decision.options.find((item) => item.id === decision.answer);
+          return option === undefined ? [] : [option.label];
+        }).find((id) => candidates.includes(id));
+      if (selected !== undefined) return resolveTestingToolCandidate(projectRoot, coreRoot, selected);
+      return {
+        status: "ambiguous", candidates, code: "PAVED_TEST_TOOL_AMBIGUOUS",
+        message: "More than one authorized testing-run Tool is declared.",
+        remediation: "Answer the testing Tool selection decision.",
+      };
+    }
+  }
   if (tools.length !== 1) {
     return {
       status: "unavailable",
-      code: "PAVED_TEST_TOOL_AMBIGUOUS",
-      message: tools.length === 0 ? "No available testing-run Tool is declared." : "More than one testing-run Tool is declared.",
-      remediation: "Declare exactly one project testing Tool or select one technology adapter explicitly.",
+      code: "PAVED_TEST_TOOL_UNAVAILABLE",
+      message: "No authorized testing-run Tool is declared.",
+      remediation: "Declare an available project testing Tool or select a technology adapter that provides one.",
     };
   }
   const tool = tools[0]!;
