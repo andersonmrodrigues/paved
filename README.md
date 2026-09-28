@@ -177,8 +177,14 @@ See [tests/README.md](tests/README.md) for what the tests prove.
 
 The stable, agent-neutral integration boundary is documented in
 [Agent Integration Contract](docs/concepts/agent-integration.md). It projects
-existing CLI, consumer-layout, lifecycle, schema and diagnostic contracts; it
-does not implement an agent-specific integration.
+existing CLI, consumer-layout, lifecycle, schema and diagnostic contracts;
+thin agent-specific projections are documented separately in
+[Agent integrations](docs/concepts/agent-integrations.md).
+
+Project-local Codex and Claude Code projections are documented in
+[Agent integrations](docs/concepts/agent-integrations.md). They are thin,
+reversible adapters over the canonical Core skills and the existing JSON CLI
+contract.
 
 ## 10. Roadmap
 

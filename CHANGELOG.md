@@ -14,6 +14,11 @@ Contains breaking schema changes, allowed within `0.x` (see versioning).
 
 ### Added
 
+- Phase 16 project-local Codex and Claude Code agent projections, a versioned
+  integration package schema, deterministic ownership-safe lifecycle commands,
+  and cross-agent projection tests. Marketplace distribution and global
+  installation remain intentionally unsupported.
+
 - Phase 15 agent-neutral integration contract `paved/agent/v1`, black-box
   synthetic-agent coverage over the public CLI, and final validation/readiness
   documentation. Agent-specific integrations and remote distribution remain
