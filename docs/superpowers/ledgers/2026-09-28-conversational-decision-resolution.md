@@ -674,3 +674,18 @@ ambiguous again, requiring a new decision after the provider is wired into comma
 Task 16: capability/scoped tests 21/21 and typecheck passed. Full `npm run check` before
 the final manifest-selection fix = 736 tests, 731 pass, the same 5 baseline failures.
 Tasks 17–29 remain.
+
+Task 17: Ruling: the plan requested `status` and inline `provenance` on an adopted
+Rule, but Rule schema forbids both and ADR 0013 explicitly says adopted rules must
+not carry provenance. The Rule cites its source in `references` and rationale; the
+Decision record keeps hashed evidence. Rule existence represents adoption. Cost if
+wrong: consumers expecting a Rule status field will not find one.
+
+Task 17: Ruling: one bundled question adopts all detected conventions, because the
+handler receives only the answer and context, not the individual candidate id. Separate
+questions sharing one handler could silently apply the wrong rule. Existing rules are
+excluded from new questions and retries produce identical content. Cost if wrong: a
+project cannot accept one of multiple conventions independently in the same answer.
+
+Task 17: provider tests 22/22 and typecheck passed. Full `npm run check` = 742 tests,
+737 pass, the same 5 baseline failures. Tasks 18–29 remain.
