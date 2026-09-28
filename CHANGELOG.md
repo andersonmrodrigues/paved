@@ -44,6 +44,17 @@ tagged yet.
   adopted the same way.
 - Pre-extraction archive inspection (links, traversal, special bits, unexpected
   executables), stale bootstrap-lock recovery and structured I/O failures.
+- Scoped capability provider resolution: in multi-stack repositories, `init`
+  resolves each capability per directory from repository evidence instead of
+  reporting ambiguity. `capability_providers` also accepts a list of
+  `{ path, provider }`. Provider decisions and their provenance are recorded in
+  `paved.lock`, and reported by `status` and `agent commands --json`.
+
+### Changed
+
+- `technology/angular` 0.2.0 requires `technology/typescript`, so Angular
+  evidence takes precedence over generic TypeScript evidence in the same
+  workspace.
 
 ### Fixed
 

@@ -18,6 +18,7 @@ export function statusData(inspection: ConsumerInspection): Record<string, unkno
     selectedAdapters: inspection.selectedAdapters,
     detectedAdapters: inspection.detectedAdapters,
     resolvedAdapters: inspection.resolvedAdapters,
+    capabilityProviders: inspection.capabilityProviders,
     lockHealth: inspection.lockHealth,
     verificationProfile: inspection.verificationProfile,
     generatorState: inspection.lastRun ?? { present: false, proposals: [], conflicts: [] },

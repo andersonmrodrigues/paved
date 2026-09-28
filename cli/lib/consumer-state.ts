@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { stringify } from "yaml";
 import { createDiagnostic, type Diagnostic } from "../result.ts";
-import { capabilityEvidence, detectAdapters, loadAdapters, resolveAdapters, type AdapterEvidence, type Detection } from "./adapters.ts";
+import { capabilityEvidence, capabilityLockEntries, capabilityProviders as providerReport, resolveCapabilities, detectAdapters, loadAdapters, resolveAdapters, type AdapterEvidence, type CapabilityProviderEntry, type Detection, type ProviderSelection } from "./adapters.ts";
 import { loadYaml, loadMarkdown } from "./documents.ts";
 import { discoverSources, relevantEvidenceFor, sourcesFor } from "./generator-runtime.ts";
 import { hashLocalCore, hashLocalTree } from "./local-core.ts";
@@ -41,6 +41,7 @@ export interface UpdateLockDocument {
   readonly runtime?: RuntimeLock;
   readonly adapters?: readonly UpdateLockEntry[];
   readonly generators?: readonly UpdateLockEntry[];
+  readonly capabilities?: readonly CapabilityProviderEntry[];
 }
 
 export interface ConsumerUpdatePlan {
@@ -74,6 +75,7 @@ export interface ConsumerInspection {
   readonly selectedAdapters: readonly string[];
   readonly detectedAdapters: readonly { id: string; confidence: string; evidence: readonly string[] }[];
   readonly resolvedAdapters: readonly string[];
+  readonly capabilityProviders: readonly CapabilityProviderEntry[];
   readonly verificationProfile: "present" | "missing" | "invalid";
   readonly lastRun?: {
     readonly present: boolean;
@@ -108,7 +110,8 @@ function lifecycleState(input: {
     item.code === "PAVED_GENERATOR_INPUTS_STALE" || item.code === "PAVED_GENERATOR_SOURCE_SET_STALE" ||
     item.code === "PAVED_GENERATED_OUTPUT_MISSING" ||
     item.code === "PAVED_LOCK_CORE_DIGEST_MISMATCH" || item.code === "PAVED_LOCK_ADAPTER_DIGEST_MISMATCH" ||
-    item.code === "PAVED_LOCK_GENERATOR_DIGEST_MISMATCH" || item.code === "PAVED_LOCK_GENERATOR_VERSION_MISMATCH")) return "STALE";
+    item.code === "PAVED_LOCK_GENERATOR_DIGEST_MISMATCH" || item.code === "PAVED_LOCK_GENERATOR_VERSION_MISMATCH" ||
+    item.code === "PAVED_LOCK_CAPABILITIES_STALE")) return "STALE";
   if (input.lockHealth !== "healthy") return "INITIALIZED";
   if (!input.generated) return "RESOLVED";
   if (input.profile !== "present") return "GENERATED";
@@ -125,7 +128,7 @@ interface ProjectManifest {
   readonly project?: { readonly name?: string };
   readonly paved?: { readonly core?: string };
   readonly adapters?: readonly { readonly id: string; readonly version: string }[];
-  readonly capability_providers?: Record<string, string>;
+  readonly capability_providers?: Record<string, ProviderSelection>;
 }
 
 interface ResolvedLockEntry {
@@ -141,6 +144,7 @@ interface LockDocument {
   readonly runtime?: RuntimeLock;
   readonly adapters?: readonly ResolvedLockEntry[];
   readonly generators?: readonly ResolvedLockEntry[];
+  readonly capabilities?: readonly CapabilityProviderEntry[];
 }
 
 interface GeneratorContract {
@@ -936,7 +940,7 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
   }
 
   const generatorPlan = updateLockGenerators(lockResult.lock, input.coreRoot, generators);
-  const nextLock: UpdateLockDocument = {
+  let nextLock: UpdateLockDocument = {
     apiVersion: "paved/v1",
     kind: "Lock",
     resolved_at: new Date().toISOString(),
@@ -954,6 +958,8 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
     })),
     ...(generatorPlan.entries === undefined ? {} : { generators: generatorPlan.entries }),
   };
+  const capabilityDecisions = capabilityLockEntries(resolveCapabilities(resolvedAdapters, manifest.capability_providers));
+  if (capabilityDecisions.length) nextLock = { ...nextLock, capabilities: capabilityDecisions };
 
   const validation = registry.validate(nextLock);
   if (!validation.valid) {
@@ -969,7 +975,8 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
   const adaptersChanged = entriesChanged(lockResult.lock.adapters, nextLock.adapters);
   const generatorsChanged = entriesChanged(lockResult.lock.generators, nextLock.generators);
   const runtimeChanged = JSON.stringify(lockResult.lock.runtime) !== JSON.stringify(nextLock.runtime);
-  const lockChanged = coreChanged || adaptersChanged || generatorsChanged || runtimeChanged;
+  const capabilitiesChanged = JSON.stringify(lockResult.lock.capabilities ?? []) !== JSON.stringify(nextLock.capabilities ?? []);
+  const lockChanged = coreChanged || adaptersChanged || generatorsChanged || runtimeChanged || capabilitiesChanged;
   const staleIds = staleGeneratorIds(input.projectRoot, input.coreRoot, resolvedAdapters, manifest);
   const priorAdapters = new Map((lockResult.lock.adapters ?? []).filter((entry) => entry.id).map((entry) => [entry.id as string, entry]));
   const nextAdapters = new Map((nextLock.adapters ?? []).filter((entry) => entry.id).map((entry) => [entry.id as string, entry]));
@@ -1024,6 +1031,7 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
       selectedAdapters: [],
       detectedAdapters: [],
       resolvedAdapters: [],
+      capabilityProviders: [],
       verificationProfile: "missing",
       proposals: [],
       conflicts: [],
@@ -1041,6 +1049,7 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
       selectedAdapters: [],
       detectedAdapters: [],
       resolvedAdapters: [],
+      capabilityProviders: [],
       verificationProfile: "missing",
       proposals: [],
       conflicts: [],
@@ -1085,6 +1094,7 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
   let detectedAdapters: Detection[] = [];
   let resolvedAdapters: Detection[] = [];
   let adapterEvidence: AdapterEvidence[] = [];
+  let capabilityProviders: CapabilityProviderEntry[] = [];
   if (manifest && core) {
     try {
       const sources = discoverSources(input.projectRoot);
@@ -1104,6 +1114,17 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
       }
       const capabilities = capabilityEvidence(input.projectRoot, sources, resolvedAdapters, manifest.capability_providers);
       adapterEvidence = capabilities.evidence;
+      capabilityProviders = providerReport(capabilities.resolutions);
+      // A lock without a capabilities section recorded no decisions, which is exact for single-provider repositories.
+      if (lockResult.lock && JSON.stringify(lockResult.lock.capabilities ?? []) !== JSON.stringify(capabilityLockEntries(capabilities.resolutions))) {
+        diagnostics.push(diagnostic({
+          code: "PAVED_LOCK_CAPABILITIES_STALE",
+          component: "consumer.lock",
+          category: "findings",
+          message: "Capability provider decisions recorded in paved.lock differ from the current manifest and repository evidence.",
+          remediation: "Review the repository structure change, then run paved update to record the current decisions.",
+        }));
+      }
       for (const item of Object.values(capabilities.resolutions).flatMap((resolution) => resolution.diagnostics)) {
         if (item.code === "missing-provider") continue;
         const mapped = mapAdapterDiagnostic(item.code);
@@ -1112,7 +1133,7 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
           component: "consumer.capabilities",
           category: mapped.category,
           message: item.message,
-          remediation: "Set manifest capability_providers for ambiguous capabilities or adjust selected adapters.",
+          remediation: "Select a provider for the ambiguous scope in manifest capability_providers (a string for the whole repository or a list of { path, provider }), or adjust selected adapters.",
         }));
       }
     } catch (error) {
@@ -1161,6 +1182,7 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
       evidence: detection.evidence,
     })),
     resolvedAdapters: resolvedAdapters.map((detection) => detection.adapter.id).sort(),
+    capabilityProviders,
     verificationProfile: profile,
     ...(lastRun === undefined ? {} : { lastRun }),
     proposals: lastRun?.proposals ?? [],

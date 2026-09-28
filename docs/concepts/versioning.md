@@ -30,7 +30,8 @@ range (`paved.core`) and adapter ranges; `.paved/paved.lock` records exactly wha
 resolved. The optional `generators` list identifies available contracts and their
 digests; it does not mean each generator ran. The current local lock records the local
 Core and each selected adapter by version and digest. Manifest
-`capability_providers` resolves provider ambiguity without changing adapter versions;
+`capability_providers` resolves provider ambiguity without changing adapter versions, and
+the lock's `capabilities` section records the resulting provider decisions;
 remote distribution resolution is not implemented. `resolved_at` is metadata and does
 not affect resolution, compatibility or staleness.
 

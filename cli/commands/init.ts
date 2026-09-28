@@ -182,7 +182,8 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
 
   const projectName = projectNameFor(invocation.paths.projectRoot);
   const plan = planConsumerInitialization(invocation.paths.coreRoot, invocation.paths.projectRoot, projectName);
-  const planningDiagnostics = adapterDiagnostics(plan.adapterDiagnostics);
+  // Generation reports capability resolution itself; without it, the plan is the only report.
+  const planningDiagnostics = adapterDiagnostics(invocation.flags.noGenerate ? [...plan.adapterDiagnostics, ...plan.capabilityDiagnostics] : plan.adapterDiagnostics);
   if (invocation.flags.dryRun) {
     const generation = invocation.flags.noGenerate ? undefined : planDryRunGeneration(invocation, projectName);
     const diagnostics = generation === undefined ? planningDiagnostics : [...planningDiagnostics, ...diagnosticsForRun(generation, true)];
@@ -196,6 +197,7 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
         projectName,
         selectedAdapters: plan.selectedAdapters,
         resolvedAdapters: plan.resolvedAdapters,
+        capabilityProviders: plan.capabilityProviders,
         plannedWrites: [...plan.plannedWrites, ...generatedPaths, ...(generation === undefined ? [] : [".paved/generated/state/last-run.json"])],
         generate: !invocation.flags.noGenerate,
         ...(generation === undefined ? {} : { generation: generateData(generation, true) }),
@@ -216,6 +218,7 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
         projectName,
         selectedAdapters: plan.selectedAdapters,
         resolvedAdapters: plan.resolvedAdapters,
+        capabilityProviders: plan.capabilityProviders,
         generated: false,
         lifecycleState,
       },
@@ -235,6 +238,7 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
       projectName,
       selectedAdapters: plan.selectedAdapters,
       resolvedAdapters: plan.resolvedAdapters,
+      capabilityProviders: plan.capabilityProviders,
       generated: true,
       lifecycleState,
       generation: generateData(generation, false),

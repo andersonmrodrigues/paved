@@ -56,6 +56,7 @@ export function agentHandler(invocation: CommandInvocation): CommandResult {
         sourceOfTruth: ".paved/",
         lifecycleState: discovery.lifecycleState,
         ...(selected === undefined ? {} : { integration: selected }),
+        capabilityProviders: discovery.capabilityProviders,
         commands: discovery.commands,
       },
     });

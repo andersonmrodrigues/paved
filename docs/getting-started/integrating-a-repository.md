@@ -35,11 +35,16 @@ package integrity and installed content digest in `.paved/paved.lock`.
 `paved init` creates `.paved/manifest.yaml` from detected local adapters. Review its
 human-owned project name, Core range and adapter selections. For manual setup, use
 [`core/templates/manifest.yaml`](../../core/templates/manifest.yaml).
-If initialization reports `PAVED_ADAPTER_AMBIGUOUS_PROVIDER`, explicitly set
-`capability_providers` in the manifest using the capability and candidate adapter ids
-from the diagnostic. Choose based on the evidence the project wants to use; Paved does
-not guess. `status` and `doctor` continue to report unresolved provider ambiguity until
-the manifest is corrected.
+Multi-stack repositories need no provider configuration when each stack lives in its
+own directories: Paved resolves capability providers per scope from repository evidence
+and records the decisions in `paved.lock` (see
+[scoped resolution](../concepts/adapters.md)). If initialization still reports
+`PAVED_ADAPTER_AMBIGUOUS_PROVIDER`, two unrelated adapters claim the same directory.
+Set `capability_providers` in the manifest for the capability named in the diagnostic,
+either one adapter id for the whole repository or a list of `{ path, provider }` for the
+scope named in the diagnostic. Choose based on the evidence the project wants to use;
+Paved does not guess. `status` and `doctor` continue to report unresolved provider
+ambiguity until the manifest is corrected.
 
 ## 3. Declare verification
 

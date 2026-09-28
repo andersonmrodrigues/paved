@@ -6,7 +6,7 @@ import { parse, stringify } from 'yaml';
 import { createRegistry } from './schemas.ts';
 import { loadMarkdown } from './documents.ts';
 import { assessProvenance } from './provenance.ts';
-import { loadAdapters, detectAdapters, resolveAdapters, capabilityEvidence, type AdapterEvidence, type Detection, type Diagnostic } from './adapters.ts';
+import { loadAdapters, detectAdapters, resolveAdapters, capabilityEvidence, capabilityLockEntries, capabilityProviders, resolveCapabilities, type AdapterEvidence, type CapabilityProviderEntry, type Detection, type Diagnostic, type ProviderSelection } from './adapters.ts';
 import { hashLocalCore, hashLocalTree } from './local-core.ts';
 import { atomicWriteFileSync } from './atomic-write.ts';
 import { acquireConsumerOperationLock } from './operation-lock.ts';
@@ -15,11 +15,12 @@ import { readRuntimeSelection } from './runtime-lock.ts';
 
 export interface Source { path: string; kind: string; sha256: string; adapter?: string; adapterVersion?: string; capability?: string; detectionConfidence?: Detection['confidence']; detectionEvidence?: string[]; classification?: 'observed'; adapterEvidence?: { adapter: string; adapter_version: string; capability: string; detection_confidence: Detection['confidence']; classification: 'observed' }[] }
 export interface Execution { generator: string; version: string; contractSha256?: string; engineSha256?: string; manifestSha256?: string; status: 'written' | 'unchanged' | 'conflict' | 'proposed' | 'failed'; sources: Source[]; outputs: string[]; outputHashes: Record<string, string>; proposals: string[]; unknowns: string[]; warnings: string[]; errors: string[] }
-export interface RunResult { executionId: string; timestamp: string; coreVersion: string; consumer: string; sourceRevision?: string; unmatchedTechnologies: string[]; unmodeledTechnologies: string[]; adapterWarnings: string[]; adapterDiagnostics: Diagnostic[]; detectedAdapters: { id: string; confidence: string; evidence: string[] }[]; selectedAdapters: string[]; capabilityResolutions: Record<string, string>; adapterEvidence: AdapterEvidence[]; executions: Execution[]; errors: string[] }
+export interface RunResult { executionId: string; timestamp: string; coreVersion: string; consumer: string; sourceRevision?: string; unmatchedTechnologies: string[]; unmodeledTechnologies: string[]; adapterWarnings: string[]; adapterDiagnostics: Diagnostic[]; detectedAdapters: { id: string; confidence: string; evidence: string[] }[]; selectedAdapters: string[]; capabilityResolutions: Record<string, string>; capabilityProviders: CapabilityProviderEntry[]; adapterEvidence: AdapterEvidence[]; executions: Execution[]; errors: string[] }
 export interface LockEntry { id?: string; version: string; source: string; sha256: string }
 export interface GenerationLock { core: LockEntry; adapters?: readonly LockEntry[]; generators?: readonly LockEntry[] }
 export interface RunGeneratorOptions { dryRun?: boolean; generators?: string[]; lock?: GenerationLock }
-export interface ConsumerInitializationPlan { manifest: Record<string, unknown>; lock: Record<string, unknown>; selectedAdapters: string[]; resolvedAdapters: string[]; adapterDiagnostics: Diagnostic[]; plannedWrites: string[] }
+export interface ConsumerInitializationPlan { manifest: Record<string, unknown>; lock: Record<string, unknown>; selectedAdapters: string[]; resolvedAdapters: string[]; capabilityProviders: CapabilityProviderEntry[]; adapterDiagnostics: Diagnostic[]; capabilityDiagnostics: Diagnostic[]; plannedWrites: string[] }
+type ProjectManifestSelections = { adapters?: { id: string; version: string }[]; capability_providers?: Record<string, ProviderSelection> };
 type Registry = ReturnType<typeof createRegistry>;
 interface Contract { apiVersion: string; kind: 'Generator'; id: string; version: string; status: string; summary: string; depends_on?: string[]; inputs: unknown[]; outputs: { path: string; format: string; metadata: string; schema?: string }[]; change_detection: unknown }
 interface Output { path: string; content: string; schema: string }
@@ -68,12 +69,15 @@ export function planConsumerInitialization(core: string, consumer: string, name:
   const manifest = { apiVersion: 'paved/v1', kind: 'Project', project: { name }, paved: { core: `^${version}` }, adapters: adapters.map(a => ({ id: a.id, version: `^${a.version}` })) };
   validate(registry, manifest);
   const selected = resolveAdapters(detected, manifest.adapters, version);
+  const resolutions = resolveCapabilities(selected.adapters);
+  const capabilities = capabilityLockEntries(resolutions);
   const generators = loadContracts(core, registry).map(c => ({ id: c.id, version: c.version, source: 'local-core', sha256: hashLocalTree(core, [`generators/${c.id}`]) }));
   const runtime = readRuntimeSelection(consumer);
   if (runtime && runtime.version !== version) throw new Error(`Runtime ${runtime.version} is incompatible with Core ${version}.`);
-  const lock = { apiVersion: 'paved/v1', kind: 'Lock', resolved_at: new Date().toISOString(), core: { version, source: 'local-core', sha256: hashLocalCore(core) }, adapters: selected.adapters.map(d => ({ id: d.adapter.id, version: d.adapter.version, source: 'local-core', sha256: hashLocalTree(core, [`adapters/${d.adapter.id}`]) })), generators, ...(runtime ? { runtime } : {}) };
+  const lock = { apiVersion: 'paved/v1', kind: 'Lock', resolved_at: new Date().toISOString(), core: { version, source: 'local-core', sha256: hashLocalCore(core) }, adapters: selected.adapters.map(d => ({ id: d.adapter.id, version: d.adapter.version, source: 'local-core', sha256: hashLocalTree(core, [`adapters/${d.adapter.id}`]) })), generators, ...(capabilities.length ? { capabilities } : {}), ...(runtime ? { runtime } : {}) };
   validate(registry, lock);
-  return { manifest, lock, selectedAdapters: manifest.adapters.map(a => a.id).sort(), resolvedAdapters: selected.adapters.map(d => d.adapter.id).sort(), adapterDiagnostics: selected.diagnostics, plannedWrites: ['.paved/manifest.yaml', '.paved/paved.lock', '.paved/.gitignore'] };
+  const capabilityDiagnostics = Object.values(resolutions).flatMap(r => r.diagnostics).filter(d => d.code !== 'missing-provider');
+  return { manifest, lock, selectedAdapters: manifest.adapters.map(a => a.id).sort(), resolvedAdapters: selected.adapters.map(d => d.adapter.id).sort(), capabilityProviders: capabilityProviders(resolutions), adapterDiagnostics: selected.diagnostics, capabilityDiagnostics, plannedWrites: ['.paved/manifest.yaml', '.paved/paved.lock', '.paved/.gitignore'] };
 }
 export function initializeConsumer(core: string, consumer: string, name: string) {
   const registry = createRegistry(join(core, 'schemas'), ['paved/v1']); const version = coreManifest(core).version;
@@ -84,14 +88,15 @@ export function initializeConsumer(core: string, consumer: string, name: string)
   const dir = join(consumer, '.paved'); mkdirSync(dir, { recursive: true });
   const manifest = { apiVersion: 'paved/v1', kind: 'Project', project: { name }, paved: { core: `^${version}` }, adapters: adapters.map(a => ({ id: a.id, version: `^${a.version}` })) };
   const path = join(dir, 'manifest.yaml'); if (existsSync(path)) validate(registry, parse(readFileSync(path, 'utf8'))); else { validate(registry, manifest); atomicWriteFileSync(path, stringify(manifest)); }
-  const effectiveManifest = parse(readFileSync(path, 'utf8')) as { adapters?: { id: string; version: string }[] };
+  const effectiveManifest = parse(readFileSync(path, 'utf8')) as ProjectManifestSelections;
   const selected = resolveAdapters(detected, effectiveManifest.adapters ?? [], version);
+  const capabilities = capabilityLockEntries(resolveCapabilities(selected.adapters, effectiveManifest.capability_providers));
   const generators = loadContracts(core, registry).map(c => ({ id: c.id, version: c.version, source: 'local-core', sha256: hashLocalTree(core, [`generators/${c.id}`]) }));
-  const lock = { apiVersion: 'paved/v1', kind: 'Lock', resolved_at: new Date().toISOString(), core: { version, source: 'local-core', sha256: hashLocalCore(core) }, adapters: selected.adapters.map(d => ({ id: d.adapter.id, version: d.adapter.version, source: 'local-core', sha256: hashLocalTree(core, [`adapters/${d.adapter.id}`]) })), generators, ...(runtime ? { runtime } : {}) };
+  const lock = { apiVersion: 'paved/v1', kind: 'Lock', resolved_at: new Date().toISOString(), core: { version, source: 'local-core', sha256: hashLocalCore(core) }, adapters: selected.adapters.map(d => ({ id: d.adapter.id, version: d.adapter.version, source: 'local-core', sha256: hashLocalTree(core, [`adapters/${d.adapter.id}`]) })), generators, ...(capabilities.length ? { capabilities } : {}), ...(runtime ? { runtime } : {}) };
   const lockPath = join(dir, 'paved.lock');
   if (existsSync(lockPath)) {
     const previous = parse(readFileSync(lockPath, 'utf8')) as typeof lock; validate(registry, previous);
-    const same = JSON.stringify({ core: previous.core, adapters: previous.adapters, generators: previous.generators, runtime: previous.runtime }) === JSON.stringify({ core: lock.core, adapters: lock.adapters, generators: lock.generators, runtime: lock.runtime });
+    const same = JSON.stringify({ core: previous.core, adapters: previous.adapters, generators: previous.generators, capabilities: previous.capabilities, runtime: previous.runtime }) === JSON.stringify({ core: lock.core, adapters: lock.adapters, generators: lock.generators, capabilities: lock.capabilities, runtime: lock.runtime });
     if (!same) { if (previous.core.source !== 'local-core') throw new Error('Existing lock uses a different distribution source'); validate(registry, lock); atomicWriteFileSync(lockPath, stringify(lock)); }
   } else { validate(registry, lock); atomicWriteFileSync(lockPath, stringify(lock)); }
   const ignore = join(dir, '.gitignore'); if (!existsSync(ignore)) atomicWriteFileSync(ignore, '/generated/\n');
@@ -326,16 +331,16 @@ function generationLockErrors(core: string, consumer: string, registry: Registry
 }
 function runGeneratorsUnlocked(core: string, consumer: string, options: RunGeneratorOptions = {}): RunResult {
   const registry = createRegistry(join(core, 'schemas'), ['paved/v1']); const info = coreManifest(core);
-  const manifest = parse(readFileSync(join(consumer, '.paved/manifest.yaml'), 'utf8')) as { adapters?: { id: string; version: string }[] }; validate(registry, manifest);
+  const manifest = parse(readFileSync(join(consumer, '.paved/manifest.yaml'), 'utf8')) as ProjectManifestSelections; validate(registry, manifest);
   const allSources = discoverSources(consumer); const timestamp = new Date().toISOString(); const sourceRevision = revision(consumer);
   const detected = detectAdapters(consumer, loadAdapters(core), allSources);
   const resolved = resolveAdapters(detected, manifest.adapters ?? [], info.version);
-  const capabilities = capabilityEvidence(consumer, allSources, resolved.adapters, (manifest as { capability_providers?: Record<string,string> }).capability_providers);
+  const capabilities = capabilityEvidence(consumer, allSources, resolved.adapters, manifest.capability_providers);
   const adapterDiagnostics = [...resolved.diagnostics, ...Object.values(capabilities.resolutions).flatMap(r => r.diagnostics).filter(d => d.code !== 'missing-provider')];
   const adapterWarnings = adapterDiagnostics.map(d => d.message);
   const selectedIds = new Set(resolved.adapters.map(d => d.adapter.id));
   const unmatched = unmatchedTechnologies(allSources);
-  const result: RunResult = { executionId: sha(`${sourceRevision ?? ''}:${timestamp}`).slice(0, 20), timestamp, coreVersion: info.version, consumer: String((manifest as { project?: { name?: string } }).project?.name ?? ''), ...(sourceRevision ? { sourceRevision } : {}), unmatchedTechnologies: unmatched, unmodeledTechnologies: unmatched, adapterWarnings, adapterDiagnostics, detectedAdapters: detected.filter(d => d.confidence !== 'unknown').map(d => ({ id: d.adapter.id, confidence: d.confidence, evidence: d.evidence })), selectedAdapters: [...selectedIds].sort(), capabilityResolutions: Object.fromEntries(Object.entries(capabilities.resolutions).map(([id, r]) => [id, r.status])), adapterEvidence: capabilities.evidence, executions: [], errors: [] };
+  const result: RunResult = { executionId: sha(`${sourceRevision ?? ''}:${timestamp}`).slice(0, 20), timestamp, coreVersion: info.version, consumer: String((manifest as { project?: { name?: string } }).project?.name ?? ''), ...(sourceRevision ? { sourceRevision } : {}), unmatchedTechnologies: unmatched, unmodeledTechnologies: unmatched, adapterWarnings, adapterDiagnostics, detectedAdapters: detected.filter(d => d.confidence !== 'unknown').map(d => ({ id: d.adapter.id, confidence: d.confidence, evidence: d.evidence })), selectedAdapters: [...selectedIds].sort(), capabilityResolutions: Object.fromEntries(Object.entries(capabilities.resolutions).map(([id, r]) => [id, r.status])), capabilityProviders: capabilityProviders(capabilities.resolutions), adapterEvidence: capabilities.evidence, executions: [], errors: [] };
   let contracts: Contract[];
   try {
     const orderedContracts = ordered(loadContracts(core, registry));

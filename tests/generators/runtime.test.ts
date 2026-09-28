@@ -16,6 +16,7 @@ function fixture() {
   writeFileSync(join(dir, 'README.md'), '# Example\n');
   writeFileSync(join(dir, 'web', 'package.json'), JSON.stringify({ name: 'example', dependencies: { '@angular/core': '^19.2.15' }, scripts: { test: 'node --test' } }));
   writeFileSync(join(dir, 'web', 'angular.json'), '{"projects":{}}');
+  writeFileSync(join(dir, 'web', 'tsconfig.json'), '{"compilerOptions":{"strict":true}}');
   writeFileSync(join(dir, 'web', 'src', 'app-routing.module.ts'), "const routes = [{ path: 'courses', component: CoursesPage }];\n");
   return dir;
 }
@@ -269,6 +270,7 @@ test('missing source stops dependent generators and records the failure', () => 
 test('unmatched technology is recorded without fabricating an adapter', () => {
   const dir = fixture();
   writeFileSync(join(dir, 'web/angular.json'), '{}');
+  writeFileSync(join(dir, 'web/tsconfig.json'), '{"compilerOptions":{"strict":true}}');
   initializeConsumer(core, dir, 'example');
   const result = runGenerators(core, dir);
   assert.ok(result.selectedAdapters.includes('technology/angular'));
