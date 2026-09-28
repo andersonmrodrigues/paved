@@ -3,6 +3,9 @@ import type { CommandInvocation } from "../runtime.ts";
 import { inspectConsumer } from "../lib/consumer-state.ts";
 import { runTestingTool } from "../lib/test-runner.ts";
 import { acquireConsumerOperationLock, ConsumerOperationLockedError } from "../lib/operation-lock.ts";
+import { runDecisionGate } from "../lib/decisions/gate.ts";
+import { testingProvider } from "../lib/decisions/providers/testing.ts";
+import { testingHandler } from "../lib/decisions/handlers/testing.ts";
 
 function statusFor(diagnostics: readonly Diagnostic[], failed: boolean): "success" | "warning" | "failed" {
   if (failed || diagnostics.some((item) => item.severity === "error")) return "failed";
@@ -52,6 +55,27 @@ export async function testHandler(invocation: CommandInvocation): Promise<Comman
   }
 
   try {
+    const outcome = runDecisionGate({
+      context: {
+        projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot,
+        command: "test", answers: invocation.flags.answers,
+        ...(invocation.flags.answeredBy === undefined ? {} : { answeredBy: invocation.flags.answeredBy }),
+      },
+      providers: [testingProvider], handlers: new Map([["testing.select", testingHandler]]),
+      persist: true,
+    });
+    if (outcome.problems.length > 0) {
+      return createResult({
+        command: "test", status: "failed", decisions: outcome.projections,
+        diagnostics: outcome.problems.map((message) => createDiagnostic({
+          severity: "error", category: "usage", code: "PAVED_DECISION_ANSWER_INVALID",
+          component: "cli.commands.test", message,
+        })),
+      });
+    }
+    if (outcome.status === "awaiting-input") {
+      return createResult({ command: "test", status: "awaiting_input", decisions: outcome.projections });
+    }
     const release = acquireConsumerOperationLock(invocation.paths.projectRoot, "test");
     try {
       const result = await runTestingTool({

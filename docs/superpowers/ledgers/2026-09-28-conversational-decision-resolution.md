@@ -710,3 +710,15 @@ reads stored decisions and command availability; a test confirms it leaves decis
 files unchanged. Cost if wrong: the extra `command` property enlarges status output.
 Full `npm run check` = 746 tests, 741 pass, the same 5 baseline failures. Tasks 20–29
 remain.
+
+Task 20: Ruling: writing a ToolImplementation for an already declared Tool would not
+select among multiple Tool contracts. The answer is a record-only decision consulted
+by the testing Tool resolver. The resolver offers only candidates with valid,
+authorized implementations, selects a sole authorized candidate automatically, and
+re-asks if the candidate set or manifest evidence changes. Cost if wrong: this diverges
+from the plan's proposed additive binding and stores no new project configuration file.
+
+Task 20: targeted Tool and agent tests 28/28 and typecheck passed. One full suite run
+had a transient npm ETIMEDOUT in a plugin bootstrap test; that test passed in isolation
+and the next full `npm run check` returned the five baseline failures: 748 tests, 743
+pass. Tasks 21–29 remain.
