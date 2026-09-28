@@ -7,11 +7,13 @@ import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { runDecisionGate } from "../../cli/lib/decisions/gate.ts";
 import { verificationHandler } from "../../cli/lib/decisions/handlers/verification.ts";
+import { rulesHandler } from "../../cli/lib/decisions/handlers/rules.ts";
 import { createRegistry } from "../../cli/lib/schemas.ts";
 import { listDecisions, writeDecision } from "../../cli/lib/decisions/store.ts";
 import { transition } from "../../cli/lib/decisions/record.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
 import { detectCheckCandidates, verificationProvider } from "../../cli/lib/decisions/providers/verification.ts";
+import { rulesProvider } from "../../cli/lib/decisions/providers/rules.ts";
 
 const coreRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const workspaces: string[] = [];
@@ -29,6 +31,60 @@ function workspace(files: Record<string, string>): string {
 
 const context = (projectRoot: string) => ({
   projectRoot, coreRoot, command: "verify", answers: [] as readonly string[],
+});
+
+describe("rule convention provider", () => {
+  it("offers detected conventions as observed evidence", () => {
+    const project = workspace({ "checkstyle.xml": '<module name="Checker"></module>' });
+    const [candidate] = rulesProvider({ ...context(project), command: "init" });
+    assert.ok(candidate);
+    assert.equal(candidate.required, true);
+    assert.equal(candidate.effect, "config-additive");
+    assert.ok(candidate.evidence.some((item) => item.location === "checkstyle.xml"));
+    assert.match(candidate.reason, /observed/i);
+    assert.doesNotMatch(candidate.reason, /required by|must/i);
+  });
+
+  it("does not re-offer a convention whose project rule exists", () => {
+    const project = workspace({
+      "checkstyle.xml": '<module name="Checker"></module>',
+      ".paved/rules/quality/checkstyle.yaml": "apiVersion: paved/v1\nkind: Rule\n",
+    });
+    assert.deepEqual(rulesProvider({ ...context(project), command: "init" }), []);
+  });
+
+  it("writes a schema-valid rule on adoption and preserves it on retry", () => {
+    const project = workspace({ "checkstyle.xml": '<module name="Checker"></module>' });
+    const ctx = { ...context(project), command: "init" };
+    assert.deepEqual(rulesHandler.apply("adopt", ctx), [".paved/rules/quality/checkstyle.yaml"]);
+    const path = join(project, ".paved/rules/quality/checkstyle.yaml");
+    const first = readFileSync(path, "utf8");
+    const registry = createRegistry(join(coreRoot, "schemas"), ["paved/v1"]);
+    assert.equal(registry.validate(parse(first)).valid, true);
+    assert.match(first, /checkstyle\.xml/);
+    assert.deepEqual(rulesHandler.apply("adopt", ctx), [".paved/rules/quality/checkstyle.yaml"]);
+    assert.equal(readFileSync(path, "utf8"), first);
+  });
+
+  it("declines without writing a rule", () => {
+    const project = workspace({ "checkstyle.xml": '<module name="Checker"></module>' });
+    assert.deepEqual(rulesHandler.apply("decline", { ...context(project), command: "init" }), []);
+    assert.equal(existsSync(join(project, ".paved/rules")), false);
+  });
+
+  it("bundles multiple conventions so one answer adopts every cited rule", () => {
+    const project = workspace({
+      "checkstyle.xml": '<module name="Checker"></module>',
+      "eslint.config.js": "export default {};\n",
+    });
+    const ctx = { ...context(project), command: "init" };
+    const [candidate] = rulesProvider(ctx);
+    assert.equal(candidate?.evidence.length, 2);
+    assert.deepEqual(rulesHandler.apply("adopt", ctx), [
+      ".paved/rules/quality/checkstyle.yaml", ".paved/rules/quality/eslint.yaml",
+    ]);
+    assert.deepEqual(rulesProvider(ctx), []);
+  });
 });
 
 describe("verification candidate detection", () => {
