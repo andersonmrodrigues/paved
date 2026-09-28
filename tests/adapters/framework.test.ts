@@ -236,19 +236,20 @@ test('evidence-driven generators treat absent routes and integration settings as
   assert.equal(existsSync(join(root, '.paved/project/feature-map')), false);
 });
 
-test('combined repository resolves five adapters and all declared evidence capabilities', () => {
+test('combined repository resolves six adapters and all declared evidence capabilities', () => {
   const {root, sources, detection} = inspect('combined-project');
-  const selected = detection.filter(d => d.confidence === 'strong' || d.adapter.id === 'infrastructure/git').map(d => ({ id: d.adapter.id, version: '^0.1.0' }));
+  const selected = detection.filter(d => d.confidence === 'strong' || d.adapter.id === 'infrastructure/git').map(d => ({ id: d.adapter.id, version: `^${d.adapter.version}` }));
   const result = resolveAdapters(detection, selected, '1.0.0');
   assert.deepEqual(result.diagnostics, []);
-  assert.deepEqual(result.adapters.map(d => d.adapter.id), adapters.filter(a => !['technology/typescript', 'technology/dart', 'technology/flutter'].includes(a.id)).map(a => a.id));
+  assert.deepEqual(result.adapters.map(d => d.adapter.id), adapters.filter(a => !['technology/dart', 'technology/flutter'].includes(a.id)).map(a => a.id));
   const capabilities = capabilityEvidence(root, sources, result.adapters);
   assert.ok(capabilities.evidence.some(e => e.capability === 'application.ui-routes' && e.value === 'items'));
   assert.ok(capabilities.evidence.some(e => e.statement === 'Angular core resolved version in package lock' && e.value === '19.2.15'));
   assert.ok(!capabilities.evidence.some(e => e.statement === 'Angular core resolved version in package lock' && e.value === '7.2.16'));
   assert.ok(capabilities.evidence.some(e => e.capability === 'database.migrations' && e.value === 'items'));
-  assert.ok(Object.values(capabilities.resolutions).every(r => r.status === 'resolved' || r.status === 'unavailable'));
-  assert.ok(capabilities.evidence.every(e => e.adapterVersion === '0.1.0' && e.source.sha256.length === 64 && e.detectionEvidence.length > 0 && e.classification === 'observed'));
+  assert.ok(Object.values(capabilities.resolutions).every(r => ['resolved', 'scoped', 'unavailable'].includes(r.status)));
+  const versions = new Map(adapters.map(a => [a.id, a.version]));
+  assert.ok(capabilities.evidence.every(e => e.adapterVersion === versions.get(e.adapter) && e.source.sha256.length === 64 && e.detectionEvidence.length > 0 && e.classification === 'observed'));
 });
 
 test('resolution diagnoses missing, incompatible, cyclic and ambiguous providers', () => {
@@ -274,10 +275,11 @@ test('adapter evidence omits sensitive values and generators consume resolved ev
   writeFileSync(join(root, 'README.md'), '# Sample\n');
   writeFileSync(join(root, 'frontend/package.json'), '{"dependencies":{"@angular/core":"^19.2.15"},"scripts":{"test":"ng test"}}');
   writeFileSync(join(root, 'frontend/angular.json'), '{"projects":{}}');
+  writeFileSync(join(root, 'frontend/tsconfig.json'), '{"compilerOptions":{"strict":true}}');
   writeFileSync(join(root, 'frontend/src/app/app-routing.module.ts'), "const routes = [{path: 'items', component: Page}];");
   writeFileSync(join(root, 'frontend/application.properties'), 'password=TOP_SECRET_VALUE\nquarkus.datasource.jdbc.url=jdbc:postgresql://secret-host/database\n');
   const sources = discoverSources(root), detection = detectAdapters(root, adapters, sources);
-  const selected = resolveAdapters(detection, [{ id: 'technology/angular', version: '^0.1.0' }, { id: 'technology/postgresql', version: '^0.1.0' }], '1.0.0');
+  const selected = resolveAdapters(detection, [{ id: 'technology/angular', version: '^0.2.0' }, { id: 'technology/postgresql', version: '^0.1.0' }], '1.0.0');
   const evidence = capabilityEvidence(root, sources, selected.adapters).evidence;
   assert.doesNotMatch(JSON.stringify(evidence), /TOP_SECRET_VALUE|secret-host/);
   assert.ok(evidence.some(e => e.capability === 'application.modules' && e.value === '^19.2.15'));
@@ -291,7 +293,7 @@ test('adapter evidence omits sensitive values and generators consume resolved ev
   assert.match(architecture, /adapter_version: 0.1.0/);
   assert.doesNotMatch(architecture, /TOP_SECRET_VALUE|secret-host/);
   const manifest = parse(readFileSync(join(root, '.paved/manifest.yaml'), 'utf8')) as {adapters: {id:string}[]};
-  assert.deepEqual(manifest.adapters.map(a=>a.id), ['technology/angular','technology/postgresql']);
+  assert.deepEqual(manifest.adapters.map(a=>a.id), ['technology/angular','technology/postgresql','technology/typescript']);
   assert.ok(result.unmatchedTechnologies.includes('Node.js package scripts'));
 });
 

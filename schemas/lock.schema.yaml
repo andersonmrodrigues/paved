@@ -43,6 +43,43 @@ properties:
           required: [id]
           properties:
             id: { $ref: "urn:paved:schema:common:v1#/$defs/generatorId" }
+  capabilities:
+    description: >
+      Capability provider decisions and their provenance, recorded only where a decision
+      was needed (more than one candidate adapter, or an explicit manifest selection):
+      which adapter provides the capability in each repository scope, and whether that
+      came from the manifest or was inferred from the evidence listed. Inferred decisions
+      live here, never in the human-owned manifest. Omitted when no decision was needed.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [id, status, candidates, providers]
+      properties:
+        id: { type: string, pattern: "^[a-z]+\\.[a-z][a-z0-9.-]*$" }
+        status: { enum: [resolved, explicitly-selected, scoped, ambiguous] }
+        candidates:
+          description: Resolved adapters that can provide the capability.
+          type: array
+          items: { $ref: "urn:paved:schema:common:v1#/$defs/adapterId" }
+        providers:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [scope, provider, source, evidence]
+            properties:
+              scope: { type: string, minLength: 1 }
+              provider: { $ref: "urn:paved:schema:common:v1#/$defs/adapterId" }
+              source: { enum: [explicit, explicit-scoped, inferred] }
+              evidence:
+                description: Repository files whose detection established the provider in this scope.
+                type: array
+                items: { type: string }
+        ambiguous_scopes:
+          description: Scopes where evidence could not decide; a human must select a provider.
+          type: array
+          items: { type: string }
 $defs:
   resolved:
     type: object

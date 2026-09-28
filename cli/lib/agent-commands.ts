@@ -10,6 +10,7 @@ import { resolveTestingTool } from "./test-runner.ts";
 
 export interface AgentCommandDiscovery {
   readonly lifecycleState: ConsumerInspection["lifecycleState"];
+  readonly capabilityProviders: ConsumerInspection["capabilityProviders"];
   readonly commands: readonly DiscoveredAgentCommand[];
 }
 
@@ -113,5 +114,5 @@ export function discoverAgentCommands(projectRoot: string, coreRoot: string): Ag
     }
     return { ...command, ...availability(command, inspection, projectRoot, coreRoot) };
   });
-  return { lifecycleState: inspection.lifecycleState, commands };
+  return { lifecycleState: inspection.lifecycleState, capabilityProviders: inspection.capabilityProviders, commands };
 }

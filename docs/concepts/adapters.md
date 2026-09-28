@@ -23,11 +23,43 @@ diagnostics. Missing, incompatible, cyclic and undetected selections do not sile
 resolve. The local lock records exact versions and content digests. No remote registry
 is involved.
 
-When more than one selected adapter provides one capability, resolution reports an
-**ambiguous provider**. The consumer may set `capability_providers` in its manifest to
-select one explicitly. A missing provider is **unavailable**. A consumer may still
-receive generic context when a selected adapter is unavailable, but the missing evidence
-is never invented.
+When more than one selected adapter provides one capability, resolution works per
+**scope**: the outermost directories holding the files that detected each adapter. Each
+scope goes to the provider with the nearest enclosing scope; when two providers share a
+scope and one declares the other in `requires.adapters` (Angular requires TypeScript,
+Flutter requires Dart), the more specific one wins. Evidence for the capability is then
+collected per scope, so a Java build never reads frontend sources and vice versa.
+Precedence is: a manifest override (`capability_providers.<id>: <adapter>`), then
+manifest scoped selections, then this inference. A scope that unrelated providers claim
+equally stays an **ambiguous provider** and is never guessed; a missing provider is
+**unavailable**. A consumer may still receive generic context when a selected adapter is
+unavailable, but the missing evidence is never invented.
+
+For a repository with `services/api/pom.xml` (Quarkus) and `web/angular.json` plus
+`web/tsconfig.json`, `paved init` needs no configuration and records in `paved.lock`:
+
+```yaml
+capabilities:
+  - id: source.build
+    status: scoped
+    candidates: [technology/java, technology/typescript]
+    providers:
+      - { scope: services/api, provider: technology/java, source: inferred, evidence: [services/api/pom.xml] }
+      - { scope: web, provider: technology/typescript, source: inferred, evidence: [web/package.json, web/tsconfig.json] }
+```
+
+Only capabilities that needed a decision are recorded, so single-stack locks carry no
+`capabilities` section. Inferred decisions live in the tool-managed lock, never in the
+human-owned manifest; `status` and `paved agent commands --json` report every
+capability's providers as `capabilityProviders`, and `status` flags a lock whose
+decisions no longer match the repository until `paved update` records them. Where a
+scope is genuinely ambiguous, select a provider for that path only:
+
+```yaml
+capability_providers:
+  source.build:
+    - { path: ., provider: technology/java }
+```
 
 Adapter evidence records adapter ID and version, capability, source path and SHA-256,
 detection signals and confidence, and `observed` classification. The existing generator
