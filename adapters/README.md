@@ -5,13 +5,12 @@ projects using it are usually structured, which checks it offers, and technology
 skills, rules and tools. Adapters sit between the domain-agnostic Core and the
 project-specific context.
 
-The Git adapter binds Core repository status, diff and history Tools. Technology
-adapters include `technology/java`, `technology/quarkus`, `technology/angular`,
-`technology/postgresql`, `technology/typescript`, `technology/dart` and
-`technology/flutter`. TypeScript, Dart and Flutter are independent adapters;
-framework adapters may depend on their language adapter where that dependency is
-required by the selected project. Adapter detection, resolution, conflicts and evidence are described in the
-maintainer documentation.
+The current set includes the Git infrastructure adapter and technology adapters
+`technology/java`, `technology/quarkus`, `technology/typescript`,
+`technology/angular`, `technology/dart`, `technology/flutter` and
+`technology/postgresql`. Quarkus depends on Java and Flutter depends on Dart.
+TypeScript, Angular, Dart, Flutter and PostgreSQL remain independently selectable
+when their evidence is present.
 
 Reusable meanings remain capabilities rather than technology adapters. The Core
 capability registry includes testing evidence, HTTP API evidence and OpenAPI
@@ -50,8 +49,8 @@ namespace is `adapter-git`.
 Technology knowledge ages quickly. To keep adapters from shipping outdated guidance:
 
 - `sources` must cite official documentation with a retrieval date (schema-enforced).
-- `reviewed_at` records the last maintainer review. Tooling can flag adapters whose
-  review is older than an agreed age (policy still open; see the bootstrap review).
+- `reviewed_at` records the last maintainer review. No age-based staleness policy is
+  currently enforced.
 - Adapters state version-specific behavior with the versions it applies to.
 - An adapter describes the technology, never a project that uses it.
 

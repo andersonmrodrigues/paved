@@ -5,8 +5,8 @@
 
 ## Context
 
-One local Core checkout can serve many consumers. Phase 10 locked local inputs but
-did not expose a complete lifecycle state or make an update transactional: generation
+One local Core checkout can serve many consumers. Local locks record exact inputs, but
+updates must expose a complete lifecycle state and make changes transactional: generation
 could write context before the new lock was committed. A failed update could leave
 the consumer's generated context and lock describing different inputs.
 

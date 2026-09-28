@@ -26,10 +26,13 @@ this CLI yet.
 
 ## Common invocation
 
+Run these commands from the Paved Core checkout root. `--project` always names
+the consumer repository; do not use the Core checkout itself as the consumer.
+
 ```sh
 node ./cli/index.ts --help
 node ./cli/index.ts --version
-node ./cli/index.ts status --project /path/to/repo --json
+node ./cli/index.ts status --project /absolute/path/to/repo --json
 ```
 
 Global options accepted by implemented commands:
@@ -98,6 +101,9 @@ when a blocking diagnostic decides the exit code.
   `.paved/verification/profile.yaml`, resolves declared Tool/ToolImplementation
   documents, invokes approved executables with `shell: false`, sanitizes output,
   and never infers commands from package scripts or arbitrary CLI arguments.
+  Verification executables receive only `PATH`, temporary-directory variables
+  and platform-required process variables; arbitrary caller environment values
+  such as credentials are not inherited.
 - `status` and `doctor` are read-only.
 
 ## Layout

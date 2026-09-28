@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { parse, stringify } from 'yaml';
 import { createRegistry } from './schemas.ts';
 import { loadMarkdown } from './documents.ts';
@@ -10,6 +10,7 @@ import { loadAdapters, detectAdapters, resolveAdapters, capabilityEvidence, type
 import { hashLocalCore, hashLocalTree } from './local-core.ts';
 import { atomicWriteFileSync } from './atomic-write.ts';
 import { acquireConsumerOperationLock } from './operation-lock.ts';
+import { resolveSafePath } from './safe-path.ts';
 
 export interface Source { path: string; kind: string; sha256: string; adapter?: string; adapterVersion?: string; capability?: string; detectionConfidence?: Detection['confidence']; detectionEvidence?: string[]; classification?: 'observed'; adapterEvidence?: { adapter: string; adapter_version: string; capability: string; detection_confidence: Detection['confidence']; classification: 'observed' }[] }
 export interface Execution { generator: string; version: string; contractSha256?: string; engineSha256?: string; manifestSha256?: string; status: 'written' | 'unchanged' | 'conflict' | 'proposed' | 'failed'; sources: Source[]; outputs: string[]; outputHashes: Record<string, string>; proposals: string[]; unknowns: string[]; warnings: string[]; errors: string[] }
@@ -31,7 +32,7 @@ function outputHash(schema: string, content: string): string {
   if (schema === 'ContextDocument') return sha(content.slice(content.indexOf('\n---\n') + 5));
   return sha(content);
 }
-function safe(root: string, path: string) { const full = resolve(root, path); if (full !== resolve(root) && !full.startsWith(resolve(root) + sep)) throw new Error(`Path escapes repository: ${path}`); return full; }
+function safe(root: string, path: string) { return resolveSafePath(root, path); }
 export function hashSource(root: string, path: string) { return sha(readFileSync(safe(root, path))); }
 export function discoverSources(root: string): Source[] {
   const result: Source[] = [];

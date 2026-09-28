@@ -49,8 +49,8 @@ cannot impersonate a runner, CI system or human.
   escalation.
 - Allow retries until success: rejected; destructive and non-idempotent operations can
   repeat side effects and flaky results must remain visible.
-- Let each Tool define its own Evidence format: rejected because Phase 06 already owns
-  one revision-bound Evidence contract and deterministic completion assessor.
+- Let each Tool define its own Evidence format: rejected because the shared Evidence
+  contract owns revision binding and deterministic completion assessment.
 
 ## References
 

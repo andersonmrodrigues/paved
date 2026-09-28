@@ -89,8 +89,8 @@ Validation runs in this order; each layer assumes the previous one passed.
 | 2. Schema | Is the document well formed? | Ajv, `cli/lib/schemas.ts` | Implemented |
 | 3. Reference | Does every qualified id exist, in a namespace the document may use? | `cli/lib/references.ts` | Implemented; needs the effective set from the CLI |
 | 4. Semantic | Is the content coherent? (evidence support and revisions, cited sources, managed blocks) | `cli/lib/evidence.ts`, `cli/lib/provenance.ts` | Implemented for evidence and provenance |
-| 5. Compatibility | Do Core, adapters and project agree on versions? | `paved doctor` / `update` | Specified in [versioning](versioning.md); not implemented |
-| 6. Provenance freshness | Do recorded hashes still match the sources? | `paved status` | Specified in [traceability](traceability.md); not implemented |
+| 5. Compatibility | Do Core, adapters and project agree on versions? | `paved status`, `doctor` and `update` | Implemented by consumer resolution and lock checks |
+| 6. Provenance freshness | Do recorded hashes still match the sources? | `paved status` and `update` | Implemented for recorded generator inputs and locked content |
 
 A document that passes all layers is **well formed and internally consistent**. That is
 not the same as correct: no layer checks that a rule is wise, a feature description is

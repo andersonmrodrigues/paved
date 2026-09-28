@@ -5,10 +5,8 @@
 
 ## Context
 
-Phase 08 had an adapter schema and Git Tool bindings but no general detection,
-compatibility or evidence provider runtime. The Generator Runtime interpreted selected
-technology files directly. The Apecatus pilot needs Java, Quarkus, Angular and
-PostgreSQL evidence without turning every detected script or CI file into an adapter.
+Adapters need general detection, compatibility and evidence-provider behavior without
+turning every detected script or CI file into an adapter.
 
 ## Decision
 

@@ -28,6 +28,7 @@ describe("Agent Integration Contract", () => {
     assert.match(contract, /Public versus internal/);
     assert.match(contract, /must not contain branches for Codex/);
     assert.match(contract, /must not\s+import or depend on them/);
-    assert.match(contract, /Phase 16/);
+    assert.match(contract, /Codex and Claude Code projections/);
+    assert.doesNotMatch(contract, /Phase \d+/);
   });
 });
