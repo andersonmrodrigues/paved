@@ -564,6 +564,24 @@ describe("CLI project and Core path resolution", () => {
     }
   });
 
+  it("does not discover a Paved manifest above the nearest Git repository root", () => {
+    const workspace = sandbox("manifest-outside-repository");
+    try {
+      writeManifest(workspace);
+      const repository = join(workspace, "repository");
+      const cwd = join(repository, "packages", "consumer");
+      mkdirSync(join(repository, ".git"), { recursive: true });
+      mkdirSync(cwd, { recursive: true });
+
+      const resolvedProject = resolveProjectRoot({ cwd });
+
+      assert.equal(resolvedProject.projectRoot, cwd);
+      assert.equal(resolvedProject.manifestPath, undefined);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("reports inaccessible or non-directory project paths as environment failures", async () => {
     const workspace = sandbox("bad-project");
     try {

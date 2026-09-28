@@ -53,6 +53,12 @@ function nearestAncestorManifest(start: string): string | undefined {
       return manifestPath;
     }
 
+    // A consumer nested in a repository must not inherit Paved state from an
+    // unrelated directory above that repository (for example a workspace root).
+    if (existsSync(join(current, ".git"))) {
+      return undefined;
+    }
+
     const parent = dirname(current);
     if (parent === current) {
       return undefined;
