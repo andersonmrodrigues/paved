@@ -2,8 +2,8 @@
 
 **Contract version:** `paved/agent/v1`  
 **Status:** stable for the local CLI surface. Codex and Claude Code projections
-are included in this repository as project-local skill packages; they do not
-install the CLI or materialize a Core cache in consumer state.
+include a project-local launcher that verifies and installs a pinned package
+under `.paved/runtime/`.
 
 This document defines the boundary between an external AI agent and Paved Core.
 An integration may translate an agent's conventions into these operations, but
@@ -22,7 +22,7 @@ An integration discovers Paved without inspecting implementation directories:
 4. `paved status --project <root> --json` reports initialization, resolution,
    lifecycle, adapter and verification availability.
 
-The local checkout may be selected explicitly with the documented `--project`
+The packaged CLI may be selected explicitly with the documented `--project`
 option. A missing manifest is an uninitialized consumer, not an invitation to
 infer project configuration.
 
@@ -170,9 +170,11 @@ The catalog is descriptive and agent-neutral. Development tasks remain
 orchestrated by the coding agent through the existing Paved workflows, Skills,
 Tools, context and verification engine. `paved agent command` resolves the
 contract and checks current availability; it does not execute a prompt or
-arbitrary command. Direct Tool invocation is not implemented, so `/paved:test`
-is reported unavailable even when a Tool contract exists. Testing is not
-treated as verification.
+arbitrary command. The CLI `paved test` operation does execute an explicitly
+declared testing Tool through a compatible ToolImplementation; command
+discovery reports it available only when that binding resolves. Testing
+evidence remains incomplete and unverified until the separate Paved verification
+command runs.
 
 **Bootstrap limitation:** integrations project command files from an available
 runtime, but do not yet distribute or install the Core runtime. The `paved-core`
@@ -180,4 +182,7 @@ package has a constrained pack layout and its local artifact is checked for
 SHA-512 integrity metadata; no public artifact or independent agent bootstrap
 is configured. A clean consumer without an accessible runtime cannot complete
 `/paved:init` through the generated command alone. The integration reports this
-limitation rather than fetching or executing remote code.
+limitation rather than fetching or executing remote code. A clean offline
+tarball-install smoke test validates the packed CLI, including initialization,
+command discovery, status and an explicitly bound test Tool, but it does not
+provide a published package or agent-managed bootstrap.

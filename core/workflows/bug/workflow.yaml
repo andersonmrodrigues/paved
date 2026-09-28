@@ -5,7 +5,7 @@ title: Bug fix
 description: >-
   Takes a defect from report to a verified fix with a regression test, never through a
   speculative fix. Use when the software behaves differently from its intended behavior.
-version: 0.2.0
+version: 0.3.0
 status: experimental
 change_type: bug-fix
 inputs:
@@ -41,6 +41,10 @@ phases:
   - phase: planning
     goal: Plan the fix at the cause and the regression test that proves it.
     skills: [core.debugging.bug-investigation]
+    gates:
+      - id: plan-approved
+        condition: A human approved the fix plan when implementation changes are required.
+        approval: implementation-plan
   - phase: implementation
     goal: Write the failing regression test, then the fix.
     skills: [core.debugging.bug-investigation]

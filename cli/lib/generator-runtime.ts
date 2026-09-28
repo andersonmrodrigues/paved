@@ -11,6 +11,7 @@ import { hashLocalCore, hashLocalTree } from './local-core.ts';
 import { atomicWriteFileSync } from './atomic-write.ts';
 import { acquireConsumerOperationLock } from './operation-lock.ts';
 import { resolveSafePath } from './safe-path.ts';
+import { readRuntimeSelection } from './runtime-lock.ts';
 
 export interface Source { path: string; kind: string; sha256: string; adapter?: string; adapterVersion?: string; capability?: string; detectionConfidence?: Detection['confidence']; detectionEvidence?: string[]; classification?: 'observed'; adapterEvidence?: { adapter: string; adapter_version: string; capability: string; detection_confidence: Detection['confidence']; classification: 'observed' }[] }
 export interface Execution { generator: string; version: string; contractSha256?: string; engineSha256?: string; manifestSha256?: string; status: 'written' | 'unchanged' | 'conflict' | 'proposed' | 'failed'; sources: Source[]; outputs: string[]; outputHashes: Record<string, string>; proposals: string[]; unknowns: string[]; warnings: string[]; errors: string[] }
@@ -68,12 +69,16 @@ export function planConsumerInitialization(core: string, consumer: string, name:
   validate(registry, manifest);
   const selected = resolveAdapters(detected, manifest.adapters, version);
   const generators = loadContracts(core, registry).map(c => ({ id: c.id, version: c.version, source: 'local-core', sha256: hashLocalTree(core, [`generators/${c.id}`]) }));
-  const lock = { apiVersion: 'paved/v1', kind: 'Lock', resolved_at: new Date().toISOString(), core: { version, source: 'local-core', sha256: hashLocalCore(core) }, adapters: selected.adapters.map(d => ({ id: d.adapter.id, version: d.adapter.version, source: 'local-core', sha256: hashLocalTree(core, [`adapters/${d.adapter.id}`]) })), generators };
+  const runtime = readRuntimeSelection(consumer);
+  if (runtime && runtime.version !== version) throw new Error(`Runtime ${runtime.version} is incompatible with Core ${version}.`);
+  const lock = { apiVersion: 'paved/v1', kind: 'Lock', resolved_at: new Date().toISOString(), core: { version, source: 'local-core', sha256: hashLocalCore(core) }, adapters: selected.adapters.map(d => ({ id: d.adapter.id, version: d.adapter.version, source: 'local-core', sha256: hashLocalTree(core, [`adapters/${d.adapter.id}`]) })), generators, ...(runtime ? { runtime } : {}) };
   validate(registry, lock);
   return { manifest, lock, selectedAdapters: manifest.adapters.map(a => a.id).sort(), resolvedAdapters: selected.adapters.map(d => d.adapter.id).sort(), adapterDiagnostics: selected.diagnostics, plannedWrites: ['.paved/manifest.yaml', '.paved/paved.lock', '.paved/.gitignore'] };
 }
 export function initializeConsumer(core: string, consumer: string, name: string) {
   const registry = createRegistry(join(core, 'schemas'), ['paved/v1']); const version = coreManifest(core).version;
+  const runtime = readRuntimeSelection(consumer);
+  if (runtime && runtime.version !== version) throw new Error(`Runtime ${runtime.version} is incompatible with Core ${version}.`);
   const detected = detectAdapters(consumer, loadAdapters(core), discoverSources(consumer));
   const adapters = detected.filter(d => d.confidence === 'strong' || (d.adapter.id === 'infrastructure/git' && d.confidence !== 'unknown')).map(d => d.adapter);
   const dir = join(consumer, '.paved'); mkdirSync(dir, { recursive: true });
@@ -82,11 +87,11 @@ export function initializeConsumer(core: string, consumer: string, name: string)
   const effectiveManifest = parse(readFileSync(path, 'utf8')) as { adapters?: { id: string; version: string }[] };
   const selected = resolveAdapters(detected, effectiveManifest.adapters ?? [], version);
   const generators = loadContracts(core, registry).map(c => ({ id: c.id, version: c.version, source: 'local-core', sha256: hashLocalTree(core, [`generators/${c.id}`]) }));
-  const lock = { apiVersion: 'paved/v1', kind: 'Lock', resolved_at: new Date().toISOString(), core: { version, source: 'local-core', sha256: hashLocalCore(core) }, adapters: selected.adapters.map(d => ({ id: d.adapter.id, version: d.adapter.version, source: 'local-core', sha256: hashLocalTree(core, [`adapters/${d.adapter.id}`]) })), generators };
+  const lock = { apiVersion: 'paved/v1', kind: 'Lock', resolved_at: new Date().toISOString(), core: { version, source: 'local-core', sha256: hashLocalCore(core) }, adapters: selected.adapters.map(d => ({ id: d.adapter.id, version: d.adapter.version, source: 'local-core', sha256: hashLocalTree(core, [`adapters/${d.adapter.id}`]) })), generators, ...(runtime ? { runtime } : {}) };
   const lockPath = join(dir, 'paved.lock');
   if (existsSync(lockPath)) {
     const previous = parse(readFileSync(lockPath, 'utf8')) as typeof lock; validate(registry, previous);
-    const same = JSON.stringify({ core: previous.core, adapters: previous.adapters, generators: previous.generators }) === JSON.stringify({ core: lock.core, adapters: lock.adapters, generators: lock.generators });
+    const same = JSON.stringify({ core: previous.core, adapters: previous.adapters, generators: previous.generators, runtime: previous.runtime }) === JSON.stringify({ core: lock.core, adapters: lock.adapters, generators: lock.generators, runtime: lock.runtime });
     if (!same) { if (previous.core.source !== 'local-core') throw new Error('Existing lock uses a different distribution source'); validate(registry, lock); atomicWriteFileSync(lockPath, stringify(lock)); }
   } else { validate(registry, lock); atomicWriteFileSync(lockPath, stringify(lock)); }
   const ignore = join(dir, '.gitignore'); if (!existsSync(ignore)) atomicWriteFileSync(ignore, '/generated/\n');

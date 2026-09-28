@@ -1,31 +1,34 @@
 # Integrating a repository
 
-The local CLI implements `init`, `update`, `generate`, `verify`, `status` and `doctor`.
-The steps below explain what still needs human review after `paved init`. An agent
+The packaged CLI implements `init`, `update`, `generate`, `test`, `verify`, `status`,
+`doctor`, and durable development workflows. The steps below explain what still
+needs human review after the native agent init command. An agent
 can perform the project-owned steps with the
 [repository-onboarding skill](../../core/skills/bootstrap/repository-onboarding/SKILL.md)
 when a human asks it to.
 
-## 1. Make the Core available
+## 1. Install the agent integration
 
-Paved is currently used from a local Core checkout; no registry package or remote
-Core resolution is published. Clone the Core, install its locked dependencies, and
-run the CLI from that checkout while explicitly naming the consumer:
+The Codex or Claude Code integration includes a small launcher. Once installed
+in the existing repository, `$paved-init` or `/paved:init` acquires the pinned
+runtime, verifies its package integrity, and initializes `.paved/` without a
+global install or application dependency. Package and integration distribution
+have not yet been published; this consumer path is currently validated from a
+packed local artifact in `tests/package/bootstrap.test.ts`.
+
+For maintainers validating a checkout before publication:
 
 ```sh
 git clone https://github.com/andersonmrodrigues/paved.git
 cd paved
 npm ci
-export PAVED_CORE_DIR="$(pwd)"
-export PATH="$PAVED_CORE_DIR/node_modules/.bin:$PATH"
+node ./cli/index.ts agent install codex --project /absolute/path/to/repository --json
 node ./cli/index.ts init --project /absolute/path/to/repository --json
 ```
 
-For agent shells that use the bare `paved` command in projected skills, add the
-checkout's `node_modules/.bin` directory to `PATH` before launching the agent.
-`paved init --project <repo>` resolves that local checkout and writes exact versions
-and digests to `.paved/paved.lock`. The CLI does not materialize
-`.paved/generated/core/`; the Core checkout must remain available to the agent host.
+The generated agent command uses its own project-local launcher. A direct
+checkout CLI run records local Core digests; a launcher run also pins the
+package integrity and installed content digest in `.paved/paved.lock`.
 
 ## 2. Create the manifest
 
@@ -48,13 +51,9 @@ check types the project does not have under `unavailable`.
 
 ## 4. Add the agent entrypoint
 
-Copy the block from [`core/templates/AGENTS.md`](../../core/templates/AGENTS.md) into the
-consumer's root `AGENTS.md`, adjusting the Core path if it differs. The current
-template refers to `.paved/generated/core/core/instructions/AGENTS.md`, but the local
-CLI does not create that cache; until Core distribution does, resolve its instructions
-from `$PAVED_CORE_DIR/core/instructions/AGENTS.md` in the available Core checkout.
-The agent host must receive `PAVED_CORE_DIR`; do not commit a machine-specific absolute
-path. Keep existing content outside the managed block.
+The projected native commands live under `.agents/skills/` for Codex or
+`.claude/commands/paved/` for Claude Code. Keep existing human-owned agent
+instructions; the integration writer refuses to overwrite them.
 
 ## 5. Add context gradually
 
@@ -72,7 +71,7 @@ workflow goes in `.paved/workflows/<name>/` under a name no Core workflow uses.
 
 ## 7. Validate
 
-Run `node "$PAVED_CORE_DIR/cli/index.ts" doctor --project /absolute/path/to/repository --json`
+Run `paved doctor --json` through the packaged CLI or its agent launcher
 to inspect the manifest, lock, selected adapters, generated provenance, overrides and
 verification profile. It is read-only. Project review remains necessary before treating
 generated context as declared knowledge.

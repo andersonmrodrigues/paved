@@ -4,8 +4,9 @@ title: Paved workflow run record
 description: >
   The state of one run of a workflow: its inputs, the status of each phase and gate,
   the failure that stopped it, the evidence it produced and the events that happened.
-  Written by the agent or a runner as the run progresses, under
-  .paved/generated/runs/<id>.yaml. It is a record, not an engine: nothing executes it.
+  Written by the Paved workflow runtime as the run progresses, under
+  .paved/generated/runs/<id>.yaml. It is the durable state of the existing
+  workflow engine.
   Rules that span fields (phase order, retries, approvals, failure codes) are checked by
   cli/lib/workflows.ts. See docs/concepts/workflow-state.md.
 type: object

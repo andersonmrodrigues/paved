@@ -28,6 +28,8 @@ writing a new record that supersedes it, not by editing the old one.
 | [0021](0021-adapter-capabilities-and-local-resolution.md) | Adapter capabilities and local resolution | Accepted |
 | [0022](0022-consumer-lifecycle-and-atomic-local-update.md) | Consumer lifecycle and atomic local update | Accepted |
 | [0023](0023-read-only-consumer-gardener.md) | Read-only consumer-scoped Gardener | Accepted |
+| [0024](0024-agent-integration-projections.md) | Agent integration projections | Accepted |
+| [0025](0025-packaged-runtime-and-workflow-execution.md) | Packaged runtime and executable workflow state | Accepted |
 
 ## Format
 

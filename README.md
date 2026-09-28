@@ -57,10 +57,10 @@ The Core is agent-neutral. Agent integrations adapt its canonical behavior to an
 agent's local packaging and discovery model without becoming the source of truth
 for Paved itself.
 
-## Agent-first quick start
+## Consumer usage
 
-Paved's intended day-to-day interface is your coding agent. Once the project-local
-integration is installed, use the agent-native commands:
+Open an existing repository, install the Codex or Claude Code Paved integration,
+then invoke the native init command:
 
 ```text
 Codex:       $paved-init, $paved-status, $paved-plan, $paved-feature
@@ -69,17 +69,20 @@ Claude Code: /paved:init, /paved:status, /paved:plan, /paved:feature
 
 See the [agent command reference](docs/concepts/agent-commands.md) for all
 commands, inputs, lifecycle requirements, context, side effects and failures.
-Both integrations expose the same agent-neutral command catalog.
+The integration's Node launcher acquires the exact `paved-core` package version
+pinned by the integration or `.paved/paved.lock`, checks its SHA-512 tarball
+integrity, installs it under `.paved/runtime/`, and invokes the packaged CLI.
+It never adds a dependency to the application. Subsequent commands use the
+verified local installation offline.
 
-**Current bootstrap limitation:** The repository now defines a packable
-`paved-core` runtime package, but no public package release or standalone
-agent-integration installer has been published. Generated project-local
-commands still require an accessible runtime. A clean consumer cannot yet
-bootstrap itself from only an agent command; the package artifact is currently
-validated locally and is not automatically fetched.
+**Release status:** `paved-core@1.0.0` has not been published to npm, and no
+standalone public integration installer has been released. Registry bootstrap
+therefore reports an acquisition diagnostic today. The packaged integration and
+bootstrap path are exercised end to end from a local tarball in
+`tests/package/bootstrap.test.ts`. Publication and integration distribution are
+the remaining public availability prerequisites.
 
-For maintainers and environments without a supported agent, the CLI remains
-available. It requires Node.js 22.18+ and a local Paved Core checkout:
+For Paved development, the CLI requires Node.js 22.18+ and a local Core checkout:
 
 ```bash
 git clone https://github.com/andersonmrodrigues/paved.git
@@ -107,11 +110,10 @@ then run:
 node ./cli/index.ts verify --project /absolute/path/to/existing-repository --json
 ```
 
-Use the CLI for CI/CD, automation, debugging, recovery and the runtime
-operations underlying agent commands. `paved agent commands --json` reports
-availability, and `paved agent command <name> --json` resolves one structured
-command contract. The `npm run paved -- <command>` script is a convenience for
-human-readable output.
+The packaged CLI uses the same handlers as the agent launcher. `paved agent
+commands --json` reports availability, and `paved agent command <name> --json`
+resolves one structured command contract. The `npm run paved -- <command>` script
+is a contributor convenience.
 
 ## CLI surface
 
@@ -120,15 +122,31 @@ The implemented public commands are:
 - `init`
 - `update`
 - `generate`
+- `test`
 - `verify`
 - `status`
 - `doctor`
 - `gardener`
 - `agent`
+- `plan`, `implement`, `review`, `debug`, `feature`, `fix`, `refactor`
 
 The `--json` option renders the same data model for scripts and integrations.
 The command family `paved evidence ...` and `paved tool ...` remains
 contract-only in this release.
+
+`paved test` executes only one explicitly declared `testing-run` Tool with a
+valid ToolImplementation, using the bounded process runner and recording
+sanitized, incomplete evidence. It does not discover or run application package
+scripts, and it does not replace `paved verify`.
+
+`paved feature <request>`, `paved fix <report>`, and `paved refactor <scope>`
+create durable runs under `.paved/generated/runs/`. Resume with `--run <id>
+--advance`, adding `--note` and `--evidence` when the current phase requires
+observations. Planning stops for a plan-specific human approval record under
+`.paved/approvals/`; implementation cannot advance without it. Validation calls
+the governed testing Tool, verification calls the existing verification engine,
+and completion requires workflow evidence with matching check results and a
+recorded diff. `plan`, `debug`, `implement`, and `review` use these same runs.
 
 ## Supported adapters and capabilities
 
@@ -146,9 +164,10 @@ Paved currently supports project-local integration projections for:
 - Claude Code
 
 These integrations project canonical Core skills and native command prompts
-into each agent's local discovery layout. The CLI remains authoritative for
-lifecycle and verification; the local Core checkout must be available to the
-agent environment until a safe, integrity-pinned runtime distribution exists.
+into each agent's local discovery layout. Their prompts invoke the same
+project-local bootstrap launcher and CLI dispatcher. A packed CLI runs
+independently of its source checkout. Public registry acquisition requires the
+unpublished package release.
 
 ## Repository structure
 
@@ -214,6 +233,5 @@ Paved is distributed under the MIT license. See [LICENSE](LICENSE).
 
 ## Status
 
-The source declares Core version 1.0.0. Its first tagged GitHub release has not yet
-been published. Paved remains intentionally narrow in scope: the Core stays
-agent-neutral, and remote distribution or marketplace installation is not available.
+The source declares Core version 1.0.0. Its first npm and tagged GitHub releases
+have not been published. The Core remains agent-neutral.

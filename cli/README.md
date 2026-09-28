@@ -1,9 +1,8 @@
 # CLI
 
-`paved` is the local command-line interface for initializing, updating,
-generating, verifying and diagnosing Paved consumer repositories from this Core
-checkout. The implemented production commands are `init`, `update`, `generate`,
-`verify`, `status`, `doctor`, `gardener` and `agent`.
+`paved` is the command-line frontend to the Paved runtime. It runs from a Core
+checkout or the packaged artifact. The same handlers serve Codex and Claude Code
+through their project-local launchers.
 
 `paved evidence` and `paved tool ...` remain **contract-only** command families:
 their contracts describe future behavior, but they are not executable commands in
@@ -21,13 +20,15 @@ this CLI yet.
 | [`paved doctor`](commands/doctor/README.md) | Report actionable diagnostics for invalid or inconsistent Paved state | nothing |
 | `paved gardener` | Analyze existing consumer evidence and report review proposals | nothing |
 | `paved agent` | List, discover/resolve shared agent command contracts, validate, install, update or uninstall project-local agent projections | `.agents/`, `.claude/` or `.claude-plugin/` projection files |
+| `paved feature`, `paved fix`, `paved refactor` | Start or resume a durable Core workflow; validation invokes `test`, verification invokes `verify` | `.paved/generated/runs/`, evidence |
+| `paved plan`, `paved debug`, `paved implement`, `paved review` | Enter the matching phase of the same workflow runtime | Workflow run state |
 | `paved evidence ...` | **Contract-only.** Future evidence validation, show and list commands | not executable yet |
 | `paved tool ...` | **Contract-only.** Future Tool discovery, inspection, validation and diagnosis commands | not executable yet |
 
 ## Common invocation
 
-Run these commands from the Paved Core checkout root. `--project` always names
-the consumer repository; do not use the Core checkout itself as the consumer.
+From a Core checkout, `--project` names the consumer repository. From a
+project-local packaged runtime, run commands in the consumer repository.
 
 ```sh
 node ./cli/index.ts --help
@@ -56,6 +57,8 @@ Command-specific options are intentionally narrow:
 | `doctor` | `--adapter <id>` repeatable; read-only; no `--run-checks` |
 | `gardener` | `--dry-run`; read-only; no selectors or adapter selection |
 | `agent` | `list`, `commands [codex\|claude-code]`, `command <name>`, or `<install\|update\|uninstall\|status\|validate> [codex\|claude-code]` |
+| `feature`, `fix`, `refactor`, `plan`, `debug` | Initial request, or `--run <id> --advance` with `--note` and `--evidence` as required |
+| `implement`, `review` | `--run <id>`, optionally `--advance --note <observation>` in the matching phase |
 
 ## Output and exit codes
 
@@ -105,14 +108,12 @@ when a blocking diagnostic decides the exit code.
   and platform-required process variables; arbitrary caller environment values
   such as credentials are not inherited.
 - `status` and `doctor` are read-only.
-- Agent command discovery and contract resolution are read-only. The resolved
-  contract describes agent-orchestrated work; it does not execute prompts or
-  arbitrary commands. `paved test` remains unavailable because direct Tool
-  invocation is not implemented; a testing Tool contract does not authorize or
-  execute a process.
+- Agent command discovery and contract resolution are read-only. Executable
+  commands use this same dispatcher. `paved test` requires an approved
+  ToolImplementation and records sanitized evidence; it never infers scripts.
 - Agent projection writes remain ownership-aware and refuse to overwrite
-  user-owned command or skill files. Integrations project command prompts but
-  do not bootstrap or install the Paved runtime.
+  user-owned command or skill files. Integrations include a project-local
+  integrity-checking bootstrap launcher.
 
 ## Layout
 
@@ -126,5 +127,5 @@ cli/
 └── lib/                # shared resolution, generator, verification and state libraries
 ```
 
-The implementation language is TypeScript on Node.js 22.18+ using only project
-dependencies. Distribution packaging beyond the local `paved` bin remains future work.
+The implementation language is TypeScript on Node.js 22.18+. The package builds
+and runs independently from a tarball; public npm publication is pending.

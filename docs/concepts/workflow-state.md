@@ -3,10 +3,12 @@
 A run of a workflow can be recorded as a `WorkflowRun` document
 ([schema](../../schemas/workflow-run.schema.yaml),
 [template](../../core/templates/workflow-run.yaml)) under
-`.paved/generated/runs/<id>.yaml`. It is a **record, not an engine**: nothing executes it,
-no scheduler reads it, and no distributed state exists. An agent (or later a runner)
-updates it as the run progresses so that a human, a reviewer or CI can see where a run
-is, why it stopped and what it is waiting for.
+`.paved/generated/runs/<id>.yaml`. The CLI now executes `feature`, `fix`, and
+`refactor` by validating and advancing this record against the existing workflow
+contract. An agent supplies observations and implementation changes; the runtime
+enforces plan approval, invokes the governed testing Tool and verification
+engine, and requires complete workflow evidence before completion. There is no
+distributed scheduler.
 
 ## Model
 
@@ -61,8 +63,21 @@ class.
 | `approval-requested`, `approval-decided` | A human decision was asked for or made |
 | `retry-started` | A new attempt of a phase began |
 
-Events are for reporting and later automation (dashboards, CI annotations). They are
-append-only and never the source of truth for completion: the evidence record is.
+## Plan approval
+
+Planning writes an `awaiting-approval` gate tied to the SHA-256 digest of the
+concrete plan file. A human records the decision in
+`.paved/approvals/<run-id>.json` with `run`, `plan_sha256`, `decision`
+(`approved` or `rejected`), `decided_by`, and `decided_at`. The runtime checks
+the file, decision, plan content and recorded gate on every resume. Command
+arguments and edits to a generated run alone cannot satisfy the gate. A
+same-user agent still has filesystem access to a human-owned approval file;
+teams requiring adversarial approval separation need an external identity or
+signature authority.
+
+Events are append-only reporting and provenance. Approval and evidence events
+are cross-checked against their referenced files when a run resumes. The
+authoritative completion decision still comes from the evidence record.
 
 ## Lifetime
 

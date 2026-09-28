@@ -6,6 +6,7 @@ import {
   type DiscoveredAgentCommand,
 } from "../../integrations/shared/commands.ts";
 import { inspectConsumer, type ConsumerInspection } from "./consumer-state.ts";
+import { resolveTestingTool } from "./test-runner.ts";
 
 export interface AgentCommandDiscovery {
   readonly lifecycleState: ConsumerInspection["lifecycleState"];
@@ -70,11 +71,23 @@ function availability(
     }
   }
   if (command.name === "test") {
-    return {
-      available: false,
-      reason: "Direct Tool invocation for testing is not implemented; the testing Tool contract alone does not authorize or execute a process.",
-      recommendedNextAction: "Run checks only through the configured Paved verification profile; direct /paved:test execution is not yet supported.",
-    };
+    const resolution = resolveTestingTool(projectRoot, coreRoot);
+    if (resolution.status !== "resolved") {
+      return {
+        available: false,
+        reason: resolution.message,
+        recommendedNextAction: resolution.remediation,
+      };
+    }
+  }
+  if (["feature", "fix", "refactor", "implement"].includes(command.name)) {
+    if (inspection.verificationProfile !== "present") {
+      return { available: false, reason: "An executable workflow needs a valid verification profile.", recommendedNextAction: "Configure .paved/verification/profile.yaml with approved checks before starting implementation." };
+    }
+    const resolution = resolveTestingTool(projectRoot, coreRoot);
+    if (resolution.status !== "resolved") {
+      return { available: false, reason: resolution.message, recommendedNextAction: resolution.remediation };
+    }
   }
   if (command.name === "verify" && inspection.verificationProfile !== "present") {
     return { available: false, reason: "A valid project verification profile is required.", recommendedNextAction: "Configure .paved/verification/profile.yaml, then run /paved:verify." };

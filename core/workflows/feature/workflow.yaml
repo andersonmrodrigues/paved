@@ -5,7 +5,7 @@ title: Feature
 description: >-
   Adds behavior or changes existing behavior on purpose, from request to reviewed,
   verified change. Use when a task asks the software to do something it does not do yet.
-version: 0.2.0
+version: 0.3.0
 status: experimental
 change_type: feature
 inputs:
@@ -42,6 +42,9 @@ phases:
         when: The plan crosses a declared architectural boundary.
         condition: A human accepted the boundary exception.
         approval: architecture-exception
+      - id: plan-approved
+        condition: A human approved the concrete implementation plan.
+        approval: implementation-plan
   - phase: implementation
     goal: Implement the claims following the chosen pattern, with tests.
     skills: [core.development.feature-development]

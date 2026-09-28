@@ -7,12 +7,15 @@ import { generateHandler } from "./commands/generate.ts";
 import { gardenerHandler } from "./commands/gardener.ts";
 import { initHandler } from "./commands/init.ts";
 import { statusHandler } from "./commands/status.ts";
+import { testHandler } from "./commands/test.ts";
 import { updateHandler } from "./commands/update.ts";
 import { verifyHandler } from "./commands/verify.ts";
+import { workflowHandler } from "./commands/workflow.ts";
+import { workflowAliasHandler } from "./commands/workflow-alias.ts";
 import { createDiagnostic, createResult, type CommandResult } from "./result.ts";
 import { CliPathError, resolveCoreRoot, resolveProjectRoot } from "./paths.ts";
 
-export const COMMAND_NAMES = ["init", "update", "generate", "verify", "status", "doctor", "gardener", "agent"] as const;
+export const COMMAND_NAMES = ["init", "status", "plan", "implement", "test", "verify", "review", "debug", "refactor", "feature", "fix", "update", "doctor", "gardener", "generate", "agent"] as const;
 export type CommandName = (typeof COMMAND_NAMES)[number];
 
 export interface CliFlags {
@@ -20,6 +23,11 @@ export interface CliFlags {
   readonly dryRun: boolean;
   readonly json: boolean;
   readonly noGenerate: boolean;
+  readonly inputs?: string;
+  readonly run?: string;
+  readonly advance?: boolean;
+  readonly note?: string;
+  readonly evidence?: string;
   readonly project?: string;
 }
 
@@ -78,7 +86,15 @@ const COMMAND_RULES: Record<CommandName, CommandRule> = {
   status: { adapters: true, dryRun: false, noGenerate: false, selectors: false },
   doctor: { adapters: true, dryRun: false, noGenerate: false, selectors: false },
   gardener: { adapters: false, dryRun: true, noGenerate: false, selectors: false },
+  test: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
   agent: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
+  feature: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
+  fix: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
+  refactor: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
+  plan: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
+  implement: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
+  review: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
+  debug: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
 };
 
 function usage(command: string, message: string, remediation = "Run paved --help to see supported commands and flags."): CommandResult {
@@ -147,6 +163,8 @@ function commandUsage(command: CommandName | undefined): string {
     if (rule.adapters) commandOptions.push("  --adapter <id>   Select an adapter for status, doctor, or verification content resolution; repeatable.");
     if (rule.dryRun) commandOptions.push("  --dry-run        Plan without writes.");
     if (rule.noGenerate) commandOptions.push("  --no-generate    Initialize without running generators.");
+    if (command === "test") commandOptions.push("  --inputs <json>  Supply declared Tool inputs as a JSON object.");
+    if (["feature", "fix", "refactor", "plan", "implement", "review", "debug"].includes(command)) commandOptions.push("  --run <id> --advance --note <text> --evidence <path>  Resume the durable workflow.");
     return [
       `Usage: paved ${command}${selectors} [options]`,
       "",
@@ -214,6 +232,11 @@ function parse(argv: readonly string[]): Parsed {
   let json = false;
   let dryRun = false;
   let noGenerate = false;
+  let inputs: string | undefined;
+  let run: string | undefined;
+  let advance = false;
+  let note: string | undefined;
+  let evidence: string | undefined;
   const adapters: string[] = [];
   const selectors: string[] = [];
 
@@ -253,6 +276,33 @@ function parse(argv: readonly string[]): Parsed {
       }
       adapters.push(value);
       index += 1;
+      continue;
+    }
+
+    if (token === "--inputs") {
+      if (command !== "test") {
+        return { kind: "error", result: usage(command ?? "cli", "Flag --inputs is supported only by test.") };
+      }
+      const value = takeValue(argv, index, token, command);
+      if (typeof value !== "string") return { kind: "error", result: value };
+      inputs = value;
+      index += 1;
+      continue;
+    }
+
+    if (["--run", "--note", "--evidence"].includes(token)) {
+      if (!command || !["feature", "fix", "refactor", "plan", "implement", "review", "debug"].includes(command)) return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by executable workflows.`) };
+      const value = takeValue(argv, index, token, command);
+      if (typeof value !== "string") return { kind: "error", result: value };
+      if (token === "--run") run = value;
+      if (token === "--note") note = value;
+      if (token === "--evidence") evidence = value;
+      index += 1;
+      continue;
+    }
+    if (token === "--advance") {
+      if (!command || !["feature", "fix", "refactor", "plan", "implement", "review", "debug"].includes(command)) return { kind: "error", result: usage(command ?? "cli", "--advance is supported only by executable workflows.") };
+      advance = true;
       continue;
     }
 
@@ -305,9 +355,18 @@ function parse(argv: readonly string[]): Parsed {
     return { kind: "error", result: usage(command, `Unknown flag for ${command}: --adapter.`) };
   }
 
-  const flags = project === undefined
-    ? { adapters, dryRun, json, noGenerate }
-    : { adapters, dryRun, json, noGenerate, project };
+  const flags = {
+    adapters,
+    dryRun,
+    json,
+    noGenerate,
+    advance,
+    ...(run === undefined ? {} : { run }),
+    ...(note === undefined ? {} : { note }),
+    ...(evidence === undefined ? {} : { evidence }),
+    ...(project === undefined ? {} : { project }),
+    ...(inputs === undefined ? {} : { inputs }),
+  };
 
   return {
     kind: "command",
@@ -331,16 +390,10 @@ function pathsFor(state: ParseState, cwd: string, executablePath: string): Comma
 function defaultHandler(invocation: CommandInvocation): CommandResult {
   return createResult({
     command: invocation.command,
-    status: "success",
-    data: {
-      command: invocation.command,
-      selectors: invocation.selectors,
-      projectRoot: invocation.paths.projectRoot,
-      coreRoot: invocation.paths.coreRoot,
-      adapters: invocation.flags.adapters,
-      dryRun: invocation.flags.dryRun,
-      noGenerate: invocation.flags.noGenerate,
-    },
+    status: "failed",
+    diagnostics: [createDiagnostic({ severity: "error", category: "internal", code: "PAVED_COMMAND_HANDLER_MISSING",
+      component: "cli.runtime", message: `No executable handler is registered for ${invocation.command}.`,
+      remediation: "Install a complete Paved runtime package." })],
   });
 }
 
@@ -351,8 +404,16 @@ const DEFAULT_HANDLERS: CommandHandlers = {
   gardener: gardenerHandler,
   init: initHandler,
   status: statusHandler,
+  test: testHandler,
   update: updateHandler,
   verify: verifyHandler,
+  feature: workflowHandler,
+  fix: workflowHandler,
+  refactor: workflowHandler,
+  plan: workflowAliasHandler,
+  implement: workflowAliasHandler,
+  review: workflowAliasHandler,
+  debug: workflowAliasHandler,
 };
 
 export async function dispatchCli(options: DispatchOptions = {}): Promise<CommandResult> {
