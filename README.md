@@ -57,10 +57,29 @@ The Core is agent-neutral. Agent integrations adapt its canonical behavior to an
 agent's local packaging and discovery model without becoming the source of truth
 for Paved itself.
 
-## Quick start
+## Agent-first quick start
 
-Requires Node.js 22.18+. Paved is currently distributed as a Core repository
-checkout, not as a published npm package:
+Paved's intended day-to-day interface is your coding agent. Once the project-local
+integration is installed, use the agent-native commands:
+
+```text
+Codex:       $paved-init, $paved-status, $paved-plan, $paved-feature
+Claude Code: /paved:init, /paved:status, /paved:plan, /paved:feature
+```
+
+See the [agent command reference](docs/concepts/agent-commands.md) for all
+commands, inputs, lifecycle requirements, context, side effects and failures.
+Both integrations expose the same agent-neutral command catalog.
+
+**Current bootstrap limitation:** Paved is distributed as a local Core checkout,
+not a published runtime artifact. Installing the project-local integration and
+using management commands still requires an accessible local Core checkout and
+its dependencies. Generated commands do not install Paved, modify application
+dependencies, or fetch remote code. A clean consumer cannot yet bootstrap itself
+from only an agent slash command.
+
+For maintainers and environments without a supported agent, the CLI remains
+available. It requires Node.js 22.18+ and a local Paved Core checkout:
 
 ```bash
 git clone https://github.com/andersonmrodrigues/paved.git
@@ -88,10 +107,11 @@ then run:
 node ./cli/index.ts verify --project /absolute/path/to/existing-repository --json
 ```
 
-The CLI also supports `doctor`, `update`, `gardener` and `agent`. The `npm run
-paved -- <command>` script is a convenience for human-readable output. To make
-the `paved` executable available to an agent launched from that shell, add
-`<Core checkout>/node_modules/.bin` to `PATH`.
+Use the CLI for CI/CD, automation, debugging, recovery and the runtime
+operations underlying agent commands. `paved agent commands --json` reports
+availability, and `paved agent command <name> --json` resolves one structured
+command contract. The `npm run paved -- <command>` script is a convenience for
+human-readable output.
 
 ## CLI surface
 
@@ -125,9 +145,10 @@ Paved currently supports project-local integration projections for:
 - Codex
 - Claude Code
 
-These integrations project canonical Core skills into each agent's local
-discovery layout. The CLI remains authoritative for lifecycle and verification;
-the local Core checkout must be available to the agent environment.
+These integrations project canonical Core skills and native command prompts
+into each agent's local discovery layout. The CLI remains authoritative for
+lifecycle and verification; the local Core checkout must be available to the
+agent environment until a safe, integrity-pinned runtime distribution exists.
 
 ## Repository structure
 
@@ -158,6 +179,7 @@ the local Core checkout must be available to the agent environment.
 Public documentation lives in:
 
 - [Integrating a repository](docs/getting-started/integrating-a-repository.md)
+- [Agent command reference](docs/concepts/agent-commands.md)
 - [docs/concepts](docs/concepts)
 - [docs/decisions](docs/decisions)
 - [docs/maintenance](docs/maintenance)

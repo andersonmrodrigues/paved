@@ -300,7 +300,7 @@ describe("CLI Task 7 output and dispatch regressions", () => {
         excludes: ["--adapter <id>", "--no-generate", "[generator-id...]"],
       },
       agent: {
-        includes: ["Usage: paved agent", "<operation> [integration]"],
+        includes: ["Usage: paved agent", "<operation> [integration|command-name]"],
         excludes: ["--adapter <id>", "--dry-run", "--no-generate"],
       },
     };
