@@ -5,7 +5,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as described in
 [docs/concepts/versioning.md](docs/concepts/versioning.md).
 
-## [0.2.0] - Unreleased
+## [1.0.0] - 2026-09-28
 
 Architecture and Core design, schemas and contracts, the skills architecture, the
 workflows architecture, the Verification and Evidence architecture, and the Tools

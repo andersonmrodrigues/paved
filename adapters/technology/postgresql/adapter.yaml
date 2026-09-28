@@ -5,7 +5,7 @@ title: PostgreSQL
 version: 0.1.0
 summary: Repository-static evidence about PostgreSQL dependencies, configuration and migrations.
 requires:
-  core: ^0.2.0
+  core: ^1.0.0
 detect:
   file_contains:
     - glob: pom.xml
