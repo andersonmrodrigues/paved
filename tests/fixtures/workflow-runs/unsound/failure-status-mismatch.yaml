@@ -4,7 +4,7 @@ kind: WorkflowRun
 id: sample-run
 workflow:
   id: core.bug
-  version: 0.2.0
+  version: 0.3.0
 revision: 3f2a9c1
 started_at: 2026-09-27T10:00:00Z
 ended_at: 2026-09-27T12:00:00Z

@@ -148,7 +148,9 @@ $defs:
 
   approvalCategory:
     description: >
-      Why a gate needs a human decision. `destructive-operation`: data loss or effects
+      Why a gate needs a human decision. `implementation-plan`: approval of the
+      concrete plan before a code-changing workflow reaches implementation.
+      `destructive-operation`: data loss or effects
       that cannot be undone. `production-change`: a change to a running shared or
       production system. `release`: publishing to users. `security-exception`,
       `architecture-exception`: accepting a deviation from a security or architecture
@@ -156,6 +158,7 @@ $defs:
       proceeding despite a known, unmitigated risk. See docs/concepts/workflow-approval.md.
     enum:
       - destructive-operation
+      - implementation-plan
       - production-change
       - release
       - security-exception

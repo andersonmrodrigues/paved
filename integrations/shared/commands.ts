@@ -38,13 +38,13 @@ const DEVELOPMENT_STATES: readonly AgentCommandLifecycleState[] = ["RESOLVED", "
 const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
   {
     id: "paved.init", name: "init", group: "management",
-    description: "Initialize Paved in the current repository using the available local Core runtime.",
+    description: "Bootstrap the pinned project-local Paved runtime and initialize this repository.",
     input: { required: false, description: "No arguments." },
     output: "Initialization result, detected adapters, lifecycle state, and diagnostics.",
     requiredContext: [".paved/manifest.yaml", "repository evidence"],
     allowedSideEffects: [".paved/ initialization state", "generated project context", "managed AGENTS.md block"],
     lifecycle: ["UNINITIALIZED"], cliCommand: "init",
-    failureSemantics: ["Existing Paved state is never reset.", "Invalid partial state fails with diagnostics.", "No remote bootstrap or global install is attempted."],
+    failureSemantics: ["Existing Paved state is never reset.", "Invalid partial state fails with diagnostics.", "Package acquisition and runtime activation require verified integrity."],
   },
   {
     id: "paved.status", name: "status", group: "management",
@@ -63,7 +63,7 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     output: "Affected areas, constraints, tasks, verification requirements, risks, dependencies, and unknowns.",
     requiredContext: [".paved/manifest.yaml", ".paved/project/", ".paved/rules/", "applicable workflow", "verification profile"],
     allowedSideEffects: ["agent response only"],
-    lifecycle: DEVELOPMENT_STATES, workflow: "core.feature", cliCommand: "agent command plan",
+    lifecycle: DEVELOPMENT_STATES, workflow: "core.feature", cliCommand: "plan",
     failureSemantics: ["Missing workflow or required context blocks with an actionable explanation.", "Observed patterns are not treated as desired architecture without supporting context."],
   },
   {
@@ -73,18 +73,18 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     output: "Change summary, modified paths, evidence, and unresolved gaps.",
     requiredContext: [".paved/project/", ".paved/rules/", "applicable workflow", "applicable skills", "tool bindings"],
     allowedSideEffects: ["planned application changes", "disposable Paved evidence"],
-    lifecycle: DEVELOPMENT_STATES, workflow: "core.feature", cliCommand: "agent command implement",
+    lifecycle: DEVELOPMENT_STATES, workflow: "core.feature", cliCommand: "implement",
     failureSemantics: ["Missing approval, workflow, tool binding, or required context blocks implementation.", "Human-owned Paved files and protected application paths are not overwritten."],
   },
   {
     id: "paved.test", name: "test", group: "development",
     description: "Run only the project's explicitly bound testing capability and retain its structured result.",
-    input: { required: false, description: "Optional target or test scope declared by the selected testing tool." },
+    input: { required: false, description: "Optional JSON object matching the selected testing Tool inputs; pass it with --inputs." },
     output: "Structured testing observations, execution metadata, and evidence.",
     requiredContext: [".paved/tools/", ".paved/tool-implementations/", "applicable adapter and capability"],
     requiredCapabilities: ["testing-run"],
     allowedSideEffects: ["declared test process and its documented filesystem effects", "disposable Paved evidence"],
-    lifecycle: DEVELOPMENT_STATES, tool: "core.testing.run", cliCommand: "agent command test",
+    lifecycle: DEVELOPMENT_STATES, tool: "core.testing.run", cliCommand: "test",
     failureSemantics: ["An absent or ambiguous ToolImplementation blocks execution.", "Testing failure remains distinct from Paved verification failure.", "No command is inferred from repository scripts."],
   },
   {
@@ -104,7 +104,7 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     output: "Findings, risks, missing evidence, and unresolved unknowns.",
     requiredContext: [".paved/project/", ".paved/rules/", ".paved/verification/profile.yaml", "core.code-review.change-review"],
     allowedSideEffects: ["agent response only"],
-    lifecycle: DEVELOPMENT_STATES, cliCommand: "agent command review",
+    lifecycle: DEVELOPMENT_STATES, cliCommand: "review",
     failureSemantics: ["Missing required evidence is reported as a gap, not a pass.", "Review does not replace verification."],
   },
   {
@@ -114,7 +114,7 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     output: "Observed facts, hypotheses, unknowns, likely affected components, and a proposed next step.",
     requiredContext: [".paved/project/feature-map/", "core.bug workflow", "debugging skills"],
     allowedSideEffects: ["read-only investigation"],
-    lifecycle: DEVELOPMENT_STATES, workflow: "core.bug", cliCommand: "agent command debug",
+    lifecycle: DEVELOPMENT_STATES, workflow: "core.bug", cliCommand: "debug",
     failureSemantics: ["Unreproduced hypotheses remain explicitly unconfirmed.", "Missing evidence is reported rather than invented."],
   },
   {
@@ -124,7 +124,7 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     output: "Plan, implementation summary, non-regression evidence, and remaining risks.",
     requiredContext: [".paved/project/architecture/", ".paved/rules/", "core.refactor workflow"],
     allowedSideEffects: ["planned application changes", "disposable Paved evidence"],
-    lifecycle: DEVELOPMENT_STATES, workflow: "core.refactor", cliCommand: "agent command refactor",
+    lifecycle: DEVELOPMENT_STATES, workflow: "core.refactor", cliCommand: "refactor",
     failureSemantics: ["Unpinned behavior or unmet human approval gates block the refactor."],
   },
   {
@@ -134,7 +134,7 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     output: "Workflow outcome, change, test/verification evidence, review, and gaps.",
     requiredContext: [".paved/project/", ".paved/rules/", "core.feature workflow", "verification profile"],
     allowedSideEffects: ["planned application changes", "disposable Paved evidence"],
-    lifecycle: DEVELOPMENT_STATES, workflow: "core.feature", cliCommand: "agent command feature",
+    lifecycle: DEVELOPMENT_STATES, workflow: "core.feature", cliCommand: "feature",
     failureSemantics: ["The workflow stops at unmet approval gates or missing required tools/context.", "Current repository patterns are treated as evidence, not automatically as desired architecture."],
   },
   {
@@ -144,7 +144,7 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     output: "Reproduction, diagnosis, fix, regression-test evidence, verification, and review.",
     requiredContext: [".paved/project/", ".paved/rules/", "core.bug workflow", "verification profile"],
     allowedSideEffects: ["planned application changes", "disposable Paved evidence"],
-    lifecycle: DEVELOPMENT_STATES, workflow: "core.bug", cliCommand: "agent command fix",
+    lifecycle: DEVELOPMENT_STATES, workflow: "core.bug", cliCommand: "fix",
     failureSemantics: ["A fix without confirmed cause or regression evidence is incomplete.", "Unmet human approval gates block changes."],
   },
   {

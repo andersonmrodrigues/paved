@@ -30,6 +30,7 @@ properties:
       Version of this workflow, independent of the Core release. Major: a phase, gate,
       approval, required input, required check type or required evidence kind added, or
       the class of change it covers altered, so a run that completed before may not now.
+      Experimental 0.x workflows advance the minor version for breaking changes.
       Minor: optional inputs, context, tools or recommended checks; guidance that does not
       change what completion requires. Patch: wording.
     $ref: "urn:paved:schema:common:v1#/$defs/semver"

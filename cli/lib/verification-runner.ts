@@ -318,7 +318,7 @@ function evidenceCheckId(checkId: string): string {
   return `${prefix}-${sha(checkId).slice(0, 12)}-run`;
 }
 
-async function spawnApproved(args: {
+export async function spawnApproved(args: {
   executable: string;
   argv: string[];
   cwd: string;

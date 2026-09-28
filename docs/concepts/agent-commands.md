@@ -9,16 +9,16 @@ The contract is discoverable with `paved agent commands --json`. Resolve an
 individual command and its current availability with
 `paved agent command <name> --json`. The result includes its input/output
 shape, required context, side effects, lifecycle states, workflow or tool
-mapping, and actionable unavailability reason. These operations describe the
-agent work; they do not execute arbitrary prompts or shell commands.
+mapping, and actionable unavailability reason. Discovery is read-only; native
+commands invoke the packaged runtime through a project-local bootstrap launcher.
 
 | Command | Purpose and input | Lifecycle / relevant context | Side effects and output | Failure behavior |
 |---|---|---|---|---|
-| `init` | Initialize Paved; no input | `UNINITIALIZED`; repository evidence | Initializes `.paved/`, materialized context and managed instructions; returns lifecycle and diagnostics | Never resets existing state; malformed partial state fails. Requires an available local Core runtime. |
+| `init` | Bootstrap and initialize Paved; no input | `UNINITIALIZED`; repository evidence | Acquires a pinned runtime, initializes `.paved/`, and generates context | Never resets existing state; malformed or unverified runtime state fails. |
 | `status` | Inspect Paved state; no input | Any lifecycle; manifest and lock | Read-only machine-readable state and diagnostics | Reports missing/invalid state without writes. |
 | `plan` | Plan a requested change and acceptance constraints | `RESOLVED`, `GENERATED`, `VALIDATED`, or `READY`; project context, rules, workflow and verification profile | Agent response: affected areas, constraints, tasks, risks, verification and unknowns | Missing workflow/context blocks; existing patterns are not automatically architecture. |
 | `implement` | Execute an approved plan or reference | Same development states; project context, rules, workflow, skills and tool bindings | Planned application edits and disposable evidence; returns changes and gaps | Missing approval/context/tool blocks; human-owned state is protected. |
-| `test` | Optional target/scope supported by the testing Tool | Same development states; testing Tool and approved ToolImplementation | Structured testing evidence when a supported runner exists | Direct Tool invocation is not implemented, so the command is unavailable; a Tool contract alone does not execute a process. Testing remains distinct from verification. |
+| `test` | Optional JSON inputs declared by the testing Tool (`paved test --inputs '<json>'`) | Same development states; exactly one testing Tool and valid ToolImplementation | Bounded process execution and sanitized, incomplete testing evidence; does not run Paved verification | A missing/ambiguous Tool, invalid binding, unsafe path, malformed output, timeout or nonzero exit fails explicitly. Application scripts are never inferred or run. |
 | `verify` | Run the configured profile; no arbitrary check selectors | Same development states; verification profile and approved Tool bindings | Uses the existing verification engine; may write disposable evidence | Missing profile, unresolved tools or failed checks block. |
 | `review` | Optional change scope | Same development states; project context, rules, verification profile and review skill | Agent response with findings, risks, evidence gaps and unknowns | Missing evidence is a gap, not a pass; review never replaces verification. |
 | `debug` | Failure report, expected behavior and reproduction evidence | Same development states; feature map, bug workflow and debugging skills | Read-only investigation: observations, hypotheses, unknowns and next step | Hypotheses remain unconfirmed until observed; missing evidence is explicit. |
@@ -29,23 +29,25 @@ agent work; they do not execute arbitrary prompts or shell commands.
 | `doctor` | Diagnose state; no input | Any lifecycle; manifest, lock and verification profile | Read-only actionable diagnostics | Reports issues without automatic repair. |
 | `gardener` | Analyze evidence; no input | `RESOLVED`, `GENERATED`, `VALIDATED`, or `READY`; generated evidence and review state | Read-only observations/proposals | Missing evidence remains a finding; humans approve improvements. |
 
-Development commands are agent-orchestrated, not a second workflow engine.
-They delegate to existing Core workflows, skills, Tools and verification
-contracts. The CLI does not execute development prompts. An agent must stop
-when a contract, capability, ToolImplementation, approval, or required runtime
-is unavailable.
+Development commands persist `WorkflowRun` state under
+`.paved/generated/runs/`. `feature`, `fix` and `refactor` advance the existing
+Core workflow phases. `plan`, `debug`, `implement` and `review` use the same
+runs. The agent supplies observations and code changes; the runtime checks
+phase order and plan approval, calls the testing Tool during validation, runs
+authoritative Paved verification, and requires matching workflow evidence
+before completion.
 
-The current CLI has no direct Tool invocation operation. Accordingly,
-`/paved:test` is discoverable but explicitly unavailable rather than treating
-repository scripts as approved commands. `verify` continues to execute only
-checks configured in the project verification profile.
+The CLI `test` operation invokes an explicitly declared testing Tool using the
+existing Tool contracts, ToolImplementation resolver and bounded process
+runner. It records sanitized evidence as incomplete/unverified; `verify`
+continues to execute only checks configured in the project verification
+profile. The Codex and Claude projections call the same `test` handler through
+the integrity-checking launcher.
 
-## Runtime and bootstrap limitation
+## Distribution status
 
-The runtime source now has a public-package layout (`paved-core`) and pack
-allowlist. Until an artifact is published and a separately installable agent
-bootstrap is available, the integration projection still requires an accessible
-runtime. A clean consumer with only generated command files cannot yet
-bootstrap itself through `/paved:init`. The local package artifact is tested for
-contents and npm supplies its SHA-512 integrity metadata, but no remote
-acquisition or installation is performed by the generated command.
+The launcher can acquire a pinned `paved-core` version from npm and run it
+without a global install. The packed tarball path is tested in a clean
+consumer. `paved-core@1.0.0` is not yet published, so registry acquisition
+remains unavailable until release. A public integration installer or download
+location is also still needed.

@@ -14,6 +14,16 @@ properties:
   kind: { const: Lock }
   resolved_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
   core: { $ref: "#/$defs/resolved" }
+  runtime:
+    description: The exact independently verified paved-core package selected by the project-local launcher.
+    type: object
+    additionalProperties: false
+    required: [package, version, integrity, content_sha256]
+    properties:
+      package: { const: paved-core }
+      version: { $ref: "urn:paved:schema:common:v1#/$defs/semver" }
+      integrity: { type: string, pattern: '^sha512-[A-Za-z0-9+/]+={0,2}$' }
+      content_sha256: { $ref: "urn:paved:schema:common:v1#/$defs/sha256" }
   adapters:
     type: array
     items:

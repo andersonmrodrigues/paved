@@ -270,7 +270,7 @@ describe("CLI Task 7 output and dispatch regressions", () => {
 
   it("shows command-specific help with only implemented flags and inputs", async () => {
     const cwd = sandbox("command-help");
-    const expectations: Record<CommandName, { includes: readonly string[]; excludes: readonly string[] }> = {
+    const expectations: Partial<Record<CommandName, { includes: readonly string[]; excludes: readonly string[] }>> = {
       init: {
         includes: ["Usage: paved init", "--dry-run", "--no-generate"],
         excludes: ["--adapter <id>", "[generator-id...]"],
@@ -286,6 +286,10 @@ describe("CLI Task 7 output and dispatch regressions", () => {
       verify: {
         includes: ["Usage: paved verify", "--adapter <id>"],
         excludes: ["--dry-run", "--no-generate", "[generator-id...]"],
+      },
+      test: {
+        includes: ["Usage: paved test", "--inputs <json>"],
+        excludes: ["--adapter <id>", "--dry-run", "--no-generate"],
       },
       status: {
         includes: ["Usage: paved status", "--adapter <id>"],
@@ -305,7 +309,7 @@ describe("CLI Task 7 output and dispatch regressions", () => {
       },
     };
     try {
-      for (const [command, expectation] of Object.entries(expectations) as [CommandName, typeof expectations[CommandName]][]) {
+      for (const [command, expectation] of Object.entries(expectations) as [CommandName, { includes: readonly string[]; excludes: readonly string[] }][]) {
         const help = await dispatchCli({
           argv: [command, "--help"],
           cwd,

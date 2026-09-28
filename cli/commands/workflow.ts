@@ -1,0 +1,331 @@
+import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { join, relative, sep } from "node:path";
+import { stringify } from "yaml";
+import { atomicWriteFileSync } from "../lib/atomic-write.ts";
+import { discoverSources } from "../lib/generator-runtime.ts";
+import { loadYaml } from "../lib/documents.ts";
+import { inspectConsumer } from "../lib/consumer-state.ts";
+import { resolveSafePath } from "../lib/safe-path.ts";
+import { sanitizeToolOutput } from "../lib/tools.ts";
+import { createRegistry } from "../lib/schemas.ts";
+import { assessRun, type WorkflowContract, type WorkflowRunRecord } from "../lib/workflows.ts";
+import { assessWorkflowEvidence } from "../lib/workflows.ts";
+import { evaluateCompletion, loadEvidenceRegistry, type EvidenceRecord } from "../lib/evidence.ts";
+import { createDiagnostic, createResult, type CommandResult } from "../result.ts";
+import type { CommandInvocation } from "../runtime.ts";
+import { testHandler } from "./test.ts";
+import { verifyHandler } from "./verify.ts";
+
+type WorkCommand = "feature" | "fix" | "refactor";
+type PhaseStatus = "pending" | "running" | "completed" | "failed" | "blocked";
+interface Phase { phase: string; status: PhaseStatus; attempts?: number; gates?: { id: string; status: string; reason?: string; requested_at?: string; decided_by?: string; decided_at?: string }[]; failure?: Failure }
+interface Failure { code: string; phase: string; reason: string; retry: string; next_action: string }
+interface Run extends WorkflowRunRecord {
+  apiVersion: "paved/v1"; kind: "WorkflowRun"; id: string; revision: string; started_at: string;
+  status: string; inputs: { id: string; value: string; source: "human" }[]; phases: Phase[];
+  ended_at?: string; evidence?: string; failure?: Failure;
+  events: { at: string; type: string; phase?: string; ref?: string; detail?: string }[];
+}
+
+const workflowNames: Record<WorkCommand, string> = { feature: "feature", fix: "bug", refactor: "refactor" };
+const firstInputs: Record<WorkCommand, string> = { feature: "request", fix: "report", refactor: "request" };
+const sha = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
+const now = () => new Date().toISOString();
+const projectRelative = (root: string, path: string) => relative(realpathSync(root), realpathSync(path)).split(sep).join("/");
+
+function diagnostic(code: string, message: string, remediation: string): CommandResult["diagnostics"][number] {
+  return createDiagnostic({ severity: "error", category: "config", code, component: "workflow.runtime", message, remediation });
+}
+
+function blocked(command: WorkCommand, code: string, message: string, remediation: string, data?: unknown): CommandResult {
+  return createResult({ command, status: "failed", ...(data === undefined ? {} : { data }), diagnostics: [diagnostic(code, message, remediation)] });
+}
+
+function fingerprint(projectRoot: string): string {
+  return sha(JSON.stringify(discoverSources(projectRoot)
+    .filter((source) => source.kind === "source-module" || source.kind === "test")
+    .map((source) => [source.path, source.sha256])));
+}
+
+function revision(projectRoot: string): string {
+  const result = spawnSync("git", ["rev-parse", "HEAD"], { cwd: projectRoot, encoding: "utf8", shell: false });
+  return result.status === 0 && result.stdout.trim() ? result.stdout.trim() : "unversioned";
+}
+
+function contract(invocation: CommandInvocation, command: WorkCommand): WorkflowContract {
+  return loadYaml(join(invocation.paths.coreRoot, "core", "workflows", workflowNames[command], "workflow.yaml")) as WorkflowContract;
+}
+
+function runPath(projectRoot: string, id: string): string {
+  if (!/^[a-z][a-z0-9-]{5,80}$/.test(id)) throw new Error("Invalid workflow run id.");
+  return resolveSafePath(projectRoot, `.paved/generated/runs/${id}.yaml`);
+}
+
+function validated(run: Run, workflow: WorkflowContract, invocation: CommandInvocation): void {
+  const registry = createRegistry(join(invocation.paths.coreRoot, "schemas"), ["paved/v1"]);
+  const result = registry.validate(run);
+  if (!result.valid) throw new Error(`WorkflowRun is invalid: ${result.errors.join("; ")}`);
+  const problems = assessRun(run, workflow);
+  if (problems.length) throw new Error(`WorkflowRun is inconsistent: ${problems.join("; ")}`);
+}
+
+function save(run: Run, workflow: WorkflowContract, invocation: CommandInvocation): void {
+  validated(run, workflow, invocation);
+  const path = runPath(invocation.paths.projectRoot, run.id);
+  mkdirSync(join(path, ".."), { recursive: true });
+  atomicWriteFileSync(path, stringify(run));
+}
+
+function load(invocation: CommandInvocation, workflow: WorkflowContract, id: string): Run {
+  const path = runPath(invocation.paths.projectRoot, id);
+  if (!existsSync(path)) throw new Error(`Workflow run ${id} does not exist.`);
+  const run = loadYaml(path) as Run;
+  validated(run, workflow, invocation);
+  const gate = run.phases.find((phase) => phase.phase === "planning")?.gates?.find((item) => item.id === "plan-approved");
+  if (gate?.status === "approved" || gate?.status === "rejected") {
+    const digest = gate.reason?.replace(/^plan_sha256=/, "");
+    const planRef = run.events.find((event) => event.type === "approval-requested" && event.phase === "planning")?.ref;
+    if (!digest || !planRef || !/^[a-f0-9]{64}$/.test(digest)) throw new Error("Workflow approval provenance is missing.");
+    const planPath = resolveSafePath(invocation.paths.projectRoot, planRef);
+    if (!existsSync(planPath) || sha(readFileSync(planPath)) !== digest) throw new Error("Approved plan content has changed.");
+    const decision = approval(invocation, run, digest);
+    if (decision?.decision !== gate.status || decision?.decided_by !== gate.decided_by || decision?.decided_at !== gate.decided_at) {
+      throw new Error("Workflow approval state does not match the human-owned approval record.");
+    }
+  }
+  const recorded = run.events.find((event) => event.type === "evidence-recorded" && event.phase === "evidence" && event.detail?.startsWith("sha256="));
+  if (recorded) {
+    if (!run.evidence) throw new Error("Workflow evidence path is missing.");
+    const path = resolveSafePath(invocation.paths.projectRoot, run.evidence);
+    if (!existsSync(path) || sha(readFileSync(path)) !== recorded.detail?.slice(7)) throw new Error("Workflow evidence changed after recording.");
+  }
+  return run;
+}
+
+function result(command: WorkCommand, run: Run, nextAction: string, diagnostics: CommandResult["diagnostics"] = []): CommandResult {
+  const failed = run.status === "failed" || run.status === "blocked" || diagnostics.some((item) => item.category !== "findings");
+  const retained = failed && diagnostics.length === 0
+    ? [diagnostic(run.status === "blocked" ? "PAVED_WORKFLOW_BLOCKED" : "PAVED_WORKFLOW_FAILED", run.failure?.reason ?? "Workflow cannot continue.", nextAction)]
+    : diagnostics;
+  return createResult({ command, status: failed ? "failed" : run.status === "awaiting-approval" ? "warning" : "success", data: {
+    run: run.id, workflow: run.workflow, status: run.status,
+    currentPhase: run.phases.find((phase) => phase.status === "running")?.phase,
+    evidence: run.evidence,
+    evidenceProduced: run.events.flatMap((event) => event.ref?.startsWith(".paved/generated/evidence/") ? [event.ref] : []),
+    nextAction,
+  }, diagnostics: retained });
+}
+
+function start(invocation: CommandInvocation, command: WorkCommand, workflow: WorkflowContract): CommandResult {
+  const request = invocation.selectors.join(" ").trim();
+  if (!request) return blocked(command, "PAVED_WORKFLOW_INPUT_REQUIRED", `${command} requires a concrete request.`, `Run paved ${command} <request> --json.`);
+  const inspection = inspectConsumer({ projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot });
+  if (!["RESOLVED", "GENERATED", "VALIDATED", "READY"].includes(inspection.lifecycleState)) {
+    return blocked(command, "PAVED_WORKFLOW_LIFECYCLE_BLOCKED", `Cannot start ${command} in lifecycle state ${inspection.lifecycleState}.`, "Run paved doctor and resolve the reported state first.");
+  }
+  const sourceRevision = revision(invocation.paths.projectRoot);
+  const id = `${command}-${sha(`${request}\0${sourceRevision}`).slice(0, 20)}`;
+  const path = runPath(invocation.paths.projectRoot, id);
+  if (existsSync(path)) return result(command, load(invocation, workflow, id), `Resume with paved ${command} --run ${id} --advance --note <observation> --json.`);
+  const created = now();
+  const run: Run = {
+    apiVersion: "paved/v1", kind: "WorkflowRun", id,
+    workflow: { id: workflow.id, version: workflow.version }, revision: sourceRevision, started_at: created,
+    status: "running", inputs: [{ id: firstInputs[command], value: request, source: "human" }],
+    phases: workflow.phases.map((phase, index) => ({ phase: phase.phase, status: index === 0 ? "running" : "pending", ...(index === 0 ? { attempts: 1 } : {}) })),
+    events: [{ at: created, type: "run-started", detail: `source_sha256=${fingerprint(invocation.paths.projectRoot)}` }, { at: created, type: "phase-started", phase: workflow.phases[0]!.phase }],
+  };
+  save(run, workflow, invocation);
+  return result(command, run, `Complete ${run.phases[0]!.phase}, then run paved ${command} --run ${id} --advance --note <observation> --json.`);
+}
+
+function evidencePath(invocation: CommandInvocation): string | undefined {
+  if (!invocation.flags.evidence) return undefined;
+  const path = resolveSafePath(invocation.paths.projectRoot, invocation.flags.evidence);
+  if (!existsSync(path)) throw new Error(`Evidence file does not exist: ${invocation.flags.evidence}`);
+  return path;
+}
+
+function failedTestingEvidence(invocation: CommandInvocation, path: string, run: Run): boolean {
+  const rel = projectRelative(invocation.paths.projectRoot, path);
+  if (!rel.startsWith(".paved/generated/evidence/") || !rel.endsWith(".yaml")) return false;
+  const raw = loadYaml(path) as Record<string, unknown>;
+  const validation = createRegistry(join(invocation.paths.coreRoot, "schemas"), ["paved/v1"]).validate(raw);
+  if (!validation.valid) return false;
+  const record = raw as unknown as EvidenceRecord & { created_at?: string; producer?: { agent?: string }; change?: { summary?: string; revision?: string } };
+  if (record.producer?.agent !== "paved-cli" || !record.change?.summary?.startsWith("Executed testing Tool ")
+    || record.change.revision !== run.revision || !record.created_at || Date.parse(record.created_at) < Date.parse(run.started_at)) return false;
+  const source = (raw.artifacts as { source?: { type?: string; location?: string; sha256?: string } }[] | undefined)?.[0]?.source;
+  if (source?.type !== "file" || !source.location?.startsWith(".paved/generated/evidence/") || !source.sha256) return false;
+  const logPath = resolveSafePath(invocation.paths.projectRoot, source.location);
+  if (!existsSync(logPath)) return false;
+  const log = readFileSync(logPath, "utf8");
+  if (sha(log) !== source.sha256) return false;
+  const line = log.split("\n").find((entry) => entry.startsWith("tool_result_json: "));
+  if (!line) return false;
+  try {
+    const execution = JSON.parse(line.slice("tool_result_json: ".length)) as { status?: string; error_code?: string; exit_code?: number };
+    return execution.status === "failed" && execution.error_code === "execution-failure" && typeof execution.exit_code === "number" && execution.exit_code > 0;
+  } catch { return false; }
+}
+
+function approval(invocation: CommandInvocation, run: Run, planSha: string): { decision: "approved" | "rejected"; decided_by: string; decided_at: string } | undefined {
+  const path = resolveSafePath(invocation.paths.projectRoot, `.paved/approvals/${run.id}.json`);
+  if (!existsSync(path)) return undefined;
+  const document = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+  if (document.run !== run.id || document.plan_sha256 !== planSha || !["approved", "rejected"].includes(String(document.decision))
+    || typeof document.decided_by !== "string" || !document.decided_by.trim() || ["agent", "paved", "ci"].includes(document.decided_by)
+    || typeof document.decided_at !== "string" || Number.isNaN(Date.parse(document.decided_at))) {
+    throw new Error("Approval record is invalid or does not match the current plan. A human must decide the exact plan in .paved/approvals/<run-id>.json.");
+  }
+  return { decision: document.decision as "approved" | "rejected", decided_by: document.decided_by, decided_at: document.decided_at };
+}
+
+function completeAndStartNext(run: Run, phase: Phase): void {
+  phase.status = "completed";
+  run.events.push({ at: now(), type: "phase-completed", phase: phase.phase });
+  const index = run.phases.indexOf(phase);
+  const next = run.phases[index + 1];
+  if (next) {
+    next.status = "running"; next.attempts = (next.attempts ?? 0) + 1;
+    run.events.push({ at: now(), type: "phase-started", phase: next.phase });
+  } else {
+    run.status = "completed"; run.ended_at = now();
+    run.events.push({ at: now(), type: "run-completed" });
+  }
+}
+
+function failRun(run: Run, phase: Phase, code: string, reason: string, nextAction: string): void {
+  const failure: Failure = { code, phase: phase.phase, reason, retry: "retryable", next_action: nextAction };
+  phase.status = "failed"; phase.failure = failure; run.failure = failure;
+  run.status = "failed"; run.ended_at = now();
+  run.events.push({ at: now(), type: "phase-failed", phase: phase.phase, detail: reason }, { at: now(), type: "run-failed", phase: phase.phase });
+}
+
+async function advance(invocation: CommandInvocation, command: WorkCommand, workflow: WorkflowContract, run: Run): Promise<CommandResult> {
+  if (run.status === "completed" || run.status === "blocked") return result(command, run, "This run is terminal. Start a new request for further work.");
+  let phase = run.phases.find((item) => item.status === "running");
+  if (!phase && run.status === "failed") {
+    phase = run.phases.find((item) => item.status === "failed");
+    if (!phase) throw new Error("Failed run has no failed phase.");
+    const contractPhase = workflow.phases.find((item) => item.phase === phase!.phase);
+    const retryLimit = contractPhase?.retry?.class === "non-retryable" ? 1 : (contractPhase?.retry?.max_attempts ?? 2);
+    if ((phase.attempts ?? 0) >= retryLimit) return blocked(command, "PAVED_WORKFLOW_RETRIES_EXHAUSTED", `${phase.phase} exhausted its ${retryLimit} attempts.`, "A human must inspect the failure and start a new run or change the approved plan.");
+    phase.status = "running"; delete phase.failure; delete run.failure; delete run.ended_at; run.status = "running";
+    phase.attempts = (phase.attempts ?? 0) + 1;
+    run.events.push({ at: now(), type: "retry-started", phase: phase.phase });
+  }
+  if (!phase) throw new Error("Run has no active phase.");
+  const note = invocation.flags.note?.trim();
+  const evidence = evidencePath(invocation);
+  if (phase.phase === "planning") {
+    const gate = phase.gates?.find((item) => item.id === "plan-approved");
+    if (!gate) {
+      if (!evidence || !note) return blocked(command, "PAVED_WORKFLOW_PLAN_REQUIRED", "A concrete plan file and summary are required before approval.", `Run paved ${command} --run ${run.id} --advance --evidence <plan-path> --note <summary> --json.`, { run: run.id });
+      const planSha = sha(readFileSync(evidence));
+      phase.gates = [
+        ...(command === "feature" ? [{ id: "claims-planned", status: "passed" }, { id: "boundary-exception", status: "not-applicable", reason: "No exception was requested in the approved plan." }] : []),
+        { id: "plan-approved", status: "awaiting-approval", requested_at: now(), reason: `plan_sha256=${planSha}` },
+      ];
+      run.status = "awaiting-approval";
+      run.events.push({ at: now(), type: "approval-requested", phase: "planning", ref: projectRelative(invocation.paths.projectRoot, evidence), detail: `plan_sha256=${planSha}` });
+      save(run, workflow, invocation);
+      return result(command, run, `A human must write .paved/approvals/${run.id}.json with run, plan_sha256, decision, decided_by, and decided_at. Then resume with --run ${run.id} --advance.`);
+    }
+    const planSha = gate.reason?.replace(/^plan_sha256=/, "");
+    if (!planSha || !/^[a-f0-9]{64}$/.test(planSha)) throw new Error("Workflow approval gate has no valid plan digest.");
+    const planRef = run.events.find((event) => event.type === "approval-requested" && event.phase === "planning")?.ref;
+    if (!planRef) throw new Error("Workflow approval request has no plan path.");
+    const currentPlan = resolveSafePath(invocation.paths.projectRoot, planRef);
+    if (!existsSync(currentPlan) || sha(readFileSync(currentPlan)) !== planSha) {
+      return blocked(command, "PAVED_WORKFLOW_PLAN_CHANGED", "The plan changed after approval was requested.", "Start a new approval request for the revised plan.");
+    }
+    const decision = approval(invocation, run, planSha);
+    if (!decision) return result(command, run, `Awaiting human approval in .paved/approvals/${run.id}.json for plan_sha256 ${planSha}.`);
+    gate.status = decision.decision; gate.decided_by = decision.decided_by; gate.decided_at = decision.decided_at;
+    run.events.push({ at: now(), type: "approval-decided", phase: "planning", ref: "plan-approved" });
+    if (decision.decision === "rejected") {
+      const failure: Failure = { code: "approval-rejected", phase: "planning", reason: "Human rejected the plan.", retry: "non-retryable", next_action: "Revise the plan and start a new workflow run." };
+      phase.status = "blocked"; phase.failure = failure; run.failure = failure; run.status = "blocked"; run.ended_at = now();
+      run.events.push({ at: now(), type: "run-blocked", phase: "planning" });
+    } else { run.status = "running"; completeAndStartNext(run, phase); }
+    save(run, workflow, invocation);
+    return result(command, run, decision.decision === "approved" ? "The approved plan may now be implemented." : "The plan was rejected; revise it before implementation.");
+  }
+  if (phase.phase === "validation") {
+    const tested = await testHandler(invocation);
+    const testedEvidence = (tested.data as { evidence?: string } | undefined)?.evidence;
+    run.events.push({ at: now(), type: "tool-invoked", phase: "validation", ref: testedEvidence ?? "testing-run" });
+    if (tested.status !== "success") { failRun(run, phase, "verification-failed", "The governed regression test did not pass.", "Fix the failure and resume this run."); save(run, workflow, invocation); return result(command, run, "Fix the test failure, then resume with --advance.", tested.diagnostics); }
+  } else if (phase.phase === "verification") {
+    const verified = await verifyHandler(invocation);
+    const data = verified.data as { evidence?: string[]; completion?: { verification?: string } } | undefined;
+    if (verified.status !== "success" || data?.completion?.verification !== "verified" || !data.evidence?.length) {
+      for (const path of data?.evidence ?? []) run.events.push({ at: now(), type: "verification-executed", phase: "verification", ref: path });
+      failRun(run, phase, "verification-failed", "Authoritative Paved verification did not complete successfully.", "Repair the verification profile or failed checks and resume this run.");
+      save(run, workflow, invocation);
+      return result(command, run, "Repair verification before completion.", verified.diagnostics.length ? verified.diagnostics : [diagnostic("PAVED_WORKFLOW_VERIFICATION_FAILED", "Verification did not produce verified evidence.", "Inspect paved verify --json.")]);
+    }
+    run.evidence = data.evidence[0]!;
+    run.events.push({ at: now(), type: "verification-executed", phase: "verification", ref: run.evidence });
+  } else if (phase.phase === "evidence") {
+    if (!run.evidence) return blocked(command, "PAVED_WORKFLOW_EVIDENCE_MISSING", "Verified evidence is missing.", "Run the verification phase successfully first.");
+    if (!evidence) return blocked(command, "PAVED_WORKFLOW_EVIDENCE_MISSING", "Workflow evidence with a diff and check results is required.", `Pass --evidence <workflow-evidence.yaml> for run ${run.id}.`);
+    const authoritative = loadYaml(resolveSafePath(invocation.paths.projectRoot, run.evidence)) as EvidenceRecord;
+    const record = loadYaml(evidence) as EvidenceRecord;
+    const schema = createRegistry(join(invocation.paths.coreRoot, "schemas"), ["paved/v1"]).validate(record);
+    if (!schema.valid) return blocked(command, "PAVED_WORKFLOW_EVIDENCE_INVALID", schema.errors.join("; "), "Fix the workflow evidence record and retry.");
+    const problems = assessWorkflowEvidence(record, workflow);
+    if (JSON.stringify(record.checks) !== JSON.stringify(authoritative.checks)) problems.push("Workflow check results do not match authoritative Paved verification.");
+    const evaluated = evaluateCompletion(record, loadEvidenceRegistry(join(invocation.paths.coreRoot, "core/verification/registry.yaml")));
+    if (evaluated.status !== "complete" || evaluated.verification !== "verified") problems.push(...evaluated.blocking, "Workflow evidence is not complete and verified.");
+    if (problems.length) return blocked(command, "PAVED_WORKFLOW_EVIDENCE_INVALID", problems.join("; "), "Record real diff and check evidence matching the Paved verification result.");
+    run.evidence = projectRelative(invocation.paths.projectRoot, evidence);
+    run.events.push({ at: now(), type: "evidence-recorded", phase: "evidence", ref: run.evidence, detail: `sha256=${sha(readFileSync(evidence))}` });
+  } else if (phase.phase === "completion") {
+    if (!run.evidence) return blocked(command, "PAVED_WORKFLOW_EVIDENCE_MISSING", "The run cannot complete without verified evidence.", "Run Paved verification and record its evidence.");
+    phase.gates = [{ id: "criteria-met", status: "passed" }];
+  } else {
+    if (!note) return blocked(command, "PAVED_WORKFLOW_OBSERVATION_REQUIRED", `${phase.phase} requires a concrete observation.`, `Run paved ${command} --run ${run.id} --advance --note <observation> --json.`);
+    if (phase.phase === "discovery" && command === "fix" && (!evidence || !failedTestingEvidence(invocation, evidence, run))) return blocked(command, "PAVED_WORKFLOW_CAUSE_UNCONFIRMED", "A confirmed cause needs a current failed regression result from the governed testing Tool.", "Run paved test on the unfixed code, then pass its evidence YAML with --evidence and document the observed cause.");
+    if (phase.phase === "discovery" && command === "refactor" && !evidence) return blocked(command, "PAVED_WORKFLOW_BASELINE_MISSING", "A refactor needs existing behavior pinned by test evidence.", "Supply --evidence <repository-relative-path> for the baseline.");
+    if (phase.phase === "discovery" && command === "refactor") {
+      const baseline = await testHandler(invocation);
+      if (baseline.status !== "success") return blocked(command, "PAVED_WORKFLOW_BASELINE_FAILED", "The governed baseline test did not pass before refactoring.", "Configure a valid testing Tool and establish a passing baseline before changing code.");
+      run.events.push({ at: now(), type: "tool-invoked", phase: "discovery", ref: "testing-run" });
+    }
+    if (phase.phase === "implementation") {
+      const original = run.events[0]?.detail?.replace(/^source_sha256=/, "");
+      if (fingerprint(invocation.paths.projectRoot) === original) return blocked(command, "PAVED_WORKFLOW_CHANGE_MISSING", "No source or test change was observed after approval.", "Implement the approved change before advancing.");
+    }
+    if (phase.phase === "context" && command === "feature") phase.gates = [{ id: "scope-clear", status: "passed" }];
+    if (phase.phase === "context" && command === "fix") phase.gates = [{ id: "expected-behavior-known", status: "passed" }];
+    if (phase.phase === "discovery" && command === "fix") phase.gates = [{ id: "cause-confirmed", status: "passed" }];
+    if (phase.phase === "discovery" && command === "refactor") phase.gates = [{ id: "behavior-pinned", status: "passed" }, { id: "uncovered-risk", status: "not-applicable", reason: "Baseline test evidence was supplied." }];
+    if (phase.phase === "implementation" && command === "fix") {
+      if (!run.events.some((event) => event.phase === "discovery" && event.type === "evidence-recorded" && event.ref?.startsWith(".paved/generated/evidence/"))) {
+        return blocked(command, "PAVED_WORKFLOW_REGRESSION_MISSING", "No failed pre-fix regression result was recorded.", "Reproduce the failure through the governed testing Tool before implementing the fix.");
+      }
+      phase.gates = [{ id: "test-failed-first", status: "passed" }];
+    }
+    run.events.push({ at: now(), type: "evidence-recorded", phase: phase.phase, ...(evidence ? { ref: projectRelative(invocation.paths.projectRoot, evidence) } : {}), detail: String(sanitizeToolOutput(note)).slice(0, 4000) });
+  }
+  completeAndStartNext(run, phase);
+  save(run, workflow, invocation);
+  return result(command, run, run.status === "completed" ? "Workflow complete with authoritative verification evidence." : `Continue ${run.phases.find((item) => item.status === "running")?.phase} and resume with --run ${run.id} --advance.`);
+}
+
+export async function workflowHandler(invocation: CommandInvocation): Promise<CommandResult> {
+  const command = invocation.command as WorkCommand;
+  const workflow = contract(invocation, command);
+  try {
+    if (!invocation.flags.run) return start(invocation, command, workflow);
+    const run = load(invocation, workflow, invocation.flags.run);
+    if (!invocation.flags.advance) return result(command, run, `Resume with paved ${command} --run ${run.id} --advance --json.`);
+    return await advance(invocation, command, workflow, run);
+  } catch (error) {
+    return blocked(command, "PAVED_WORKFLOW_STATE_INVALID", error instanceof Error ? error.message : "Workflow failed.", "Inspect the workflow run and correct its state before retrying.");
+  }
+}
