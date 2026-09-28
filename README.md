@@ -175,6 +175,11 @@ npm run paved -- --help
 
 See [tests/README.md](tests/README.md) for what the tests prove.
 
+The stable, agent-neutral integration boundary is documented in
+[Agent Integration Contract](docs/concepts/agent-integration.md). It projects
+existing CLI, consumer-layout, lifecycle, schema and diagnostic contracts; it
+does not implement an agent-specific integration.
+
 ## 10. Roadmap
 
 Phase 08 adds the experimental Generator Runtime and first consumer pilot. Context
