@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node
 import { dirname, join, relative, sep } from 'node:path';
 import { parse, stringify } from 'yaml';
 import { createRegistry } from './schemas.ts';
+import { answeredProviders } from './decisions/capability-answers.ts';
 import { loadMarkdown } from './documents.ts';
 import { assessProvenance } from './provenance.ts';
 import { loadAdapters, detectAdapters, resolveAdapters, capabilityEvidence, capabilityLockEntries, capabilityProviders, resolveCapabilities, type AdapterEvidence, type CapabilityProviderEntry, type Detection, type Diagnostic, type ProviderSelection } from './adapters.ts';
@@ -69,7 +70,7 @@ export function planConsumerInitialization(core: string, consumer: string, name:
   const manifest = { apiVersion: 'paved/v1', kind: 'Project', project: { name }, paved: { core: `^${version}` }, adapters: adapters.map(a => ({ id: a.id, version: `^${a.version}` })) };
   validate(registry, manifest);
   const selected = resolveAdapters(detected, manifest.adapters, version);
-  const resolutions = resolveCapabilities(selected.adapters);
+  const resolutions = resolveCapabilities(selected.adapters, {}, answeredProviders(consumer, core));
   const capabilities = capabilityLockEntries(resolutions);
   const generators = loadContracts(core, registry).map(c => ({ id: c.id, version: c.version, source: 'local-core', sha256: hashLocalTree(core, [`generators/${c.id}`]) }));
   const runtime = readRuntimeSelection(consumer);
@@ -90,7 +91,7 @@ export function initializeConsumer(core: string, consumer: string, name: string)
   const path = join(dir, 'manifest.yaml'); if (existsSync(path)) validate(registry, parse(readFileSync(path, 'utf8'))); else { validate(registry, manifest); atomicWriteFileSync(path, stringify(manifest)); }
   const effectiveManifest = parse(readFileSync(path, 'utf8')) as ProjectManifestSelections;
   const selected = resolveAdapters(detected, effectiveManifest.adapters ?? [], version);
-  const capabilities = capabilityLockEntries(resolveCapabilities(selected.adapters, effectiveManifest.capability_providers));
+  const capabilities = capabilityLockEntries(resolveCapabilities(selected.adapters, effectiveManifest.capability_providers, answeredProviders(consumer, core)));
   const generators = loadContracts(core, registry).map(c => ({ id: c.id, version: c.version, source: 'local-core', sha256: hashLocalTree(core, [`generators/${c.id}`]) }));
   const lock = { apiVersion: 'paved/v1', kind: 'Lock', resolved_at: new Date().toISOString(), core: { version, source: 'local-core', sha256: hashLocalCore(core) }, adapters: selected.adapters.map(d => ({ id: d.adapter.id, version: d.adapter.version, source: 'local-core', sha256: hashLocalTree(core, [`adapters/${d.adapter.id}`]) })), generators, ...(capabilities.length ? { capabilities } : {}), ...(runtime ? { runtime } : {}) };
   const lockPath = join(dir, 'paved.lock');
@@ -335,7 +336,7 @@ function runGeneratorsUnlocked(core: string, consumer: string, options: RunGener
   const allSources = discoverSources(consumer); const timestamp = new Date().toISOString(); const sourceRevision = revision(consumer);
   const detected = detectAdapters(consumer, loadAdapters(core), allSources);
   const resolved = resolveAdapters(detected, manifest.adapters ?? [], info.version);
-  const capabilities = capabilityEvidence(consumer, allSources, resolved.adapters, manifest.capability_providers);
+  const capabilities = capabilityEvidence(consumer, allSources, resolved.adapters, manifest.capability_providers, answeredProviders(consumer, core));
   const adapterDiagnostics = [...resolved.diagnostics, ...Object.values(capabilities.resolutions).flatMap(r => r.diagnostics).filter(d => d.code !== 'missing-provider')];
   const adapterWarnings = adapterDiagnostics.map(d => d.message);
   const selectedIds = new Set(resolved.adapters.map(d => d.adapter.id));
