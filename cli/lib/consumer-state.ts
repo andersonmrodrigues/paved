@@ -11,6 +11,7 @@ import { inspectOverrides } from "./override-safety.ts";
 import { assessProvenance } from "./provenance.ts";
 import { createRegistry, type SchemaRegistry } from "./schemas.ts";
 import { compatible } from "./tools.ts";
+import { answeredProviders } from "./decisions/capability-answers.ts";
 import { readActiveRuntimeSelection, readRuntimeSelection, type RuntimeLock } from "./runtime-lock.ts";
 
 export interface InspectConsumerInput {
@@ -808,7 +809,7 @@ function staleGeneratorIds(projectRoot: string, coreRoot: string, resolved: read
   try { executions = (JSON.parse(readFileSync(path, "utf8")) as { executions?: typeof executions }).executions ?? []; }
   catch { return []; }
   const sources = discoverSources(projectRoot);
-  const evidence = capabilityEvidence(projectRoot, sources, [...resolved], manifest.capability_providers).evidence;
+  const evidence = capabilityEvidence(projectRoot, sources, [...resolved], manifest.capability_providers, answeredProviders(projectRoot, coreRoot)).evidence;
   const byPath = new Map(sources.map((source) => [source.path, source.sha256]));
   const engineDigest = hashLocalTree(coreRoot, ["manifest.yaml", "cli/lib/generator-runtime.ts", "schemas/project-context.schema.yaml", "schemas/feature.schema.yaml", "schemas/provenance.schema.yaml"]);
   const manifestDigest = hashFile(join(projectRoot, ".paved/manifest.yaml"));
@@ -958,7 +959,7 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
     })),
     ...(generatorPlan.entries === undefined ? {} : { generators: generatorPlan.entries }),
   };
-  const capabilityDecisions = capabilityLockEntries(resolveCapabilities(resolvedAdapters, manifest.capability_providers));
+  const capabilityDecisions = capabilityLockEntries(resolveCapabilities(resolvedAdapters, manifest.capability_providers, answeredProviders(input.projectRoot, input.coreRoot)));
   if (capabilityDecisions.length) nextLock = { ...nextLock, capabilities: capabilityDecisions };
 
   const validation = registry.validate(nextLock);
@@ -1112,7 +1113,7 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
           remediation: "Adjust .paved/manifest.yaml adapter selections or add the missing repository evidence.",
         }));
       }
-      const capabilities = capabilityEvidence(input.projectRoot, sources, resolvedAdapters, manifest.capability_providers);
+      const capabilities = capabilityEvidence(input.projectRoot, sources, resolvedAdapters, manifest.capability_providers, answeredProviders(input.projectRoot, input.coreRoot));
       adapterEvidence = capabilities.evidence;
       capabilityProviders = providerReport(capabilities.resolutions);
       // A lock without a capabilities section recorded no decisions, which is exact for single-provider repositories.

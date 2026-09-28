@@ -76,6 +76,37 @@ function javaQuarkusAngularMonorepo(): string {
 }
 
 describe('scoped capability provider resolution', () => {
+  test('an answered decision resolves an ambiguous root, below an explicit selection', () => {
+    const root = repository({ 'pom.xml': pom(), 'tsconfig.json': tsconfig, 'src/App.java': 'class App {}' });
+    const { resolved } = resolve(root);
+    const answer = new Map([['source.build', 'technology/java']]);
+    const decided = resolveCapability('source.build', resolved.adapters, undefined, answer);
+    assert.equal(decided.provider?.id, 'technology/java');
+    assert.equal(decided.scopes[0]?.source, 'answered-decision');
+    const explicit = resolveCapability('source.build', resolved.adapters, 'technology/typescript', answer);
+    assert.equal(explicit.provider?.id, 'technology/typescript');
+    assert.equal(explicit.scopes[0]?.source, 'explicit');
+  });
+
+  test('ignores an answered provider that no longer supplies the capability', () => {
+    const root = repository({ 'pom.xml': pom(), 'tsconfig.json': tsconfig, 'src/App.java': 'class App {}' });
+    const { resolved } = resolve(root);
+    const answer = new Map([['source.build', 'infrastructure/git']]);
+    assert.equal(resolveCapability('source.build', resolved.adapters, undefined, answer).status, 'ambiguous');
+  });
+
+  test('a root answer preserves a deterministic child scope', () => {
+    const root = repository({
+      'pom.xml': pom(), 'pubspec.yaml': 'name: sample\n', 'lib/app.dart': 'class App {}',
+      'web/tsconfig.json': tsconfig,
+      'web/src/client.ts': 'export interface Client {}',
+    });
+    const { resolved } = resolve(root);
+    const answer = new Map([['source.build', 'technology/java']]);
+    const decision = resolveCapability('source.build', resolved.adapters, undefined, answer);
+    assert.equal(decision.scopes.find((item) => item.scope === '.')?.provider, 'technology/java');
+    assert.equal(decision.scopes.find((item) => item.scope === 'web')?.provider, 'technology/typescript');
+  });
   test('a single-stack repository resolves unscoped and records no decision in the lock', () => {
     const root = repository({ 'pom.xml': pom(), 'src/main/java/example/App.java': 'package example;\nclass App {}\n' });
     const { resolutions, evidence } = evidenceFor(root);

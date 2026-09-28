@@ -18,7 +18,7 @@ export interface Detection { adapter: AdapterContract; confidence: 'strong' | 'm
 export interface Diagnostic { code: 'missing-adapter' | 'incompatible' | 'dependency' | 'cycle' | 'undetected' | 'ambiguous-provider' | 'missing-provider' | 'invalid-selection'; message: string; id?: string }
 export interface AdapterEvidence { adapter: string; adapterVersion: string; capability: string; source: RepositorySource; statement: string; value?: string; detectionConfidence: Detection['confidence']; detectionEvidence: string[]; classification: 'observed' }
 export type ProviderSelection = string | readonly { path: string; provider: string }[];
-export interface ScopedProvider { scope: string; provider: string; source: 'explicit' | 'explicit-scoped' | 'inferred'; evidence: string[] }
+export interface ScopedProvider { scope: string; provider: string; source: 'explicit' | 'explicit-scoped' | 'answered-decision' | 'inferred'; evidence: string[] }
 export interface CapabilityResolution { status: 'resolved' | 'explicitly-selected' | 'scoped' | 'ambiguous' | 'unavailable'; provider?: AdapterContract; candidates: string[]; scopes: ScopedProvider[]; ambiguousScopes: string[]; diagnostics: Diagnostic[] }
 export interface CapabilityProviderEntry { id: string; status: CapabilityResolution['status']; candidates: string[]; providers: ScopedProvider[]; ambiguous_scopes?: string[] }
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -113,6 +113,10 @@ function nearestProviders(providers: Detection[], scope: string): Detection[] {
   const byId = new Map(providers.map(p => [p.adapter.id, p.adapter]));
   return top.filter(candidate => !top.some(other => other !== candidate && dependsOn(other.adapter, candidate.adapter.id, byId)));
 }
+export function capabilityCandidates(id: string, resolved: Detection[], scope: string): Detection[] {
+  const providers = resolved.filter(d => d.adapter.provides?.capabilities?.some(c => c.id === id));
+  return nearestProviders(providers, scope);
+}
 const scopeLabel = (scope: string) => scope === '.' ? 'the repository root' : scope;
 export function resolveAdapters(detections: Detection[], selected: { id: string; version: string }[], coreVersion: string): { adapters: Detection[]; diagnostics: Diagnostic[] } {
   const byId = new Map(detections.map(d => [d.adapter.id, d])); const resolved = new Map<string, Detection>(); const diagnostics: Diagnostic[] = []; const visiting = new Set<string>();
@@ -134,8 +138,8 @@ export function resolveAdapters(detections: Detection[], selected: { id: string;
   for (const item of selected) visit(item.id, item.version);
   return { adapters: [...resolved.values()].sort((a,b) => a.adapter.id.localeCompare(b.adapter.id, 'en')), diagnostics };
 }
-// Precedence: explicit override > explicit scoped provider > deterministic inference from repository scopes > ambiguous.
-export function resolveCapability(id: string, resolved: Detection[], selection?: ProviderSelection): CapabilityResolution {
+// Precedence: explicit override > explicit scoped provider > answered decision > inference.
+export function resolveCapability(id: string, resolved: Detection[], selection?: ProviderSelection, answered: ReadonlyMap<string, string> = new Map()): CapabilityResolution {
   const providers = resolved.filter(d => d.adapter.provides?.capabilities?.some(c => c.id === id));
   const candidates = providers.map(p => p.adapter.id).sort();
   const unavailable = (diagnostics: Diagnostic[]): CapabilityResolution => ({ status: 'unavailable', candidates, scopes: [], ambiguousScopes: [], diagnostics });
@@ -162,11 +166,19 @@ export function resolveCapability(id: string, resolved: Detection[], selection?:
   const scopeCandidates = [...new Set([...explicit.keys(), ...providers.flatMap(p => p.roots)])]
     .sort((a, b) => depth(a) - depth(b) || a.localeCompare(b, 'en'));
   const scopes: ScopedProvider[] = []; const ambiguousScopes: string[] = []; const diagnostics: Diagnostic[] = [];
+  let answeredUsed = false;
   for (const scope of scopeCandidates) {
     const selected = explicit.get(scope);
     if (selected) { scopes.push({ scope, provider: selected, source: 'explicit-scoped', evidence: [] }); continue; }
     if ([...explicit.keys()].some(path => contains(path, scope))) continue;
     const winners = nearestProviders(providers, scope);
+    const decided = answered.get(`${id}@${scope}`) ?? (scope === '.' ? answered.get(id) : undefined);
+    const chosen = winners.find((winner) => winner.adapter.id === decided);
+    if (chosen !== undefined && winners.length > 1) {
+      scopes.push({ scope, provider: chosen.adapter.id, source: 'answered-decision', evidence: chosen.evidence });
+      answeredUsed = true;
+      continue;
+    }
     if (winners.length !== 1) {
       ambiguousScopes.push(scope);
       const names = winners.map(p => p.adapter.id).join(', ');
@@ -180,7 +192,7 @@ export function resolveCapability(id: string, resolved: Detection[], selection?:
   }
   const distinct = [...new Set(scopes.map(entry => entry.provider))];
   const single = distinct.length === 1 ? providers.find(p => p.adapter.id === distinct[0])?.adapter : undefined;
-  const status = ambiguousScopes.length ? 'ambiguous' : distinct.length > 1 ? 'scoped' : explicit.size ? 'explicitly-selected' : 'resolved';
+  const status = ambiguousScopes.length ? 'ambiguous' : distinct.length > 1 ? 'scoped' : explicit.size || answeredUsed ? 'explicitly-selected' : 'resolved';
   return { status, ...(single && !ambiguousScopes.length ? { provider: single } : {}), candidates, scopes, ambiguousScopes, diagnostics };
 }
 // The scope decision that governs a repository path: the deepest resolved or ambiguous scope enclosing it.
@@ -213,12 +225,12 @@ export function collectEvidence(root: string, sources: RepositorySource[], detec
   }
   return out.sort((a,b) => `${a.source.path}:${a.statement}:${a.value ?? ''}`.localeCompare(`${b.source.path}:${b.statement}:${b.value ?? ''}`, 'en'));
 }
-export function resolveCapabilities(resolved: Detection[], selections: Record<string, ProviderSelection> = {}): Record<string, CapabilityResolution> {
+export function resolveCapabilities(resolved: Detection[], selections: Record<string, ProviderSelection> = {}, answered: ReadonlyMap<string, string> = new Map()): Record<string, CapabilityResolution> {
   const ids = [...new Set(resolved.flatMap(d => d.adapter.provides?.capabilities?.map(c => c.id) ?? []))].sort();
-  return Object.fromEntries(ids.map(id => [id, resolveCapability(id, resolved, selections[id])]));
+  return Object.fromEntries(ids.map(id => [id, resolveCapability(id, resolved, selections[id], answered)]));
 }
-export function capabilityEvidence(root: string, sources: RepositorySource[], resolved: Detection[], selections: Record<string, ProviderSelection> = {}) {
-  const evidence: AdapterEvidence[] = []; const resolutions = resolveCapabilities(resolved, selections);
+export function capabilityEvidence(root: string, sources: RepositorySource[], resolved: Detection[], selections: Record<string, ProviderSelection> = {}, answered: ReadonlyMap<string, string> = new Map()) {
+  const evidence: AdapterEvidence[] = []; const resolutions = resolveCapabilities(resolved, selections, answered);
   for (const [id, resolution] of Object.entries(resolutions)) {
     const unscoped = resolution.scopes.length === 1 && resolution.scopes[0]!.scope === '.' && !resolution.ambiguousScopes.length;
     for (const provider of new Set(resolution.scopes.map(entry => entry.provider))) {
