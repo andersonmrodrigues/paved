@@ -62,6 +62,60 @@ function projectTool(project: string): { tool: ToolContract; implementation: Too
   return { tool, implementation };
 }
 
+function secondProjectTool(project: string, authorized = true): void {
+  const { tool, implementation } = projectTool(project);
+  const alternative = { ...tool, id: "project.testing.alternative" };
+  if (!authorized) alternative.permissions = ["repository-write"];
+  writeFileSync(join(project, ".paved/tools/testing-alternative.yaml"), stringify(alternative));
+  writeFileSync(join(project, ".paved/tool-implementations/testing-alternative.yaml"),
+    stringify({ ...implementation, id: "project.testing.alternative", tool: alternative.id }));
+}
+
+describe("testing tool ambiguity", () => {
+  it("asks among authorized tools and executes the selected one", async () => {
+    const { parent, project } = sandbox("paved-test-choice-");
+    try {
+      await initialize(project);
+      secondProjectTool(project);
+      writeFileSync(join(project, ".paved/tools/test-runner.mjs"),
+        'process.stdout.write(JSON.stringify({status:"passed"}));');
+      const discovery = await dispatchCli({ argv: ["agent", "commands", "--project", project, "--json"] });
+      assert.equal((discovery.data as { commands: { name: string; available: boolean }[] })
+        .commands.find((command) => command.name === "test")?.available, true);
+      const asked = await runTest(project);
+      assert.equal(asked.status, "awaiting_input", JSON.stringify(asked));
+      assert.equal(asked.decisions?.[0]?.options.length, 2);
+      const decision = asked.decisions![0]!;
+      const answered = await dispatchCli({
+        argv: ["test", "--project", project, "--answer", `${decision.id}=${decision.options[0]!.id}`,
+          "--answered-by", "tester@example.com", "--json"],
+      });
+      assert.equal(answered.status, "success", JSON.stringify(answered));
+      const third = parse(readFileSync(join(project, ".paved/tools/testing-alternative.yaml"), "utf8")) as ToolContract;
+      const thirdBinding = parse(readFileSync(join(project, ".paved/tool-implementations/testing-alternative.yaml"), "utf8")) as ToolImplementation;
+      writeFileSync(join(project, ".paved/tools/testing-third.yaml"),
+        stringify({ ...third, id: "project.testing.third" }));
+      writeFileSync(join(project, ".paved/tool-implementations/testing-third.yaml"),
+        stringify({ ...thirdBinding, id: "project.testing.third", tool: "project.testing.third" }));
+      const changed = await runTest(project);
+      assert.equal(changed.status, "awaiting_input", JSON.stringify(changed));
+      assert.equal(changed.decisions?.[0]?.options.length, 3);
+    } finally { rmSync(parent, { recursive: true, force: true }); }
+  });
+
+  it("does not offer a tool whose permissions prevent authorization", async () => {
+    const { parent, project } = sandbox("paved-test-unauthorized-");
+    try {
+      await initialize(project);
+      secondProjectTool(project, false);
+      writeFileSync(join(project, ".paved/tools/test-runner.mjs"),
+        'process.stdout.write(JSON.stringify({status:"passed"}));');
+      const result = await runTest(project);
+      assert.equal(result.status, "success", JSON.stringify(result));
+    } finally { rmSync(parent, { recursive: true, force: true }); }
+  });
+});
+
 function writePassingTest(project: string, stderr = ""): void {
   writeFileSync(join(project, ".paved/tools/fixture.test.mjs"), [
     'import assert from "node:assert/strict";',
