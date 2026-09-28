@@ -11,7 +11,7 @@ import { applyConsumerUpdate } from "../../cli/lib/update-transaction.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
 import { hashLocalFile, hashLocalTree } from "../../cli/lib/local-core.ts";
 import { exitCode } from "../../cli/result.ts";
-import { cleanupTemporaryDirectories, temporaryDirectory, temporaryFixture } from "../helpers.ts";
+import { CORE_VERSION, cleanupTemporaryDirectories, temporaryDirectory, temporaryFixture } from "../helpers.ts";
 
 const core = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const fixtures = join(core, "tests/fixtures/consumers");
@@ -50,6 +50,10 @@ test("invalid and incompatible consumers have distinct lifecycle states", () => 
   const invalid = consumer("consumer-invalid");
   const incompatible = consumer("consumer-incompatible");
   const stale = consumer("consumer-stale");
+  const staleLock = join(stale, ".paved/paved.lock");
+  const pinned = parse(readFileSync(staleLock, "utf8")) as { core: { version: string } };
+  pinned.core.version = CORE_VERSION;
+  writeFileSync(staleLock, stringify(pinned));
   try {
     assert.equal(state(invalid), "BROKEN");
     assert.equal(state(incompatible), "INCOMPATIBLE");

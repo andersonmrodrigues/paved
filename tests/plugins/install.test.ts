@@ -8,12 +8,14 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync,
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { parse, stringify } from "yaml";
-import { PLUGIN_DIRECTORY } from "../../plugins/build.ts";
-import { ROOT } from "../helpers.ts";
+import { PLUGIN_DIRECTORY, runtimeFileName } from "../../plugins/build.ts";
+import { CORE_VERSION, NEXT_MAJOR_VERSION, NEXT_PATCH_VERSION, ROOT } from "../helpers.ts";
 import {
   applicationDigest, claudeDetails, codeOf, consumer, hostAvailable, installWithClaude, installWithCodex,
   launcher, pluginVariant, remoteCacheEntries, repackRuntime, repositorySnapshot, workspace, type Invocation,
 } from "./support.ts";
+
+const RUNTIME = runtimeFileName(CORE_VERSION);
 
 const hosts = hostAvailable("codex") && hostAvailable("claude");
 const skip = hosts ? false : "the codex and claude CLIs are required for the clean-room install test";
@@ -51,7 +53,7 @@ describe("clean-room plugin installation", { skip }, () => {
   it("installs the committed plugin byte for byte in both hosts", () => {
     for (const installed of [codexPlugin, claudePlugin]) {
       assert.ok(!realpathSync(installed).startsWith(realpathSync(ROOT)), `${installed} must not be the development checkout`);
-      for (const file of ["bin/paved.mjs", "bin/bootstrap.json", "provenance.json", "runtime/paved-core-1.0.0.tgz", "skills/init/SKILL.md"]) {
+      for (const file of ["bin/paved.mjs", "bin/bootstrap.json", "provenance.json", RUNTIME, "skills/init/SKILL.md"]) {
         assert.deepEqual(readFileSync(join(installed, file)), readFileSync(join(ROOT, PLUGIN_DIRECTORY, file)), `${installed}: ${file}`);
       }
     }
@@ -163,9 +165,9 @@ describe("clean-room plugin installation", { skip }, () => {
     const before = readFileSync(join(project, ".paved", "paved.lock"));
     const oldCore = data<{ coreRoot: string }>(current(project, "status", "--json")).coreRoot;
 
-    const tarball = join(codexPlugin, "runtime", "paved-core-1.0.0.tgz");
-    const patch = repackRuntime(tarball, "1.0.1", root);
-    const newer = launcher(pluginVariant(codexPlugin, root, "plugin-1.0.1", { ...patch, version: "1.0.1" }), npmCache);
+    const tarball = join(codexPlugin, RUNTIME);
+    const patch = repackRuntime(tarball, NEXT_PATCH_VERSION, root);
+    const newer = launcher(pluginVariant(codexPlugin, root, `plugin-${NEXT_PATCH_VERSION}`, { ...patch, version: NEXT_PATCH_VERSION }), npmCache);
     const notified = ok(newer(project, "status", "--json"), "status with newer plugin");
     assert.match(notified.stderr, /PAVED_RUNTIME_UPDATE_AVAILABLE/);
     assert.equal(data<{ coreRoot: string }>(notified).coreRoot, oldCore, "the pinned runtime stays active");
@@ -176,7 +178,7 @@ describe("clean-room plugin installation", { skip }, () => {
     const upgraded = newer(project, "runtime", "upgrade", "--json");
     assert.ok(upgraded.status === 0 || upgraded.status === 1, upgraded.stdout + upgraded.stderr);
     assert.equal(data<{ changed: boolean }>(upgraded).changed, true, upgraded.stdout);
-    assert.equal(lockOf(project).runtime.version, "1.0.1");
+    assert.equal(lockOf(project).runtime.version, NEXT_PATCH_VERSION);
     assert.equal(lockOf(project).runtime.integrity, patch.integrity);
     const newCore = data<{ coreRoot: string }>(ok(newer(project, "status", "--json"), "status after upgrade")).coreRoot;
     assert.notEqual(newCore, oldCore);
@@ -190,8 +192,8 @@ describe("clean-room plugin installation", { skip }, () => {
     assert.equal(data<{ coreRoot: string }>(ok(current(project, "status", "--json"), "status after rollback")).coreRoot, oldCore);
     assert.equal(codeOf(newer(project, "runtime", "rollback", "--json")), "PAVED_RUNTIME_ROLLBACK_UNAVAILABLE");
 
-    const major = repackRuntime(tarball, "2.0.0", root);
-    const incompatible = launcher(pluginVariant(codexPlugin, root, "plugin-2.0.0", { ...major, version: "2.0.0" }), npmCache);
+    const major = repackRuntime(tarball, NEXT_MAJOR_VERSION, root);
+    const incompatible = launcher(pluginVariant(codexPlugin, root, `plugin-${NEXT_MAJOR_VERSION}`, { ...major, version: NEXT_MAJOR_VERSION }), npmCache);
     const refused = incompatible(project, "runtime", "upgrade", "--json");
     assert.equal(refused.status, 5, refused.stdout + refused.stderr);
     assert.ok(refused.json.diagnostics?.some((entry) => entry.code === "PAVED_RUNTIME_UPGRADE_FAILED"), refused.stdout);

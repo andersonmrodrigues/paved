@@ -67,14 +67,18 @@ PLUGIN_VERSION="$(
   '
 )"
 
+MANIFEST_VERSION="$(sed -n 's/^version:[[:space:]]*//p' manifest.yaml | head -1)"
+
 echo
 echo "Current versions:"
 echo "  VERSION                   = $CURRENT_VERSION"
 echo "  package.json              = $PACKAGE_VERSION"
 echo "  plugins/plugin-source.json = $PLUGIN_VERSION"
+echo "  manifest.yaml             = $MANIFEST_VERSION"
 
 if [[ "$CURRENT_VERSION" != "$PACKAGE_VERSION" || \
-      "$CURRENT_VERSION" != "$PLUGIN_VERSION" ]]; then
+      "$CURRENT_VERSION" != "$PLUGIN_VERSION" || \
+      "$CURRENT_VERSION" != "$MANIFEST_VERSION" ]]; then
   echo "ERROR: version files are already inconsistent."
   exit 1
 fi
@@ -101,6 +105,7 @@ case "$BUMP" in
 esac
 
 NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+export NEW_VERSION
 
 echo
 echo "Version bump:"
@@ -128,14 +133,31 @@ const fs = require("fs");
 
 const version = process.env.NEW_VERSION;
 
-function updateJson(path) {
-  const data = JSON.parse(fs.readFileSync(path, "utf8"));
-  data.version = version;
-  fs.writeFileSync(path, JSON.stringify(data, null, 2) + "\n");
+// Replace only the top-level version line so the rest of the file keeps its formatting.
+function updateVersionLine(path) {
+  const content = fs.readFileSync(path, "utf8");
+  const pattern = /^(  "version": )"[^"]*"/m;
+  if (!pattern.test(content)) {
+    throw new Error(`No top-level "version" field in ${path}.`);
+  }
+  fs.writeFileSync(path, content.replace(pattern, `$1"${version}"`));
 }
 
-updateJson("package.json");
-updateJson("plugins/plugin-source.json");
+updateVersionLine("package.json");
+updateVersionLine("plugins/plugin-source.json");
+
+const manifestPath = "manifest.yaml";
+const manifest = fs.readFileSync(manifestPath, "utf8");
+if (!/^version: .*$/m.test(manifest)) {
+  throw new Error(`No top-level version in ${manifestPath}.`);
+}
+fs.writeFileSync(manifestPath, manifest.replace(/^version: .*$/m, `version: ${version}`));
+
+const lockPath = "package-lock.json";
+const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
+lock.version = version;
+lock.packages[""].version = version;
+fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + "\n");
 NODE
 
 # ------------------------------------------------------------
@@ -149,24 +171,22 @@ node <<'NODE'
 const fs = require("fs");
 
 const version = process.env.NEW_VERSION;
-const date = new Date().toISOString().slice(0, 10);
-
 const path = "CHANGELOG.md";
 let content = fs.readFileSync(path, "utf8");
 
 const heading = `## [${version}] - Unreleased`;
 
 if (!content.includes(heading)) {
-  const marker = "# Changelog\n";
+  const firstRelease = content.indexOf("\n## [");
 
-  if (!content.startsWith(marker)) {
+  if (!content.startsWith("# Changelog\n") || firstRelease === -1) {
     throw new Error("Unexpected CHANGELOG.md format.");
   }
 
   content =
-    marker +
-    `\n${heading}\n\n### Changed\n\n- Automatic scoped capability provider resolution for multi-stack repositories.\n\n` +
-    content.slice(marker.length);
+    content.slice(0, firstRelease + 1) +
+    `${heading}\n\n### Changed\n\n- Automatic scoped capability provider resolution for multi-stack repositories.\n\n` +
+    content.slice(firstRelease + 1);
 }
 
 fs.writeFileSync(path, content);
@@ -231,6 +251,8 @@ PLUGIN_VERSION="$(
   '
 )"
 
+MANIFEST_VERSION="$(sed -n 's/^version:[[:space:]]*//p' manifest.yaml | head -1)"
+
 GENERATED_PLUGIN_VERSION="$(tr -d '[:space:]' < plugins/paved/VERSION)"
 
 echo
@@ -238,11 +260,13 @@ echo "Final versions:"
 echo "  VERSION                     = $FINAL_VERSION"
 echo "  package.json                = $PACKAGE_VERSION"
 echo "  plugins/plugin-source.json  = $PLUGIN_VERSION"
+echo "  manifest.yaml               = $MANIFEST_VERSION"
 echo "  plugins/paved/VERSION       = $GENERATED_PLUGIN_VERSION"
 
 if [[ "$FINAL_VERSION" != "$NEW_VERSION" || \
       "$PACKAGE_VERSION" != "$NEW_VERSION" || \
       "$PLUGIN_VERSION" != "$NEW_VERSION" || \
+      "$MANIFEST_VERSION" != "$NEW_VERSION" || \
       "$GENERATED_PLUGIN_VERSION" != "$NEW_VERSION" ]]; then
   echo "ERROR: version synchronization failed."
   exit 1
@@ -296,7 +320,7 @@ echo
 
 read -r -p "Continue with commit + push? [y/N] " CONFIRM
 
-if [[ "${CONFIRM,,}" != "y" ]]; then
+if [[ ! "$CONFIRM" =~ ^[yY]$ ]]; then
   echo "Aborted before commit."
   exit 0
 fi
@@ -309,6 +333,7 @@ git add \
   VERSION \
   package.json \
   package-lock.json \
+  manifest.yaml \
   plugins/plugin-source.json \
   plugins/paved \
   CHANGELOG.md
