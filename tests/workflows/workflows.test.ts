@@ -52,6 +52,26 @@ describe("core workflows", () => {
     assert.deepEqual(Object.keys(FAILURE_CODES).sort(), [...common.$defs.failureCode.enum].sort());
   });
 
+  it("defines the durable work-document paths and canonical preview plan path", () => {
+    const instructions = loadMarkdown(at("core", "instructions", "workflows.md")).body;
+    for (const category of ["intents", "plans", "specs", "tasks", "research"]) {
+      assert.match(instructions, new RegExp(`\\.paved/documents/${category}/<run-id>\\.md`), category);
+    }
+    assert.match(instructions, /paved preview start \.paved\/documents\/plans\/<run-id>\.md/);
+    assert.ok(instructions.includes("plan path recorded in its existing"));
+  });
+
+  it("activates frontend design guidance in user-facing change workflows", () => {
+    const skill = "core.development.frontend-design";
+    for (const id of ["core.feature", "core.bug"]) {
+      const workflow = coreWorkflows.get(id)!;
+      for (const phaseName of ["planning", "implementation"]) {
+        const phase = workflow.phases.find((item) => item.phase === phaseName);
+        assert.ok(phase?.skills?.includes(skill), `${id} ${phaseName}`);
+      }
+    }
+  });
+
   for (const name of names) {
     describe(name, () => {
       const dir = join(root, name);

@@ -5,7 +5,7 @@ title: Feature
 description: >-
   Adds behavior or changes existing behavior on purpose, from request to reviewed,
   verified change. Use when a task asks the software to do something it does not do yet.
-version: 0.3.0
+version: 0.4.0
 status: experimental
 change_type: feature
 inputs:
@@ -34,7 +34,7 @@ phases:
     skills: [core.discovery.context-discovery]
   - phase: planning
     goal: List the claims the feature will make and the check that will prove each one.
-    skills: [core.development.feature-development]
+    skills: [core.development.feature-development, core.development.frontend-design]
     gates:
       - id: claims-planned
         condition: Every acceptance behavior maps to at least one claim with a planned check or artifact.
@@ -47,7 +47,7 @@ phases:
         approval: implementation-plan
   - phase: implementation
     goal: Implement the claims following the chosen pattern, with tests.
-    skills: [core.development.feature-development]
+    skills: [core.development.feature-development, core.development.frontend-design]
   - phase: validation
     goal: Build, lint and run targeted tests while working.
     verification:

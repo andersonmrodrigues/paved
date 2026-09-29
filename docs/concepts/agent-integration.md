@@ -61,9 +61,10 @@ not parse human output when JSON is available.
 
 The authoritative consumer contract is `consumer_layout` in `manifest.yaml`.
 Context is under `.paved/project/`; project rules, verification, tools, skills
-and workflows are under their corresponding `.paved/` paths. Generated
-disposable state is under `.paved/generated/` and is not an integration source
-of truth.
+and workflows are under their corresponding `.paved/` paths. Durable intents,
+plans, specs, tasks and research live under `.paved/documents/` and are committed
+with the project change. Generated disposable state is under `.paved/generated/`
+and is not an integration source of truth.
 
 Agents consume document identity, schema, ownership and provenance, not the
 generator that produced a document. Freshness comes from lifecycle state and
@@ -160,6 +161,16 @@ for the record and CLI contract.
 
 Agent-specific projections must keep project-local `.paved/` state authoritative
 and must not silently upgrade Core, consumer state, or adapters.
+
+The installable Codex and Claude Code plugin also projects a shared `UserPromptSubmit`
+hook. When the nearest repository boundary has both a Paved manifest and lock, the
+hook adds advisory routing context so the agent can select the relevant existing Paved
+command or workflow on each user turn. The hook never runs commands, persists prompt
+text, or blocks a prompt; it fails open when state is incomplete or input is invalid.
+Host trust controls determine whether the hook runs. See the
+[plugin installation guide](../getting-started/installing-the-plugin.md#keep-paved-in-context)
+for review and activation details. This complements the project-local skill projections
+and does not change the CLI contract.
 
 ## Agent-first command contract
 

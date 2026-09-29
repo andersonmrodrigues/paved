@@ -81,6 +81,7 @@ export interface LayoutEntry {
   path: string;
   ownership: string;
   required: boolean;
+  committed?: boolean;
   schema?: string;
 }
 

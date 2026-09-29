@@ -201,6 +201,7 @@ function readme(source: PluginSource, runtime: RuntimeArtifact): string {
     `- Runtime: \`paved-core@${runtime.version}\` bundled at \`${runtimeFileName(runtime.version)}\``,
     `- Runtime integrity: \`${runtime.integrity}\``,
     "- Launcher: `bin/paved.mjs`",
+    "- Prompt routing: `hooks/hooks.json` adds advisory Paved context for initialized repositories; review and trust the hook in the host before it runs.",
     "- Commands: `/paved:<command>` in Claude Code, the `paved:<command>` skill in Codex",
     "",
     "Installation and usage: https://github.com/andersonmrodrigues/paved/blob/main/docs/getting-started/installing-the-plugin.md",
@@ -239,6 +240,8 @@ export function planPlugin(root: string, runtime: RuntimeArtifact): PluginPlan {
 
   const runtimeFile = runtimeFileName(runtime.version);
   files.set("bin/paved.mjs", readFileSync(join(root, "integrations", "shared", "bootstrap.mjs")));
+  files.set("hooks/hooks.json", readFileSync(join(root, "integrations", "shared", "hooks.json")));
+  files.set("hooks/paved-prompt-submit.mjs", readFileSync(join(root, "integrations", "shared", "prompt-submit-hook.mjs")));
   files.set("bin/bootstrap.json", json({
     package: "paved-core",
     version: runtime.version,

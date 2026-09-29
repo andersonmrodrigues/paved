@@ -3,7 +3,7 @@
 apiVersion: paved/v1
 kind: Core
 name: paved-core
-version: 1.4.0
+version: 1.8.0
 supported_api_versions:
   - paved/v1
 
@@ -33,6 +33,7 @@ schemas:
   GardenerReviews: schemas/gardener-review.schema.yaml
   CoreImprovementCandidate: schemas/core-improvement-candidate.schema.yaml
   AgentIntegration: schemas/agent-integration.schema.yaml
+  PreviewReview: schemas/preview-review.schema.yaml
 
 # Schemas that define shared structures, not a document kind.
 schema_definitions:
@@ -214,6 +215,11 @@ consumer_layout:
     required: false
     committed: true
     description: Project workflows (WORKFLOW.md + workflow.yaml, id prefix `project.`). Short names must be unique among active workflows.
+  - path: .paved/documents/
+    ownership: project-owned
+    required: false
+    committed: true
+    description: Durable, versioned Markdown work documents such as intents, plans, specs, tasks, and research. Related documents use the workflow run id; unlike workflow state and local evidence, these documents are kept with the project change.
   - path: .paved/overrides/
     ownership: human-owned
     required: false

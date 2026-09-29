@@ -33,6 +33,9 @@ writing a new record that supersedes it, not by editing the old one.
 | [0026](0026-native-plugin-distribution.md) | Native plugin distribution and explicit runtime upgrade | Accepted |
 | [0027](0027-scoped-capability-provider-resolution.md) | Scoped capability provider resolution | Accepted |
 | [0028](0028-conversational-decision-resolution.md) | Conversational decision resolution | Accepted |
+| [0029](0029-module-testing-suites.md) | Module testing suites | Accepted |
+| [0030](0030-local-markdown-review.md) | Local Markdown review for plans and specs | Accepted |
+| [0031](0031-prompt-aware-plugin-hooks.md) | Prompt-aware plugin hooks | Accepted |
 
 ## Format
 

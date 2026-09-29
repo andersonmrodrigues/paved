@@ -79,7 +79,7 @@ export function planConsumerInitialization(core: string, consumer: string, name:
   const lock = { apiVersion: 'paved/v1', kind: 'Lock', resolved_at: new Date().toISOString(), core: { version, source: 'local-core', sha256: hashLocalCore(core) }, adapters: selected.adapters.map(d => ({ id: d.adapter.id, version: d.adapter.version, source: 'local-core', sha256: hashLocalTree(core, [`adapters/${d.adapter.id}`]) })), generators, ...(capabilities.length ? { capabilities } : {}), ...(runtime ? { runtime } : {}) };
   validate(registry, lock);
   const capabilityDiagnostics = Object.values(resolutions).flatMap(r => r.diagnostics).filter(d => d.code !== 'missing-provider');
-  return { manifest, lock, selectedAdapters: manifest.adapters.map(a => a.id).sort(), resolvedAdapters: selected.adapters.map(d => d.adapter.id).sort(), capabilityProviders: capabilityProviders(resolutions), adapterDiagnostics: selected.diagnostics, capabilityDiagnostics, plannedWrites: ['.paved/manifest.yaml', '.paved/paved.lock', '.paved/.gitignore'] };
+  return { manifest, lock, selectedAdapters: manifest.adapters.map(a => a.id).sort(), resolvedAdapters: selected.adapters.map(d => d.adapter.id).sort(), capabilityProviders: capabilityProviders(resolutions), adapterDiagnostics: selected.diagnostics, capabilityDiagnostics, plannedWrites: ['.paved/manifest.yaml', '.paved/paved.lock', '.paved/.gitignore', '.paved/documents/README.md'] };
 }
 export function initializeConsumer(core: string, consumer: string, name: string) {
   const registry = createRegistry(join(core, 'schemas'), ['paved/v1']); const version = coreManifest(core).version;
@@ -102,6 +102,9 @@ export function initializeConsumer(core: string, consumer: string, name: string)
     if (!same) { if (previous.core.source !== 'local-core') throw new Error('Existing lock uses a different distribution source'); validate(registry, lock); atomicWriteFileSync(lockPath, stringify(lock)); }
   } else { validate(registry, lock); atomicWriteFileSync(lockPath, stringify(lock)); }
   const ignore = join(dir, '.gitignore'); if (!existsSync(ignore)) atomicWriteFileSync(ignore, '/generated/\n');
+  const documentsDir = safe(consumer, '.paved/documents'); mkdirSync(documentsDir, { recursive: true });
+  const documentsReadme = safe(consumer, '.paved/documents/README.md');
+  if (!existsSync(documentsReadme)) atomicWriteFileSync(documentsReadme, `# Work documents\n\nKeep durable Paved work documents here and commit them with the project change. Use the workflow run id in each filename so related documents stay linked. Create a category directory only when you use it.\n\n- \`intents/<run-id>.md\` — captured intent and scope\n- \`plans/<run-id>.md\` — implementation plan; open this exact file with \`paved preview\` for review and approval\n- \`specs/<run-id>.md\` — behavior and acceptance criteria\n- \`tasks/<run-id>.md\` — task breakdown\n- \`research/<run-id>.md\` — supporting research\n\nWorkflow state and local evidence are separate disposable files under \`.paved/generated/\`.\n`);
   return manifest;
 }
 function loadContracts(core: string, registry: Registry): Contract[] {

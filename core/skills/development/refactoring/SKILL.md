@@ -41,6 +41,10 @@ the target structure, and the rules in scope.
 7. **Compare with the baseline**: the same tests pass with the same results; no test was
    changed to make it pass, except for mechanical renames.
 
+For a Paved workflow, save the reviewed refactoring plan at
+`.paved/documents/plans/<run-id>.md`. Keep any structural task breakdown under
+`.paved/documents/tasks/<run-id>.md`, using the same workflow run id.
+
 ## Tools
 
 None beyond the verification profile. Search the code for references before removing
