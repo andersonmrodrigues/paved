@@ -744,3 +744,14 @@ Task 21: tests cover pause, embedded persistence, answer and same-run resume, de
 show/list after reload, and preservation of the human-authored plan approval gate.
 Workflow tests 36/36 and typecheck passed. Full `npm run check` = 750 tests, 745 pass,
 the same 5 baseline failures. Tasks 22–29 remain.
+
+Task 22: `doctor` emits optional repair decisions for stale generated inputs and
+missing outputs without persisting decisions on a read-only invocation. An answer
+attempt persists the decision, and repository-mutating effects require a matching
+human approval file bound to the decision digest before generators run. The repair
+handler reuses the operation lock already held by the decision gate. A regression test
+covers successful approved regeneration as well as the read-only and unapproved cases.
+The content-derived optional-decision gate now promotes a freshly recomputed candidate
+to ASKED when a later invocation answers it, even though no prior read-only invocation
+persisted it. Full `npm run check` = 754 tests, 749 pass, the same 5 baseline failures.
+Tasks 23–29 remain.

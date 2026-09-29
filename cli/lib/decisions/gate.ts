@@ -207,7 +207,7 @@ function runDecisionGateUnlocked(input: {
 
   {
     for (const [id, values] of answers) {
-      const decision = live.get(id) ?? stored.get(id) ?? storage.read(id);
+      let decision = live.get(id) ?? stored.get(id) ?? storage.read(id);
       if (decision === undefined) {
         problems.push(`Unknown decision: ${id}.`);
         continue;
@@ -222,6 +222,15 @@ function runDecisionGateUnlocked(input: {
         continue;
       }
 
+      if (decision.status === "PENDING" && live.get(id) === decision && !stored.has(id)
+        && (decision.depends_on ?? []).every((dependency) => {
+          const resolved = live.get(dependency) ?? stored.get(dependency);
+          return resolved !== undefined && RESOLVED.has(resolved.status);
+        })) {
+        decision = transition(decision, "ASKED", { asked_at: now() });
+        live.set(id, decision);
+        if (persist) storage.write(decision);
+      }
       if (decision.status === "PENDING" || decision.status === "SUPERSEDED"
         || decision.status === "CANCELLED") {
         problems.push(`Decision ${id} is ${decision.status} and cannot be answered.`);
