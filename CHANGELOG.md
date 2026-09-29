@@ -9,6 +9,8 @@ releases, not the development sequence used to build them.
 
 - A canonical decision interaction skill that tells agents how to present, relay and
   resume conversational decisions without taking authorship from the user.
+- Shared Codex and Claude Code command projections now declare interaction mode,
+  decision source and answer channel, and render the same concise answer/resume contract.
 
 ### Changed
 

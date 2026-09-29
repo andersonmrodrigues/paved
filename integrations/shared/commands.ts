@@ -19,6 +19,9 @@ export interface AgentCommandContract {
   readonly tool?: string;
   readonly cliCommand: string;
   readonly failureSemantics: readonly string[];
+  readonly interaction: "conversational" | "read-only";
+  readonly decisionSources: readonly ("runtime" | "agent")[];
+  readonly answerChannels: readonly ("relayed" | "human-authored")[];
 }
 
 export interface DiscoveredAgentCommand extends AgentCommandContract {
@@ -44,6 +47,7 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     requiredContext: [".paved/manifest.yaml", "repository evidence"],
     allowedSideEffects: [".paved/ initialization state", "generated project context", "managed AGENTS.md block"],
     lifecycle: ["UNINITIALIZED"], cliCommand: "init",
+    interaction: "conversational", decisionSources: ["runtime"], answerChannels: ["relayed"],
     failureSemantics: ["Existing Paved state is never reset.", "Invalid partial state fails with diagnostics.", "Package acquisition and runtime activation require verified integrity."],
   },
   {
@@ -54,6 +58,7 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     requiredContext: [".paved/manifest.yaml", ".paved/paved.lock"],
     allowedSideEffects: ["none"],
     lifecycle: ["UNINITIALIZED", ...MANAGEMENT_STATES], cliCommand: "status",
+    interaction: "read-only", decisionSources: [], answerChannels: [],
     failureSemantics: ["Missing and invalid state is reported without writes."],
   },
   {
@@ -64,6 +69,7 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     requiredContext: [".paved/manifest.yaml", ".paved/project/", ".paved/rules/", "applicable workflow", "verification profile"],
     allowedSideEffects: ["agent response only"],
     lifecycle: DEVELOPMENT_STATES, workflow: "core.feature", cliCommand: "plan",
+    interaction: "conversational", decisionSources: ["agent"], answerChannels: ["relayed"],
     failureSemantics: ["Missing workflow or required context blocks with an actionable explanation.", "Observed patterns are not treated as desired architecture without supporting context."],
   },
   {
@@ -74,6 +80,7 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     requiredContext: [".paved/project/", ".paved/rules/", "applicable workflow", "applicable skills", "tool bindings"],
     allowedSideEffects: ["planned application changes", "disposable Paved evidence"],
     lifecycle: DEVELOPMENT_STATES, workflow: "core.feature", cliCommand: "implement",
+    interaction: "conversational", decisionSources: ["runtime", "agent"], answerChannels: ["relayed"],
     failureSemantics: ["Missing approval, workflow, tool binding, or required context blocks implementation.", "Human-owned Paved files and protected application paths are not overwritten."],
   },
   {
@@ -85,6 +92,7 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     requiredCapabilities: ["testing-run"],
     allowedSideEffects: ["declared test process and its documented filesystem effects", "disposable Paved evidence"],
     lifecycle: DEVELOPMENT_STATES, tool: "core.testing.run", cliCommand: "test",
+    interaction: "conversational", decisionSources: ["runtime"], answerChannels: ["relayed"],
     failureSemantics: ["An absent or ambiguous ToolImplementation blocks execution.", "Testing failure remains distinct from Paved verification failure.", "No command is inferred from repository scripts."],
   },
   {
@@ -95,6 +103,7 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     requiredContext: [".paved/verification/profile.yaml", ".paved/tools/", ".paved/tool-implementations/"],
     allowedSideEffects: [".paved/generated/evidence/"],
     lifecycle: DEVELOPMENT_STATES, cliCommand: "verify",
+    interaction: "conversational", decisionSources: ["runtime"], answerChannels: ["relayed"],
     failureSemantics: ["Missing profile, unresolved tools, and failed checks block with diagnostics.", "Verification is not inferred from a passing test run."],
   },
   {
@@ -105,6 +114,7 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     requiredContext: [".paved/project/", ".paved/rules/", ".paved/verification/profile.yaml", "core.code-review.change-review"],
     allowedSideEffects: ["agent response only"],
     lifecycle: DEVELOPMENT_STATES, cliCommand: "review",
+    interaction: "conversational", decisionSources: ["agent"], answerChannels: ["relayed"],
     failureSemantics: ["Missing required evidence is reported as a gap, not a pass.", "Review does not replace verification."],
   },
   {
@@ -115,6 +125,7 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     requiredContext: [".paved/project/feature-map/", "core.bug workflow", "debugging skills"],
     allowedSideEffects: ["read-only investigation"],
     lifecycle: DEVELOPMENT_STATES, workflow: "core.bug", cliCommand: "debug",
+    interaction: "read-only", decisionSources: [], answerChannels: [],
     failureSemantics: ["Unreproduced hypotheses remain explicitly unconfirmed.", "Missing evidence is reported rather than invented."],
   },
   {
@@ -125,6 +136,7 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     requiredContext: [".paved/project/architecture/", ".paved/rules/", "core.refactor workflow"],
     allowedSideEffects: ["planned application changes", "disposable Paved evidence"],
     lifecycle: DEVELOPMENT_STATES, workflow: "core.refactor", cliCommand: "refactor",
+    interaction: "conversational", decisionSources: ["runtime", "agent"], answerChannels: ["relayed", "human-authored"],
     failureSemantics: ["Unpinned behavior or unmet human approval gates block the refactor."],
   },
   {
@@ -135,6 +147,7 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     requiredContext: [".paved/project/", ".paved/rules/", "core.feature workflow", "verification profile"],
     allowedSideEffects: ["planned application changes", "disposable Paved evidence"],
     lifecycle: DEVELOPMENT_STATES, workflow: "core.feature", cliCommand: "feature",
+    interaction: "conversational", decisionSources: ["runtime", "agent"], answerChannels: ["relayed", "human-authored"],
     failureSemantics: ["The workflow stops at unmet approval gates or missing required tools/context.", "Current repository patterns are treated as evidence, not automatically as desired architecture."],
   },
   {
@@ -145,6 +158,7 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     requiredContext: [".paved/project/", ".paved/rules/", "core.bug workflow", "verification profile"],
     allowedSideEffects: ["planned application changes", "disposable Paved evidence"],
     lifecycle: DEVELOPMENT_STATES, workflow: "core.bug", cliCommand: "fix",
+    interaction: "conversational", decisionSources: ["runtime", "agent"], answerChannels: ["relayed", "human-authored"],
     failureSemantics: ["A fix without confirmed cause or regression evidence is incomplete.", "Unmet human approval gates block changes."],
   },
   {
@@ -155,6 +169,7 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     requiredContext: [".paved/manifest.yaml", ".paved/paved.lock"],
     allowedSideEffects: ["Paved lock through update transaction", "affected generated context and proposals"],
     lifecycle: MANAGEMENT_STATES, cliCommand: "update",
+    interaction: "conversational", decisionSources: ["runtime"], answerChannels: ["relayed"],
     failureSemantics: [
       "Unknown compatibility, migration requirements, and ownership conflicts stop before unsafe writes.",
       "Remote updates remain unsupported.",
@@ -169,6 +184,7 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     requiredContext: [".paved/manifest.yaml", ".paved/paved.lock", ".paved/verification/profile.yaml"],
     allowedSideEffects: ["none"],
     lifecycle: ["UNINITIALIZED", ...MANAGEMENT_STATES], cliCommand: "doctor",
+    interaction: "conversational", decisionSources: ["runtime"], answerChannels: ["human-authored"],
     failureSemantics: ["Missing or invalid state is reported; no repair is applied automatically."],
   },
   {
@@ -179,6 +195,7 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     requiredContext: [".paved/generated/evidence/", ".paved/gardener/"],
     allowedSideEffects: ["none"],
     lifecycle: DEVELOPMENT_STATES, cliCommand: "gardener",
+    interaction: "conversational", decisionSources: ["runtime"], answerChannels: ["relayed"],
     failureSemantics: ["Missing evidence remains a finding.", "A human must approve proposals before framework or policy changes."],
   },
 ];

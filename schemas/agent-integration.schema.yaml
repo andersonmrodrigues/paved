@@ -77,6 +77,9 @@ $defs:
       - lifecycle
       - cli_command
       - failure_semantics
+      - interaction
+      - decision_sources
+      - answer_channels
     properties:
       id:
         type: string
@@ -116,3 +119,12 @@ $defs:
         type: array
         minItems: 1
         items: { type: string, minLength: 1 }
+      interaction: { enum: [conversational, read-only] }
+      decision_sources:
+        type: array
+        uniqueItems: true
+        items: { enum: [runtime, agent] }
+      answer_channels:
+        type: array
+        uniqueItems: true
+        items: { enum: [relayed, human-authored] }

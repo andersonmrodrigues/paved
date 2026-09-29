@@ -8,6 +8,41 @@ import { AGENT_COMMANDS } from "../../integrations/shared/commands.ts";
 import { at } from "../helpers.ts";
 
 describe("agent projections", () => {
+  describe("conversational contract parity", () => {
+    it("emits the same conversational interaction for Codex and Claude Code", async () => {
+      const { renderCommand } = await import("../../integrations/shared/projection.ts");
+      const command = AGENT_COMMANDS.find((item) => item.name === "verify")!;
+      const codex = renderCommand(command, {
+        headerLine: "<!-- h -->", title: "$paved-verify",
+        launcher: { command: "node bootstrap.mjs" },
+        frontmatter: { name: "paved-verify", description: command.description },
+      });
+      const claude = renderCommand(command, {
+        headerLine: "<!-- h -->", title: "/paved:verify", launcher: { command: "node bootstrap.mjs" },
+      });
+      for (const text of [codex, claude]) {
+        assert.match(text, /awaiting_input/);
+        assert.match(text, /--answer <decision-id>=<value>/);
+        assert.match(text, /--answered-by/);
+        assert.match(text, /core\.decisions\.decisions/);
+      }
+    });
+
+    it("references the skill instead of repeating its prohibitions", async () => {
+      const { renderCommand } = await import("../../integrations/shared/projection.ts");
+      const command = AGENT_COMMANDS.find((item) => item.name === "verify")!;
+      const text = renderCommand(command, { headerLine: "<!-- h -->", title: "/paved:verify", launcher: { command: "node b.mjs" } });
+      assert.doesNotMatch(text, /Never answer a material decision/);
+    });
+
+    it("marks read-only commands and declares decision sources", () => {
+      assert.equal(AGENT_COMMANDS.find((item) => item.name === "status")!.interaction, "read-only");
+      assert.equal(AGENT_COMMANDS.find((item) => item.name === "verify")!.interaction, "conversational");
+      assert.deepEqual(AGENT_COMMANDS.find((item) => item.name === "verify")!.decisionSources, ["runtime"]);
+      assert.deepEqual(AGENT_COMMANDS.find((item) => item.name === "plan")!.decisionSources, ["agent"]);
+    });
+  });
+
   it("renders deterministic Codex and Claude projections from the same canonical skills", () => {
     const project = mkdtempSync(join(tmpdir(), "paved-integration-"));
     try {
