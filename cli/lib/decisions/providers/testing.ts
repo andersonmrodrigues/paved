@@ -52,6 +52,7 @@ export function detectTestingCandidates(projectRoot: string): CheckCandidate[] {
  */
 export const testingAdoptProvider: DecisionProvider = (context) => {
   if (existsSync(join(context.projectRoot, TESTING_TOOL_PATH))) return [];
+  if (resolveTestingTool(context.projectRoot, context.coreRoot).status === "suite") return [];
   if (resolveTestingTool(context.projectRoot, context.coreRoot).status !== "unavailable") return [];
   const candidates = detectTestingCandidates(context.projectRoot);
   if (candidates.length === 0) return [];
@@ -60,11 +61,16 @@ export const testingAdoptProvider: DecisionProvider = (context) => {
     .sort((a, b) => a.location.localeCompare(b.location, "en"));
   return [{
     scope: "project",
-    question: "Which test command should Paved run when a workflow tests a change?",
+    question: "Which detected test commands should Paved run when a workflow tests a change?",
     reason:
-      "feature, fix, refactor, implement and test run one governed testing command. "
+      "feature, fix, refactor, implement and test run the selected governed testing commands. "
       + "Without it those commands stay unavailable.",
     options: [
+      ...(candidates.length > 1 ? [{
+        id: "all", label: "All detected module tests",
+        description: candidates.map((item) => `${item.label} in ${where(item)}`).join(", "),
+        consequence: "Workflows test every selected module.",
+      }] : []),
       ...candidates.map((item) => ({
         id: testingOptionId(item),
         label: `${item.label} in ${where(item)}`,
@@ -77,7 +83,7 @@ export const testingAdoptProvider: DecisionProvider = (context) => {
         consequence: "feature, fix, refactor, implement and test stay unavailable.",
       },
     ],
-    recommended: testingOptionId(candidates[0]!),
+    recommended: candidates.length > 1 ? "all" : testingOptionId(candidates[0]!),
     evidence,
     required: true,
     requiredAnswer: { type: "single-choice" },
