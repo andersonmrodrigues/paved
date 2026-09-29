@@ -803,3 +803,9 @@ retaining direct file configuration as an advanced path. Workflow, result, owner
 integration, verification, command reference and README documentation now describe the
 implemented protocol. Documentation/reference/link suites 11/11 and typecheck passed.
 Tasks 27–29 remain.
+
+Task 27: added a guarded clean-room acceptance suite with ten checks. The harness rejects
+user writes to manifest, lock, verification profile, Tools and Rules paths; the flows
+initialize a Java/TypeScript two-stack fixture through answers, confirm readiness and
+provider resolution, and exercise verify, gardener, doctor, feature, fix and refactor.
+Acceptance tests 10/10 and typecheck passed. Tasks 28–29 remain.
