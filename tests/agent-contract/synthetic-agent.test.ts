@@ -64,6 +64,9 @@ describe("synthetic agent black-box contract", () => {
         ...(command.tool === undefined ? {} : { tool: command.tool }),
         cli_command: command.cliCommand,
         failure_semantics: command.failureSemantics,
+        interaction: command.interaction,
+        decision_sources: command.decisionSources,
+        answer_channels: command.answerChannels,
       })),
       scope: "project",
       provenance: { owner: "paved", generated: true },
@@ -89,11 +92,13 @@ describe("synthetic agent black-box contract", () => {
 
       const commandsBefore = invoke(project, "agent", "commands");
       assert.equal(commandsBefore.result.status, "success");
-      const beforeData = commandsBefore.result.data as { lifecycleState: string; commands: { name: string; available: boolean }[] };
+      const beforeData = commandsBefore.result.data as { lifecycleState: string; commands: { name: string; available: boolean; interaction: string; decisionSources: string[]; answerChannels: string[] }[] };
       assert.equal(beforeData.lifecycleState, "UNINITIALIZED");
       assert.equal(beforeData.commands.length, 14);
       assert.equal(beforeData.commands.find((command) => command.name === "init")?.available, true);
       assert.equal(beforeData.commands.find((command) => command.name === "plan")?.available, false);
+      assert.equal(beforeData.commands.find((command) => command.name === "init")?.interaction, "conversational");
+      assert.deepEqual(beforeData.commands.find((command) => command.name === "status")?.decisionSources, []);
 
       const unavailablePlan = invoke(project, "agent", "command", "plan");
       assert.equal(unavailablePlan.exitCode, 4);

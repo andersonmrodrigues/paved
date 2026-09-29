@@ -24,3 +24,15 @@ Perform a behavior-preserving refactor in small, verified steps.
 - Unpinned behavior or unmet human approval gates block the refactor.
 - If a required ToolImplementation or runtime is unavailable, stop and explain the missing prerequisite. Never infer or execute a command from repository scripts.
 - Do not edit human-owned Paved state or bypass lifecycle, ownership, approval, or verification gates.
+
+## Conversational contract
+
+1. Invoke the command. If it returns `"status": "awaiting_input"`, it is waiting on the user.
+2. Present every decision in `decisions[]` to the user: what Paved detected, what
+   remains to decide, why it matters, the options, Paved's recommendation and its evidence.
+3. Collect the user's answer. Do not answer on their behalf.
+4. Resume the same command with `--answer <decision-id>=<value> --answered-by <identity>`,
+   repeating `--answer` once per value for a multi-choice decision.
+5. Present the result.
+
+Follow `core.decisions.decisions` for the full interaction protocol and its prohibitions.

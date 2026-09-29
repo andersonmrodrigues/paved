@@ -166,6 +166,12 @@ mapping, and failure semantics. The agent may present commands as Codex skills
 or Claude slash commands, but the semantics and `.paved/` source of truth are
 shared.
 
+Each command also declares whether its interaction is `conversational` or
+`read-only`, whether decisions come from `runtime` or `agent`, and which answer
+channels (`relayed` or `human-authored`) it can require. Both host projections
+render the same short answer-and-resume contract for conversational commands and
+point to `core.decisions.decisions` for the complete protocol.
+
 The catalog is descriptive and agent-neutral. Development tasks remain
 orchestrated by the coding agent through the existing Paved workflows, Skills,
 Tools, context and verification engine. `paved agent command` resolves the
