@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { afterEach, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse, stringify } from "yaml";
 import { analyzeGardener, considerCoreCandidates } from "../../cli/lib/gardener.ts";
@@ -171,4 +171,30 @@ it("creates only a review-only Core candidate when two consumers are explicitly 
   assert.equal(first[0]?.approval_required, true);
   assert.equal(createRegistry(join(CORE, "schemas"), ["paved/v1"]).validate(first[0]).valid, true);
   assert.equal(considerCoreCandidates([results[0]!]).length, 0);
+});
+
+describe("conversational gardener adoption", () => {
+  function recurring(): string {
+    const dir = consumer("gardener-adoption");
+    evidence(dir, "run-one", "2026-01-01T00:00:00Z");
+    evidence(dir, "run-two", "2026-01-02T00:00:00Z");
+    return dir;
+  }
+
+  it("offers optional adoption decisions without writing rules", async () => {
+    const dir = recurring();
+    const result = await dispatchCli({ argv: ["gardener", "--project", dir, "--json"], cwd: dir, executablePath: join(CORE, "cli/index.ts") });
+    assert.ok((result.decisions?.length ?? 0) > 0);
+    assert.equal(result.decisions?.[0]?.required, false);
+    assert.equal(existsSync(join(dir, ".paved/rules")), false);
+  });
+
+  it("writes adopted rules only after an answer and leaves reviews human-owned", async () => {
+    const dir = recurring();
+    const first = await dispatchCli({ argv: ["gardener", "--project", dir, "--json"], cwd: dir, executablePath: join(CORE, "cli/index.ts") });
+    const decision = first.decisions![0]!;
+    await dispatchCli({ argv: ["gardener", "--project", dir, "--answer", `${decision.id}=adopt`, "--answered-by", "maintainer@example.com", "--json"], cwd: dir, executablePath: join(CORE, "cli/index.ts") });
+    assert.equal(existsSync(join(dir, ".paved/rules")), true);
+    assert.equal(existsSync(join(dir, ".paved/gardener/reviews.yaml")), false);
+  });
 });

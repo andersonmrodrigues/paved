@@ -934,6 +934,24 @@ describe("status and doctor commands", () => {
   });
 });
 
+describe("update migration safety", () => {
+  it("keeps required document migrations blocked without a shipped migration transform", async () => {
+    const project = fixtureCopy("update-required-migration");
+    try {
+      const lockPath = join(project, ".paved/paved.lock");
+      writeCurrentLock(project);
+      const before = readFileSync(lockPath);
+      mkdirSync(join(project, ".paved/rules"), { recursive: true });
+      writeFileSync(join(project, ".paved/rules/legacy.yaml"), stringify({ apiVersion: "paved/v1", kind: "Rule", id: "legacy", unknown_field: true }));
+      const result = await run(project, "update");
+      assertCode(result, "PAVED_UPDATE_MIGRATION_REQUIRED");
+      assert.equal(result.status, "failed");
+      assert.equal(result.decisions, undefined);
+      assert.deepEqual(readFileSync(lockPath), before);
+    } finally { rmSync(project, { recursive: true, force: true }); }
+  });
+});
+
 describe("init and generate commands", () => {
   it("plans a fresh init in dry-run mode without creating .paved", async () => {
     const project = freshConsumer("init-dry-run");
