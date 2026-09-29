@@ -37,3 +37,10 @@ capture, retries and measurements. Decision records:
 Paved can verify that support has the right type and revision. It cannot prove that a
 test assertion fully exercises a claim, authenticate a human approval, or make an
 agent-reported result independent. Those remain review and runner responsibilities.
+
+When `init` detects eligible checks, Paved can offer them as a material profile-adoption
+decision and write `.paved/verification/profile.yaml` after the answer. Choosing a check
+only configures what Paved will run; it does not prove that the check passed. A later
+`verify` invocation executes the configured Tools and records evidence. Existing valid
+profiles remain supported as already-decided project configuration. See
+[conversational decisions](decisions.md).

@@ -27,8 +27,14 @@ commands invoke the packaged runtime through a project-local bootstrap launcher.
 | `feature` | Feature request and acceptance criteria | Same development states; project context, rules, feature workflow and verification profile | Composes understand, plan, implement, test, verify and review | Stops at unmet approval gates or missing required tools/context. |
 | `fix` | Observed failure and expected behavior | Same development states; project context, rules, bug workflow and verification profile | Composes reproduction, diagnosis, fix, regression test, verification and review | A fix without confirmed cause or regression evidence is incomplete. |
 | `update` | Update local Core/adapters/inputs; no input | Initialized lifecycle; manifest and lock | Uses the existing safe update transaction | Unknown compatibility, migrations and ownership conflicts stop unsafe writes; remote update is unsupported. |
-| `doctor` | Diagnose state; no input | Any lifecycle; manifest, lock and verification profile | Read-only actionable diagnostics | Reports issues without automatic repair. |
-| `gardener` | Analyze evidence; no input | `RESOLVED`, `GENERATED`, `VALIDATED`, or `READY`; generated evidence and review state | Read-only observations/proposals | Missing evidence remains a finding; humans approve improvements. |
+| `doctor` | Diagnose state; no input | Any lifecycle; manifest, lock and verification profile | Read-only diagnostics and optional repair decisions; applies regeneration only after human-authored approval | Missing or inconsistent state remains diagnostic; repairs never apply automatically. |
+| `gardener` | Analyze evidence; no input | `RESOLVED`, `GENERATED`, `VALIDATED`, or `READY`; generated evidence and review state | Observations, optional adoption decision and project rules after an explicit answer | Missing evidence remains a finding; it never writes human-owned review records. |
+
+Each command contract also reports its interaction mode, decision source (`runtime` or
+`agent`) and answer channel (`relayed` or `human-authored`). Conversational commands
+return questions at top-level `decisions[]`; agents present them and resume the same
+command with the user's answer. See [conversational decisions](decisions.md) and the
+[canonical decision skill](../../core/skills/decisions/decisions/SKILL.md).
 
 Development commands persist `WorkflowRun` state under
 `.paved/generated/runs/`. `feature`, `fix` and `refactor` advance the existing

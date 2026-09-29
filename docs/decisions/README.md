@@ -32,6 +32,7 @@ writing a new record that supersedes it, not by editing the old one.
 | [0025](0025-packaged-runtime-and-workflow-execution.md) | Packaged runtime and executable workflow state | Accepted |
 | [0026](0026-native-plugin-distribution.md) | Native plugin distribution and explicit runtime upgrade | Accepted |
 | [0027](0027-scoped-capability-provider-resolution.md) | Scoped capability provider resolution | Accepted |
+| [0028](0028-conversational-decision-resolution.md) | Conversational decision resolution | Accepted |
 
 ## Format
 

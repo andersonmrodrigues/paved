@@ -16,7 +16,7 @@ distributed scheduler.
 |---|---|
 | `workflow` | Id and version of the workflow run |
 | `revision`, `started_at`, `ended_at` | Where and when; `ended_at` required for terminal statuses |
-| `status` | `running`, `awaiting-approval`, `completed`, `completed-with-warnings`, `failed`, `blocked`, `cancelled` |
+| `status` | `running`, `awaiting-approval`, `awaiting-input`, `completed`, `completed-with-warnings`, `failed`, `blocked`, `cancelled` |
 | `inputs[]` | Every input as understood, with `source` (`human`, `ticket`, `repository`) |
 | `phases[]` | One per workflow phase, in order: `status` (`pending`, `running`, `completed`, `skipped`, `failed`, `blocked`), `attempts`, `skip_reason`, `skills[]`, `gates[]`, `failure` |
 | `failure` | The failure that ended or holds the run ([workflow failure](workflow-failure.md)) |
@@ -24,11 +24,14 @@ distributed scheduler.
 | `evidence` | Path of the evidence record; required when completed |
 | `outputs[]` | What the run left behind (`kind`, `description`, `ref`) |
 | `events[]` | Append-only log |
+| `decisions[]` | Run-scoped decisions whose lifetime is this run |
 
 ```mermaid
 stateDiagram-v2
   [*] --> running
   running --> awaiting_approval: approval gate reached
+  running --> awaiting_input: required decision asked
+  awaiting_input --> running: answer accepted and run resumed
   awaiting_approval --> running: approved
   awaiting_approval --> blocked: rejected
   running --> failed: failure (failed)
@@ -61,6 +64,7 @@ class.
 | `verification-executed` | A check ran (`ref`: check id in the evidence) |
 | `evidence-recorded` | Evidence was written or appended |
 | `approval-requested`, `approval-decided` | A human decision was asked for or made |
+| `decision-raised`, `decision-asked`, `decision-answered`, `decision-applied`, `decision-superseded` | A run-scoped decision changes state |
 | `retry-started` | A new attempt of a phase began |
 
 ## Plan approval

@@ -146,11 +146,17 @@ side effect of normal integration operations.
 1. Discover version and consumer manifest.
 2. Inspect `status --json`.
 3. Load relevant context and resolved content.
-4. Select an applicable Skill or Workflow.
-5. Perform the agent's work.
-6. Run Paved verification.
-7. Consume diagnostics and remediation.
+4. Invoke the applicable command and inspect top-level `decisions[]` and `diagnostics[]`.
+5. Present emitted questions and relay only the user's explicit answer through the same command.
+6. Keep blockers separate from optional decisions; an answer never overrides a diagnostic.
+7. Perform the agent's work, run Paved verification, and consume remediation.
 8. Correct and verify again until the contract permits completion.
+
+Command contracts declare `interaction`, `decisionSources` and `answerChannels` in
+`paved agent commands --json`. Codex and Claude Code render the same short resume guidance
+and reference the [canonical decision skill](../../core/skills/decisions/decisions/SKILL.md)
+for presentation, batching and authorship rules. See [conversational decisions](decisions.md)
+for the record and CLI contract.
 
 Agent-specific projections must keep project-local `.paved/` state authoritative
 and must not silently upgrade Core, consumer state, or adapters.
