@@ -20,6 +20,15 @@ An agent without project context tends to guess, overwrite, skip evidence and
 report success without proof. Paved makes the safe path explicit and
 machine-checkable instead of leaving correctness to prompt quality.
 
+### User ↕ Agent ↕ Paved
+
+The user owns material project choices. Paved derives what evidence supports, presents
+explicit options and applies the user's answer through its contracts. The agent explains
+the question and relays the answer; it does not choose for the user or author a human
+approval. Missing evidence and unsafe conditions remain blockers, not questions. See the
+[decision model](docs/concepts/decisions.md) and its
+[canonical agent skill](core/skills/decisions/decisions/SKILL.md).
+
 ## Core concepts
 
 - Paved Path: the supported way to perform a kind of work.
@@ -210,6 +219,7 @@ Public documentation lives in:
 - [Installing the Paved plugin](docs/getting-started/installing-the-plugin.md)
 - [Integrating a repository](docs/getting-started/integrating-a-repository.md)
 - [Agent command reference](docs/concepts/agent-commands.md)
+- [Conversational decisions](docs/concepts/decisions.md)
 - [docs/concepts](docs/concepts)
 - [docs/decisions](docs/decisions)
 - [docs/maintenance](docs/maintenance)

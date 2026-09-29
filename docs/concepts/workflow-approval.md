@@ -64,3 +64,19 @@ evidence so far. If the change grows after approval, the gate is requested again
 records who approved; it does not verify identity. Until a runner exists, the record is
 as trustworthy as the process that writes it, which is why CI and reviewers should see
 the run record next to the evidence.
+
+## Conversational decision channels
+
+Not every project choice is a workflow approval gate. Material decisions use one of two
+channels selected by the registered handler's effect:
+
+| Channel | Evidence of consent | What it does not prove |
+|---|---|---|
+| `relayed` | The answer and user-supplied `--answered-by` identity are recorded with the decision | Paved does not authenticate the person or treat an agent-selected recommendation as consent |
+| `human-authored` | A person-authored `.paved/approvals/<decision-id>.json` matches the exact decision digest and answer | The agent must not create that file, and Paved does not authenticate the writer |
+
+Additive configuration and lock transactions can use relayed answers. Repository-mutating
+or destructive effects require the human-authored channel. A plan approval remains its
+own run gate bound to the plan digest. The channels explain who must author the response;
+they do not change tool safety classes or let a decision override a blocking diagnostic.
+See [conversational decisions](decisions.md).

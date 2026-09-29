@@ -30,29 +30,47 @@ The generated agent command uses its own project-local launcher. A direct
 checkout CLI run records local Core digests; a launcher run also pins the
 package integrity and installed content digest in `.paved/paved.lock`.
 
-## 2. Create the manifest
+## 2. Initialize with Paved
 
-`paved init` creates `.paved/manifest.yaml` from detected local adapters. Review its
-human-owned project name, Core range and adapter selections. For manual setup, use
-[`core/templates/manifest.yaml`](../../core/templates/manifest.yaml).
-Multi-stack repositories need no provider configuration when each stack lives in its
-own directories: Paved resolves capability providers per scope from repository evidence
-and records the decisions in `paved.lock` (see
-[scoped resolution](../concepts/adapters.md)). If initialization still reports
-`PAVED_ADAPTER_AMBIGUOUS_PROVIDER`, two unrelated adapters claim the same directory.
-Set `capability_providers` in the manifest for the capability named in the diagnostic,
-either one adapter id for the whole repository or a list of `{ path, provider }` for the
-scope named in the diagnostic. Choose based on the evidence the project wants to use;
-Paved does not guess. `status` and `doctor` continue to report unresolved provider
-ambiguity until the manifest is corrected.
+Run `$paved-init` in Codex or `/paved:init` in Claude Code. Paved detects the stack,
+resolves what repository evidence supports, and asks about material choices such as which
+detected checks should become verification gates. Review the evidence and consequences,
+then choose an offered option. Paved writes the approved profile itself.
 
-## 3. Declare verification
+```text
+/paved:init
+  → Paved detects the stack and resolves what the evidence proves
+  → Paved asks which detected checks should become verification gates
+  → you answer the emitted decision
+  → Paved writes .paved/verification/profile.yaml
+/paved:status   → GENERATED → VALIDATED → READY
+```
 
-Copy [`core/templates/verification-profile.yaml`](../../core/templates/verification-profile.yaml)
-to `.paved/verification/profile.yaml`. For each existing build, test or analysis
-command, create a Tool contract and a Check definition, then list the Check id in the
-profile. Prefer checks CI already runs. Run each tool once to confirm it works. List
-check types the project does not have under `unavailable`.
+When a command returns `awaiting_input`, use the exact decision id and option from its
+result and resume the same command with `--answer <id>=<value> --answered-by <identity>`.
+The identity must come from you. If Paved reports a blocking diagnostic without a
+decision, follow its remediation; do not turn the diagnostic into a choice. Read the
+[decision guide](../concepts/decisions.md) for batching and human-authored approvals.
+
+## 3. Direct configuration (advanced)
+
+Manual setup remains supported for teams that manage these contracts directly. For the
+manifest, use [`core/templates/manifest.yaml`](../../core/templates/manifest.yaml).
+Multi-stack repositories need no provider configuration when each stack lives in its own
+directories: Paved resolves capability providers per scope from repository evidence and
+records the decisions in `paved.lock` (see [scoped resolution](../concepts/adapters.md)).
+If you manage provider selection manually, set `capability_providers` in the manifest for
+the capability named in the diagnostic, either one adapter id for the whole repository or
+a list of `{ path, provider }` for each scope. Choose based on the evidence the project
+wants to use; Paved does not guess.
+
+To hand-configure verification, copy
+[`core/templates/verification-profile.yaml`](../../core/templates/verification-profile.yaml)
+to `.paved/verification/profile.yaml`. For each existing build, test or analysis command,
+create a Tool contract and a Check definition, then list the Check id in the profile.
+Prefer checks CI already runs. Run each tool once to confirm it works. List check types
+the project does not have under `unavailable`. Choosing a check configures a gate; only a
+later `verify` run can produce passing evidence.
 
 ## 4. Add the agent entrypoint
 
