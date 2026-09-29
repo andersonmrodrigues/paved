@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-29
+
 ### Fixed
 
 - `paved init` asks about every build-enforced Checkstyle module in the same rules
