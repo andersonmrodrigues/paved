@@ -174,7 +174,7 @@ describe("runtime package artifact", () => {
         environments: ["local"],
         invocation: {
           type: "command",
-          executable: process.execPath,
+          executable: "node",
           arguments: ["--", ".paved/tools/test-runner.mjs"],
         },
         availability: "available",
