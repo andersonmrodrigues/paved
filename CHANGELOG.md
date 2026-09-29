@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-09-29
+
 ### Fixed
 
 - When a runtime update replaces a decision question, init supersedes the old
