@@ -1,6 +1,6 @@
 # Prompt-Aware Paved Plugin Hooks
 
-- **Status:** Approved direction; spec awaiting review
+- **Status:** Accepted
 - **Date:** 2026-09-29
 - **Scope:** Keep Codex and Claude Code aware of Paved on every user turn in an initialized consumer repository.
 
@@ -48,9 +48,11 @@ hook's JSON input from stdin and uses its `cwd` to locate the nearest consumer r
 following the same boundary rule as the plugin launcher: stop at the first ancestor
 with `.paved/manifest.yaml` or `.git`.
 
-The hook emits a valid `additionalContext` result only when that root has both
-`.paved/manifest.yaml` and `.paved/paved.lock`. Otherwise it exits successfully without
-output. This allows the hook to be installed globally through the plugin but remain
+The hook emits the shared host-compatible
+`hookSpecificOutput` result with `hookEventName: "UserPromptSubmit"` and
+`additionalContext` only when that root has both `.paved/manifest.yaml` and
+`.paved/paved.lock`. Otherwise it exits successfully without output. This allows the
+hook to be installed globally through the plugin but remain
 inactive in unrelated and not-yet-initialized repositories. It does not parse project
 configuration, start the Core runtime, or invoke a shell command from the repository.
 
@@ -98,9 +100,9 @@ and enable the hook and must not claim hard enforcement.
 
 ## Packaging and versioning
 
-- Add the shared hook handler and `hooks/hooks.json` to the plugin build inputs.
-- Ensure both generated plugin manifests discover the hook without replacing unrelated
-  host-specific manifest settings.
+- Add the shared hook handler and `hooks/hooks.json` to the plugin build inputs. Both
+  Codex and Claude Code discover this default plugin hook path; preserve current
+  host-specific manifests unless an explicit hook path is needed.
 - Include both files in plugin provenance and drift checks.
 - Increment plugin and Core versions as a compatible Core feature release.
 - Rebuild and validate the generated plugin, then publish using `release.sh` and tag the
@@ -144,5 +146,6 @@ and enable the hook and must not claim hard enforcement.
 - Existing block writer: `cli/lib/agents-block.ts`
 - Generated plugin pipeline: `plugins/build.ts`
 
-The implementation plan will add an ADR that amends [ADR 0024](../../decisions/0024-agent-integration-projections.md)
-with the per-prompt hook, trust and fallback contract.
+The per-prompt hook, trust and fallback contract is recorded in
+[ADR 0031](../../decisions/0031-prompt-aware-plugin-hooks.md), which extends
+[ADR 0024](../../decisions/0024-agent-integration-projections.md).
