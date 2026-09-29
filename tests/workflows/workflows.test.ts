@@ -61,6 +61,17 @@ describe("core workflows", () => {
     assert.ok(instructions.includes("plan path recorded in its existing"));
   });
 
+  it("activates frontend design guidance in user-facing change workflows", () => {
+    const skill = "core.development.frontend-design";
+    for (const id of ["core.feature", "core.bug"]) {
+      const workflow = coreWorkflows.get(id)!;
+      for (const phaseName of ["planning", "implementation"]) {
+        const phase = workflow.phases.find((item) => item.phase === phaseName);
+        assert.ok(phase?.skills?.includes(skill), `${id} ${phaseName}`);
+      }
+    }
+  });
+
   for (const name of names) {
     describe(name, () => {
       const dir = join(root, name);
