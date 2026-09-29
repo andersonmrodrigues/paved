@@ -49,6 +49,9 @@ emitted as a successor linked with `supersedes`.
 The fingerprint covers only the Decision's own evidence references and candidate set.
 Unrelated repository changes do not invalidate a decision. When cited evidence or
 candidates change, Paved supersedes the old record and asks the new question again.
+If a runtime update replaces the question for the same apply handler, the next
+run of the originating command also supersedes the old pending decision before
+presenting the replacement. A previous option id cannot answer the new question.
 
 ## Persistence and ownership
 
