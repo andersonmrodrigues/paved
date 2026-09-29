@@ -53,7 +53,7 @@ describe("clean-room plugin installation", { skip }, () => {
   it("installs the committed plugin byte for byte in both hosts", () => {
     for (const installed of [codexPlugin, claudePlugin]) {
       assert.ok(!realpathSync(installed).startsWith(realpathSync(ROOT)), `${installed} must not be the development checkout`);
-      for (const file of ["bin/paved.mjs", "bin/bootstrap.json", "provenance.json", RUNTIME, "skills/init/SKILL.md"]) {
+      for (const file of ["bin/paved.mjs", "bin/bootstrap.json", "provenance.json", RUNTIME, "skills/init/SKILL.md", "hooks/hooks.json", "hooks/paved-prompt-submit.mjs"]) {
         assert.deepEqual(readFileSync(join(installed, file)), readFileSync(join(ROOT, PLUGIN_DIRECTORY, file)), `${installed}: ${file}`);
       }
     }

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -109,5 +109,31 @@ describe("prompt submit hook", () => {
       assert.equal(result.stdout, "", input);
       assert.equal(result.stderr, "", input);
     }
+  });
+
+  it("preserves UTF-8 paths when stdin splits a multibyte character", async () => {
+    const root = repository("utf8");
+    const cwd = join(root, "projeto-ação");
+    mkdirSync(cwd);
+    initialize(cwd);
+    const payload = Buffer.from(JSON.stringify({ cwd }));
+    const character = Buffer.from("ç");
+    const split = payload.indexOf(character) + 1;
+    assert.ok(split > 0);
+
+    const child = spawn(process.execPath, [handler], { stdio: ["pipe", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => { stdout += chunk; });
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => { stderr += chunk; });
+    const closed = new Promise<number | null>((resolve) => child.on("close", resolve));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    child.stdin.write(payload.subarray(0, split));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    child.stdin.end(payload.subarray(split));
+
+    assert.equal(await closed, 0, stderr);
+    assert.match(stdout, /hookSpecificOutput/);
+    assert.equal(stderr, "");
   });
 });
