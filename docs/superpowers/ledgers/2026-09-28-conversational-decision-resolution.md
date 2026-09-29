@@ -772,3 +772,17 @@ unknown compatibility and integrity failures remain blockers as specified. A reg
 test proves the lock and decision store remain unchanged for this condition. Cost if
 wrong: users cannot approve a manual migration through a conversational decision; they
 must migrate the document themselves, then rerun update. Tasks 24–29 remain.
+
+Task 24: added the canonical `core.decisions.decisions` skill. The interaction guidance
+covers presentation, recommendation versus consent, batching, explicit answer relay,
+human-authored approvals and blocking diagnostics. Three simulated pressure scenarios
+were reviewed before and after drafting; the first pass exposed ambiguity around “choose
+the recommended option” and how to present an optional question beside a blocker, so the
+skill now addresses both directly. Skill and link suites 134/134 and typecheck passed.
+
+Task 24 contract ruling: the plan requested `status: active`, but lifecycle status schema
+only allows `experimental`, `stable` and `deprecated`, and Core maintenance requires a
+new skill to start experimental at 0.1.0. The skill follows those constraints. The new
+`decisions` category was added as an additive schema enum value, cataloged, and documented
+as category ten. Cost if wrong: consumers relying on a fixed category list must accept
+the additive category in `paved/v1`.
