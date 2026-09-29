@@ -11,25 +11,25 @@
   "source": {
     "package": "paved-core",
     "version": "1.2.0",
-    "content_sha256": "4364039160e27fb4ef84507bf6f7187dec9d19f1dd30beace7953f969501a47e"
+    "content_sha256": "a3ce6d7fa606494534e570d55540ad18bf08101657762a01d6e208d1f4ddc355"
   },
   "runtime": {
     "package": "paved-core",
     "version": "1.2.0",
     "file": "runtime/paved-core-1.2.0.tgz",
-    "integrity": "sha512-i9TbiYt+pCc+yBAKyC2dzchZHEv7I8i3LZuTYbR+aXWtwqKy5lEQLnpHlh3rzv4lLgK5hsxaqHyWJDZHumtmhg==",
-    "content_sha256": "4364039160e27fb4ef84507bf6f7187dec9d19f1dd30beace7953f969501a47e",
-    "bytes": 796510
+    "integrity": "sha512-LnrzUl3FxAFYO6WzR1wwcKLzexZG7lMJBBr3IGe0cpx2HrknL/E0AShplEyTR/+d48CWp3aM8mlbz5J02Mf6pw==",
+    "content_sha256": "a3ce6d7fa606494534e570d55540ad18bf08101657762a01d6e208d1f4ddc355",
+    "bytes": 799236
   },
   "files": {
     ".claude-plugin/plugin.json": "0dd6863d424fa5be1746f357fd2519a4c5bb5801be03ddd8d07cbbf357cdf977",
     ".codex-plugin/plugin.json": "0ba02990d169d05aaad1d2db56d21a3eea7c2e9fd1cc9eb39ec6bdeb0e2d7422",
-    "README.md": "7548502b9db25f427dac58880f0041cb20bb3e6da7ed276f0a590cde65f51c22",
+    "README.md": "6b02c2db8b369dab3c2c80ff7041270e127db55cfc43c0f24f6be7eebcae4f33",
     "VERSION": "1e5b51cde515396a9fa762909cf8ca6584ccc564b325d2eebeea76175fe95c4d",
-    "bin/bootstrap.json": "8e84957690ae997e983633298756b509fa8768a70afe76f8849192f4af32e50c",
+    "bin/bootstrap.json": "319318a449250643fc7f20db8a03c740fdaafb37b3f6332bb20fb1ca7a06761d",
     "bin/paved.mjs": "bfa6c07e5742f8a0bde7e2ee4b9b6e303a0539cdafe229e01a2a61869b3c68f8",
     "plugin.json": "e0c811ff8e9e5ffd5c19ad0a8bcddd918885bea2599543889e85f07a2469e14a",
-    "runtime/paved-core-1.2.0.tgz": "083a9501108a42e26cb012e0f592f7ea3932a92bc94b83adb8544ce3f54e494a",
+    "runtime/paved-core-1.2.0.tgz": "4d1d53e17d79d01b6c75094b96cbde5830c868a14e92e08424e6746087195da6",
     "skills/backend-performance/SKILL.md": "e5d7bb28eb96a01d755ee40a98f5094680526c7814b70398c9b10dba8ba32149",
     "skills/bug-investigation/SKILL.md": "76dbd615926ccfa2bfca20abe7b4526026417ebd0b90accdf01cd79f42d0c7b5",
     "skills/bug-investigation/examples/investigation-log.md": "79e105f8a07ae446e818549d72d5dbb96e516c0d25db190e5a2ebe4bac0a736c",

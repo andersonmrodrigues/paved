@@ -10,6 +10,11 @@ records; evidence records with violated or overridden rules; architecture bounda
 Proposed `Rule` documents under `.paved/generated/proposals/rules/`. Rules are
 project-owned; a human adopts, edits or rejects each proposal.
 
+During `paved init`, the rules decision asks about the same
+build-enforced Checkstyle modules conversationally and writes adopted rules to
+`.paved/rules/style/<module>.yaml`. A proposal is withheld, and a stale one removed,
+once its rule exists or its module was answered in that decision.
+
 ## Preconditions
 
 Architecture context exists.

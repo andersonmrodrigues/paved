@@ -8,17 +8,18 @@ if (!path || !currentVersion || !nextVersion || !releaseDate) {
 
 const content = readFileSync(path, "utf8");
 const lines = content.split(/(?<=\n)/);
-const currentHeading = `## [${currentVersion}] - Unreleased`;
-const nextHeading = `## [${nextVersion}] - Unreleased`;
-const currentIndex = lines.findIndex((line) => line.trimEnd() === currentHeading);
+// Pending entries live under "## [Unreleased]"; "## [<current>] - Unreleased" is the legacy form.
+const pending = new Set(["## [Unreleased]", `## [${currentVersion}] - Unreleased`]);
+const pendingIndex = lines.findIndex((line) => pending.has(line.trimEnd()));
 
-if (currentIndex === -1) {
-  throw new Error(`CHANGELOG.md has no "${currentHeading}" section.`);
+if (pendingIndex === -1) {
+  throw new Error('CHANGELOG.md has no "## [Unreleased]" section.');
 }
-if (lines.some((line) => line.trimEnd() === nextHeading)) {
-  throw new Error(`CHANGELOG.md already has a "${nextHeading}" section.`);
+if (lines.some((line) => line.trimEnd().startsWith(`## [${nextVersion}]`))) {
+  throw new Error(`CHANGELOG.md already has a "## [${nextVersion}]" section.`);
 }
 
-lines[currentIndex] = `## [${currentVersion}] - ${releaseDate}\n`;
-lines.splice(currentIndex, 0, `${nextHeading}\n`, "\n");
+// The pending entries ship in the version being released, not the previous one.
+lines[pendingIndex] = `## [${nextVersion}] - ${releaseDate}\n`;
+lines.splice(pendingIndex, 0, "## [Unreleased]\n", "\n");
 writeFileSync(path, lines.join(""));

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { after, describe, it } from "node:test";
@@ -103,6 +103,28 @@ describe("no manual configuration is ever required", () => {
       assert.doesNotMatch(JSON.stringify(result), /Configure \.paved\/verification/i);
     });
   }
+
+  it("answers every observed convention in conversation and leaves nothing to review", async () => {
+    const bound = "<project><artifactId>maven-checkstyle-plugin</artifactId><phase>validate</phase>"
+      + "<goal>check</goal><configLocation>checkstyle.xml</configLocation><failOnViolation>true</failOnViolation></project>";
+    const project = cleanRepository({
+      ...APECATUS_SHAPED,
+      "backend/pom.xml": bound,
+      "backend/checkstyle-suppressions.xml": "<suppressions/>",
+      "admin-backend/pom.xml": bound,
+      "admin-backend/checkstyle.xml": '<module name="Checker"></module>',
+      "admin-backend/src/main/java/Admin.java": "class Admin {}\n",
+    });
+    const result = await answerEverything(project, "init", []);
+    assert.notEqual(result.status, "failed", JSON.stringify(result));
+    const proposals = join(project, ".paved/generated/proposals");
+    const left = existsSync(proposals) ? readdirSync(proposals, { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile()).map((entry) => entry.name) : [];
+    assert.deepEqual(left, []);
+    assert.ok(existsSync(join(project, ".paved/rules/style/backend.yaml")));
+    assert.ok(existsSync(join(project, ".paved/rules/style/admin-backend.yaml")));
+    assert.equal(existsSync(join(project, ".paved/rules/quality/checkstyle.yaml")), false);
+  });
 
   it("proves the guard itself works", () => {
     const project = cleanRepository({ "README.md": "# x\n" });
