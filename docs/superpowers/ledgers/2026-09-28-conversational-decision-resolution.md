@@ -786,3 +786,12 @@ new skill to start experimental at 0.1.0. The skill follows those constraints. T
 `decisions` category was added as an additive schema enum value, cataloged, and documented
 as category ten. Cost if wrong: consumers relying on a fixed category list must accept
 the additive category in `paved/v1`.
+
+Task 25: shared command contracts now expose `interaction`, `decisionSources` and
+`answerChannels` through `paved agent commands` and the AgentIntegration schema. The
+shared renderer emits the same short await/present/answer/resume contract for both hosts
+and points to the canonical skill. Read-only commands do not receive that section.
+Projection, agent schema and documentation tests 16/16 and typecheck passed;
+`npm run build:plugin` and `npm run check:plugin` passed with no drift. The generated
+plugin includes the canonical decision skill and the updated command contracts. Tasks
+26–29 remain.

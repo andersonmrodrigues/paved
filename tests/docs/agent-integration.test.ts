@@ -31,4 +31,10 @@ describe("Agent Integration Contract", () => {
     assert.match(contract, /Codex and Claude Code projections/);
     assert.doesNotMatch(contract, /Phase \d+/);
   });
+
+  it("documents conversational command metadata and the canonical protocol", () => {
+    assert.match(contract, /`conversational` or\s+`read-only`/);
+    assert.match(contract, /decision_sources|decisions come from/);
+    assert.match(contract, /core\.decisions\.decisions/);
+  });
 });
