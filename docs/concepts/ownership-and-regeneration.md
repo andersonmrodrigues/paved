@@ -9,7 +9,7 @@ an explicit ownership value for every consumer path (declared in the Core manife
 | Ownership | Written by | Regenerable | Paths |
 |---|---|---|---|
 | `human-owned` | Humans only | No | `AGENTS.md` (outside the Paved block), `.paved/manifest.yaml`, `.paved/overrides/`, `.paved/approvals/` |
-| `project-owned` | Humans, or agents doing a reviewed task | No | `.paved/rules/`, `.paved/verification/`, `.paved/tools/`, `.paved/skills/` |
+| `project-owned` | Humans, or agents doing a reviewed task | No | `.paved/rules/`, `.paved/verification/`, `.paved/tools/`, `.paved/skills/`, `.paved/documents/` |
 | `generated-reviewed` | Generators draft, humans review and edit | Yes, preserving human edits | `.paved/project/` |
 | `disposable` | Tools | Yes, freely | `.paved/generated/` |
 | `tool-managed` | The CLI only | Yes, deterministically | `.paved/paved.lock`, `.paved/decisions/` |
@@ -33,6 +33,11 @@ an explicit ownership value for every consumer path (declared in the Core manife
 Generators may write only `generated-reviewed` and `disposable` paths. A Core test
 enforces this for every generator contract. To change a `project-owned` file, a
 generator writes a proposal under `.paved/generated/proposals/` and a human adopts it.
+
+Durable work documents such as intents, plans, specs, task breakdowns, and research
+belong under `.paved/documents/` and are committed with the project change. Workflow
+run records and local evidence remain disposable under `.paved/generated/`; retaining
+a plan does not require retaining those runtime records.
 
 ## Traceability
 

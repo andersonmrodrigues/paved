@@ -83,7 +83,7 @@ ownership, whether it is required, and which schema its documents follow. The
 | **Optional** | everything else; a repository can adopt Paved one directory at a time |
 | **Generated** | `.paved/project/` (generated, then reviewed), `.paved/generated/` (disposable) |
 | **Human-owned** | `.paved/manifest.yaml`, `.paved/overrides/`, `AGENTS.md` outside the Paved block |
-| **Project-owned** | `.paved/rules/`, `verification/`, `tools/`, `skills/`, `workflows/` |
+| **Project-owned** | `.paved/rules/`, `verification/`, `tools/`, `skills/`, `workflows/`, `documents/` |
 | **Inherited** | Core and adapter skills, workflows, rules, tools, verification model |
 | **Extendable** | Inherited content through overrides; project content by adding files |
 | **Regenerable** | `.paved/project/` (preserving human edits), `.paved/generated/` (freely), `.paved/paved.lock` (deterministically) |

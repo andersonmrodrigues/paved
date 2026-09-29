@@ -30,10 +30,10 @@ All Core skills are `experimental`.
 |---|---|---|---|
 | `bootstrap` | `repository-onboarding` | 0.2.0 | Set up or repair Paved in a repository |
 | `discovery` | `context-discovery` | 0.2.0 | Understand a repository or the part a task touches |
-| `development` | `feature-development` | 0.2.0 | Add or change behavior |
-| | `refactoring` | 0.1.0 | Change structure without changing behavior |
+| `development` | `feature-development` | 0.4.0 | Add or change behavior |
+| | `refactoring` | 0.2.0 | Change structure without changing behavior |
 | | `prototyping` | 0.1.0 | Answer a feasibility question with throwaway code |
-| `debugging` | `bug-investigation` | 0.1.0 | From symptom to verified fix |
+| `debugging` | `bug-investigation` | 0.3.0 | From symptom to verified fix |
 | | `root-cause-analysis` | 0.2.0 | Find and confirm the cause of a defect |
 | | `runtime-debugging` | 0.1.0 | Observe a running system safely |
 | `testing` | `unit-testing` | 0.1.0 | Isolated tests for local logic |

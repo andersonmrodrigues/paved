@@ -13,11 +13,12 @@ import { updateHandler } from "./commands/update.ts";
 import { verifyHandler } from "./commands/verify.ts";
 import { workflowHandler } from "./commands/workflow.ts";
 import { workflowAliasHandler } from "./commands/workflow-alias.ts";
+import { previewHandler } from "./commands/preview.ts";
 import { createDiagnostic, createResult, type CommandResult } from "./result.ts";
 import { CliPathError, resolveCoreRoot, resolveProjectRoot } from "./paths.ts";
 import { assertAnswerIdentity, parseAnswerFlags } from "./lib/decisions/answers.ts";
 
-export const COMMAND_NAMES = ["init", "status", "plan", "implement", "test", "verify", "review", "debug", "refactor", "feature", "fix", "update", "doctor", "gardener", "generate", "agent", "decision"] as const;
+export const COMMAND_NAMES = ["init", "status", "plan", "implement", "test", "verify", "review", "debug", "refactor", "feature", "fix", "update", "doctor", "gardener", "generate", "agent", "decision", "preview"] as const;
 export type CommandName = (typeof COMMAND_NAMES)[number];
 
 export interface CliFlags {
@@ -94,6 +95,7 @@ const COMMAND_RULES: Record<CommandName, CommandRule> = {
   test: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
   agent: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   decision: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
+  preview: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   feature: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   fix: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   refactor: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
@@ -163,7 +165,7 @@ function takeValue(argv: readonly string[], index: number, flag: string, command
 function commandUsage(command: CommandName | undefined): string {
   if (command !== undefined) {
     const selectors = command === "generate" ? " [generator-id...]" : command === "agent"
-      ? " <operation> [integration|command-name]" : "";
+      ? " <operation> [integration|command-name]" : command === "preview" ? " <start|serve|status|wait|resolve|stop> <file.md> [cursor|comment-id]" : "";
     const commandOptions: string[] = [];
     const rule = COMMAND_RULES[command];
     if (rule.adapters) commandOptions.push("  --adapter <id>   Select an adapter for status, doctor, or verification content resolution; repeatable.");
@@ -171,6 +173,7 @@ function commandUsage(command: CommandName | undefined): string {
     if (rule.noGenerate) commandOptions.push("  --no-generate    Initialize without running generators.");
     if (command === "test") commandOptions.push("  --inputs <json>  Supply declared Tool inputs as a JSON object.");
     if (command === "decision") commandOptions.push("  --decision <json>  Raise an agent-authored question.", "  --reason <text>   Explain a revision.");
+    if (command === "preview") commandOptions.push("  --run <id>       Bind the review to a workflow plan approval.");
     if (["feature", "fix", "refactor", "plan", "implement", "review", "debug"].includes(command)) commandOptions.push("  --run <id> --advance --note <text> --evidence <path>  Resume the durable workflow.");
     return [
       `Usage: paved ${command}${selectors} [options]`,
@@ -325,7 +328,7 @@ function parse(argv: readonly string[]): Parsed {
     }
 
     if (["--run", "--note", "--evidence"].includes(token)) {
-      if (!command || !["feature", "fix", "refactor", "plan", "implement", "review", "debug"].includes(command)) return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by executable workflows.`) };
+      if (!command || !["feature", "fix", "refactor", "plan", "implement", "review", "debug", "preview"].includes(command) || (command === "preview" && token !== "--run")) return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by executable workflows or preview --run.`) };
       const value = takeValue(argv, index, token, command);
       if (typeof value !== "string") return { kind: "error", result: value };
       if (token === "--run") run = value;
@@ -461,6 +464,7 @@ function defaultHandler(invocation: CommandInvocation): CommandResult {
 const DEFAULT_HANDLERS: CommandHandlers = {
   agent: agentHandler,
   decision: decisionHandler,
+  preview: previewHandler,
   doctor: doctorHandler,
   generate: generateHandler,
   gardener: gardenerHandler,
