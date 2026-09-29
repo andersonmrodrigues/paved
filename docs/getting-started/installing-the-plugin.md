@@ -68,6 +68,21 @@ The first command activates the runtime. The plugin's launcher (`bin/paved.mjs`)
 offline from the verified local copy. See the
 [agent command reference](../concepts/agent-commands.md) for all commands.
 
+## Keep Paved in context
+
+The plugin includes a `UserPromptSubmit` hook for Codex and Claude Code. On each
+submitted prompt it checks the nearest repository boundary and adds short Paved routing
+guidance only when both `.paved/manifest.yaml` and `.paved/paved.lock` exist. This also
+covers the next prompt in the same session after `paved init` completes.
+
+Review and trust the plugin's hook when Codex or Claude Code asks. Codex skips plugin
+hooks until you review and trust their current definition; Claude Code applies its
+workspace trust rules. Hook activation is advisory: it does not run Paved commands,
+inspect prompt text, or change files. Invalid input, missing state, or hook errors fail
+open and leave the prompt unaffected. If the hook is disabled, untrusted, or unsupported
+by the host, the existing Paved skills and the `AGENTS.md` guidance remain available
+where that host loads them.
+
 ## Update the plugin
 
 - Codex: `codex plugin marketplace upgrade paved`, then `codex plugin add paved@paved`.
@@ -138,7 +153,7 @@ next action:
 
 ## Security
 
-- The plugin contains no install hooks and no MCP server. Codex and Claude Code
+- The plugin contains no install-time hooks or MCP server. Codex and Claude Code
   clone the marketplace repository; the launcher runs only when you invoke a Paved
   command, and it reaches the npm registry only when a lock pins a runtime the
   plugin does not bundle, under the same integrity checks.
@@ -147,6 +162,9 @@ next action:
 - Archive entries must be regular files or directories under `package/`; links,
   absolute paths, `..` segments and special permission bits are refused.
 - A different runtime is activated only through `runtime upgrade`, never silently.
+- The prompt hook reads the event's `cwd` and checks Paved state marker paths. It never
+  stores, transmits, or logs the prompt; it emits routing guidance only for initialized
+  repositories and exits successfully without output otherwise.
 
 ## Local development
 
