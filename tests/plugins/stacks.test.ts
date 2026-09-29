@@ -7,6 +7,7 @@ import { after, before, describe, it } from "node:test";
 import { PLUGIN_DIRECTORY } from "../../plugins/build.ts";
 import { ROOT } from "../helpers.ts";
 import { applicationDigest, launcher, workspace, type Invocation } from "./support.ts";
+import { detectTestingCandidates } from "../../cli/lib/decisions/providers/testing.ts";
 
 interface StackDecision {
   id: string; question: string; required: boolean; answerChannel: string;
@@ -82,8 +83,10 @@ describe("representative stacks through the plugin launcher", () => {
       assert.ok(status.coreRoot.startsWith(realpathSync(join(project, ".paved", "runtime"))), status.coreRoot);
       const discovery = paved(project, "agent", "commands", "--json").json.data as { lifecycleState: string; commands: { name: string; available: boolean }[] };
       assert.ok(["GENERATED", "VALIDATED", "READY"].includes(discovery.lifecycleState), discovery.lifecycleState);
-      assert.equal(discovery.commands.find((command) => command.name === "test")?.available, false);
-      assert.equal(discovery.commands.find((command) => command.name === "feature")?.available, false);
+      // init asks for the governed test command whenever the repository declares one.
+      const testable = detectTestingCandidates(project).length > 0;
+      assert.equal(discovery.commands.find((command) => command.name === "test")?.available, testable);
+      assert.equal(discovery.commands.find((command) => command.name === "feature")?.available, testable);
       assert.equal(applicationDigest(project, [".git"]), before, "initialization leaves application files untouched");
     });
   }

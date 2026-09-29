@@ -9,7 +9,7 @@ commands; adapter `check_suggestions`; the existing verification profile.
 
 A proposed `VerificationProfile` under `.paved/generated/proposals/verification/profile.yaml`,
 The profile itself is project-owned. When `.paved/verification/profile.yaml` exists or
-the verification decision was answered, no draft is emitted and a stale draft is
+the verification decision is open or answered, no draft is emitted and a stale draft is
 removed: the decision, not a file to review, is how checks are adopted.
 
 ## Preconditions
