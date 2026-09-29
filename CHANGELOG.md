@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-29
+
 ### Added
 
 - A versioned `.paved/documents/` workspace for workflow intents, plans, specs, tasks,
