@@ -426,3 +426,9 @@ export function runGenerators(core: string, consumer: string, options: RunGenera
     release();
   }
 }
+
+/** Use only while the caller already holds the consumer operation lock. */
+export function runGeneratorsUnderExistingOperationLock(core: string, consumer: string, options: RunGeneratorOptions = {}): RunResult {
+  if (options.dryRun === true) throw new Error("Dry-run generation does not need an existing operation lock.");
+  return runGeneratorsUnlocked(core, consumer, options);
+}
