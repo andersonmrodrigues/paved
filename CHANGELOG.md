@@ -5,6 +5,12 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- A shared Codex and Claude Code prompt hook keeps Paved routing guidance available
+  on each user turn in initialized repositories. Hook activation follows host trust
+  controls and fails open without running Paved commands.
+
 ## [1.7.0] - 2026-09-29
 
 ### Added
