@@ -5,6 +5,11 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- A Core `frontend-design` skill for frontend changes, activated in feature and bug
+  planning/implementation when the interface is affected.
+
 ## [1.6.0] - 2026-09-29
 
 ### Added

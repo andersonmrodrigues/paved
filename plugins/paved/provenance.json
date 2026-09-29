@@ -11,25 +11,25 @@
   "source": {
     "package": "paved-core",
     "version": "1.6.0",
-    "content_sha256": "a17a13723e5c36bd925dfea0e08c527faade29417f1392bcb78d2f1be839952c"
+    "content_sha256": "2f83e537f66148682977406a8e1fc2ff8ac03a44ff314229e5a6c9cc8959f323"
   },
   "runtime": {
     "package": "paved-core",
     "version": "1.6.0",
     "file": "runtime/paved-core-1.6.0.tgz",
-    "integrity": "sha512-BJGItwoR2QCWVhbcLrlKv7SEras6PV4rBn063D8TTRP9WLhwhyNrQYuPOpTInp5zylmO5ei5n0R5Lw6er6L9hA==",
-    "content_sha256": "a17a13723e5c36bd925dfea0e08c527faade29417f1392bcb78d2f1be839952c",
-    "bytes": 1451421
+    "integrity": "sha512-6xF69VcHAmu5pGdx3DW+0h7JGdOok+gPLzg0jlnsmjewc8JBJrwPALWiznYfWUlVX/on1MrpolE26MXNqXXH+g==",
+    "content_sha256": "2f83e537f66148682977406a8e1fc2ff8ac03a44ff314229e5a6c9cc8959f323",
+    "bytes": 1453346
   },
   "files": {
     ".claude-plugin/plugin.json": "bb4e650a7dc22cc8577743751c1ea28721409b4f8f1be79241a4fa3ad1977809",
     ".codex-plugin/plugin.json": "33609d406b86e5d6f0e60e11574234d8cfea4caa168e4f0b3c423f60af459eda",
-    "README.md": "d7c7f133789f8a427e7d4807f34dc4bcae094e7330115a67803abb5553803cef",
+    "README.md": "d770ac6a63287a4800f1151f08ab3c90f905c2fb8632dfbb3a283ece483eec70",
     "VERSION": "cb1d9a30bc4ab8a397f39b7d786bb82aca0b816077eefc35d7c822017d75f6a5",
-    "bin/bootstrap.json": "56873fe0fb2c32d3469eb4e9f5ac6740bd6041c26cfdd623a310e42e7abaa4b3",
+    "bin/bootstrap.json": "236b16a5fe650340f94983465070482c27f7032ce23bfcc81cf703e5b2bdf66e",
     "bin/paved.mjs": "bfa6c07e5742f8a0bde7e2ee4b9b6e303a0539cdafe229e01a2a61869b3c68f8",
     "plugin.json": "8547d2a29a92fbfcc7fb826f0f0ac55cff91aae5c8cd75a3013589b492a6639c",
-    "runtime/paved-core-1.6.0.tgz": "f188769ec7910982569bd8e5de2277fb28c906c0e49d5e20aed44e81d045291b",
+    "runtime/paved-core-1.6.0.tgz": "3a08e60f5580b545f8b226ca235dd6681e22cc5ed56d64031bb8df9420be295d",
     "skills/backend-performance/SKILL.md": "b115d56dddf2a43ca7f44ab9835543358a6f17e5794a62230baf115cf720dcf1",
     "skills/bug-investigation/SKILL.md": "3ad174ba00753fbdf21a9686d1737e1488956cd31abd819ba92dab3d36a27e5b",
     "skills/bug-investigation/examples/investigation-log.md": "79e105f8a07ae446e818549d72d5dbb96e516c0d25db190e5a2ebe4bac0a736c",
@@ -43,6 +43,7 @@
     "skills/feature-development/SKILL.md": "f5a17fe04d27c88f69bc47404e0d0827097aa41cc4e30356e42b82b9e8ff3a22",
     "skills/feature/SKILL.md": "19909698b7944fe781aec0b915dd4780df600c67af23fa988b465a4bf3acfc6c",
     "skills/fix/SKILL.md": "bf036f78319894d49e2424b4f5dbf971afa2d2da732c71811e164afb6f2787c1",
+    "skills/frontend-design/SKILL.md": "fca086b57894a535c9679e9121b8ff6ee69309d823947c74317c4aff47a6f29b",
     "skills/frontend-performance/SKILL.md": "dcf20915903bccbc365a8bea56f58ce9472c01dffb4e96c55546135271586e98",
     "skills/gardener/SKILL.md": "f58d1a37159773f7c35338b88676c3893a14ebeea6a6aea19fede879ade682f7",
     "skills/gardener/references/enforcement-layers.md": "cee040ba0d85df64d67eae64c1c55d86424f0f4722b497bdaa77c390464e17dc",
