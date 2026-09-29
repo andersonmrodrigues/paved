@@ -17,14 +17,17 @@ import { createDiagnostic, createResult, type CommandResult } from "../result.ts
 import type { CommandInvocation } from "../runtime.ts";
 import { testHandler } from "./test.ts";
 import { verifyHandler } from "./verify.ts";
+import { runDecisionGate, toProjection, type DecisionCandidate } from "../lib/decisions/gate.ts";
+import type { Decision } from "../lib/decisions/record.ts";
 
 type WorkCommand = "feature" | "fix" | "refactor";
 type PhaseStatus = "pending" | "running" | "completed" | "failed" | "blocked";
 interface Phase { phase: string; status: PhaseStatus; attempts?: number; gates?: { id: string; status: string; reason?: string; requested_at?: string; decided_by?: string; decided_at?: string }[]; failure?: Failure }
 interface Failure { code: string; phase: string; reason: string; retry: string; next_action: string }
-interface Run extends WorkflowRunRecord {
+interface Run extends Omit<WorkflowRunRecord, "decisions"> {
   apiVersion: "paved/v1"; kind: "WorkflowRun"; id: string; revision: string; started_at: string;
   status: string; inputs: { id: string; value: string; source: "human" }[]; phases: Phase[];
+  decisions?: Decision[];
   ended_at?: string; evidence?: string; failure?: Failure;
   events: { at: string; type: string; phase?: string; ref?: string; detail?: string }[];
 }
@@ -109,13 +112,66 @@ function result(command: WorkCommand, run: Run, nextAction: string, diagnostics:
   const retained = failed && diagnostics.length === 0
     ? [diagnostic(run.status === "blocked" ? "PAVED_WORKFLOW_BLOCKED" : "PAVED_WORKFLOW_FAILED", run.failure?.reason ?? "Workflow cannot continue.", nextAction)]
     : diagnostics;
-  return createResult({ command, status: failed ? "failed" : run.status === "awaiting-approval" ? "warning" : "success", data: {
+  const open = (run.decisions ?? []).filter((item) => item.status === "ASKED");
+  return createResult({ command, status: failed ? "failed" : run.status === "awaiting-input" ? "awaiting_input" : run.status === "awaiting-approval" ? "warning" : "success", ...(open.length ? { decisions: open.map(toProjection) } : {}), data: {
     run: run.id, workflow: run.workflow, status: run.status,
     currentPhase: run.phases.find((phase) => phase.status === "running")?.phase,
     evidence: run.evidence,
     evidenceProduced: run.events.flatMap((event) => event.ref?.startsWith(".paved/generated/evidence/") ? [event.ref] : []),
     nextAction,
   }, diagnostics: retained });
+}
+
+function runDecisionCandidate(decision: Decision): DecisionCandidate {
+  const candidates = decision.fingerprint.inputs.filter((item) => item.startsWith("candidate:"))
+    .map((item) => item.slice("candidate:".length));
+  return {
+    scope: "run", question: decision.question, reason: decision.reason,
+    options: decision.options,
+    ...(decision.recommended_option === undefined ? {} : { recommended: decision.recommended_option }),
+    evidence: decision.evidence, required: decision.required, requiredAnswer: decision.required_answer,
+    effect: decision.effect ?? "record-only", handler: "run.record", candidates,
+    ...(decision.depends_on === undefined ? {} : { dependsOn: decision.depends_on }),
+  };
+}
+
+function resolveRunDecisions(invocation: CommandInvocation, command: WorkCommand, run: Run) {
+  const before = new Map((run.decisions ?? []).map((decision) => [decision.id, decision.status]));
+  const hasPlanApproval = run.phases.some((phase) =>
+    phase.gates?.some((gate) => gate.id === "plan-approved" && gate.status === "awaiting-approval"));
+  const answers = invocation.flags.answers.filter((item) => {
+    const id = item.slice(0, item.indexOf("="));
+    return before.has(id) || !hasPlanApproval;
+  });
+  const storage = {
+    list: () => [...(run.decisions ?? [])],
+    read: (id: string) => run.decisions?.find((decision) => decision.id === id),
+    write: (decision: Decision) => {
+      const next = [...(run.decisions ?? [])];
+      const index = next.findIndex((item) => item.id === decision.id);
+      if (index < 0) next.push(decision); else next[index] = decision;
+      run.decisions = next;
+    },
+  };
+  const outcome = runDecisionGate({
+    context: {
+      projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot,
+      command, run: run.id, answers,
+      ...(invocation.flags.answeredBy === undefined ? {} : { answeredBy: invocation.flags.answeredBy }),
+    },
+    providers: [() => (run.decisions ?? []).map(runDecisionCandidate)],
+    handlers: new Map([["run.record", { effect: "record-only" as const, apply: () => [] }]]),
+    persist: true, storage,
+  });
+  for (const decision of run.decisions ?? []) {
+    const previous = before.get(decision.id);
+    if (previous === undefined) run.events.push({ at: now(), type: "decision-raised", ref: decision.id });
+    if (previous !== "ASKED" && decision.status === "ASKED") run.events.push({ at: now(), type: "decision-asked", ref: decision.id });
+    if (previous !== "ANSWERED" && decision.status === "ANSWERED") run.events.push({ at: now(), type: "decision-answered", ref: decision.id });
+    if (previous !== "APPLIED" && decision.status === "APPLIED") run.events.push({ at: now(), type: "decision-applied", ref: decision.id });
+    if (previous !== undefined && previous !== "SUPERSEDED" && decision.status === "SUPERSEDED") run.events.push({ at: now(), type: "decision-superseded", ref: decision.id });
+  }
+  return outcome;
 }
 
 function start(invocation: CommandInvocation, command: WorkCommand, workflow: WorkflowContract): CommandResult {
@@ -206,6 +262,17 @@ function failRun(run: Run, phase: Phase, code: string, reason: string, nextActio
 
 async function advance(invocation: CommandInvocation, command: WorkCommand, workflow: WorkflowContract, run: Run): Promise<CommandResult> {
   if (run.status === "completed" || run.status === "blocked") return result(command, run, "This run is terminal. Start a new request for further work.");
+  const decisions = resolveRunDecisions(invocation, command, run);
+  if (decisions.problems.length > 0) {
+    return blocked(command, "PAVED_DECISION_ANSWER_INVALID", decisions.problems.join("; "), "Answer an open run decision with one of its offered options.", { run: run.id });
+  }
+  if (decisions.status === "awaiting-input") {
+    run.status = "awaiting-input";
+    save(run, workflow, invocation);
+    return result(command, run, `Answer the run decision, then resume with paved ${command} --run ${run.id} --advance --answer <id>=<value> --answered-by <you>.`);
+  }
+  if (run.status === "awaiting-input") run.status = "running";
+  if (decisions.applied.length > 0) save(run, workflow, invocation);
   let phase = run.phases.find((item) => item.status === "running");
   if (!phase && run.status === "failed") {
     phase = run.phases.find((item) => item.status === "failed");

@@ -5,12 +5,50 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { parse } from "yaml";
+import { createHash } from "node:crypto";
 import { initializeConsumer } from "../../cli/lib/generator-runtime.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
 
 const core = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 describe("executable workflow state", () => {
+  it("pauses a run for an agent question and resumes the same run after an answer", async () => {
+    const project = mkdtempSync(join(tmpdir(), "paved-run-decision-"));
+    try {
+      const readme = "# Consumer\n";
+      writeFileSync(join(project, "README.md"), readme);
+      initializeConsumer(core, project, "consumer");
+      const invoke = (...argv: string[]) => dispatchCli({ argv: [...argv, "--project", project, "--json"] });
+      const started = await invoke("feature", "Add a behavior");
+      const run = (started.data as { run: string }).run;
+      const raised = await invoke("decision", "raise", "--decision", JSON.stringify({
+        run, question: "Which behavior should be used?", reason: "The repository does not state the intended behavior.",
+        options: [
+          { id: "first", label: "First", description: "Use the first behavior.", consequence: "First is used." },
+          { id: "second", label: "Second", description: "Use the second behavior.", consequence: "Second is used." },
+        ],
+        evidence: [{ type: "file", location: "README.md", sha256: createHash("sha256").update(readme).digest("hex") }],
+        required: true, requiredAnswer: { type: "single-choice" }, effect: "record-only", candidates: ["first", "second"],
+      }));
+      assert.equal(raised.status, "success", JSON.stringify(raised));
+      const id = (raised.data as { id: string }).id;
+      const runPath = join(project, ".paved/generated/runs", `${run}.yaml`);
+      const persisted = parse(readFileSync(runPath, "utf8")) as { decisions: { id: string; status: string; run?: string }[]; status: string };
+      assert.equal(persisted.status, "awaiting-input");
+      assert.deepEqual(persisted.decisions.map((decision) => [decision.id, decision.status, decision.run]), [[id, "ASKED", run]]);
+      const blocked = await invoke("feature", "--run", run, "--advance", "--note", "Observed context");
+      assert.equal(blocked.status, "awaiting_input", JSON.stringify(blocked));
+      assert.equal(blocked.decisions?.[0]?.runId, run);
+      const resumed = await invoke("feature", "--run", run, "--advance", "--note", "Observed context",
+        "--answer", `${id}=first`, "--answered-by", "tester@example.com");
+      assert.equal(resumed.status, "success", JSON.stringify(resumed));
+      assert.equal((resumed.data as { run: string }).run, run);
+      const shown = await invoke("decision", "show", id);
+      assert.equal((shown.data as { decision: { status: string } }).decision.status, "APPLIED");
+      const listed = await invoke("decision", "list");
+      assert.equal((listed.data as { decisions: { id: string }[] }).decisions.some((item) => item.id === id), true);
+    } finally { rmSync(project, { recursive: true, force: true }); }
+  });
   it("persists feature phases and blocks implementation until a matching plan is approved", async () => {
     const project = mkdtempSync(join(tmpdir(), "paved-workflow-"));
     try {
@@ -33,6 +71,9 @@ describe("executable workflow state", () => {
       assert.equal((awaiting.data as { status: string }).status, "awaiting-approval", JSON.stringify(awaiting));
       const withoutApproval = await invoke("feature", "--run", id, "--advance");
       assert.equal((withoutApproval.data as { status: string } | undefined)?.status, "awaiting-approval", JSON.stringify(withoutApproval));
+      const relayedApproval = await invoke("feature", "--run", id, "--advance",
+        "--answer", "d-0123456789abcdef0123=approve", "--answered-by", "agent@example.com");
+      assert.match(JSON.stringify(relayedApproval), /approvals/);
       const run = parse(readFileSync(runPath, "utf8")) as { phases: { phase: string; status: string; gates?: { reason?: string }[] }[] };
       assert.equal(run.phases.find((phase) => phase.phase === "implementation")?.status, "pending");
       const planSha = run.phases.find((phase) => phase.phase === "planning")?.gates?.find((gate) => gate.reason?.startsWith("plan_sha256="))?.reason?.slice(12);

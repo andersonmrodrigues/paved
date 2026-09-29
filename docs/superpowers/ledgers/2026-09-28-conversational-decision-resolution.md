@@ -730,3 +730,17 @@ resolution. A regression test first reproduced the generic `PAVED_CLI_INTERNAL` 
 then passed with the specific diagnostic. Typecheck passed. One full suite run had
 two additional plugin npm timeout failures while the five baseline failures remained;
 these occurred during runtime acquisition, outside the changed status path.
+
+Task 21: Ruling: an agent-raised run decision is stored as ASKED directly, and the
+WorkflowRun enters `awaiting-input` in the same atomic write. The existing WorkflowRun
+invariant rejects `running` while a required question is ASKED and rejects
+`awaiting-input` unless one is ASKED. The run gate uses an injected in-memory decision
+store and writes the resulting run once before phase work; only record-only handlers are
+registered. Run decision answers are persisted before advancing, and terminal runs reject
+new decisions. Cost if wrong: decision raise does not expose an intermediate PENDING state
+inside a WorkflowRun.
+
+Task 21: tests cover pause, embedded persistence, answer and same-run resume, decision
+show/list after reload, and preservation of the human-authored plan approval gate.
+Workflow tests 36/36 and typecheck passed. Full `npm run check` = 750 tests, 745 pass,
+the same 5 baseline failures. Tasks 22–29 remain.

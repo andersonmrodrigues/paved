@@ -52,6 +52,12 @@ export interface DecisionGateOutcome {
   readonly problems: string[];
 }
 
+export interface DecisionStorage {
+  readonly list: () => Decision[];
+  readonly read: (id: string) => Decision | undefined;
+  readonly write: (decision: Decision) => void;
+}
+
 const now = () => new Date().toISOString();
 
 export function toProjection(decision: Decision): DecisionProjection {
@@ -115,6 +121,7 @@ export function runDecisionGate(input: {
   readonly providers: readonly DecisionProvider[];
   readonly handlers: ReadonlyMap<string, HandlerRegistration>;
   readonly persist: boolean;
+  readonly storage?: DecisionStorage;
 }): DecisionGateOutcome {
   const release = input.persist
     ? acquireConsumerOperationLock(input.context.projectRoot, `decision:${input.context.command}`)
@@ -131,13 +138,19 @@ function runDecisionGateUnlocked(input: {
   readonly providers: readonly DecisionProvider[];
   readonly handlers: ReadonlyMap<string, HandlerRegistration>;
   readonly persist: boolean;
+  readonly storage?: DecisionStorage;
 }): DecisionGateOutcome {
   const { context, providers, handlers, persist } = input;
+  const storage = input.storage ?? {
+    list: () => listDecisions(context.projectRoot, context.coreRoot),
+    read: (id: string) => readDecision(context.projectRoot, context.coreRoot, id),
+    write: (decision: Decision) => writeDecision(context.projectRoot, context.coreRoot, decision),
+  };
   const problems: string[] = [];
   const applied: Decision[] = [];
 
   // 1. LOAD
-  const stored = new Map(listDecisions(context.projectRoot, context.coreRoot).map((item) => [item.id, item]));
+  const stored = new Map(storage.list().map((item) => [item.id, item]));
 
   // 5. DETECT (run first so current evidence is available for revalidation)
   const candidates = providers.flatMap((provider) => provider(context));
@@ -167,7 +180,7 @@ function runDecisionGateUnlocked(input: {
       const successor = { ...decision, id: successorId, supersedes: existing.id };
       const superseded = supersede(existing, "Cited evidence or candidate set changed.", successor.id);
       if (persist) {
-        writeDecision(context.projectRoot, context.coreRoot, superseded);
+        storage.write(superseded);
       }
       stored.set(existing.id, superseded);
       live.set(successor.id, successor);
@@ -194,7 +207,7 @@ function runDecisionGateUnlocked(input: {
 
   {
     for (const [id, values] of answers) {
-      const decision = live.get(id) ?? stored.get(id) ?? readDecision(context.projectRoot, context.coreRoot, id);
+      const decision = live.get(id) ?? stored.get(id) ?? storage.read(id);
       if (decision === undefined) {
         problems.push(`Unknown decision: ${id}.`);
         continue;
@@ -226,7 +239,7 @@ function runDecisionGateUnlocked(input: {
       if ("problems" in validated) {
         problems.push(...validated.problems);
         live.set(id, asked);
-        if (persist) writeDecision(context.projectRoot, context.coreRoot, asked);
+        if (persist) storage.write(asked);
         continue;
       }
 
@@ -241,7 +254,7 @@ function runDecisionGateUnlocked(input: {
             `Decision ${id} is irreversible. A person must author .paved/approvals/${id}.json.`,
           );
           live.set(id, asked);
-          if (persist) writeDecision(context.projectRoot, context.coreRoot, asked);
+          if (persist) storage.write(asked);
           continue;
         }
         if (JSON.stringify(approval.answer) !== JSON.stringify(validated.value)) {
@@ -258,7 +271,7 @@ function runDecisionGateUnlocked(input: {
         const rejected = transition(asked, "REJECTED", {
           answer: validated.value, answered_by: identity, answer_source: source, answered_at: now(),
         });
-        if (persist) writeDecision(context.projectRoot, context.coreRoot, rejected);
+        if (persist) storage.write(rejected);
         live.set(id, rejected);
         continue;
       }
@@ -266,7 +279,7 @@ function runDecisionGateUnlocked(input: {
       const answered = transition(asked, "ANSWERED", {
         answer: validated.value, answered_by: identity, answer_source: source, answered_at: now(),
       });
-      if (persist) writeDecision(context.projectRoot, context.coreRoot, answered);
+      if (persist) storage.write(answered);
       live.set(id, answered);
     }
 
@@ -284,7 +297,7 @@ function runDecisionGateUnlocked(input: {
       const done = transition(decision, "APPLIED", {
         applied_changes: changes, applied_at: now(),
       });
-      if (persist) writeDecision(context.projectRoot, context.coreRoot, done);
+      if (persist) storage.write(done);
       live.set(id, done);
       applied.push(done);
     }
@@ -296,13 +309,13 @@ function runDecisionGateUnlocked(input: {
   for (const [id, decision] of live) {
     if (RESOLVED.has(decision.status) || decision.status === "SUPERSEDED" || decision.status === "CANCELLED") continue;
     if ((decision.depends_on ?? []).some((dependency) => !resolvedIds.has(dependency))) {
-      if (persist && decision.status === "PENDING") writeDecision(context.projectRoot, context.coreRoot, decision);
+      if (persist && decision.status === "PENDING") storage.write(decision);
       continue;
     }
     const asked = decision.status === "PENDING"
       ? transition(decision, "ASKED", { asked_at: now() })
       : decision;
-    if (persist) writeDecision(context.projectRoot, context.coreRoot, asked);
+    if (persist) storage.write(asked);
     live.set(id, asked);
     emitted.push(asked);
   }
