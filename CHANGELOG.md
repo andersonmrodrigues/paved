@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-29
+
 ### Added
 
 - `paved init` asks which detected test command development workflows run, so
