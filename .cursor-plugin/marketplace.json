@@ -1,0 +1,25 @@
+{
+  "name": "paved",
+  "owner": {
+    "name": "Anderson Rodrigues"
+  },
+  "metadata": {
+    "description": "GitHub-backed marketplace for the Paved engineering plugin."
+  },
+  "plugins": [
+    {
+      "name": "paved",
+      "source": "./plugins/paved",
+      "description": "Paved engineering workflows and skills for AI coding agents.",
+      "version": "1.9.0",
+      "author": {
+        "name": "Anderson Rodrigues"
+      },
+      "homepage": "https://github.com/andersonmrodrigues/paved#readme",
+      "repository": "https://github.com/andersonmrodrigues/paved",
+      "license": "MIT",
+      "category": "development",
+      "keywords": ["paved", "engineering", "workflow", "coding-agent"]
+    }
+  ]
+}
