@@ -312,6 +312,45 @@ test("unknown Core movement and invalid project context block update before writ
   } finally { rmSync(unknown, { recursive: true, force: true }); rmSync(migration, { recursive: true, force: true }); }
 });
 
+test("update applies a known document migration transactionally and preserves Markdown body", async () => {
+  const a = consumer("consumer-a");
+  try {
+    initializeConsumer(core, a, "consumer-a");
+    const path = join(a, ".paved/project/domain/overview.md");
+    const body = "# Human domain notes\n\nKeep this wording byte for byte.\n";
+    mkdirSync(join(a, ".paved/project/domain"), { recursive: true });
+    writeFileSync(path, `---\nkind: ContextDocument\narea: domain\ntitle: Domain notes\nconfidence: declared\n---\n${body}`);
+    const plan = planConsumerUpdate({ projectRoot: a, coreRoot: core });
+    assert.equal(plan.plannedMigrations.length, 1);
+    assert.equal(plan.changed, true);
+    assert.deepEqual(plan.plannedMigrations[0], {
+      id: "legacy-document-to-paved-v1",
+      path: ".paved/project/domain/overview.md",
+      toApiVersion: "paved/v1",
+    });
+
+    const result = await dispatchCli({ argv: ["update", "--project", a, "--json"], cwd: core, executablePath: join(core, "cli/index.ts") });
+    assert.notEqual(result.status, "failed", JSON.stringify(result.diagnostics));
+    const migrated = readFileSync(path, "utf8");
+    assert.ok(migrated.startsWith("---\napiVersion: paved/v1\nkind: ContextDocument\n"));
+    assert.ok(migrated.endsWith(`---\n${body}`));
+    assert.equal(planConsumerUpdate({ projectRoot: a, coreRoot: core }).plannedMigrations.length, 0);
+  } finally { rmSync(a, { recursive: true, force: true }); }
+});
+
+test("unknown document versions remain blocked without leaking document content", () => {
+  const a = consumer("consumer-a");
+  try {
+    initializeConsumer(core, a, "consumer-a");
+    const path = join(a, ".paved/project/domain/overview.md");
+    mkdirSync(join(a, ".paved/project/domain"), { recursive: true });
+    writeFileSync(path, "---\napiVersion: paved/v2\nkind: ContextDocument\n---\nsecret human text\n");
+    const plan = planConsumerUpdate({ projectRoot: a, coreRoot: core });
+    assert.ok(plan.diagnostics.some((item) => item.code === "PAVED_UPDATE_MIGRATION_REQUIRED"));
+    assert.ok(plan.diagnostics.every((item) => !item.message.includes("secret human text")));
+  } finally { rmSync(a, { recursive: true, force: true }); }
+});
+
 test("ready requires a valid profile and no pending human review", () => {
   const a = consumer("consumer-a");
   try {

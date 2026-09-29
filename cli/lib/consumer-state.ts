@@ -15,6 +15,7 @@ import { answeredProviders } from "./decisions/capability-answers.ts";
 import { DecisionStoreError, listDecisions } from "./decisions/store.ts";
 import type { Decision } from "./decisions/record.ts";
 import { readActiveRuntimeSelection, readRuntimeSelection, type RuntimeLock } from "./runtime-lock.ts";
+import { planDocumentMigrations, type PlannedDocumentMigration } from "./document-migrations.ts";
 
 export interface InspectConsumerInput {
   readonly projectRoot: string;
@@ -55,6 +56,7 @@ export interface ConsumerUpdatePlan {
   readonly compatibility?: "compatible" | "migration-required" | "incompatible" | "unknown";
   readonly plannedWrites: readonly string[];
   readonly plannedGeneratorIds: readonly string[];
+  readonly plannedMigrations: readonly PlannedDocumentMigration[];
   readonly currentLock?: LockDocument;
   readonly nextLock?: UpdateLockDocument;
   readonly selectedAdapters: readonly string[];
@@ -761,29 +763,6 @@ function candidateCompatibility(previous: string | undefined, next: string): "co
   return before[0] === after[0] && before[1] === after[1] ? "compatible" : "unknown";
 }
 
-function validateConsumerDocuments(registry: SchemaRegistry, projectRoot: string): Diagnostic[] {
-  const diagnostics: Diagnostic[] = [];
-  for (const directory of ["project", "rules", "skills", "workflows", "tools", "tool-implementations", "verification/checks"]) {
-    walkFiles(join(projectRoot, ".paved", directory), (full) => {
-      if (!/\.(yaml|yml|md)$/.test(full)) return;
-      if (full.endsWith("SKILL.md") || full.endsWith("WORKFLOW.md")) return;
-      const path = relative(projectRoot, full).split(sep).join("/");
-      try {
-        const doc = full.endsWith(".md") ? loadMarkdown(full).frontmatter : loadYaml(full);
-        const validation = registry.validate(doc);
-        if (validation.valid) return;
-        diagnostics.push(diagnostic({ code: "PAVED_UPDATE_MIGRATION_REQUIRED", component: "consumer.documents", category: "config",
-          message: `${path} does not validate against the candidate Core: ${validation.errors.join("; ")}`,
-          remediation: "Review and migrate this project-owned document before updating; Paved will not rewrite it automatically." }));
-      } catch {
-        diagnostics.push(diagnostic({ code: "PAVED_UPDATE_MIGRATION_REQUIRED", component: "consumer.documents", category: "config",
-          message: `${path} cannot be parsed under the candidate Core.`, remediation: "Repair or migrate the document before updating." }));
-      }
-    });
-  }
-  return diagnostics;
-}
-
 function updateLockGenerators(
   lock: LockDocument,
   coreRoot: string,
@@ -864,6 +843,7 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
       changed: false,
       plannedWrites: [],
       plannedGeneratorIds: [],
+      plannedMigrations: [],
       selectedAdapters: manifest?.adapters?.map((adapter) => adapter.id).sort() ?? [],
       resolvedAdapters: [],
       diagnostics,
@@ -896,7 +876,16 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
     component: "cli.update", category: "resolution",
     message: `No local migration evidence proves Core ${lockResult.lock.core?.version} can update to ${core.version}.`,
     remediation: "Use a compatible Core patch or provide an explicit migration before updating." }));
-  diagnostics.push(...validateConsumerDocuments(registry, input.projectRoot));
+  const documentCheck = planDocumentMigrations(input.projectRoot, registry);
+  for (const item of documentCheck.diagnostics) {
+    diagnostics.push(diagnostic({
+      code: "PAVED_UPDATE_MIGRATION_REQUIRED",
+      component: "consumer.documents",
+      category: "config",
+      message: `${item.path} requires a known deterministic migration: ${item.message}`,
+      remediation: "Provide a Core migration for this document version or migrate it manually before updating.",
+    }));
+  }
 
   let resolvedAdapters: Detection[] = [];
   try {
@@ -937,6 +926,7 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
         : compatibility,
       plannedWrites: [],
       plannedGeneratorIds: [],
+      plannedMigrations: documentCheck.migrations,
       currentLock: lockResult.lock,
       selectedAdapters: manifest.adapters?.map((adapter) => adapter.id).sort() ?? [],
       resolvedAdapters: resolvedAdapters.map((detection) => detection.adapter.id).sort(),
@@ -988,7 +978,7 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
   const changedAdapterIds = [...new Set([...priorAdapters.keys(), ...nextAdapters.keys()])]
     .filter((id) => entryChanged(priorAdapters.get(id), nextAdapters.get(id))).sort();
   const plannedGeneratorIds = impactedGenerators(generators, [...generatorPlan.changedIds, ...staleIds], changedAdapterIds, input.projectRoot);
-  const changed = lockChanged || plannedGeneratorIds.length > 0;
+  const changed = lockChanged || plannedGeneratorIds.length > 0 || documentCheck.migrations.length > 0;
 
   return {
     projectRoot: input.projectRoot,
@@ -998,8 +988,12 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
     compatibility: diagnostics.some((item) => item.code === "PAVED_UPDATE_MIGRATION_REQUIRED") ? "migration-required"
       : diagnostics.some((item) => item.code === "PAVED_MANIFEST_CORE_INCOMPATIBLE" || item.code === "PAVED_ADAPTER_INCOMPATIBLE") ? "incompatible"
       : compatibility,
-    plannedWrites: lockChanged ? [".paved/paved.lock"] : [],
+    plannedWrites: [
+      ...(lockChanged ? [".paved/paved.lock"] : []),
+      ...documentCheck.migrations.map((item) => item.path),
+    ],
     plannedGeneratorIds,
+    plannedMigrations: documentCheck.migrations,
     currentLock: lockResult.lock,
     nextLock,
     selectedAdapters: manifest.adapters?.map((adapter) => adapter.id).sort() ?? [],

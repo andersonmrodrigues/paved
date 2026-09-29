@@ -128,10 +128,12 @@ problem is reported as one message instead of a list of unrelated field errors.
 | Renamed field | Breaking | Add the new field, deprecate the old one, remove it in the next API version. A removed field name is never reused with a different meaning |
 | New enum value in a field a *consumer* writes and Paved branches on | Breaking for readers | Treated as breaking: an older reader would reject documents using it |
 
-- **Migration policy.** A future Core that introduces `paved/v2` should keep reading
-  `paved/v1` for a transition period and ship a reviewed deterministic migration.
-  Automatic schema migration is not implemented; unknown compatibility or invalid
-  existing documents block a local update and leave human-owned content untouched.
+- **Migration policy.** A Core that introduces a new document API may ship a reviewed,
+  deterministic migration in the typed Core migration registry. `paved update` applies
+  exactly one known migration to a staged copy, validates every result against the
+  candidate schema, and publishes documents and the lock in one transaction. Unknown,
+  ambiguous or invalid migrations block the update and leave human-owned content
+  untouched. Markdown migrations may change frontmatter but must preserve the body.
 - **Deprecation.** A deprecated field stays valid, its schema `description` starts with
   `Deprecated:` and names the replacement, and the changelog records it. It is removed
   only with a new API version.
