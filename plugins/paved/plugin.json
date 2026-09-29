@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "paved",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Paved engineering commands for AI coding agents: repository context, governed workflows, explicit Tools, verification and evidence, executed by a pinned project-local Paved runtime.",
   "author": {
     "name": "Anderson Rodrigues",
