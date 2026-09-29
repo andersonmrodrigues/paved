@@ -1,13 +1,13 @@
 # Installing the Paved plugin
 
-Paved is installed as one native plugin for Codex and Claude Code. This repository
+Paved is installed as one native plugin for Cursor, Codex and Claude Code. This repository
 is its own plugin marketplace: GitHub-backed marketplace distribution means each
 agent reads the marketplace file committed at the repository root and installs the
 generated plugin in [`plugins/paved/`](../../plugins/paved/) through its own
 native plugin installation. Nothing is piped into a shell, installed globally, or added
 to the application's dependencies.
 
-> **Publication status:** Paved is not listed in the public Codex or Claude Code
+> **Publication status:** Paved is not listed in the public Codex, Claude Code or Cursor
 > plugin directories and `paved-core` is not published to npm. Installation works
 > today from the GitHub repository as a marketplace source, as described below.
 
@@ -35,6 +35,15 @@ claude plugin install paved@paved
 Inside a Claude Code session the equivalent is `/plugin marketplace add
 andersonmrodrigues/paved` followed by `/plugin install paved@paved`.
 
+### Cursor
+
+In Cursor, open **Customize → Plugins → From GitHub Repository**, enter
+`https://github.com/andersonmrodrigues/paved`, import the Paved marketplace, then
+install **Paved** at user or project scope. The repository's
+`.cursor-plugin/marketplace.json` points to the generated plugin in `plugins/paved/`.
+Cursor loads the Paved skills without enabling the shared Claude Code/Codex prompt hook;
+invoke them manually by skill name, such as `/status` or `/feature`.
+
 ## Verify the installation
 
 - Codex: start a session in a repository and ask for the skill list, or run
@@ -42,6 +51,8 @@ andersonmrodrigues/paved` followed by `/plugin install paved@paved`.
   other `paved:*` skills.
 - Claude Code: `claude plugin details paved` lists the plugin's skills; in a
   session, `/paved:` completes to the Paved commands.
+- Cursor: open **Customize → Plugins** and confirm Paved is installed; invoke a skill
+  with `/status` in Agent chat.
 
 ## Use it
 
@@ -50,6 +61,7 @@ Open the repository you want Paved to manage and invoke a command:
 ```text
 Claude Code: /paved:init   /paved:status   /paved:plan   /paved:feature
 Codex:       paved:init    paved:status    paved:plan    paved:feature   (as skills)
+Cursor:      /init        /status         /plan         /feature
 ```
 
 The first command activates the runtime. The plugin's launcher (`bin/paved.mjs`):

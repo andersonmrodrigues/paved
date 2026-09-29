@@ -1,6 +1,6 @@
 # Plugins
 
-This component distributes Paved as one native plugin for Codex and Claude Code.
+This component distributes Paved as one plugin for Cursor, Codex and Claude Code.
 
 - [`plugin-source.json`](plugin-source.json) is the only authored plugin identity: name,
   version, description and presentation metadata.
@@ -16,6 +16,8 @@ rendered from `core/skills/` and the shared command catalog, and its runtime is 
 Tools, verification, lifecycle and provenance stay in that runtime.
 
 The repository-backed marketplaces that list the plugin are
-`.agents/plugins/marketplace.json` (Codex) and `.claude-plugin/marketplace.json`
-(Claude Code) at the repository root. Installation is documented in
+`.agents/plugins/marketplace.json` (Codex), `.claude-plugin/marketplace.json`
+(Claude Code) and `.cursor-plugin/marketplace.json` (Cursor) at the repository root.
+The Cursor-specific manifest disables hook discovery so Cursor installs the skills
+without the shared Codex/Claude prompt hook. Installation is documented in
 `docs/getting-started/installing-the-plugin.md`.
