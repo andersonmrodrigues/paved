@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# The whole script is one compound command so bash parses it before running it.
+# The cleanup and pull below may rewrite this file on disk; the running copy stays intact.
+{
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
@@ -27,18 +31,26 @@ command -v git >/dev/null || { echo "git not found"; exit 1; }
 command -v node >/dev/null || { echo "node not found"; exit 1; }
 command -v npm >/dev/null || { echo "npm not found"; exit 1; }
 
-echo "==> Checking working tree..."
-
-if [[ -n "$(git status --porcelain)" ]]; then
-  echo "ERROR: working tree is not clean."
-  echo
-  git status --short
-  exit 1
-fi
-
 BRANCH="$(git branch --show-current)"
 if [[ "$BRANCH" != "main" ]]; then
   echo "ERROR: current branch is '$BRANCH', expected 'main'."
+  exit 1
+fi
+
+echo "==> Cleaning working tree..."
+
+# Discards leftovers from an aborted release (uncommitted edits and untracked
+# files). Ignored files such as node_modules/ are kept.
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "Discarding:"
+  git status --short
+  git reset --hard HEAD
+  git clean -fd
+fi
+
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "ERROR: working tree is still not clean after cleanup."
+  git status --short
   exit 1
 fi
 
@@ -167,30 +179,8 @@ NODE
 echo
 echo "==> Updating CHANGELOG.md..."
 
-node <<'NODE'
-const fs = require("fs");
-
-const version = process.env.NEW_VERSION;
-const path = "CHANGELOG.md";
-let content = fs.readFileSync(path, "utf8");
-
-const heading = `## [${version}] - Unreleased`;
-
-if (!content.includes(heading)) {
-  const firstRelease = content.indexOf("\n## [");
-
-  if (!content.startsWith("# Changelog\n") || firstRelease === -1) {
-    throw new Error("Unexpected CHANGELOG.md format.");
-  }
-
-  content =
-    content.slice(0, firstRelease + 1) +
-    `${heading}\n\n### Changed\n\n- Automatic scoped capability provider resolution for multi-stack repositories.\n\n` +
-    content.slice(firstRelease + 1);
-}
-
-fs.writeFileSync(path, content);
-NODE
+node release-changelog.mjs \
+  CHANGELOG.md "$CURRENT_VERSION" "$NEW_VERSION" "$(date +%Y-%m-%d)"
 
 # ------------------------------------------------------------
 # 7. Rebuild plugin
@@ -373,3 +363,6 @@ echo "  plugins/paved/runtime/paved-core-${NEW_VERSION}.tgz"
 echo
 echo "Next step:"
 echo "  update the plugin in Codex/Claude and test the consumer repository."
+
+exit
+}
