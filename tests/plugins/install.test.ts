@@ -211,7 +211,7 @@ function configureTesting(project: string, coreRoot: string): void {
   writeFileSync(join(paved, "tool-implementations", "testing.yaml"), stringify({
     apiVersion: "paved/v1", kind: "ToolImplementation", id: "project.testing.run", tool: "project.testing.run",
     version: "1.0.0", contract: "^0.1.0", source: "project", environments: ["local"],
-    invocation: { type: "command", executable: process.execPath, arguments: ["--", ".paved/tools/test-runner.mjs"] },
+    invocation: { type: "command", executable: "node", arguments: ["--", ".paved/tools/test-runner.mjs"] },
     availability: "available",
   }));
   writeFileSync(join(paved, "tools", "feature.test.mjs"), [

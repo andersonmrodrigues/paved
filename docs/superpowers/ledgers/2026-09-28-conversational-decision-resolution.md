@@ -817,4 +817,17 @@ provider ambiguity, and prove Git-only raises no verification question. Added se
 coverage for free text remaining inert data in a run record, unavailable testing Tools
 remaining blockers, malformed lock integrity not being answered away, path traversal ids,
 and secret-like build values staying out of decision evidence. Security, adapter-stack
-and plugin-stack tests 34/34 and typecheck passed. Task 29 remains.
+and plugin-stack tests 34/34 and typecheck passed.
+
+Task 29: rebuilt the packaged plugin after the final docs/runtime changes and verified
+`npm run check:plugin` with no drift or conflicts. The full required `npm run check`
+passes: strict typecheck plus 782/782 tests. Three package/plugin test fixtures now use
+the portable executable name `node`; the prior `process.execPath` included a local
+Homebrew path with `@`, which the intentionally strict Tool executable schema rejects.
+The schema constraint remains unchanged. Reviewed the plan's traceability section: update
+migration stays blocked until Core ships a real document transform; there is no migration
+registry to safely apply today. The real Apecatus checkout was not initialized because it
+contains extensive pre-existing untracked data (about 851 MB) and init writes `.paved/`;
+the clean-room Apecatus-shaped acceptance fixture passed instead. Tasks 22–29 are
+implemented, with that external manual validation and migration-transform capability
+remaining limitations.
