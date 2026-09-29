@@ -5,6 +5,12 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Fixed
+
+- When a runtime update replaces a decision question, init supersedes the old
+  pending answer options and presents the current choice instead of leaving a
+  stale single-command testing decision in status.
+
 ## [1.4.1] - 2026-09-29
 
 ### Fixed
