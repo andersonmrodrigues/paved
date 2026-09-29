@@ -15,6 +15,9 @@ releases, not the development sequence used to build them.
 ### Changed
 
 - Automatic scoped capability provider resolution for multi-stack repositories.
+- `paved update` applies only explicitly registered, deterministic migrations to
+  legacy documents in its staged transaction; unknown or ambiguous document versions
+  remain blocked.
 
 ## [1.0.0] - Unreleased
 

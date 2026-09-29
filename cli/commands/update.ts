@@ -7,6 +7,8 @@ import { inspectConsumer, planConsumerUpdate, type ConsumerUpdatePlan } from "..
 import { runGenerators, type RunResult } from "../lib/generator-runtime.ts";
 import { applyConsumerUpdate } from "../lib/update-transaction.ts";
 import { ConsumerOperationLockedError } from "../lib/operation-lock.ts";
+import { applyDocumentMigrations } from "../lib/document-migrations.ts";
+import { createRegistry } from "../lib/schemas.ts";
 import { createDiagnostic, createResult, type CommandResult, type Diagnostic, type ResultStatus } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
 
@@ -53,6 +55,7 @@ function updateData(plan: ConsumerUpdatePlan, dryRun: boolean, generation?: RunR
     resolvedAdapters: plan.resolvedAdapters,
     plannedWrites,
     plannedGeneratorIds: plan.plannedGeneratorIds,
+    migrations: plan.plannedMigrations,
     proposals: generation?.executions.flatMap((execution) => execution.proposals) ?? [],
     conflicts: generation?.executions.filter((execution) => execution.status === "conflict").map((execution) => execution.generator) ?? [],
     ...(generation === undefined ? {} : { generation: generateData(generation, dryRun) }),
@@ -104,7 +107,9 @@ export function updateHandler(invocation: CommandInvocation): CommandResult {
   }
 
   try {
+    const registry = createRegistry(join(invocation.paths.coreRoot, "schemas"), ["paved/v1"]);
     const staged = applyConsumerUpdate(invocation.paths.projectRoot, (stagedRoot) => {
+      applyDocumentMigrations(stagedRoot, plan.plannedMigrations, registry);
       const generation = plan.plannedGeneratorIds.length === 0 ? undefined : runGenerators(invocation.paths.coreRoot, stagedRoot, {
         generators: [...plan.plannedGeneratorIds],
         ...(plan.nextLock === undefined ? {} : { lock: plan.nextLock }),
