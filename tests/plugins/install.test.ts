@@ -51,11 +51,21 @@ describe("clean-room plugin installation", { skip }, () => {
   };
 
   it("installs the committed plugin byte for byte in both hosts", () => {
+    const project = join(root, "hook-consumer");
+    mkdirSync(join(project, ".paved"), { recursive: true });
+    writeFileSync(join(project, ".paved", "manifest.yaml"), "version: test\n");
+    writeFileSync(join(project, ".paved", "paved.lock"), "version: test\n");
+    const event = JSON.stringify({ cwd: project, prompt: "private prompt" });
+
     for (const installed of [codexPlugin, claudePlugin]) {
       assert.ok(!realpathSync(installed).startsWith(realpathSync(ROOT)), `${installed} must not be the development checkout`);
       for (const file of ["bin/paved.mjs", "bin/bootstrap.json", "provenance.json", RUNTIME, "skills/init/SKILL.md", "hooks/hooks.json", "hooks/paved-prompt-submit.mjs"]) {
         assert.deepEqual(readFileSync(join(installed, file)), readFileSync(join(ROOT, PLUGIN_DIRECTORY, file)), `${installed}: ${file}`);
       }
+      const hook = spawnSync(process.execPath, [join(installed, "hooks", "paved-prompt-submit.mjs")], { input: event, encoding: "utf8" });
+      assert.equal(hook.status, 0, hook.stderr);
+      assert.equal(JSON.parse(hook.stdout).hookSpecificOutput.hookEventName, "UserPromptSubmit");
+      assert.doesNotMatch(hook.stdout, /private prompt/);
     }
     assert.ok(claudeInventory.includes(`Skills (${readdirSync(join(ROOT, PLUGIN_DIRECTORY, "skills")).length})`), claudeInventory);
     for (const name of ["init", "status", "feature", "verify", "context-discovery"]) assert.match(claudeInventory, new RegExp(`\\b${name}\\b`));
