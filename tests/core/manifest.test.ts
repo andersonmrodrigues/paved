@@ -36,6 +36,7 @@ describe("core manifest", () => {
       ".paved/rules/x": "project-owned",
       ".paved/verification/x": "project-owned",
       ".paved/workflows/x": "project-owned",
+      ".paved/documents/x": "project-owned",
       ".paved/paved.lock": "tool-managed",
       ".paved/runtime/x": "tool-managed",
     };
@@ -47,6 +48,14 @@ describe("core manifest", () => {
   it("requires only the project manifest, so adoption can be incremental", () => {
     const required = manifest.consumer_layout.filter((entry) => entry.required).map((entry) => entry.path);
     assert.deepEqual(required, [".paved/manifest.yaml"]);
+  });
+
+  it("keeps work documents optional and committed with the project", () => {
+    const documents = manifest.consumer_layout.find((entry) => entry.path === ".paved/documents/");
+    assert.ok(documents, "work document root is declared");
+    assert.equal(documents.ownership, "project-owned");
+    assert.equal(documents.required, false);
+    assert.equal(documents.committed, true);
   });
 
   it("names only known document kinds as consumer path schemas", () => {

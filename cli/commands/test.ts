@@ -90,6 +90,8 @@ export async function testHandler(invocation: CommandInvocation): Promise<Comman
           lifecycleState: lifecycle,
           tool: result.tool,
           evidence: result.evidence,
+          ...(result.tools === undefined ? {} : { tools: result.tools }),
+          ...(result.evidences === undefined ? {} : { evidences: result.evidences }),
           verification: "not-run",
         },
         diagnostics: [

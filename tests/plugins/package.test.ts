@@ -58,6 +58,27 @@ describe("generated plugin", () => {
     assert.equal(join("bin", bootstrap.tarball), join("bin", "..", provenance.runtime.file));
   });
 
+  it("bundles one prompt hook discoverable by both plugin hosts", () => {
+    const codex = readJson<Record<string, unknown>>(join(plugin, ".codex-plugin", "plugin.json"));
+    const claude = readJson<Record<string, unknown>>(join(plugin, ".claude-plugin", "plugin.json"));
+    assert.equal(codex.hooks, undefined, "Codex discovers the default hooks/hooks.json path");
+    assert.equal(claude.hooks, undefined, "Claude Code discovers the default hooks/hooks.json path");
+
+    const hooks = readJson<{ hooks: { UserPromptSubmit: { hooks: { type: string; command: string; timeout: number }[] }[] } }>(join(plugin, "hooks", "hooks.json"));
+    const [entry] = hooks.hooks.UserPromptSubmit;
+    const [command] = entry!.hooks;
+    assert.equal(command!.type, "command");
+    assert.equal(command!.command, 'node "${CLAUDE_PLUGIN_ROOT}/hooks/paved-prompt-submit.mjs"');
+    assert.equal(command!.timeout, 5);
+    assert.deepEqual(
+      readFileSync(join(plugin, "hooks", "paved-prompt-submit.mjs")),
+      readFileSync(join(ROOT, "integrations", "shared", "prompt-submit-hook.mjs")),
+    );
+    for (const path of ["hooks/hooks.json", "hooks/paved-prompt-submit.mjs"]) {
+      assert.ok(provenance.files[path] !== undefined, `${path} must be covered by generated provenance`);
+    }
+  });
+
   it("bundles a runtime whose bytes and contents match the provenance", () => {
     const bytes = readFileSync(join(plugin, provenance.runtime.file));
     assert.equal(bytes.length, provenance.runtime.bytes);

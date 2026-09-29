@@ -5,6 +5,54 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-09-29
+
+### Added
+
+- A shared Codex and Claude Code prompt hook keeps Paved routing guidance available
+  on each user turn in initialized repositories. Hook activation follows host trust
+  controls and fails open without running Paved commands.
+
+## [1.7.0] - 2026-09-29
+
+### Added
+
+- A Core `frontend-design` skill for frontend changes, activated in feature and bug
+  planning/implementation when the interface is affected.
+
+## [1.6.0] - 2026-09-29
+
+### Added
+
+- A versioned `.paved/documents/` workspace for workflow intents, plans, specs, tasks,
+  and research. Init scaffolds the document guide; planning commands use the canonical
+  plan path for Markdown preview and hash-bound approval.
+
+## [1.5.0] - 2026-09-29
+
+### Added
+
+- Local Markdown preview for plans and specs with selected-text comments, a shared
+  Codex/Claude review loop, and browser approval bound to the exact document hash.
+  Workflow plans can request approval again after review edits in the same run.
+
+## [1.4.2] - 2026-09-29
+
+### Fixed
+
+- When a runtime update replaces a decision question, init supersedes the old
+  pending answer options and presents the current choice instead of leaving a
+  stale single-command testing decision in status.
+
+## [1.4.1] - 2026-09-29
+
+### Fixed
+
+- In monorepos, init can adopt every detected module test command and `paved test`
+  executes all of them, reporting a failure from any module with per-command evidence.
+  Local Maven dependencies run first and install their artifact before consumers test;
+  newly adopted verification checks use the same order and lifecycle.
+
 ## [1.4.0] - 2026-09-29
 
 ### Added

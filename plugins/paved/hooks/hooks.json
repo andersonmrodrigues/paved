@@ -1,0 +1,16 @@
+{
+  "description": "Adds advisory Paved routing context for initialized repositories.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/paved-prompt-submit.mjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

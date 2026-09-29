@@ -12,6 +12,8 @@ production is impaired now, run `incident` first and this workflow afterwards.
 - **discovery → implementation:** `bug-investigation` runs across these phases and
   brings in root-cause analysis, runtime observation and the regression test at its own
   steps. The phases mark where its gates sit, not new activations.
+- For a defect whose fix changes a visible frontend interface, `frontend-design` helps
+  keep the correction grounded in the intended product and inspect the rendered result.
 - **implementation:** `core.testing.regression-test-for-bug-fix` makes the
   `test-failed-first` gate non-negotiable. Two failed fix attempts mean the cause was
   not confirmed: the phase fails as `skill-failed` and discovery is repeated.

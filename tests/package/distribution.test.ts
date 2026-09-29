@@ -139,7 +139,7 @@ describe("runtime package artifact", () => {
       };
       assert.equal(commandResult.status, "success");
       assert.ok(["GENERATED", "VALIDATED", "READY"].includes(commandResult.data?.lifecycleState ?? ""));
-      assert.equal(commandResult.data?.commands.length, 14);
+      assert.equal(commandResult.data?.commands.length, 15);
       assert.equal(commandResult.data?.commands.every((command) => typeof command.available === "boolean"), true);
       assert.equal(commandResult.data?.commands.find((command) => command.name === "init")?.available, false);
       assert.equal(commandResult.data?.commands.find((command) => command.name === "test")?.available, false);

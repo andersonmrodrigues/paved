@@ -3,6 +3,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSy
 import { spawnSync } from "node:child_process";
 import { join, relative, sep } from "node:path";
 import { parse, stringify } from "yaml";
+import { planMavenDependencies } from "../../adapters/technology/java/maven-dependencies.ts";
 import { createDiagnostic, type Diagnostic } from "../result.ts";
 import { atomicWriteFileSync } from "./atomic-write.ts";
 import { loadYaml } from "./documents.ts";
@@ -133,6 +134,10 @@ export type TestingToolResolution =
       readonly override?: ToolOverride;
     }
   | {
+      readonly status: "suite";
+      readonly members: readonly Extract<TestingToolResolution, { status: "resolved" }>[];
+    }
+  | {
       readonly status: "ambiguous";
       readonly candidates: readonly string[];
       readonly code: string;
@@ -173,6 +178,45 @@ function resolveTestingToolCandidate(projectRoot: string, coreRoot: string, sele
   }
   if (selectedId !== undefined) tools = tools.filter((tool) => tool.id === selectedId);
   if (tools.length > 1) {
+    if (tools.every((tool) => tool.id.startsWith("project.testing-detected-"))) {
+      const members = tools.map((tool) => resolveTestingToolCandidate(projectRoot, coreRoot, tool.id));
+      const unavailable = members.find((member) => member.status === "unavailable");
+      if (unavailable?.status === "unavailable") return unavailable;
+      const resolved = members as Extract<TestingToolResolution, { status: "resolved" }>[];
+      try {
+        const maven = resolved.filter((member) => member.implementation.invocation.executable === "mvn")
+          .map((member) => member.implementation.invocation.working_directory ?? ".");
+        const plan = planMavenDependencies(projectRoot, maven);
+        const rank = new Map(plan.scopes.map((scope, index) => [scope, index]));
+        for (const member of resolved) {
+          const binding = member.implementation.invocation;
+          if (binding.executable !== "mvn") continue;
+          const scope = binding.working_directory ?? ".";
+          if (plan.installs.has(scope) && binding.arguments?.[0] !== "install") {
+            return {
+              status: "unavailable", code: "PAVED_TEST_DEPENDENCY_PREPARATION_STALE",
+              message: `Testing Tool for ${scope} must install its artifact before local consumers run.`,
+              remediation: "Review and update the module's testing ToolImplementation before retrying.",
+            };
+          }
+        }
+        resolved.sort((a, b) => {
+          const aRank = a.implementation.invocation.executable === "mvn" ? rank.get(a.implementation.invocation.working_directory ?? ".") : undefined;
+          const bRank = b.implementation.invocation.executable === "mvn" ? rank.get(b.implementation.invocation.working_directory ?? ".") : undefined;
+          if (aRank !== undefined && bRank !== undefined) return aRank - bRank;
+          if (aRank !== undefined) return -1;
+          if (bRank !== undefined) return 1;
+          return a.tool.id.localeCompare(b.tool.id, "en");
+        });
+        return { status: "suite", members: resolved };
+      } catch (error) {
+        return {
+          status: "unavailable", code: "PAVED_TEST_MAVEN_DEPENDENCIES_INVALID",
+          message: error instanceof Error ? error.message : "Local Maven dependencies could not be resolved.",
+          remediation: "Fix the local Maven project coordinates and dependency graph before retrying.",
+        };
+      }
+    }
     const candidates = tools.flatMap((tool) => {
       const resolution = resolveTestingToolCandidate(projectRoot, coreRoot, tool.id);
       return resolution.status === "resolved" ? [tool.id] : [];
@@ -369,18 +413,15 @@ export interface TestRunResult {
   readonly diagnostics: readonly Diagnostic[];
   readonly tool?: ReturnType<typeof captureToolExecution>;
   readonly evidence?: string;
+  readonly tools?: readonly ReturnType<typeof captureToolExecution>[];
+  readonly evidences?: readonly string[];
 }
 
-export async function runTestingTool(input: TestRunInput): Promise<TestRunResult> {
+type ResolvedTestingTool = Extract<TestingToolResolution, { status: "resolved" }>;
+
+async function runOneTestingTool(input: TestRunInput, selected: ResolvedTestingTool): Promise<TestRunResult> {
   const diagnostics: Diagnostic[] = [];
   const schemaRegistry = createRegistry(join(input.coreRoot, "schemas"), ["paved/v1"]);
-  const selected = resolveTestingTool(input.projectRoot, input.coreRoot);
-  if (selected.status !== "resolved") {
-    return {
-      status: "failed",
-      diagnostics: [diagnostic(selected.code, "config", selected.message, selected.remediation)],
-    };
-  }
   const { tool, implementation, override } = selected;
 
   const validation = validateToolInputs(tool, input.inputs);
@@ -531,5 +572,25 @@ export async function runTestingTool(input: TestRunInput): Promise<TestRunResult
     diagnostics,
     tool: execution,
     evidence: relative(realpathSync(input.projectRoot), realpathSync(recordPath)).split(sep).join("/"),
+  };
+}
+
+export async function runTestingTool(input: TestRunInput): Promise<TestRunResult> {
+  const selected = resolveTestingTool(input.projectRoot, input.coreRoot);
+  if (selected.status === "unavailable" || selected.status === "ambiguous") {
+    return { status: "failed", diagnostics: [diagnostic(selected.code, "config", selected.message, selected.remediation)] };
+  }
+  if (selected.status === "resolved") return runOneTestingTool(input, selected);
+  const results: TestRunResult[] = [];
+  for (const member of selected.members) results.push(await runOneTestingTool(input, member));
+  const failed = results.find((result) => result.status === "failed");
+  const representative = failed ?? results[0];
+  return {
+    status: failed ? "failed" : "success",
+    diagnostics: results.flatMap((result) => result.diagnostics),
+    ...(representative?.tool === undefined ? {} : { tool: representative.tool }),
+    ...(representative?.evidence === undefined ? {} : { evidence: representative.evidence }),
+    tools: results.flatMap((result) => result.tool ? [result.tool] : []),
+    evidences: results.flatMap((result) => result.evidence ? [result.evidence] : []),
   };
 }

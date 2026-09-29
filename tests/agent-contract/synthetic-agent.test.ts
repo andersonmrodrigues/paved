@@ -94,7 +94,7 @@ describe("synthetic agent black-box contract", () => {
       assert.equal(commandsBefore.result.status, "success");
       const beforeData = commandsBefore.result.data as { lifecycleState: string; commands: { name: string; available: boolean; interaction: string; decisionSources: string[]; answerChannels: string[] }[] };
       assert.equal(beforeData.lifecycleState, "UNINITIALIZED");
-      assert.equal(beforeData.commands.length, 14);
+      assert.equal(beforeData.commands.length, 15);
       assert.equal(beforeData.commands.find((command) => command.name === "init")?.available, true);
       assert.equal(beforeData.commands.find((command) => command.name === "plan")?.available, false);
       assert.equal(beforeData.commands.find((command) => command.name === "init")?.interaction, "conversational");

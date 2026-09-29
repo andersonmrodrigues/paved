@@ -161,6 +161,29 @@ function runDecisionGateUnlocked(input: {
     current.set(decision.id, { candidate, decision });
   }
 
+  // A runtime update can replace a question while keeping its apply handler.
+  // Retire the old pending answer contract before it can be shown by status or
+  // resumed with options that no longer describe the current behavior.
+  for (const old of stored.values()) {
+    if (old.status === "SUPERSEDED" || old.status === "CANCELLED" || old.status === "REJECTED") continue;
+    if (current.has(old.id)) continue;
+    const replacements = [...current.values()].filter(({ decision }) =>
+      decision.scope === old.scope && decision.command === old.command
+      && decision.run === old.run && decision.handler === old.handler
+      && decision.question !== old.question);
+    if (replacements.length !== 1) continue;
+    const replacement = replacements[0]!;
+    const retired = supersede(old, "The runtime replaced this question and its answer options.", replacement.decision.id);
+    if (persist) storage.write(retired);
+    stored.set(old.id, retired);
+    if (replacement.decision.supersedes === undefined) {
+      current.set(replacement.decision.id, {
+        ...replacement,
+        decision: { ...replacement.decision, supersedes: old.id },
+      });
+    }
+  }
+
   const live = new Map<string, Decision>();
   for (const [id, { candidate, decision }] of current) {
     const relevant = [...stored.values()].filter((item) =>

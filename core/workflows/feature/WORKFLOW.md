@@ -14,8 +14,11 @@ The `request` input is the anchor: without it the run stops as `input-missing`.
   `core.architecture.follow-existing-patterns` asks you to follow.
 - **planning:** write claims as observable behavior ("the export includes archived
   items when requested"), not as implementation steps. If the plan crosses a declared
-  boundary, the `boundary-exception` gate needs a human.
+  boundary, the `boundary-exception` gate needs a human. For visible frontend changes,
+  `frontend-design` records a brief-grounded visual direction in the plan before coding.
 - **implementation:** `feature-development` hands test writing to the testing skills.
+  For visible frontend changes, use `frontend-design` to inspect the rendered result and
+  check responsive and accessible interaction states.
 - **validation / verification:** validation keeps you honest while working;
   verification proves the claims. Missing check types become recorded gaps.
 - **review:** `change-review` brings in `security-review` when the feature adds input,

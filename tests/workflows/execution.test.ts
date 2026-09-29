@@ -79,8 +79,19 @@ describe("executable workflow state", () => {
       const planSha = run.phases.find((phase) => phase.phase === "planning")?.gates?.find((gate) => gate.reason?.startsWith("plan_sha256="))?.reason?.slice(12);
       assert.match(planSha ?? "", /^[a-f0-9]{64}$/);
       mkdirSync(join(project, ".paved", "approvals"));
+      writeFileSync(plan, "Implement feature.ts with a regression test and review the result.\n");
+      const revised = await invoke("feature", "--run", id, "--advance");
+      assert.equal((revised.data as { status: string }).status, "awaiting-approval", JSON.stringify(revised));
+      const revisedRun = parse(readFileSync(runPath, "utf8")) as { events: { type: string }[]; phases: { phase: string; gates?: { reason?: string }[] }[] };
+      assert.equal(revisedRun.events.filter((event) => event.type === "approval-requested").length, 2);
+      const revisedSha = revisedRun.phases.find((phase) => phase.phase === "planning")?.gates?.find((gate) => gate.reason?.startsWith("plan_sha256="))?.reason?.slice(12);
+      assert.notEqual(revisedSha, planSha);
       writeFileSync(join(project, ".paved", "approvals", `${id}.json`), JSON.stringify({
         run: id, plan_sha256: planSha, decision: "approved", decided_by: "maintainer", decided_at: new Date().toISOString(),
+      }));
+      assert.equal((await invoke("feature", "--run", id, "--advance")).status, "warning");
+      writeFileSync(join(project, ".paved", "approvals", `${id}.json`), JSON.stringify({
+        run: id, plan_sha256: revisedSha, decision: "approved", decided_by: "maintainer", decided_at: new Date().toISOString(),
       }));
       const approved = await invoke("feature", "--run", id, "--advance");
       assert.equal((approved.data as { currentPhase: string }).currentPhase, "implementation", JSON.stringify(approved));

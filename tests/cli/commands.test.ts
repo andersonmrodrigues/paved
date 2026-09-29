@@ -968,6 +968,7 @@ describe("init and generate commands", () => {
       assert.equal(existsSync(join(project, ".paved")), false);
       assert.ok(data.plannedWrites?.includes(".paved/manifest.yaml"));
       assert.ok(data.plannedWrites?.includes(".paved/paved.lock"));
+      assert.ok(data.plannedWrites?.includes(".paved/documents/README.md"));
       assert.ok(data.selectedAdapters?.includes("technology/angular"));
       assert.ok(data.generation?.executions?.some((entry) => entry.generator === "project-context/architecture"));
     } finally {

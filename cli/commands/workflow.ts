@@ -89,7 +89,7 @@ function load(invocation: CommandInvocation, workflow: WorkflowContract, id: str
   const gate = run.phases.find((phase) => phase.phase === "planning")?.gates?.find((item) => item.id === "plan-approved");
   if (gate?.status === "approved" || gate?.status === "rejected") {
     const digest = gate.reason?.replace(/^plan_sha256=/, "");
-    const planRef = run.events.find((event) => event.type === "approval-requested" && event.phase === "planning")?.ref;
+    const planRef = run.events.findLast((event) => event.type === "approval-requested" && event.phase === "planning")?.ref;
     if (!digest || !planRef || !/^[a-f0-9]{64}$/.test(digest)) throw new Error("Workflow approval provenance is missing.");
     const planPath = resolveSafePath(invocation.paths.projectRoot, planRef);
     if (!existsSync(planPath) || sha(readFileSync(planPath)) !== digest) throw new Error("Approved plan content has changed.");
@@ -231,7 +231,8 @@ function approval(invocation: CommandInvocation, run: Run, planSha: string): { d
   const path = resolveSafePath(invocation.paths.projectRoot, `.paved/approvals/${run.id}.json`);
   if (!existsSync(path)) return undefined;
   const document = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-  if (document.run !== run.id || document.plan_sha256 !== planSha || !["approved", "rejected"].includes(String(document.decision))
+  if (document.plan_sha256 !== planSha) return undefined;
+  if (document.run !== run.id || !["approved", "rejected"].includes(String(document.decision))
     || typeof document.decided_by !== "string" || !document.decided_by.trim() || ["agent", "paved", "ci"].includes(document.decided_by)
     || typeof document.decided_at !== "string" || Number.isNaN(Date.parse(document.decided_at))) {
     throw new Error("Approval record is invalid or does not match the current plan. A human must decide the exact plan in .paved/approvals/<run-id>.json.");
@@ -303,11 +304,18 @@ async function advance(invocation: CommandInvocation, command: WorkCommand, work
     }
     const planSha = gate.reason?.replace(/^plan_sha256=/, "");
     if (!planSha || !/^[a-f0-9]{64}$/.test(planSha)) throw new Error("Workflow approval gate has no valid plan digest.");
-    const planRef = run.events.find((event) => event.type === "approval-requested" && event.phase === "planning")?.ref;
+    const planRef = run.events.findLast((event) => event.type === "approval-requested" && event.phase === "planning")?.ref;
     if (!planRef) throw new Error("Workflow approval request has no plan path.");
     const currentPlan = resolveSafePath(invocation.paths.projectRoot, planRef);
-    if (!existsSync(currentPlan) || sha(readFileSync(currentPlan)) !== planSha) {
-      return blocked(command, "PAVED_WORKFLOW_PLAN_CHANGED", "The plan changed after approval was requested.", "Start a new approval request for the revised plan.");
+    if (!existsSync(currentPlan)) return blocked(command, "PAVED_WORKFLOW_PLAN_MISSING", "The plan file is missing.", "Restore the plan file before requesting approval again.");
+    const currentSha = sha(readFileSync(currentPlan));
+    if (currentSha !== planSha) {
+      gate.reason = `plan_sha256=${currentSha}`;
+      gate.requested_at = now();
+      run.events.push({ at: now(), type: "approval-requested", phase: "planning", ref: planRef, detail: `plan_sha256=${currentSha}` });
+      run.status = "awaiting-approval";
+      save(run, workflow, invocation);
+      return result(command, run, `The revised plan needs approval in .paved/approvals/${run.id}.json for plan_sha256 ${currentSha}.`);
     }
     const decision = approval(invocation, run, planSha);
     if (!decision) return result(command, run, `Awaiting human approval in .paved/approvals/${run.id}.json for plan_sha256 ${planSha}.`);
