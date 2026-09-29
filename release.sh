@@ -74,7 +74,7 @@ PACKAGE_VERSION="$(
   '
 )"
 
-PLUGIN_VERSION="$(
+CURRENT_PLUGIN_VERSION="$(
   node -e '
     const fs = require("fs");
     const p = JSON.parse(fs.readFileSync("plugins/plugin-source.json", "utf8"));
@@ -88,13 +88,12 @@ echo
 echo "Current versions:"
 echo "  VERSION                   = $CURRENT_VERSION"
 echo "  package.json              = $PACKAGE_VERSION"
-echo "  plugins/plugin-source.json = $PLUGIN_VERSION"
+echo "  plugins/plugin-source.json = $CURRENT_PLUGIN_VERSION"
 echo "  manifest.yaml             = $MANIFEST_VERSION"
 
 if [[ "$CURRENT_VERSION" != "$PACKAGE_VERSION" || \
-      "$CURRENT_VERSION" != "$PLUGIN_VERSION" || \
       "$CURRENT_VERSION" != "$MANIFEST_VERSION" ]]; then
-  echo "ERROR: version files are already inconsistent."
+  echo "ERROR: Core version files are already inconsistent."
   exit 1
 fi
 
@@ -102,29 +101,15 @@ fi
 # 3. Calculate new version
 # ------------------------------------------------------------
 
-IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
-
-case "$BUMP" in
-  major)
-    MAJOR=$((MAJOR + 1))
-    MINOR=0
-    PATCH=0
-    ;;
-  minor)
-    MINOR=$((MINOR + 1))
-    PATCH=0
-    ;;
-  patch)
-    PATCH=$((PATCH + 1))
-    ;;
-esac
-
-NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+RELEASE_VERSIONS="$(node release-versions.mjs "$CURRENT_VERSION" "$CURRENT_PLUGIN_VERSION" "$BUMP")"
+read -r NEW_VERSION NEW_PLUGIN_VERSION <<< "$RELEASE_VERSIONS"
 export NEW_VERSION
+export NEW_PLUGIN_VERSION
 
 echo
 echo "Version bump:"
 echo "  $CURRENT_VERSION -> $NEW_VERSION"
+echo "  plugin $CURRENT_PLUGIN_VERSION -> $NEW_PLUGIN_VERSION"
 
 # ------------------------------------------------------------
 # 4. Run dependency install first
@@ -146,10 +131,11 @@ printf '%s\n' "$NEW_VERSION" > VERSION
 node <<'NODE'
 const fs = require("fs");
 
-const version = process.env.NEW_VERSION;
+const coreVersion = process.env.NEW_VERSION;
+const pluginVersion = process.env.NEW_PLUGIN_VERSION;
 
 // Replace only the top-level version line so the rest of the file keeps its formatting.
-function updateVersionLine(path) {
+function updateVersionLine(path, version) {
   const content = fs.readFileSync(path, "utf8");
   const pattern = /^(  "version": )"[^"]*"/m;
   if (!pattern.test(content)) {
@@ -158,20 +144,20 @@ function updateVersionLine(path) {
   fs.writeFileSync(path, content.replace(pattern, `$1"${version}"`));
 }
 
-updateVersionLine("package.json");
-updateVersionLine("plugins/plugin-source.json");
+updateVersionLine("package.json", coreVersion);
+updateVersionLine("plugins/plugin-source.json", pluginVersion);
 
 const manifestPath = "manifest.yaml";
 const manifest = fs.readFileSync(manifestPath, "utf8");
 if (!/^version: .*$/m.test(manifest)) {
   throw new Error(`No top-level version in ${manifestPath}.`);
 }
-fs.writeFileSync(manifestPath, manifest.replace(/^version: .*$/m, `version: ${version}`));
+fs.writeFileSync(manifestPath, manifest.replace(/^version: .*$/m, `version: ${coreVersion}`));
 
 const lockPath = "package-lock.json";
 const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
-lock.version = version;
-lock.packages[""].version = version;
+lock.version = coreVersion;
+lock.packages[""].version = coreVersion;
 fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + "\n");
 NODE
 
@@ -258,9 +244,9 @@ echo "  plugins/paved/VERSION       = $GENERATED_PLUGIN_VERSION"
 
 if [[ "$FINAL_VERSION" != "$NEW_VERSION" || \
       "$PACKAGE_VERSION" != "$NEW_VERSION" || \
-      "$PLUGIN_VERSION" != "$NEW_VERSION" || \
+      "$PLUGIN_VERSION" != "$NEW_PLUGIN_VERSION" || \
       "$MANIFEST_VERSION" != "$NEW_VERSION" || \
-      "$GENERATED_PLUGIN_VERSION" != "$NEW_VERSION" ]]; then
+      "$GENERATED_PLUGIN_VERSION" != "$NEW_PLUGIN_VERSION" ]]; then
   echo "ERROR: version synchronization failed."
   exit 1
 fi
