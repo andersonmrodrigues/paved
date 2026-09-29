@@ -4,7 +4,7 @@
 
 **Goal:** Add a trusted Codex and Claude Code `UserPromptSubmit` hook that routes relevant prompts toward Paved in initialized consumer repositories.
 
-**Architecture:** Implement one dependency-free Node.js handler under `integrations/shared/`, and have the plugin generator package it with a shared `hooks/hooks.json` discovered by both host manifests. The handler only reads JSON stdin and filesystem markers, fails open, and emits short `additionalContext`; the existing Paved runtime remains responsible for all commands and gates.
+**Architecture:** Implement one dependency-free Node.js handler under `integrations/shared/`, and have the plugin generator package it with a shared `hooks/hooks.json` discovered at the default plugin path by both hosts. The handler reads JSON stdin and filesystem markers, fails open, and emits `hookSpecificOutput.additionalContext`; the existing Paved runtime remains responsible for all commands and gates.
 
 **Tech Stack:** TypeScript build pipeline, Node.js 22 built-ins, host plugin hook manifests, Node test runner, Markdown documentation.
 
@@ -26,20 +26,19 @@
 - A nested `.git` worktree marker may be a file rather than a directory; test file marker support in Task 1.
 - Partial Paved state (manifest without lock, or lock without manifest) must not inject context; test both cases in Task 1.
 - Hook JSON may be valid but have wrong field types or no `cwd`; test malformed and incomplete payloads in Task 1.
-- Host-specific manifests must keep existing plugin metadata while discovering the shared hook; assert full manifest behavior in Task 2.
+- The default plugin hook path must remain discoverable without manifest overrides; assert both host manifests preserve their existing metadata in Task 2.
 
 ## File Map
 
 - Create `integrations/shared/prompt-submit-hook.mjs`: stdin parsing, boundary lookup, Paved-state check, fail-open output.
 - Create `integrations/shared/hooks.json`: shared UserPromptSubmit registration for Codex and Claude Code using the plugin root.
-- Modify `plugins/build.ts`: package handler and hook manifest; ensure both generated host manifests discover the hook; include files in provenance as with all generated files.
+- Modify `plugins/build.ts`: package handler and hook manifest; include files in provenance as with all generated files.
 - Create `tests/integrations/prompt-submit-hook.test.ts`: subprocess tests against temporary repository layouts and hook output.
 - Modify `tests/plugins/package.test.ts`: assert both host manifests refer to the packaged hook and generated provenance covers it.
 - Modify `docs/getting-started/installing-the-plugin.md`: document hook behavior, review/trust activation, and limitations.
-- Modify `docs/concepts/agent-integrations.md`: document prompt routing as an advisory plugin integration.
+- Modify `docs/concepts/agent-integration.md`: document prompt routing as an advisory plugin integration.
 - Create `docs/decisions/0031-prompt-aware-plugin-hooks.md` and update `docs/decisions/README.md`: record contract and amend ADR 0024's integration model.
-- Modify `plugins/plugin-source.json`: increment plugin version for packaged hook content.
-- Modify `CHANGELOG.md`, `VERSION`, `manifest.yaml`, and `package.json`: record and version the compatible Core feature release according to the release process.
+- Modify `CHANGELOG.md`; `release.sh` updates `plugins/plugin-source.json`, `VERSION`, `manifest.yaml`, `package.json`, and `package-lock.json` together.
 - Regenerate `plugins/paved/` with `npm run build:plugin`.
 
 ## Tasks
@@ -53,7 +52,7 @@
 **Interfaces:**
 - Consumes one JSON object from stdin with optional `cwd: string`.
 - `cwd` walks upward to the first directory containing `.paved/manifest.yaml` or `.git`; injects only when that same directory contains both `.paved/manifest.yaml` and `.paved/paved.lock`.
-- Produces one JSON line `{ "additionalContext": "..." }` for initialized consumers; all other inputs exit 0 with no stdout/stderr.
+- Produces one JSON line `{ "hookSpecificOutput": { "hookEventName": "UserPromptSubmit", "additionalContext": "..." } }` for initialized consumers; all other inputs exit 0 with no stdout/stderr.
 - The context contains the four routing rules from the spec and does not include prompt text or filesystem content.
 
 - [ ] **Step 1: Write failing subprocess tests**
@@ -89,13 +88,13 @@ git commit -m "feat: add prompt-aware Paved routing hook"
 - Test: `tests/plugins/package.test.ts`
 
 **Interfaces:**
-- `hooks.json` registers `UserPromptSubmit` for Codex and Claude Code and invokes the packaged handler with Node using the plugin root variable.
-- Generated `plugin.json` and `.claude-plugin/plugin.json` discover `./hooks/hooks.json`; `.codex-plugin/plugin.json` retains current skills and interface settings.
-- `planPlugin()` includes `hooks/hooks.json` and `hooks/prompt-submit.mjs`; the normal provenance digest covers both.
+- `hooks.json` registers `UserPromptSubmit` for Codex and Claude Code and invokes `hooks/paved-prompt-submit.mjs` with Node using `CLAUDE_PLUGIN_ROOT` (also supplied by Codex for compatibility).
+- Both hosts discover the default `hooks/hooks.json` path; generated manifests retain current skills and interface settings.
+- `planPlugin()` includes `hooks/hooks.json` and `hooks/paved-prompt-submit.mjs`; the normal provenance digest covers both.
 
 - [ ] **Step 1: Add failing generated-package assertions**
 
-Extend `tests/plugins/package.test.ts` to parse each host manifest, assert its hook discovery field, read the generated hook manifest and assert both host event names use the packaged Node handler, verify the handler bytes match the shared source, and verify both paths appear in provenance. Keep existing manifest fields asserted.
+Extend `tests/plugins/package.test.ts` to parse each host manifest, assert there is no conflicting hook override, read the generated hook manifest and assert the `UserPromptSubmit` handler uses the plugin-root path, verify the handler bytes match the shared source, and verify both paths appear in provenance. Keep existing manifest fields asserted.
 
 - [ ] **Step 2: Run the focused test and confirm it fails**
 
@@ -104,7 +103,7 @@ Expected: FAIL because generated plugin does not contain hook files or discovery
 
 - [ ] **Step 3: Implement packaging and manifest discovery**
 
-Add shared source files to `planPlugin()` and adjust `manifests()` in `plugins/build.ts`. Preserve identity and existing host-specific fields. Use the official host manifest conventions linked in the spec; do not add runtime dependencies.
+Add shared source files to `planPlugin()` and adjust `manifests()` in `plugins/build.ts` only if explicit hook paths are required. Codex and Claude Code discover the default `hooks/hooks.json` path, so preserve identity and existing host-specific fields. Use the official host conventions linked in the spec; do not add runtime dependencies.
 
 - [ ] **Step 4: Build and run packaging tests**
 
@@ -122,7 +121,7 @@ git commit -m "build: package prompt hooks for Codex and Claude"
 
 **Files:**
 - Modify: `docs/getting-started/installing-the-plugin.md`
-- Modify: `docs/concepts/agent-integrations.md`
+- Modify: `docs/concepts/agent-integration.md`
 - Create: `docs/decisions/0031-prompt-aware-plugin-hooks.md`
 - Modify: `docs/decisions/README.md`
 - Modify: `docs/superpowers/specs/2026-09-29-prompt-aware-paved-hooks-design.md`
@@ -156,16 +155,15 @@ Expected: PASS and all links referenced by the docs resolve.
 - [ ] **Step 6: Commit documentation**
 
 ```bash
-git add docs/getting-started/installing-the-plugin.md docs/concepts/agent-integrations.md docs/decisions docs/superpowers/specs/2026-09-29-prompt-aware-paved-hooks-design.md tests/docs/agent-integration.test.ts
+git add docs/getting-started/installing-the-plugin.md docs/concepts/agent-integration.md docs/decisions docs/superpowers/specs/2026-09-29-prompt-aware-paved-hooks-design.md tests/docs/agent-integration.test.ts
 git commit -m "docs: explain prompt-aware plugin hooks"
 ```
 
 ### Task 4: Version and release the feature
 
 **Files:**
-- Modify: `plugins/plugin-source.json`
 - Modify: `CHANGELOG.md`
-- Modify: `VERSION`, `manifest.yaml`, `package.json` through `release.sh`
+- Modify: `plugins/plugin-source.json`, `VERSION`, `manifest.yaml`, `package.json`, and `package-lock.json` through `release.sh`
 - Regenerate: `plugins/paved/`
 
 **Interfaces:**
@@ -174,7 +172,7 @@ git commit -m "docs: explain prompt-aware plugin hooks"
 
 - [ ] **Step 1: Add an Unreleased changelog entry and bump plugin source version**
 
-Add a feature entry describing prompt-aware routing for trusted Codex and Claude plugins. Increase the plugin version by a compatible patch/minor according to the existing plugin version and confirm all three generated host manifests receive it.
+Add a feature entry describing prompt-aware routing for trusted Codex and Claude plugins. `release.sh minor` updates Core and plugin versions together and regenerates all three host manifests.
 
 - [ ] **Step 2: Build plugin and verify package drift**
 
@@ -209,6 +207,6 @@ Expected: tag is pushed and the working tree is clean and synchronized.
 
 - Spec coverage: handler behavior and state checks (Task 1); shared packaging and provenance (Task 2); trust/fallback docs and ADR (Task 3); full checks and tagged release (Task 4).
 - No placeholders: each task names concrete files, commands, behavior, and expected result.
-- Type/interface consistency: generated names are `hooks/hooks.json` and `hooks/prompt-submit.mjs`; shared inputs are `integrations/shared/hooks.json` and `integrations/shared/prompt-submit-hook.mjs`.
+- Type/interface consistency: generated names are `hooks/hooks.json` and `hooks/paved-prompt-submit.mjs`; shared inputs are `integrations/shared/hooks.json` and `integrations/shared/prompt-submit-hook.mjs`.
 - Review Focus conditions are covered in Task 1 or Task 2.
 - User authorized push and release; no remote action occurs before all local verification and the release script's own gates pass.

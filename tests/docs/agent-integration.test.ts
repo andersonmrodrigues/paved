@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const contract = readFileSync(join(root, "docs/concepts/agent-integration.md"), "utf8");
+const installation = readFileSync(join(root, "docs/getting-started/installing-the-plugin.md"), "utf8");
 
 describe("Agent Integration Contract", () => {
   it("declares the version and every required public capability", () => {
@@ -36,5 +37,17 @@ describe("Agent Integration Contract", () => {
     assert.match(contract, /`conversational` or\s+`read-only`/);
     assert.match(contract, /decision_sources|decisions come from/);
     assert.match(contract, /core\.decisions\.decisions/);
+  });
+
+  it("documents the advisory prompt hook and host trust requirements", () => {
+    assert.match(contract, /UserPromptSubmit/);
+    assert.match(contract, /advisory/i);
+    assert.match(contract, /initialized/i);
+    assert.match(installation, /UserPromptSubmit/);
+    assert.match(installation, /review and trust/i);
+    assert.match(installation, /initialized/i);
+    assert.match(installation, /fail\s+open/i);
+    assert.doesNotMatch(installation, /create (?:a )?CLAUDE\.md/i);
+    assert.doesNotMatch(installation, /\.claude\/settings\.json/);
   });
 });
