@@ -755,3 +755,20 @@ The content-derived optional-decision gate now promotes a freshly recomputed can
 to ASKED when a later invocation answers it, even though no prior read-only invocation
 persisted it. Full `npm run check` = 754 tests, 749 pass, the same 5 baseline failures.
 Tasks 23–29 remain.
+
+Task 23: `gardener` now bundles current CANDIDATE proposals into an optional
+config-additive decision. A human answer writes schema-validated project Rule documents
+that cite the observation sources; a decline writes nothing. The command never writes
+`.paved/gardener/reviews.yaml`, which remains human-owned. Gardener and CLI command tests
+60/60 and typecheck passed.
+
+Task 23 update-path ruling: the plan describes a “known required migration,” but Core
+has no shipped document migration transforms or migration registry; `update` explicitly
+does not auto-transform human-authored files, and an invalid document is a required
+human migration. Creating an “apply” decision would authorize lock advancement without
+making that document valid, or falsely promise a transform. Therefore `PAVED_UPDATE_
+MIGRATION_REQUIRED` remains a hard blocker until a concrete Core migration exists;
+unknown compatibility and integrity failures remain blockers as specified. A regression
+test proves the lock and decision store remain unchanged for this condition. Cost if
+wrong: users cannot approve a manual migration through a conversational decision; they
+must migrate the document themselves, then rerun update. Tasks 24–29 remain.
