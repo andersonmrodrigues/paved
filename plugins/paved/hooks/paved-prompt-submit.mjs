@@ -22,6 +22,7 @@ function nearestRepository(cwd) {
 }
 
 try {
+  process.stdin.setEncoding("utf8");
   let input = "";
   for await (const chunk of process.stdin) input += chunk;
   const event = JSON.parse(input);

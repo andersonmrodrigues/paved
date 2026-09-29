@@ -11,27 +11,27 @@
   "source": {
     "package": "paved-core",
     "version": "1.7.0",
-    "content_sha256": "ba64c8bdb23f02ce9a00b9f2a5b0a758eb0606087752836cf026c07ef0b554c8"
+    "content_sha256": "60725c7339e502a25702a49d9cd644d0fce7bf396d91065122308dd8756d078a"
   },
   "runtime": {
     "package": "paved-core",
     "version": "1.7.0",
     "file": "runtime/paved-core-1.7.0.tgz",
-    "integrity": "sha512-jrwei4BX9Hk5BXgvHUUFmjMCY0xtEm5hGBhdvl9h8EeVtj4hxPGf9TdgE8Jz7XMacPx1bcYRQcAcp8SftdkTVA==",
-    "content_sha256": "ba64c8bdb23f02ce9a00b9f2a5b0a758eb0606087752836cf026c07ef0b554c8",
-    "bytes": 1448440
+    "integrity": "sha512-gZRzqFidl7wMmHa0uVus2suqXZUOM5sU5Mveki4B3SE3noWIhF0V0HjKdNzM1L21vsihTYusfPyKo2yBOxuhBw==",
+    "content_sha256": "60725c7339e502a25702a49d9cd644d0fce7bf396d91065122308dd8756d078a",
+    "bytes": 1448459
   },
   "files": {
     ".claude-plugin/plugin.json": "b7abac4d47896eb2d5d3ae8670581be140e7b5d1345583d123ff0ed80e60d814",
     ".codex-plugin/plugin.json": "6ed84b22f13cec46f20d0f0b88506eea9558104cd3608c48e0af53b989647543",
-    "README.md": "7f882719d43c77c1129030e6fbd9c0e2a63c578ce5c43bca6b92835454adde60",
+    "README.md": "277f959cc1d3568cc6503f36c47616239e44dc2231e72befd925e21a1c491715",
     "VERSION": "bb7320d831e7a151aa901c35e7326c752fa2ef5024f30768c42319b8bed171ed",
-    "bin/bootstrap.json": "a64c9df0a0be12f0cb36456f4992bb53e8c7f4265e4882b2d9ca2a944ad96246",
+    "bin/bootstrap.json": "b46ec34cd89d5142f60d2828dd4b2e5c3df4edfcb0b08e11a51f84c06cd3288f",
     "bin/paved.mjs": "bfa6c07e5742f8a0bde7e2ee4b9b6e303a0539cdafe229e01a2a61869b3c68f8",
     "hooks/hooks.json": "540562f93b2411c8774254099888431ee8fad4863078dc95b46e173747254a81",
-    "hooks/paved-prompt-submit.mjs": "472731640c8e2ee7bcffce64a7f009837e6defacd27bdb6e1b6981a0c71503df",
+    "hooks/paved-prompt-submit.mjs": "5a38158ece8439c5f2ae2bf32e75b27f7f5aef9c729a3f9b421da79c489ff703",
     "plugin.json": "f1ce1878de7d84b6884f5197fc6b38c8a56cf77d7d721e7550c1ca35acca057a",
-    "runtime/paved-core-1.7.0.tgz": "d29e09dd29ca443eeeb47cd9312317f9e5f2b48e9e7ea9de00de05a39f733e8d",
+    "runtime/paved-core-1.7.0.tgz": "e21c9903d8f32e53885be290a3a0b267c31aa4ba798690a788d3dff4263bf94c",
     "skills/backend-performance/SKILL.md": "cf74c652d97d562e2ea44403705a4a23010d9e282df60b57b9e962315a358e6d",
     "skills/bug-investigation/SKILL.md": "c267e1cd45f7d0b62ca02bd03c558fc079702348d9718046155d5cc1f28fc008",
     "skills/bug-investigation/examples/investigation-log.md": "79e105f8a07ae446e818549d72d5dbb96e516c0d25db190e5a2ebe4bac0a736c",

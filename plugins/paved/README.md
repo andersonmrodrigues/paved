@@ -7,7 +7,7 @@ This directory is the installable plugin for Codex and Claude Code. It is genera
 `npm run build:plugin` in the Paved repository and must not be edited by hand.
 
 - Runtime: `paved-core@1.7.0` bundled at `runtime/paved-core-1.7.0.tgz`
-- Runtime integrity: `sha512-jrwei4BX9Hk5BXgvHUUFmjMCY0xtEm5hGBhdvl9h8EeVtj4hxPGf9TdgE8Jz7XMacPx1bcYRQcAcp8SftdkTVA==`
+- Runtime integrity: `sha512-gZRzqFidl7wMmHa0uVus2suqXZUOM5sU5Mveki4B3SE3noWIhF0V0HjKdNzM1L21vsihTYusfPyKo2yBOxuhBw==`
 - Launcher: `bin/paved.mjs`
 - Prompt routing: `hooks/hooks.json` adds advisory Paved context for initialized repositories; review and trust the hook in the host before it runs.
 - Commands: `/paved:<command>` in Claude Code, the `paved:<command>` skill in Codex
