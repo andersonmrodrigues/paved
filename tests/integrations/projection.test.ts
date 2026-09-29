@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { applyProjection, planProjection, removeProjection } from "../../integrations/shared/projection.ts";
 import { AGENT_COMMANDS } from "../../integrations/shared/commands.ts";
@@ -41,6 +41,16 @@ describe("agent projections", () => {
       assert.deepEqual(AGENT_COMMANDS.find((item) => item.name === "verify")!.decisionSources, ["runtime"]);
       assert.deepEqual(AGENT_COMMANDS.find((item) => item.name === "plan")!.decisionSources, ["agent"]);
     });
+
+    it("directs planning commands to durable canonical plan files", async () => {
+      const { renderCommand } = await import("../../integrations/shared/projection.ts");
+      for (const name of ["plan", "feature", "fix", "refactor"]) {
+        const command = AGENT_COMMANDS.find((item) => item.name === name)!;
+        const text = renderCommand(command, { headerLine: "<!-- h -->", title: `/paved:${name}`, launcher: { command: "node b.mjs" } });
+        assert.ok(text.includes(".paved/documents/plans/<run-id>.md"), name);
+        assert.ok(text.includes("paved preview start .paved/documents/plans/<run-id>.md"), name);
+      }
+    });
   });
 
   it("renders deterministic Codex and Claude projections from the same canonical skills", () => {
@@ -57,8 +67,8 @@ describe("agent projections", () => {
       assert.equal(codexCommands.length, AGENT_COMMANDS.length);
       assert.equal(claudeCommands.length, AGENT_COMMANDS.length);
       for (const command of AGENT_COMMANDS) {
-        const codexFile = codexCommands.find((file) => file.relativePath.includes(`paved-${command.name}`))!;
-        const claudeFile = claudeCommands.find((file) => file.relativePath.endsWith(`${command.name}.md`))!;
+        const codexFile = codexCommands.find((file) => basename(dirname(file.relativePath)) === `paved-${command.name}`)!;
+        const claudeFile = claudeCommands.find((file) => basename(file.relativePath) === `${command.name}.md`)!;
         assert.match(codexFile.content, new RegExp(`name: paved-${command.name}`));
         assert.match(claudeFile.content, new RegExp(`/paved:${command.name}`));
         assert.ok(codexFile.content.includes(command.description));

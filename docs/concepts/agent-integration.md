@@ -61,9 +61,10 @@ not parse human output when JSON is available.
 
 The authoritative consumer contract is `consumer_layout` in `manifest.yaml`.
 Context is under `.paved/project/`; project rules, verification, tools, skills
-and workflows are under their corresponding `.paved/` paths. Generated
-disposable state is under `.paved/generated/` and is not an integration source
-of truth.
+and workflows are under their corresponding `.paved/` paths. Durable intents,
+plans, specs, tasks and research live under `.paved/documents/` and are committed
+with the project change. Generated disposable state is under `.paved/generated/`
+and is not an integration source of truth.
 
 Agents consume document identity, schema, ownership and provenance, not the
 generator that produced a document. Freshness comes from lifecycle state and

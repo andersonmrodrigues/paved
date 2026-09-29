@@ -148,6 +148,7 @@ The implemented public commands are:
 - `gardener`
 - `agent`
 - `plan`, `implement`, `review`, `debug`, `feature`, `fix`, `refactor`
+- `preview`
 
 The `--json` option renders the same data model for scripts and integrations.
 The command family `paved evidence ...` and `paved tool ...` remains
@@ -170,6 +171,14 @@ observations. Planning stops for a plan-specific human approval record under
 the governed testing Tool, verification calls the existing verification engine,
 and completion requires workflow evidence with matching check results and a
 recorded diff. `plan`, `debug`, `implement`, and `review` use these same runs.
+
+`paved preview start <file.md> --run <run-id> --json` opens a local browser review
+for a plan awaiting approval; omit `--run` for a standalone spec. Select text to
+comment. An active Codex or Claude Code turn can call `paved preview wait <file.md>
+<revision> --json`, revise the file, and resolve each addressed comment with
+`paved preview resolve <file.md> <comment-id> --json`. The browser's Approve button
+records a human decision for the current version; workflow approval also requires
+the run's pending plan hash to match. `paved preview stop <file.md>` closes the server.
 
 ## Supported adapters and capabilities
 

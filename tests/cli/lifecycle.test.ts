@@ -30,6 +30,11 @@ test("init asks for observed configuration and accepts an answer on a later invo
   const asked = await dispatchCli({ argv: ["init", "--project", project, "--json"] });
   assert.equal(asked.status, "awaiting_input", JSON.stringify(asked.diagnostics));
   assert.equal(existsSync(join(project, ".paved/manifest.yaml")), true);
+  const documentsReadme = join(project, ".paved/documents/README.md");
+  assert.equal(existsSync(documentsReadme), true);
+  const scaffold = readFileSync(documentsReadme, "utf8");
+  assert.match(scaffold, /plans\/<run-id>\.md/);
+  writeFileSync(documentsReadme, `${scaffold}\nProject customization.\n`);
   assert.ok((asked.decisions?.length ?? 0) >= 2);
   const answers = (asked.decisions ?? []).flatMap((decision) => [
     "--answer", `${decision.id}=${decision.recommended ?? decision.options[0]!.id}`,
@@ -38,10 +43,23 @@ test("init asks for observed configuration and accepts an answer on a later invo
     argv: ["init", "--project", project, ...answers, "--answered-by", "tester@example.com", "--json"],
   });
   assert.notEqual(applied.status, "failed");
+  assert.match(readFileSync(documentsReadme, "utf8"), /Project customization/);
   assert.equal(existsSync(join(project, ".paved/verification/profile.yaml")), true);
   assert.equal(existsSync(join(project, ".paved/rules/quality/checkstyle.yaml")), true);
   const status = await dispatchCli({ argv: ["status", "--project", project, "--json"] });
   assert.ok(["VALIDATED", "READY"].includes((status.data as { lifecycleState: string }).lifecycleState));
+  rmSync(join(project, ".paved/documents"), { recursive: true, force: true });
+  const withoutDocuments = await dispatchCli({ argv: ["status", "--project", project, "--json"] });
+  assert.ok(["VALIDATED", "READY"].includes((withoutDocuments.data as { lifecycleState: string }).lifecycleState));
+});
+
+test("init refuses a symlinked durable-document directory", () => {
+  const project = temporaryDirectory("paved-document-symlink");
+  const outside = temporaryDirectory("paved-document-outside");
+  mkdirSync(join(project, ".paved"), { recursive: true });
+  symlinkSync(outside, join(project, ".paved/documents"));
+  assert.throws(() => initializeConsumer(core, project, "symlink-test"), /symbolic link/);
+  assert.equal(existsSync(join(outside, "README.md")), false);
 });
 
 test("init asks which adapter supplies an ambiguous capability", async () => {

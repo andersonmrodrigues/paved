@@ -47,6 +47,9 @@ any. Useful: the feature map entry and the verification profile.
 
 Keep a running log while investigating; the synthetic example in
 [examples/investigation-log.md](examples/investigation-log.md) shows the level of detail.
+For a Paved workflow, keep durable investigation notes under
+`.paved/documents/research/<run-id>.md` and the implementation plan under
+`.paved/documents/plans/<run-id>.md`; use the same workflow run id for both.
 
 ## Tools
 

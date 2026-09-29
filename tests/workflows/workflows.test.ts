@@ -52,6 +52,15 @@ describe("core workflows", () => {
     assert.deepEqual(Object.keys(FAILURE_CODES).sort(), [...common.$defs.failureCode.enum].sort());
   });
 
+  it("defines the durable work-document paths and canonical preview plan path", () => {
+    const instructions = loadMarkdown(at("core", "instructions", "workflows.md")).body;
+    for (const category of ["intents", "plans", "specs", "tasks", "research"]) {
+      assert.match(instructions, new RegExp(`\\.paved/documents/${category}/<run-id>\\.md`), category);
+    }
+    assert.match(instructions, /paved preview start \.paved\/documents\/plans\/<run-id>\.md/);
+    assert.ok(instructions.includes("plan path recorded in its existing"));
+  });
+
   for (const name of names) {
     describe(name, () => {
       const dir = join(root, name);
