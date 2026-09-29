@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { parse, stringify } from 'yaml';
 import { createRegistry } from './schemas.ts';
 import { answeredProviders } from './decisions/capability-answers.ts';
+import { listDecisions } from './decisions/store.ts';
 import { loadMarkdown } from './documents.ts';
 import { assessProvenance } from './provenance.ts';
 import { loadAdapters, detectAdapters, resolveAdapters, capabilityEvidence, capabilityLockEntries, capabilityProviders, resolveCapabilities, type AdapterEvidence, type CapabilityProviderEntry, type Detection, type Diagnostic, type ProviderSelection } from './adapters.ts';
@@ -185,7 +186,12 @@ function features(contract: Contract, sources: Source[], evidence: AdapterEviden
   }
   return outputs;
 }
-function verificationProposal(contract: Contract, sources: Source[], evidence: AdapterEvidence[], root: string, at: string, rev: string | undefined): Output[] {
+function verificationProposal(contract: Contract, sources: Source[], evidence: AdapterEvidence[], root: string, core: string, at: string, rev: string | undefined, dryRun: boolean): Output[] {
+  const draft = '.paved/generated/proposals/verification/profile.yaml';
+  if (existsSync(safe(root, '.paved/verification/profile.yaml')) || answeredDecisionInputs(core, root, 'verification.adopt').size > 0) {
+    withdrawProposal(root, draft, dryRun);
+    return [];
+  }
   const profile = { apiVersion: 'paved/v1', kind: 'VerificationProfile', checks: [] };
   const observations: string[] = [];
   for (const s of sources.filter(s => /package\.json$/.test(s.path))) {
@@ -200,18 +206,46 @@ function verificationProposal(contract: Contract, sources: Source[], evidence: A
   const sidecar = { apiVersion: 'paved/v1', kind: 'GeneratedArtifact', artifact: { path, format: 'yaml', schema: 'VerificationProfile', api_version: 'paved/v1', proposal_for: '.paved/verification/profile.yaml' }, ownership: 'disposable', provenance: provenance(contract, sources, at, rev, sha(content)) };
   return [{ path, content, schema: 'VerificationProfile' }, { path: `${path}.paved.yaml`, content: stringify(sidecar), schema: 'GeneratedArtifact' }];
 }
-function ruleProposals(contract: Contract, sources: Source[], root: string, at: string, rev: string | undefined): Output[] {
-  const outputs: Output[] = [];
-  for (const pom of sources.filter(s => /pom\.xml$/.test(s.path))) {
+export interface CheckstyleModule { dir: string; module: string; pom: Source; config: Source; rulePath: string; candidate: string }
+/** Maven modules whose validate phase fails the build on the module's own checkstyle.xml. */
+export function detectCheckstyleModules(root: string, sources: Source[] = discoverSources(root)): CheckstyleModule[] {
+  const modules: CheckstyleModule[] = [];
+  for (const pom of sources.filter(s => /(^|\/)pom\.xml$/.test(s.path))) {
     const text = readFileSync(safe(root, pom.path), 'utf8');
     if (!/maven-checkstyle-plugin/.test(text) || !/<phase>validate<\/phase>/.test(text) || !/<goal>check<\/goal>/.test(text) || !/<configLocation>checkstyle\.xml<\/configLocation>/.test(text) || !/<failOnViolation>true<\/failOnViolation>/.test(text)) continue;
-    const config = sources.find(s => s.path === `${dirname(pom.path)}/checkstyle.xml`);
+    const dir = dirname(pom.path);
+    const config = sources.find(s => s.path === (dir === '.' ? 'checkstyle.xml' : `${dir}/checkstyle.xml`));
     if (!config) continue;
-    const module = dirname(pom.path).replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase().replace(/^-|-$/g, '');
-    const id = `project.style.${module}`;
-    const doc = { apiVersion: 'paved/v1', kind: 'Rule', id, title: `Configured Checkstyle for ${module}`, rationale: `The Maven validate phase binds the Checkstyle check goal using ${config.path}.`, applies_to: { paths: [`${dirname(pom.path)}/src/main/java/**`] }, rule: 'Java source in this module satisfies the configured Checkstyle checks.', enforcement: { mechanism: 'automated', layer: 'static-analysis', check: 'static-analysis' }, severity: 'warning', verification: 'Run the module Maven validate phase and inspect the Checkstyle result.', references: [pom.path, config.path] };
-    const path = `.paved/generated/proposals/rules/${module}.yaml`; const content = stringify(doc); const origins = [pom, config];
-    const sidecar = { apiVersion: 'paved/v1', kind: 'GeneratedArtifact', artifact: { path, format: 'yaml', schema: 'Rule', api_version: 'paved/v1', proposal_for: `.paved/rules/style/${module}.yaml` }, ownership: 'disposable', provenance: provenance(contract, origins, at, rev, sha(content)) };
+    const module = (dir === '.' ? 'root' : dir).replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase().replace(/^-|-$/g, '');
+    modules.push({ dir, module, pom, config, rulePath: `.paved/rules/style/${module}.yaml`, candidate: `checkstyle-module:${dir}` });
+  }
+  return modules.sort((a, b) => a.dir.localeCompare(b.dir, 'en'));
+}
+export function checkstyleRuleDocument(item: CheckstyleModule) {
+  return { apiVersion: 'paved/v1', kind: 'Rule', id: `project.style.${item.module}`, title: `Configured Checkstyle for ${item.module}`, rationale: `The Maven validate phase binds the Checkstyle check goal using ${item.config.path}.`, applies_to: { paths: [item.dir === '.' ? 'src/main/java/**' : `${item.dir}/src/main/java/**`] }, rule: 'Java source in this module satisfies the configured Checkstyle checks.', enforcement: { mechanism: 'automated', layer: 'static-analysis', check: 'static-analysis' }, severity: 'warning', verification: 'Run the module Maven validate phase and inspect the Checkstyle result.', references: [item.pom.path, item.config.path] };
+}
+/** Fingerprint inputs of project decisions the user already answered through the given handler. */
+function answeredDecisionInputs(core: string, consumer: string, handler: string): Set<string> {
+  try {
+    return new Set(listDecisions(consumer, core)
+      .filter(d => d.handler === handler && (d.status === 'APPLIED' || d.status === 'REJECTED'))
+      .flatMap(d => d.fingerprint.inputs));
+  } catch { return new Set(); }
+}
+// A question the user answered, or configuration that already exists, is not re-asked as a
+// file to review: the decision record is the channel, so its stale draft is withdrawn.
+function withdrawProposal(root: string, path: string, dryRun: boolean): void {
+  if (dryRun) return;
+  for (const file of [path, `${path}.paved.yaml`]) rmSync(safe(root, file), { force: true });
+}
+function ruleProposals(contract: Contract, sources: Source[], root: string, core: string, at: string, rev: string | undefined, dryRun: boolean): Output[] {
+  const outputs: Output[] = [];
+  const answered = answeredDecisionInputs(core, root, 'rules.adopt');
+  for (const item of detectCheckstyleModules(root, sources)) {
+    const path = `.paved/generated/proposals/rules/${item.module}.yaml`;
+    if (existsSync(safe(root, item.rulePath)) || answered.has(`candidate:${item.candidate}`)) { withdrawProposal(root, path, dryRun); continue; }
+    const content = stringify(checkstyleRuleDocument(item)); const origins = [item.pom, item.config];
+    const sidecar = { apiVersion: 'paved/v1', kind: 'GeneratedArtifact', artifact: { path, format: 'yaml', schema: 'Rule', api_version: 'paved/v1', proposal_for: item.rulePath }, ownership: 'disposable', provenance: provenance(contract, origins, at, rev, sha(content)) };
     outputs.push({ path, content, schema: 'Rule' }, { path: `${path}.paved.yaml`, content: stringify(sidecar), schema: 'GeneratedArtifact' });
   }
   return outputs;
@@ -382,8 +416,8 @@ function runGeneratorsUnlocked(core: string, consumer: string, options: RunGener
       const outputs: Output[] = [];
       if (contract.id.startsWith('project-context/') && !contract.id.endsWith('/feature-map')) { const generated = context(contract, sources, relevant, consumer, timestamp, sourceRevision); outputs.push(generated.output); entry.unknowns = generated.unknowns; }
       else if (contract.id.endsWith('/feature-map')) outputs.push(...features(contract, sources, relevant, timestamp, sourceRevision));
-      else if (contract.id === 'verification') outputs.push(...verificationProposal(contract, sources, relevant, consumer, timestamp, sourceRevision));
-      else if (contract.id === 'rules') outputs.push(...ruleProposals(contract, sources, consumer, timestamp, sourceRevision));
+      else if (contract.id === 'verification') outputs.push(...verificationProposal(contract, sources, relevant, consumer, core, timestamp, sourceRevision, options.dryRun === true));
+      else if (contract.id === 'rules') outputs.push(...ruleProposals(contract, sources, consumer, core, timestamp, sourceRevision, options.dryRun === true));
       else entry.warnings.push('No explicit, schema-safe project policy was established; no proposal emitted.');
       for (const output of outputs) {
         const writeResult = writeOutput(consumer, output, registry, info, contract.id, options.dryRun === true);

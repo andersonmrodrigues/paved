@@ -85,6 +85,54 @@ describe("rule convention provider", () => {
     ]);
     assert.deepEqual(rulesProvider(ctx), []);
   });
+
+  const BOUND_POM = "<project><artifactId>maven-checkstyle-plugin</artifactId><phase>validate</phase>"
+    + "<goal>check</goal><configLocation>checkstyle.xml</configLocation><failOnViolation>true</failOnViolation></project>";
+  const multiModule = () => workspace({
+    "manager/backend/pom.xml": BOUND_POM,
+    "manager/backend/checkstyle.xml": '<module name="Checker"/>',
+    "manager/backend/checkstyle-suppressions.xml": "<suppressions/>",
+    "user/backend/pom.xml": BOUND_POM,
+    "user/backend/checkstyle.xml": '<module name="Checker"/>',
+  });
+
+  it("asks about each build-enforced Checkstyle module and never cites a suppressions file", () => {
+    const project = multiModule();
+    const [candidate] = rulesProvider({ ...context(project), command: "init" });
+    assert.ok(candidate);
+    assert.deepEqual(candidate.candidates, ["checkstyle-module:manager/backend", "checkstyle-module:user/backend"]);
+    assert.deepEqual(candidate.options.map((option) => option.id),
+      ["adopt", "module-manager-backend", "module-user-backend", "decline"]);
+    assert.ok(candidate.evidence.every((item) => !item.location.includes("suppressions")));
+  });
+
+  it("adopts the precise per-module rules the generator would otherwise propose", () => {
+    const project = multiModule();
+    const ctx = { ...context(project), command: "init" };
+    assert.deepEqual(rulesHandler.apply("adopt", ctx), [
+      ".paved/rules/style/manager-backend.yaml", ".paved/rules/style/user-backend.yaml",
+    ]);
+    const rule = parse(readFileSync(join(project, ".paved/rules/style/manager-backend.yaml"), "utf8")) as {
+      applies_to: { paths: string[] }; references: string[];
+    };
+    assert.deepEqual(rule.applies_to.paths, ["manager/backend/src/main/java/**"]);
+    assert.deepEqual(rule.references, ["manager/backend/pom.xml", "manager/backend/checkstyle.xml"]);
+    assert.equal(existsSync(join(project, ".paved/rules/quality/checkstyle.yaml")), false);
+    assert.deepEqual(rulesProvider(ctx), []);
+  });
+
+  it("adopts a single module when the answer names it", () => {
+    const project = multiModule();
+    const ctx = { ...context(project), command: "init" };
+    assert.deepEqual(rulesHandler.apply("module-user-backend", ctx), [".paved/rules/style/user-backend.yaml"]);
+    assert.equal(existsSync(join(project, ".paved/rules/style/manager-backend.yaml")), false);
+    assert.throws(() => rulesHandler.apply("module-missing", ctx), /Unknown rule option/);
+  });
+
+  it("does not treat a lone suppressions file as a Checkstyle convention", () => {
+    const project = workspace({ "checkstyle-suppressions.xml": "<suppressions/>" });
+    assert.deepEqual(rulesProvider({ ...context(project), command: "init" }), []);
+  });
 });
 
 describe("verification candidate detection", () => {
