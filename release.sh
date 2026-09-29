@@ -8,6 +8,9 @@ set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
+# Never open a pager: a user LESS without -F leaves git diff/log stuck on (END).
+export GIT_PAGER=cat
+
 BUMP="${1:-minor}"
 
 case "$BUMP" in
