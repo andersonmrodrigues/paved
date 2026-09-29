@@ -45,6 +45,33 @@ function context(project: string, over: Partial<DecisionContext> = {}): Decision
 }
 
 describe("decision gate", () => {
+  it("retires a pending decision when the same handler replaces its question", () => {
+    const project = workspace();
+    const oldQuestion = candidate({
+      question: "Which test command should Paved run?",
+      handler: "testing.adopt",
+      options: [
+        { id: "lib", label: "Library", description: "Test the library.", consequence: "One module runs." },
+        { id: "none", label: "None", description: "Decline.", consequence: "Tests stay unavailable." },
+      ],
+    });
+    const ctx = context(project, { command: "init" });
+    const old = runDecisionGate({ context: ctx, providers: [() => [oldQuestion]], handlers: new Map(), persist: true });
+    const oldId = old.projections[0]!.id;
+    const replacement = candidate({
+      question: "Which detected test commands should Paved run?",
+      handler: "testing.adopt",
+      options: [
+        { id: "all", label: "All", description: "Test every module.", consequence: "Every module runs." },
+        { id: "none", label: "None", description: "Decline.", consequence: "Tests stay unavailable." },
+      ],
+    });
+    const next = runDecisionGate({ context: ctx, providers: [() => [replacement]], handlers: new Map(), persist: true });
+    assert.equal(readDecision(project, coreRoot, oldId)?.status, "SUPERSEDED");
+    assert.equal(next.projections.length, 1);
+    assert.equal(next.projections[0]?.options[0]?.id, "all");
+  });
+
   it("accepts an answer to a content-derived optional question first shown without persistence", () => {
     const project = workspace();
     const candidateOption = candidate({
