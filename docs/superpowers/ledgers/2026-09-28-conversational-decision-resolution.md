@@ -795,3 +795,11 @@ Projection, agent schema and documentation tests 16/16 and typecheck passed;
 `npm run build:plugin` and `npm run check:plugin` passed with no drift. The generated
 plugin includes the canonical decision skill and the updated command contracts. Tasks
 26–29 remain.
+
+Task 26: documented decision classification, states, narrow invalidation fingerprints,
+project/run stores, answer channels, CLI resume and blocker handling in one concept page
+and ADR 0028. Updated onboarding to put conversational verification adoption first while
+retaining direct file configuration as an advanced path. Workflow, result, ownership,
+integration, verification, command reference and README documentation now describe the
+implemented protocol. Documentation/reference/link suites 11/11 and typecheck passed.
+Tasks 27–29 remain.

@@ -1,5 +1,14 @@
 # Tool results, failures and Evidence
 
+## Command decisions
+
+The CLI result is separate from a Tool result. It may include a top-level `decisions[]`
+alongside `data` and `diagnostics`. When a required decision is `ASKED`, the command
+returns `status: "awaiting_input"` with exit code `10`; optional decisions accompany a
+normal success or warning. An `awaiting_input` result cannot also contain a blocking
+diagnostic. Resume the originating command with `--answer <id>=<value>` and
+`--answered-by <identity>`. See [conversational decisions](decisions.md) for the contract.
+
 The canonical result envelope records Tool id, actual runtime version, implementation
 id and version, status, typed error code, sanitized output, warnings, input/output
 digests, environment, immutable revision and timestamps. A dirty working tree adds its

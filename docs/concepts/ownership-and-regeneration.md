@@ -8,11 +8,11 @@ an explicit ownership value for every consumer path (declared in the Core manife
 
 | Ownership | Written by | Regenerable | Paths |
 |---|---|---|---|
-| `human-owned` | Humans only | No | `AGENTS.md` (outside the Paved block), `.paved/manifest.yaml`, `.paved/overrides/` |
+| `human-owned` | Humans only | No | `AGENTS.md` (outside the Paved block), `.paved/manifest.yaml`, `.paved/overrides/`, `.paved/approvals/` |
 | `project-owned` | Humans, or agents doing a reviewed task | No | `.paved/rules/`, `.paved/verification/`, `.paved/tools/`, `.paved/skills/` |
 | `generated-reviewed` | Generators draft, humans review and edit | Yes, preserving human edits | `.paved/project/` |
 | `disposable` | Tools | Yes, freely | `.paved/generated/` |
-| `tool-managed` | The CLI only | Yes, deterministically | `.paved/paved.lock` |
+| `tool-managed` | The CLI only | Yes, deterministically | `.paved/paved.lock`, `.paved/decisions/` |
 
 ## Artifact ownership
 
@@ -75,6 +75,19 @@ On regeneration of a `generated-reviewed` file:
 
 A human takes full ownership of a block by removing its markers, or of a whole file by
 setting its review status to `reviewed` and removing managed blocks.
+
+## Decision and approval records
+
+Paved writes material project decisions to `.paved/decisions/<id>.yaml`; the records
+are tool-managed and committed so the authority for Paved-authored configuration travels
+with the project. Run-scoped decisions live inside disposable
+`.paved/generated/runs/<id>.yaml` records. Deterministic outcomes reuse their existing
+store and do not create decision files.
+
+`.paved/approvals/` is human-owned. A person writes an approval for an irreversible
+decision or plan, bound to the exact decision or plan digest. Paved reads and validates
+that record but never creates or edits human-owned files. An agent must relay this
+requirement and leave the approval to a person. See [conversational decisions](decisions.md).
 
 ## Current limits
 
