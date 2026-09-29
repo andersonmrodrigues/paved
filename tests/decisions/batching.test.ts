@@ -45,6 +45,26 @@ function context(project: string, over: Partial<DecisionContext> = {}): Decision
 }
 
 describe("decision gate", () => {
+  it("accepts an answer to a content-derived optional question first shown without persistence", () => {
+    const project = workspace();
+    const candidateOption = candidate({
+      question: "Apply this optional repair?", required: false, effect: "record-only",
+      handler: "repair.apply", candidates: ["repair:README.md"],
+    });
+    const handlers = new Map<string, HandlerRegistration>([["repair.apply", {
+      effect: "record-only", apply: () => [],
+    }]]);
+    const shown = runDecisionGate({
+      context: context(project, { command: "doctor" }), providers: [() => [candidateOption]], handlers, persist: false,
+    });
+    assert.equal(shown.projections.length, 1);
+    const answered = runDecisionGate({
+      context: context(project, {
+        command: "doctor", answers: [`${shown.projections[0]!.id}=all`], answeredBy: "tester@example.com",
+      }), providers: [() => [candidateOption]], handlers, persist: true,
+    });
+    assert.ok(answered.applied.some((item) => item.id === shown.projections[0]!.id));
+  });
   it("raises a material decision and reports awaiting-input", () => {
     const project = workspace();
     const outcome = runDecisionGate({

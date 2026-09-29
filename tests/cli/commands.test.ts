@@ -7,7 +7,8 @@ import { fileURLToPath } from "node:url";
 import { parse, stringify } from "yaml";
 import { copyProjectForInitDryRun, createInitDryRunWorkspace, initDryRunScratchPrefix, projectNameFor } from "../../cli/commands/init.ts";
 import { hashLocalCore, hashLocalFile, hashLocalTree } from "../../cli/lib/local-core.ts";
-import { initializeConsumer } from "../../cli/lib/generator-runtime.ts";
+import { initializeConsumer, runGenerators } from "../../cli/lib/generator-runtime.ts";
+import { decisionDigest } from "../../cli/lib/decisions/approval.ts";
 import { acquireConsumerOperationLock } from "../../cli/lib/operation-lock.ts";
 import { renderHuman, renderJson } from "../../cli/output.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
@@ -147,6 +148,14 @@ function freshConsumer(name: string): string {
   writeFileSync(join(dir, "web/tsconfig.json"), "{\"compilerOptions\":{\"strict\":true}}");
   writeFileSync(join(dir, "web/src/app-routing.module.ts"), "const routes = [{ path: 'courses', component: CoursesPage }];\n");
   return dir;
+}
+
+function projectWithStaleGeneratedContext(): string {
+  const project = freshConsumer("doctor-stale-context");
+  initializeConsumer(ROOT, project, "doctor-stale-context");
+  runGenerators(ROOT, project);
+  writeFileSync(join(project, "README.md"), "# Updated repository intent\n");
+  return project;
 }
 
 async function run(projectRoot: string, command: "init" | "update" | "generate" | "status" | "doctor", extra: readonly string[] = []): Promise<CommandResult> {
@@ -519,6 +528,50 @@ function writeManifest(project: string, manifest: unknown): void {
 }
 
 describe("status and doctor commands", () => {
+  it("offers a read-only human-approved repair for stale generated context", async () => {
+    const project = projectWithStaleGeneratedContext();
+    try {
+      const before = snapshotFiles(project);
+      const result = await run(project, "doctor");
+      assert.ok((result.decisions?.length ?? 0) >= 1, JSON.stringify(result));
+      assert.equal(result.decisions?.[0]?.required, false);
+      assert.equal(result.decisions?.[0]?.risk, "high");
+      assert.equal(result.decisions?.[0]?.answerChannel, "human-authored");
+      assert.ok(result.decisions?.[0]?.reason);
+      assert.ok((result.decisions?.[0]?.evidence.length ?? 0) > 0);
+      assert.equal(existsSync(join(project, ".paved/decisions")), false);
+      assert.deepEqual(snapshotFiles(project), before);
+    } finally { rmSync(project, { recursive: true, force: true }); }
+  });
+
+  it("does not apply the repair without a matching human approval", async () => {
+    const project = projectWithStaleGeneratedContext();
+    try {
+      const first = await run(project, "doctor");
+      const decision = first.decisions![0]!;
+      const attempted = await run(project, "doctor", ["--answer", `${decision.id}=apply`, "--answered-by", "tester@example.com"]);
+      assert.match(JSON.stringify(attempted), /approvals/);
+      assert.ok(existsSync(join(project, ".paved/decisions", `${decision.id}.yaml`)));
+    } finally { rmSync(project, { recursive: true, force: true }); }
+  });
+  it("applies the repair after a matching human approval", async () => {
+    const project = projectWithStaleGeneratedContext();
+    try {
+      const first = await run(project, "doctor");
+      const decision = first.decisions![0]!;
+      await run(project, "doctor", ["--answer", `${decision.id}=apply`, "--answered-by", "tester@example.com"]);
+      const record = parse(readFileSync(join(project, ".paved/decisions", `${decision.id}.yaml`), "utf8")) as Parameters<typeof decisionDigest>[0];
+      mkdirSync(join(project, ".paved/approvals"), { recursive: true });
+      writeFileSync(join(project, `.paved/approvals/${decision.id}.json`), JSON.stringify({
+        decision: decision.id, decision_sha256: decisionDigest(record), answer: "apply",
+        decided_by: "maintainer@example.com", decided_at: "2026-09-28T00:00:00.000Z",
+      }));
+      const result = await run(project, "doctor", ["--answer", `${decision.id}=apply`, "--answered-by", "tester@example.com"]);
+      assert.ok(result.status !== "failed", JSON.stringify(result));
+      assert.equal((await run(project, "doctor")).decisions?.length ?? 0, 0);
+      assert.equal(existsSync(join(project, ".paved/generated/state/last-run.json")), true);
+    } finally { rmSync(project, { recursive: true, force: true }); }
+  });
   it("reports pending decisions and a conversational next action without mutating them", async () => {
     const project = freshConsumer("status-decisions");
     try {
