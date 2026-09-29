@@ -15,7 +15,7 @@ commands invoke the packaged runtime through a project-local bootstrap launcher.
 
 | Command | Purpose and input | Lifecycle / relevant context | Side effects and output | Failure behavior |
 |---|---|---|---|---|
-| `init` | Bootstrap and initialize Paved; no input | `UNINITIALIZED`; repository evidence | Acquires a pinned runtime, initializes `.paved/`, and generates context | Never resets existing state; malformed or unverified runtime state fails. |
+| `init` | Bootstrap and initialize Paved; no input | `UNINITIALIZED`; repository evidence | Acquires a pinned runtime, initializes `.paved/`, asks which detected checks gate verification, which test command workflows run, which observed conventions become rules, maintains the `AGENTS.md` block, then generates context | Never resets existing state; malformed or unverified runtime state fails. |
 | `status` | Inspect Paved state; no input | Any lifecycle; manifest and lock | Read-only machine-readable state and diagnostics | Reports missing/invalid state without writes. |
 | `plan` | Plan a requested change and acceptance constraints | `RESOLVED`, `GENERATED`, `VALIDATED`, or `READY`; project context, rules, workflow and verification profile | Agent response: affected areas, constraints, tasks, risks, verification and unknowns | Missing workflow/context blocks; existing patterns are not automatically architecture. |
 | `implement` | Execute an approved plan or reference | Same development states; project context, rules, workflow, skills and tool bindings | Planned application edits and disposable evidence; returns changes and gaps | Missing approval/context/tool blocks; human-owned state is protected. |

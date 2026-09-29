@@ -8,6 +8,7 @@ import { discoverAgentCommands } from "../../cli/lib/agent-commands.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
 import { planConsumerInitialization } from "../../cli/lib/generator-runtime.ts";
 import { detectCheckCandidates } from "../../cli/lib/decisions/providers/verification.ts";
+import { detectTestingCandidates } from "../../cli/lib/decisions/providers/testing.ts";
 
 const core = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -65,8 +66,10 @@ describe("representative consumer runtimes", () => {
         assert.equal(providers.some((provider) => provider.status === "ambiguous"), false);
         const discovery = discoverAgentCommands(project, core);
         assert.ok(["GENERATED", "VALIDATED", "READY"].includes(discovery.lifecycleState), discovery.lifecycleState);
-        assert.equal(discovery.commands.find((command) => command.name === "test")?.available, false);
-        assert.equal(discovery.commands.find((command) => command.name === "feature")?.available, false);
+        // init asks for the governed test command whenever the repository declares one.
+        const testable = detectTestingCandidates(project).length > 0;
+        assert.equal(discovery.commands.find((command) => command.name === "test")?.available, testable);
+        assert.equal(discovery.commands.find((command) => command.name === "feature")?.available, testable);
       } finally { rmSync(project, { recursive: true, force: true }); }
     });
   }

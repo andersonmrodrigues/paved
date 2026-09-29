@@ -130,7 +130,8 @@ function snapshotFiles(root: string): Map<string, string> {
 function snapshotApplicationFiles(root: string): Map<string, string> {
   const files = snapshotFiles(root);
   for (const path of [...files.keys()]) {
-    if (path === ".paved" || path.startsWith(".paved/")) files.delete(path);
+    // AGENTS.md carries the managed Paved block that init maintains.
+    if (path === ".paved" || path.startsWith(".paved/") || path === "AGENTS.md") files.delete(path);
   }
   return files;
 }
@@ -1142,7 +1143,9 @@ describe("init and generate commands", () => {
 
       assert.equal(exitCode(result), 10);
       assert.ok((result.decisions?.length ?? 0) > 0);
-      assertCode(result, "PAVED_GENERATOR_PROPOSAL_CREATED");
+      // Open questions are the review channel; no draft asks for the same answer as a file.
+      assert.equal(result.diagnostics.some((item) => item.code === "PAVED_GENERATOR_PROPOSAL_CREATED"), false);
+      assert.equal(existsSync(join(project, ".paved/generated/proposals/verification/profile.yaml")), false);
       assert.equal(existsSync(join(project, ".paved/manifest.yaml")), true);
       assert.equal(existsSync(join(project, ".paved/paved.lock")), true);
       assert.equal(existsSync(join(project, ".paved/generated/state/last-run.json")), true);

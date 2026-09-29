@@ -11,6 +11,8 @@ export interface CheckCandidate {
   readonly command: string;
   readonly scope: string;
   readonly source: DecisionEvidence;
+  /** Extra argv for the declared script, so it runs once and exits instead of watching. */
+  readonly scriptArgs?: readonly string[];
 }
 
 // Only lifecycle phases that every Maven build defines. Nothing is inferred from a
@@ -26,6 +28,26 @@ const NPM_CHECKS = [
 ];
 
 const scopeOf = (path: string) => (path.includes("/") ? dirname(path) : ".");
+const NG_TEST = /^\s*ng\s+test\b/;
+
+/** `ng test` compiles only `*.spec.ts`; with none it fails with "No inputs were found". */
+function hasAngularSpecs(paths: readonly string[], scope: string): boolean {
+  return paths.some((path) => (scope === "." || path.startsWith(`${scope}/`)) && path.endsWith(".spec.ts"));
+}
+
+/**
+ * `ng test` watches for changes by default, so it never exits on its own. A Karma builder
+ * also opens a real browser; headless Chrome is the launcher Angular's Karma setup ships.
+ */
+function angularTestArgs(projectRoot: string, scope: string, script: string): readonly string[] | undefined {
+  if (!NG_TEST.test(script)) return undefined;
+  if (/--watch(=|\s|$)|--no-watch/.test(script)) return undefined;
+  let karma = false;
+  try {
+    karma = /"builder"\s*:\s*"[^"]*:karma"/.test(readFileSync(join(projectRoot, scope, "angular.json"), "utf8"));
+  } catch { /* no angular.json: only the watch flag applies */ }
+  return karma && !/--browsers/.test(script) ? ["--watch=false", "--browsers=ChromeHeadless"] : ["--watch=false"];
+}
 
 export function scopeOptionId(scope: string): string {
   if (scope === ".") return "scope-root";
@@ -37,7 +59,9 @@ export function scopeOptionId(scope: string): string {
 
 export function detectCheckCandidates(projectRoot: string): CheckCandidate[] {
   const candidates: CheckCandidate[] = [];
-  for (const source of discoverSources(projectRoot)) {
+  const sources = discoverSources(projectRoot);
+  const paths = sources.map((source) => source.path);
+  for (const source of sources) {
     const evidence: DecisionEvidence = { type: "file", location: source.path, sha256: source.sha256 };
     const scope = scopeOf(source.path);
 
@@ -57,8 +81,12 @@ export function detectCheckCandidates(projectRoot: string): CheckCandidate[] {
       for (const check of NPM_CHECKS) {
         const script = scripts[check.script];
         if (typeof script !== "string" || script.trim() === "") continue;
+        // A test script that cannot find a single test cannot pass, so it is not offered as a gate.
+        if (check.id === "npm-test" && NG_TEST.test(script) && !hasAngularSpecs(paths, scope)) continue;
+        const scriptArgs = check.id === "npm-test" ? angularTestArgs(projectRoot, scope, script) : undefined;
         candidates.push({
           id: check.id, label: check.label, command: check.script, scope, source: evidence,
+          ...(scriptArgs === undefined ? {} : { scriptArgs }),
         });
       }
     }
