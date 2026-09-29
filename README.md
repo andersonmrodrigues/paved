@@ -43,33 +43,15 @@ approval. Missing evidence and unsafe conditions remain blockers, not questions.
 
 ## Architecture
 
-```text
-                    Paved Core
-             ┌──────────────┬──────────────┐
-             │              │              │
-         Context        Skills       Verification
-             │              │              │
-             └──────────────┼──────────────┘
-                            │
-                 Paved plugin (generated)
-          skills · launcher · pinned runtime
-                            │
-                  ┌─────────┴─────────┐
-                  │                   │
-               Codex              Claude Code
-                  │                   │
-                  └─────────┬─────────┘
-                            │
-                          Agent
-                            │
-               Consumer repository .paved/
-          (lock, verified runtime, project state)
-```
+![How Paved Core works](docs/assets/how-paved-core-works.svg)
 
 The Core is agent-neutral. The plugin adapts it to each agent's native plugin
 model without becoming the source of truth: workflows, Tools, verification and
 evidence run only in the version-pinned `paved-core` runtime that the plugin's
 launcher activates inside the consumer repository.
+
+Deeper layering, ownership and component boundaries:
+[architecture](docs/concepts/architecture.md).
 
 ## Install
 
@@ -135,6 +117,8 @@ bindings; `init` does not create or approve checks. Configure those by following
 `paved agent command <name> --json` resolves one structured command contract.
 
 ## CLI surface
+
+![How to use Paved commands in development](docs/assets/paved-command-flow.svg)
 
 The implemented public commands are:
 
