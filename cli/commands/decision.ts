@@ -6,6 +6,7 @@ import { toProjection } from "../lib/decisions/gate.ts";
 import { decisionId, transition, type Decision } from "../lib/decisions/record.ts";
 import { listDecisions, readDecision, writeDecision } from "../lib/decisions/store.ts";
 import { acquireConsumerOperationLock } from "../lib/operation-lock.ts";
+import { readDecisionRun, writeDecisionRun, listRunDecisions, readRunDecision } from "../lib/decisions/run-store.ts";
 
 function fail(code: string, message: string, remediation: string): CommandResult {
   return createResult({
@@ -55,16 +56,22 @@ function raise(invocation: CommandInvocation, raw: string): CommandResult {
   const question = String(input.question ?? "");
   const candidates = (Array.isArray(input.candidates) ? input.candidates : []).map(String);
   const run = typeof input.run === "string" ? input.run : undefined;
-  if (run !== undefined) {
-    return fail("PAVED_DECISION_RUN_SCOPE_UNAVAILABLE", "Run-scoped decisions require the WorkflowRun decision store.", "Raise this question after run-scoped decision support is available.");
+  const runRecord = run === undefined ? undefined : readDecisionRun(invocation.paths.projectRoot, invocation.paths.coreRoot, run);
+  if (run !== undefined && runRecord === undefined) return fail("PAVED_DECISION_RUN_UNKNOWN", `Workflow run ${run} does not exist.`, "Use an active WorkflowRun id.");
+  if (runRecord !== undefined && !["running", "awaiting-input"].includes(runRecord.status)) {
+    return fail("PAVED_DECISION_RUN_TERMINAL", `Workflow run ${run} cannot accept a decision in state ${runRecord.status}.`, "Raise decisions only for an active run.");
+  }
+  const decisionCommand = run === undefined ? invocation.command : run.split("-")[0]!;
+  if (run !== undefined && !["feature", "fix", "refactor"].includes(decisionCommand)) {
+    return fail("PAVED_DECISION_RUN_INVALID", "The WorkflowRun command is invalid.", "Use a run created by feature, fix or refactor.");
   }
   const scope = run === undefined ? "project" : "run";
-  const scopeKey = run === undefined ? `project:${invocation.command}` : `run:${run}:${invocation.command}`;
+  const scopeKey = run === undefined ? `project:${invocation.command}` : `run:${run}:${decisionCommand}`;
   const tier = tierFor(effect);
   const decision: Decision = {
     apiVersion: "paved/v1", kind: "Decision",
     id: decisionId(question, scopeKey, candidates),
-    scope, command: invocation.command,
+    scope, command: decisionCommand,
     ...(run === undefined ? {} : { run }),
     category: "material", authored_by: "agent",
     question, reason: input.reason,
@@ -73,20 +80,30 @@ function raise(invocation: CommandInvocation, raw: string): CommandResult {
     required_answer: input.requiredAnswer as Decision["required_answer"],
     risk: tier.risk, reversibility: tier.reversibility, answer_channel: tier.channel,
     effect,
+    ...(run === undefined ? {} : { handler: "run.record" }),
     ...(Array.isArray(input.dependsOn) ? { depends_on: input.dependsOn.map(String) } : {}),
-    status: "PENDING", fingerprint: fingerprintOf(evidence, candidates),
+    status: run === undefined ? "PENDING" : "ASKED",
+    ...(run === undefined ? {} : { asked_at: new Date().toISOString() }),
+    fingerprint: fingerprintOf(evidence, candidates),
     created_at: new Date().toISOString(),
   };
 
   try {
-    const existing = readDecision(invocation.paths.projectRoot, invocation.paths.coreRoot, decision.id);
+    const existing = runRecord?.decisions?.find((item) => item.id === decision.id)
+      ?? (run === undefined ? readDecision(invocation.paths.projectRoot, invocation.paths.coreRoot, decision.id) : undefined);
     if (existing !== undefined) {
       if (existing.status === "SUPERSEDED" || existing.fingerprint.sha256 !== decision.fingerprint.sha256) {
         return fail("PAVED_DECISION_ALREADY_EXISTS", `Decision ${decision.id} already exists with different state or evidence.`, "Raise a new question or revise the existing decision.");
       }
       return createResult({ command: "decision", status: "success", data: { id: existing.id } });
     }
-    writeDecision(invocation.paths.projectRoot, invocation.paths.coreRoot, decision);
+    if (runRecord !== undefined) {
+      runRecord.decisions = [...(runRecord.decisions ?? []), decision];
+      runRecord.status = "awaiting-input";
+      runRecord.events.push({ at: decision.asked_at!, type: "decision-raised", ref: decision.id });
+      runRecord.events.push({ at: decision.asked_at!, type: "decision-asked", ref: decision.id });
+      writeDecisionRun(invocation.paths.projectRoot, invocation.paths.coreRoot, runRecord);
+    } else writeDecision(invocation.paths.projectRoot, invocation.paths.coreRoot, decision);
   } catch (error) {
     return fail("PAVED_DECISION_INVALID", error instanceof Error ? error.message : "Decision is invalid.", "Correct the decision payload and retry.");
   }
@@ -103,7 +120,10 @@ export function decisionHandler(invocation: CommandInvocation): CommandResult {
   }
 
   if (operation === "list") {
-    const decisions = listDecisions(invocation.paths.projectRoot, invocation.paths.coreRoot);
+    const decisions = [
+      ...listDecisions(invocation.paths.projectRoot, invocation.paths.coreRoot),
+      ...listRunDecisions(invocation.paths.projectRoot, invocation.paths.coreRoot),
+    ];
     return createResult({
       command: "decision", status: "success",
       data: {
@@ -118,7 +138,8 @@ export function decisionHandler(invocation: CommandInvocation): CommandResult {
 
   if (operation === "show") {
     if (target === undefined) return fail("PAVED_DECISION_USAGE", "show requires a decision id.", "Use paved decision show <id>.");
-    const decision = readDecision(invocation.paths.projectRoot, invocation.paths.coreRoot, target);
+    const decision = readDecision(invocation.paths.projectRoot, invocation.paths.coreRoot, target)
+      ?? readRunDecision(invocation.paths.projectRoot, invocation.paths.coreRoot, target);
     if (decision === undefined) return fail("PAVED_DECISION_UNKNOWN", `Unknown decision: ${target}.`, "Run paved decision list --json.");
     return createResult({ command: "decision", status: "success", data: { decision } });
   }
