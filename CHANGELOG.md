@@ -5,6 +5,11 @@ releases, not the development sequence used to build them.
 
 ## [1.1.0] - Unreleased
 
+### Added
+
+- A canonical decision interaction skill that tells agents how to present, relay and
+  resume conversational decisions without taking authorship from the user.
+
 ### Changed
 
 - Automatic scoped capability provider resolution for multi-stack repositories.
