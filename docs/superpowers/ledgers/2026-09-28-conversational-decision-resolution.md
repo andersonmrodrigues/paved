@@ -809,3 +809,12 @@ user writes to manifest, lock, verification profile, Tools and Rules paths; the 
 initialize a Java/TypeScript two-stack fixture through answers, confirm readiness and
 provider resolution, and exercise verify, gardener, doctor, feature, fix and refactor.
 Acceptance tests 10/10 and typecheck passed. Tasks 28–29 remain.
+
+Task 28: extended source and packaged-plugin stack tests so Java + Quarkus, TypeScript +
+Angular, Dart, Dart + Flutter, PostgreSQL and Git-only initialization run through the
+conversational CLI. They answer any required relayed choices, verify there is no remaining
+provider ambiguity, and prove Git-only raises no verification question. Added security
+coverage for free text remaining inert data in a run record, unavailable testing Tools
+remaining blockers, malformed lock integrity not being answered away, path traversal ids,
+and secret-like build values staying out of decision evidence. Security, adapter-stack
+and plugin-stack tests 34/34 and typecheck passed. Task 29 remains.
