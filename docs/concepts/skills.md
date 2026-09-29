@@ -66,7 +66,7 @@ Schema: `schemas/skill.schema.yaml`.
 | `version` | yes | SemVer of this skill (see [versioning](#versioning)) |
 | `status` | yes | `experimental`, `stable` or `deprecated` |
 | `deprecation` | iff deprecated | `since`, `migration`, optional `replaced_by` |
-| `category` | yes | One of the nine categories; equals the parent directory |
+| `category` | yes | One of the ten categories; equals the parent directory |
 | `context.required` / `optional` | `required` yes | Context areas the skill reads |
 | `tools.required` / `optional` | no | Tool ids; optional ones may be absent |
 | `rules` | no | Rule ids the skill must respect beyond those applying by scope |

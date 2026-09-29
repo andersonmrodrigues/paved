@@ -47,6 +47,7 @@ All Core skills are `experimental`.
 | | `threat-modeling` | 0.1.0 | Find threats in a design before it is built |
 | `code-review` | `change-review` | 0.2.0 | Review a finished change across all dimensions |
 | `gardener` | `gardener` | 0.2.0 | Turn recurring corrections into structural improvements |
+| `decisions` | `decisions` | 0.1.0 | Relay Paved decisions without taking authorship from the user |
 
 A skill is identified by `<namespace>.<category>.<name>` (for example
 `core.debugging.root-cause-analysis`); `SKILL.md` keeps the short `name` that agents
