@@ -100,7 +100,7 @@ describe("project-local agent bootstrap", () => {
       assert.equal(result.data?.coreRoot, realpathSync(activePackage));
       const commands = invoke("agent", "commands", "--json");
       assert.equal(commands.status, 0, commands.stdout + commands.stderr);
-      assert.equal((JSON.parse(commands.stdout) as { data?: { commands: unknown[] } }).data?.commands.length, 14);
+      assert.equal((JSON.parse(commands.stdout) as { data?: { commands: unknown[] } }).data?.commands.length, 15);
 
       mkdirSync(join(consumer, ".paved", "tools"), { recursive: true });
       mkdirSync(join(consumer, ".paved", "tool-implementations"), { recursive: true });

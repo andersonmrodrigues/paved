@@ -79,12 +79,22 @@ same-user agent still has filesystem access to a human-owned approval file;
 teams requiring adversarial approval separation need an external identity or
 signature authority.
 
+For workflow Markdown plans, the canonical file is
+`.paved/documents/plans/<run-id>.md`; `paved preview start
+.paved/documents/plans/<run-id>.md --run <run-id>` opens a local review.
+Selected-text comments remain in `.paved/generated/previews/`, and the agent
+can wait for comments and mark them resolved after editing. The browser's Approve
+button writes the same human-owned approval record only when there are no open
+comments and the plan hash matches the pending gate. If the plan changes during
+review, advancing the workflow issues a new approval request for its current hash.
+
 Events are append-only reporting and provenance. Approval and evidence events
 are cross-checked against their referenced files when a run resumes. The
 authoritative completion decision still comes from the evidence record.
 
 ## Lifetime
 
-Run records live under `.paved/generated/`, are disposable and are not committed by
-default. The evidence record is what persists with the change. Teams that want an audit
-trail can commit run records or attach them to the change request.
+Run records and local evidence live under `.paved/generated/`, are disposable and are
+not committed by default. Durable plans and other work documents live under
+`.paved/documents/` and are committed with the change. Teams that want a machine-readable
+audit trail can commit run records or attach them to the change request.

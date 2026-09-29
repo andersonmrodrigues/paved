@@ -1,0 +1,14 @@
+apiVersion: paved/v1
+kind: PreviewReview
+document: docs/plan.md
+revision: 1
+comments:
+  - id: 98f4869a-8b87-4a6b-bd79-a0853cef709b
+    quote: Change this text
+    prefix: 'Before '
+    suffix: ' after'
+    offset: 7
+    body: Explain the edge case.
+    status: open
+    created_at: '2026-09-29T10:00:00.000Z'
+    document_sha256: '0000000000000000000000000000000000000000000000000000000000000000'
