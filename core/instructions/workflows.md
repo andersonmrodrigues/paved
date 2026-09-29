@@ -37,6 +37,28 @@ skipped.
   check as a gap, but leave the task incomplete. `recommended` types run when the
   verification profile has them.
 
+## Work documents
+
+Keep durable Markdown work documents in the consumer repository under
+`.paved/documents/`. Use the workflow run id in the filename so artifacts for one
+change stay together. Create a document only when it helps explain or execute the
+work; do not put machine state or local evidence here.
+
+| Document | Path |
+|---|---|
+| Intent | `.paved/documents/intents/<run-id>.md` |
+| Plan | `.paved/documents/plans/<run-id>.md` |
+| Spec | `.paved/documents/specs/<run-id>.md` |
+| Tasks | `.paved/documents/tasks/<run-id>.md` |
+| Research | `.paved/documents/research/<run-id>.md` |
+
+For `plan`, `feature`, `fix`, and `refactor`, write the plan at
+`.paved/documents/plans/<run-id>.md`. Open that exact file with
+`paved preview start .paved/documents/plans/<run-id>.md --run <run-id> --json`.
+Resolve comments on that file before advancing for approval; approval is bound to its
+exact digest. A resumed run must continue to use the plan path recorded in its existing
+run events.
+
 ## Gates and approvals
 
 A gate's `condition` must hold before the phase ends. A gate with `when` applies only
@@ -45,6 +67,14 @@ when that condition holds; otherwise record it as not applicable, with the reaso
 A gate with `approval` needs a decision from a person: ask, show what is being approved
 and the evidence so far, and wait (`awaiting-approval`). Record who decided and when. You
 never approve your own run, and an approval covers only what was shown.
+
+For a Markdown plan awaiting approval, use the canonical plan path above. Present the
+preview URL and keep the agent turn active with `paved preview wait
+.paved/documents/plans/<run-id>.md <revision> --json`. Apply each selected-text comment
+to that file and mark it resolved with `paved preview resolve
+.paved/documents/plans/<run-id>.md <comment-id> --json`. After editing, advance the
+workflow once to request approval for the revised plan hash. The preview's human
+Approve button writes the approval record for that exact hash.
 
 | Approval | Asked for |
 |---|---|

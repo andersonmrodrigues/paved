@@ -85,7 +85,7 @@ describe("clean-room plugin installation", { skip }, () => {
     assert.ok(!coreRoot.startsWith(realpathSync(ROOT)));
     assert.deepEqual(remoteCacheEntries(npmCache), [], "nothing was fetched from a registry");
     const commands = ok(paved(project, "agent", "commands", "--json"), "agent commands");
-    assert.equal(data<{ commands: unknown[] }>(commands).commands.length, 14);
+    assert.equal(data<{ commands: unknown[] }>(commands).commands.length, 15);
 
     configureTesting(project, coreRoot);
     const baseline = applicationDigest(project);
@@ -155,7 +155,7 @@ describe("clean-room plugin installation", { skip }, () => {
     ok(paved(project, "init", "--json"), "init");
     const coreRoot = data<{ coreRoot: string }>(ok(paved(project, "status", "--json"), "status")).coreRoot;
     assert.ok(coreRoot.startsWith(realpathSync(join(project, ".paved", "runtime"))), coreRoot);
-    assert.equal(data<{ commands: unknown[] }>(paved(project, "agent", "commands", "--json")).commands.length, 14);
+    assert.equal(data<{ commands: unknown[] }>(paved(project, "agent", "commands", "--json")).commands.length, 15);
   });
 
   it("never switches runtime silently and upgrades and rolls back explicitly", () => {

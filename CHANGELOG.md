@@ -5,6 +5,20 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- A versioned `.paved/documents/` workspace for workflow intents, plans, specs, tasks,
+  and research. Init scaffolds the document guide; planning commands use the canonical
+  plan path for Markdown preview and hash-bound approval.
+
+## [1.5.0] - 2026-09-29
+
+### Added
+
+- Local Markdown preview for plans and specs with selected-text comments, a shared
+  Codex/Claude review loop, and browser approval bound to the exact document hash.
+  Workflow plans can request approval again after review edits in the same run.
+
 ## [1.4.2] - 2026-09-29
 
 ### Fixed

@@ -24,6 +24,7 @@ consumer-repository/
 │   ├── tools/                # project-owned: project tool contracts
 │   ├── skills/               # project-owned: project skills
 │   ├── workflows/            # project-owned: project workflows (new names only)
+│   ├── documents/            # project-owned: durable intents, plans, specs, tasks, research
 │   ├── overrides/            # human-owned: overrides.yaml and addenda
 │   └── generated/            # disposable, not committed
 │       ├── proposals/        #   generator output awaiting human adoption

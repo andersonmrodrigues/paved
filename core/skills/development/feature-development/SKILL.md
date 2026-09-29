@@ -49,6 +49,12 @@ know which checks exist before promising any.
    no unintended file changed.
 9. **Verify and record** every required check, then hand over to the `verification` phase.
 
+For a Paved workflow, keep the durable plan at
+`.paved/documents/plans/<run-id>.md`. Put a behavior contract in
+`.paved/documents/specs/<run-id>.md` when the requirement needs one, and a task breakdown
+in `.paved/documents/tasks/<run-id>.md` when it helps execute the plan. Use the same
+workflow run id in related filenames and follow `core.instructions.workflows` for review.
+
 ## Tools
 
 `core.repository.diff` for self-review; `core.repository.status` for unintended files. Build and test
