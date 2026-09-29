@@ -9,7 +9,10 @@ export interface Invocation {
   readonly status: number | null;
   readonly stdout: string;
   readonly stderr: string;
-  readonly json: { command?: string; status?: string; data?: any; diagnostics?: { code: string; severity: string }[] };
+  readonly json: {
+    command?: string; status?: string; data?: any; diagnostics?: { code: string; severity: string }[];
+    decisions?: { id: string; question: string; required: boolean; answerChannel: string; recommended?: string; options: { id: string }[] }[];
+  };
 }
 
 export function hostAvailable(executable: "codex" | "claude"): boolean {

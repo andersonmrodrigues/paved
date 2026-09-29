@@ -1,12 +1,20 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { after, describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
+import { parse, stringify } from "yaml";
 import { AGENT_ASSIGNABLE_EFFECTS, EFFECT_TIERS, tierFor } from "../../cli/lib/decisions/effects.ts";
 import { ApprovalError, decisionDigest, readDecisionApproval } from "../../cli/lib/decisions/approval.ts";
 import { fingerprintOf } from "../../cli/lib/decisions/fingerprint.ts";
+import { initializeConsumer } from "../../cli/lib/generator-runtime.ts";
+import { verificationProvider } from "../../cli/lib/decisions/providers/verification.ts";
+import { dispatchCli } from "../../cli/runtime.ts";
 import type { Decision } from "../../cli/lib/decisions/record.ts";
+
+const coreRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 const approvalWorkspaces: string[] = [];
 after(() => { for (const path of approvalWorkspaces) rmSync(path, { recursive: true, force: true }); });
@@ -169,5 +177,83 @@ describe("effect class tiering", () => {
     );
     // Verify the table survived the attack intact
     assert.equal(tierFor("destructive").channel, "human-authored");
+  });
+});
+
+describe("security invariants an answer cannot override", () => {
+  function project(name: string): string {
+    const root = mkdtempSync(join(tmpdir(), `paved-security-${name}-`));
+    approvalWorkspaces.push(root);
+    mkdirSync(join(root, "src"), { recursive: true });
+    writeFileSync(join(root, "README.md"), `# ${name}\n`);
+    initializeConsumer(coreRoot, root, name);
+    return root;
+  }
+
+  it("fails testing rather than asking when no authorized ToolImplementation exists", async () => {
+    const root = project("no-testing-tool");
+    const result = await dispatchCli({ argv: ["test", "--project", root, "--json"], cwd: root, executablePath: join(coreRoot, "cli/index.ts") });
+    assert.equal(result.status, "failed");
+    assert.equal(result.decisions, undefined);
+    assert.ok(result.diagnostics.some((item) => /TOOL|IMPLEMENTATION|TEST/i.test(item.code)));
+  });
+
+  it("stores free text as decision data without executing it", async () => {
+    const root = project("free-text-data");
+    const runStart = await dispatchCli({ argv: ["feature", "Describe", "the", "change", "--project", root, "--json"], cwd: root, executablePath: join(coreRoot, "cli/index.ts") });
+    const run = (runStart.data as { run: string }).run;
+    const readme = readFileSync(join(root, "README.md"));
+    const marker = join(root, "should-not-be-created-by-free-text");
+    const raised = await dispatchCli({ argv: [
+      "decision", "raise", "--project", root, "--json", "--decision", JSON.stringify({
+        run, question: "What note should be retained?", reason: "The run needs the user's exact text.",
+        options: [{ id: "text", label: "Text", description: "Supply a note.", consequence: "The note is stored as data." }],
+        evidence: [{ type: "file", location: "README.md", sha256: createHash("sha256").update(readme).digest("hex") }],
+        required: true, requiredAnswer: { type: "free-text", pattern: "^[a-zA-Z0-9/ ._-]+$", max_length: 500 },
+      }),
+    ], cwd: root, executablePath: join(coreRoot, "cli/index.ts") });
+    assert.equal(raised.status, "success", JSON.stringify(raised));
+    const id = (raised.data as { id: string }).id;
+    const payload = `touch ${marker}`;
+    const resumed = await dispatchCli({ argv: [
+      "feature", "--run", run, "--advance", "--note", "Retain the user note.",
+      "--answer", `${id}=${payload}`, "--answered-by", "tester@example.com", "--project", root, "--json",
+    ], cwd: root, executablePath: join(coreRoot, "cli/index.ts") });
+    assert.notEqual(resumed.status, "failed", JSON.stringify(resumed));
+    const stored = parse(readFileSync(join(root, ".paved/generated/runs", `${run}.yaml`), "utf8")) as {
+      decisions: { id: string; answer: string }[];
+    };
+    assert.equal(stored.decisions.find((decision) => decision.id === id)?.answer, payload);
+    assert.equal(existsSync(marker), false);
+  });
+
+  it("does not let an answer override lock integrity failure", async () => {
+    const root = project("tampered-lock");
+    const lockPath = join(root, ".paved/paved.lock");
+    const lock = parse(readFileSync(lockPath, "utf8")) as { core: { sha256: string } };
+    lock.core.sha256 = "not-a-sha256-digest";
+    writeFileSync(lockPath, stringify(lock));
+    const result = await dispatchCli({
+      argv: ["update", "--project", root, "--answer", "d-0123456789abcdef0123=proceed", "--answered-by", "tester@example.com", "--json"],
+      cwd: root, executablePath: join(coreRoot, "cli/index.ts"),
+    });
+    assert.equal(result.status, "failed");
+    assert.ok(result.diagnostics.some((item) => item.code.startsWith("PAVED_LOCK_")));
+  });
+
+  it("rejects a decision id that escapes the project root", async () => {
+    const root = approvalWorkspace();
+    const result = await dispatchCli({ argv: ["decision", "show", "../../etc/passwd", "--project", root, "--json"], cwd: root, executablePath: join(coreRoot, "cli/index.ts") });
+    assert.equal(result.status, "failed");
+    assert.doesNotMatch(JSON.stringify(result), /root:/);
+  });
+
+  it("keeps secret-like build command contents out of verification decisions", () => {
+    const root = approvalWorkspace();
+    const secret = "AKIAIOSFODNN7EXAMPLE-password";
+    writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: { test: `echo ${secret}` } }));
+    const candidates = verificationProvider({ projectRoot: root, coreRoot, command: "verify", answers: [] });
+    assert.ok(candidates.length > 0);
+    assert.doesNotMatch(JSON.stringify(candidates), /AKIA|password|secret/i);
   });
 });

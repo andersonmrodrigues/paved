@@ -5,7 +5,9 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { discoverAgentCommands } from "../../cli/lib/agent-commands.ts";
-import { initializeConsumer, planConsumerInitialization, runGenerators } from "../../cli/lib/generator-runtime.ts";
+import { dispatchCli } from "../../cli/runtime.ts";
+import { planConsumerInitialization } from "../../cli/lib/generator-runtime.ts";
+import { detectCheckCandidates } from "../../cli/lib/decisions/providers/verification.ts";
 
 const core = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -34,16 +36,33 @@ describe("representative consumer runtimes", () => {
   ];
 
   for (const item of cases) {
-    it(`${item.name} resolves only supported adapters and keeps testing unavailable without a binding`, () => {
+    it(`${item.name} initializes through decisions without provider ambiguity`, async () => {
       const project = mkdtempSync(join(tmpdir(), `paved-${item.name}-`));
       try {
         writeFileSync(join(project, "README.md"), `# ${item.name}\nRepository evidence for ${item.name}.\n`);
         item.populate(project);
         const plan = planConsumerInitialization(core, project, item.name);
         assert.deepEqual(plan.resolvedAdapters, item.expected, JSON.stringify(plan));
-        initializeConsumer(core, project, item.name);
-        const generated = runGenerators(core, project);
-        assert.deepEqual(generated.errors, []);
+        let init = await dispatchCli({ argv: ["init", "--project", project, "--json"], cwd: project, executablePath: join(core, "cli/index.ts") });
+        let answered = false;
+        for (let round = 0; round < 5 && init.status === "awaiting_input"; round += 1) {
+          const answers = (init.decisions ?? []).filter((decision) => decision.required)
+            .flatMap((decision) => ["--answer", `${decision.id}=${decision.recommended ?? decision.options[0]!.id}`]);
+          assert.ok(answers.length > 0);
+          assert.ok((init.decisions ?? []).filter((decision) => decision.required).every((decision) => decision.answerChannel === "relayed"));
+          answered = true;
+          init = await dispatchCli({ argv: ["init", "--project", project, ...answers, "--answered-by", "tester@example.com", "--json"], cwd: project, executablePath: join(core, "cli/index.ts") });
+        }
+        assert.notEqual(init.status, "failed", JSON.stringify(init));
+        assert.notEqual(init.status, "awaiting_input", JSON.stringify(init));
+        if (item.name === "git-only") {
+          assert.equal(detectCheckCandidates(project).length, 0);
+          assert.equal((init.decisions ?? []).some((decision) => /verification|checks/i.test(decision.question)), false);
+        }
+        assert.ok(answered || (init.decisions ?? []).length === 0);
+        const status = await dispatchCli({ argv: ["status", "--project", project, "--json"], cwd: project, executablePath: join(core, "cli/index.ts") });
+        const providers = (status.data as { capabilityProviders: { status: string }[] }).capabilityProviders;
+        assert.equal(providers.some((provider) => provider.status === "ambiguous"), false);
         const discovery = discoverAgentCommands(project, core);
         assert.ok(["GENERATED", "VALIDATED", "READY"].includes(discovery.lifecycleState), discovery.lifecycleState);
         assert.equal(discovery.commands.find((command) => command.name === "test")?.available, false);
