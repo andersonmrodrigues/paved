@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-09-29
+
 ### Fixed
 
 - In monorepos, init can adopt every detected module test command and `paved test`
