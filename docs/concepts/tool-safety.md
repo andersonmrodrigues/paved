@@ -30,9 +30,12 @@ verification of the real action.
 
 Inputs are validated before argv construction. Secret inputs are redacted from output
 and evidence, and environment credential values are never embedded in Tool contracts.
-Verification executables inherit only `PATH`, temporary-directory variables and
-platform-required process variables. Other caller environment variables are not passed
-to checks.
+Verification and testing executables inherit only `PATH`, temporary-directory and
+platform-required process variables, the user's home and locale, and toolchain
+selectors (`JAVA_HOME`, `MAVEN_HOME`, `M2_HOME`, `GRADLE_USER_HOME`, `CHROME_BIN`), so a
+check runs on the toolchain the user chose rather than whichever one a launcher finds
+first. `CI=true` is always set so test runners run once instead of watching. Other caller
+environment variables, including credentials and tokens, are not passed to checks.
 Output and error fields with secret-like names are redacted; a runner must also strip
 authorization headers and sensitive values before storage. Redaction is a fallback,
 not permission for a Tool to return secrets. Unknown permission, environment or

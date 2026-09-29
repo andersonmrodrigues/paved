@@ -14,6 +14,11 @@ import { transition } from "../../cli/lib/decisions/record.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
 import { detectCheckCandidates, verificationProvider } from "../../cli/lib/decisions/providers/verification.ts";
 import { rulesProvider } from "../../cli/lib/decisions/providers/rules.ts";
+import { detectTestingCandidates, testingAdoptProvider, testingOptionId } from "../../cli/lib/decisions/providers/testing.ts";
+import { testingAdoptHandler } from "../../cli/lib/decisions/handlers/testing.ts";
+import { ensureAgentsBlock } from "../../cli/lib/agents-block.ts";
+import { resolveTestingTool } from "../../cli/lib/test-runner.ts";
+import { initializeConsumer } from "../../cli/lib/generator-runtime.ts";
 
 const coreRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const workspaces: string[] = [];
@@ -146,10 +151,35 @@ describe("verification candidate detection", () => {
   it("detects npm scripts that are actually declared", () => {
     const project = workspace({
       "package.json": JSON.stringify({ scripts: { build: "ng build", test: "ng test" } }),
+      "src/app.spec.ts": "describe('app', () => {});\n",
     });
     const ids = detectCheckCandidates(project).map((item) => item.id);
     assert.ok(ids.includes("npm-build"));
     assert.ok(ids.includes("npm-test"));
+  });
+
+  it("skips ng test when the project has no spec file to run", () => {
+    const project = workspace({
+      "package.json": JSON.stringify({ scripts: { build: "ng build", test: "ng test" } }),
+      "src/app.ts": "export class App {}\n",
+    });
+    const ids = detectCheckCandidates(project).map((item) => item.id);
+    assert.deepEqual(ids, ["npm-build"]);
+  });
+
+  it("runs Angular Karma tests once in headless Chrome instead of watching", () => {
+    const project = workspace({
+      "web/package.json": JSON.stringify({ scripts: { test: "ng test" } }),
+      "web/angular.json": JSON.stringify({ projects: { web: { architect: { test: { builder: "@angular-devkit/build-angular:karma" } } } } }),
+      "web/src/app.spec.ts": "describe('app', () => {});\n",
+      "api/package.json": JSON.stringify({ scripts: { test: "ng test" } }),
+      "api/src/app.spec.ts": "describe('app', () => {});\n",
+      "node/package.json": JSON.stringify({ scripts: { test: "node --test" } }),
+    });
+    const byScope = new Map(detectCheckCandidates(project).map((item) => [item.scope, item.scriptArgs]));
+    assert.deepEqual(byScope.get("web"), ["--watch=false", "--browsers=ChromeHeadless"]);
+    assert.deepEqual(byScope.get("api"), ["--watch=false"]);
+    assert.equal(byScope.get("node"), undefined);
   });
 
   it("does not invent an npm script that is not declared", () => {
@@ -170,6 +200,7 @@ describe("verification candidate detection", () => {
     const project = workspace({
       "backend/pom.xml": "<project><artifactId>api</artifactId></project>",
       "frontend/package.json": JSON.stringify({ scripts: { test: "ng test" } }),
+      "frontend/src/app.spec.ts": "describe('app', () => {});\n",
     });
     const candidates = detectCheckCandidates(project);
     assert.equal(candidates.find((item) => item.id === "mvn-test")?.scope, "backend");
@@ -322,5 +353,79 @@ describe("conversational verify", () => {
     assert.ok(existsSync(join(project, ".paved/verification/profile.yaml")));
     assert.equal(second.status, "success", JSON.stringify(second));
     assert.equal((second.data as { checks?: { status: string }[] } | undefined)?.checks?.[0]?.status, "passed");
+  });
+});
+
+describe("testing command adoption", () => {
+  const initialized = (files: Record<string, string>) => {
+    const project = workspace(files);
+    initializeConsumer(coreRoot, project, "example");
+    return project;
+  };
+
+  it("asks which detected test command workflows run and makes testing resolvable", () => {
+    const project = initialized({
+      "api/pom.xml": "<project><artifactId>api</artifactId></project>",
+      "web/package.json": JSON.stringify({ scripts: { test: "ng test" } }),
+      "web/angular.json": JSON.stringify({ projects: { web: { architect: { test: { builder: "@angular-devkit/build-angular:karma" } } } } }),
+      "web/src/app.spec.ts": "describe('app', () => {});\n",
+    });
+    const ctx = { ...context(project), command: "init" };
+    assert.equal(resolveTestingTool(project, coreRoot).status, "unavailable");
+    const [candidate] = testingAdoptProvider(ctx);
+    assert.ok(candidate);
+    assert.equal(candidate.handler, "testing.adopt");
+    const web = detectTestingCandidates(project).find((item) => item.scope === "web")!;
+    assert.deepEqual(candidate.options.map((option) => option.id).at(-1), "none");
+    assert.deepEqual(testingAdoptHandler.apply(testingOptionId(web), ctx), [
+      ".paved/tool-implementations/testing.yaml", ".paved/tools/testing.yaml",
+    ]);
+    const binding = parse(readFileSync(join(project, ".paved/tool-implementations/testing.yaml"), "utf8")) as {
+      invocation: { executable: string; arguments: string[]; working_directory: string };
+    };
+    assert.equal(binding.invocation.executable, "npm");
+    assert.equal(binding.invocation.working_directory, "web");
+    assert.deepEqual(binding.invocation.arguments.slice(0, 3), ["run", "test", "--"]);
+    assert.ok(binding.invocation.arguments.includes("--watch=false"));
+    assert.equal(resolveTestingTool(project, coreRoot).status, "resolved");
+    assert.deepEqual(testingAdoptProvider(ctx), []);
+  });
+
+  it("writes nothing when the user declines", () => {
+    const project = initialized({ "pom.xml": "<project><artifactId>api</artifactId></project>" });
+    const ctx = { ...context(project), command: "init" };
+    assert.deepEqual(testingAdoptHandler.apply("none", ctx), []);
+    assert.equal(testingAdoptHandler.reject?.("none"), true);
+    assert.equal(existsSync(join(project, ".paved/tools/testing.yaml")), false);
+  });
+});
+
+describe("AGENTS.md block", () => {
+  it("appends the managed block once and preserves the user's text", () => {
+    const project = workspace({ "AGENTS.md": "# Team notes\n\nKeep PRs small.\n" });
+    assert.deepEqual(ensureAgentsBlock(coreRoot, project), { status: "updated" });
+    const first = readFileSync(join(project, "AGENTS.md"), "utf8");
+    assert.ok(first.startsWith("# Team notes\n\nKeep PRs small.\n\n<!-- paved:begin managed -->"));
+    assert.deepEqual(ensureAgentsBlock(coreRoot, project), { status: "unchanged" });
+    assert.equal(readFileSync(join(project, "AGENTS.md"), "utf8"), first);
+  });
+
+  it("replaces only an outdated block and creates the file when missing", () => {
+    const project = workspace({
+      "AGENTS.md": "Intro\n<!-- paved:begin managed -->\nold\n<!-- paved:end managed -->\nOutro\n",
+    });
+    assert.deepEqual(ensureAgentsBlock(coreRoot, project), { status: "updated" });
+    const text = readFileSync(join(project, "AGENTS.md"), "utf8");
+    assert.ok(text.startsWith("Intro\n<!-- paved:begin managed -->\n## Paved"));
+    assert.ok(text.endsWith("<!-- paved:end managed -->\nOutro\n"));
+    const created = workspace({});
+    assert.deepEqual(ensureAgentsBlock(coreRoot, created), { status: "created" });
+    assert.match(readFileSync(join(created, "AGENTS.md"), "utf8"), /^<!-- paved:begin managed -->/);
+  });
+
+  it("leaves a file with an unterminated block untouched", () => {
+    const project = workspace({ "AGENTS.md": "<!-- paved:begin managed -->\nbroken\n" });
+    assert.equal(ensureAgentsBlock(coreRoot, project).status, "invalid");
+    assert.equal(readFileSync(join(project, "AGENTS.md"), "utf8"), "<!-- paved:begin managed -->\nbroken\n");
   });
 });

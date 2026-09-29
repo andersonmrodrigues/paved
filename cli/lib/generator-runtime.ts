@@ -224,11 +224,15 @@ export function detectCheckstyleModules(root: string, sources: Source[] = discov
 export function checkstyleRuleDocument(item: CheckstyleModule) {
   return { apiVersion: 'paved/v1', kind: 'Rule', id: `project.style.${item.module}`, title: `Configured Checkstyle for ${item.module}`, rationale: `The Maven validate phase binds the Checkstyle check goal using ${item.config.path}.`, applies_to: { paths: [item.dir === '.' ? 'src/main/java/**' : `${item.dir}/src/main/java/**`] }, rule: 'Java source in this module satisfies the configured Checkstyle checks.', enforcement: { mechanism: 'automated', layer: 'static-analysis', check: 'static-analysis' }, severity: 'warning', verification: 'Run the module Maven validate phase and inspect the Checkstyle result.', references: [item.pom.path, item.config.path] };
 }
-/** Fingerprint inputs of project decisions the user already answered through the given handler. */
+/**
+ * Fingerprint inputs of project decisions that own the given handler's question: answered
+ * ones, and open ones the user is being asked right now. Either way the decision, not a
+ * file to review, is where the answer lives.
+ */
 function answeredDecisionInputs(core: string, consumer: string, handler: string): Set<string> {
   try {
     return new Set(listDecisions(consumer, core)
-      .filter(d => d.handler === handler && (d.status === 'APPLIED' || d.status === 'REJECTED'))
+      .filter(d => d.handler === handler && ['PENDING', 'ASKED', 'ANSWERED', 'APPLIED', 'REJECTED'].includes(d.status))
       .flatMap(d => d.fingerprint.inputs));
   } catch { return new Set(); }
 }

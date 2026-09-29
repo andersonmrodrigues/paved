@@ -5,6 +5,25 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- `paved init` asks which detected test command development workflows run, so
+  `feature`, `fix`, `refactor`, `implement` and `test` are available right after init.
+- `paved init` writes the managed Paved block to `AGENTS.md` as its layout contract
+  declares: it creates the file, appends the block or refreshes only the block, and
+  never changes other text. The block no longer cites a nonexistent Core cache path.
+
+### Fixed
+
+- Checks and the testing Tool now inherit the user's toolchain selectors (`JAVA_HOME`,
+  `MAVEN_HOME`, `HOME` and similar) and always run with `CI=true`; Maven no longer
+  falls back to the newest installed JDK.
+- Detected Angular `ng test` checks run once (`--watch=false`, headless Chrome for Karma)
+  instead of watching until the timeout, and `ng test` is not offered for a project
+  with no spec files. Generated check timeouts are 900 seconds.
+- Generators also withhold drafts while the corresponding decision is still open, so
+  init never reports proposals for questions it is already asking.
+
 ## [1.3.0] - 2026-09-29
 
 ### Fixed

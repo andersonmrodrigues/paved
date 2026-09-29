@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { after, describe, it } from "node:test";
@@ -124,6 +124,12 @@ describe("no manual configuration is ever required", () => {
     assert.ok(existsSync(join(project, ".paved/rules/style/backend.yaml")));
     assert.ok(existsSync(join(project, ".paved/rules/style/admin-backend.yaml")));
     assert.equal(existsSync(join(project, ".paved/rules/quality/checkstyle.yaml")), false);
+    assert.match(readFileSync(join(project, "AGENTS.md"), "utf8"), /<!-- paved:begin managed -->/);
+    const status = await dispatchCli({ argv: ["status", "--project", project, "--json"] });
+    const unavailable = ((status.data as { unavailableCommands: { name: string }[] }).unavailableCommands)
+      .map((command) => command.name);
+    assert.deepEqual(unavailable, ["init"]);
+    assert.equal(status.status, "success", JSON.stringify(status.diagnostics));
   });
 
   it("proves the guard itself works", () => {

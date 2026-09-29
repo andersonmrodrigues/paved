@@ -13,6 +13,9 @@ import { verificationHandler } from "../lib/decisions/handlers/verification.ts";
 import { rulesProvider } from "../lib/decisions/providers/rules.ts";
 import { rulesHandler } from "../lib/decisions/handlers/rules.ts";
 import { capabilityProvider, capabilityHandler } from "../lib/decisions/providers/capability.ts";
+import { testingAdoptProvider } from "../lib/decisions/providers/testing.ts";
+import { testingAdoptHandler } from "../lib/decisions/handlers/testing.ts";
+import { ensureAgentsBlock } from "../lib/agents-block.ts";
 import { createDiagnostic, createResult, type CommandResult, type Diagnostic, type ResultStatus } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
 import { diagnosticsForRun, generateData } from "./generate.ts";
@@ -226,9 +229,10 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
       answers: invocation.flags.answers,
       ...(invocation.flags.answeredBy === undefined ? {} : { answeredBy: invocation.flags.answeredBy }),
     },
-    providers: [verificationProvider, rulesProvider, capabilityProvider],
+    providers: [verificationProvider, testingAdoptProvider, rulesProvider, capabilityProvider],
     handlers: new Map([
       ["verification.adopt", verificationHandler],
+      ["testing.adopt", testingAdoptHandler],
       ["rules.adopt", rulesHandler],
       ["capability.select", capabilityHandler],
     ]),
@@ -240,9 +244,15 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
   const generation = invocation.flags.noGenerate
     ? undefined
     : runGenerators(invocation.paths.coreRoot, invocation.paths.projectRoot);
+  const agents = ensureAgentsBlock(invocation.paths.coreRoot, invocation.paths.projectRoot);
   const diagnostics = [
     ...planningDiagnostics,
     ...(generation === undefined ? [] : diagnosticsForRun(generation, false)),
+    ...(agents.status === "invalid" ? [createDiagnostic({
+      severity: "warning", category: "findings", code: "PAVED_AGENTS_BLOCK_INVALID",
+      component: "cli.init", message: agents.reason,
+      remediation: "Remove the stray Paved marker from AGENTS.md, then run paved init again.",
+    })] : []),
   ];
   diagnostics.push(...outcome.problems.map((message) => createDiagnostic({
     severity: "error", category: "usage", code: "PAVED_DECISION_ANSWER_INVALID",
@@ -254,6 +264,7 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
     initialized: true, dryRun: false, projectName,
     selectedAdapters: plan.selectedAdapters, resolvedAdapters: plan.resolvedAdapters,
     capabilityProviders: plan.capabilityProviders, generated: generation !== undefined, lifecycleState,
+    agentsBlock: agents.status,
     ...(generation === undefined ? {} : { generation: generateData(generation, false) }),
   };
   if (outcome.status === "awaiting-input" && statusFor(diagnostics) !== "failed") {

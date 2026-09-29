@@ -7,7 +7,7 @@ import { join, relative, resolve } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse, stringify } from "yaml";
-import { runVerification, signalProcessGroup } from "../../cli/lib/verification-runner.ts";
+import { runVerification, signalProcessGroup, verificationEnvironment } from "../../cli/lib/verification-runner.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
 import { exitCode, primaryCategory, type CommandResult } from "../../cli/result.ts";
 import { schemas } from "../helpers.ts";
@@ -606,5 +606,15 @@ describe("process group signalling", () => {
       if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
       await exited;
     }
+  });
+});
+
+describe("verification environment", () => {
+  it("forwards the selected toolchain and forces a non-interactive run, but no credentials", () => {
+    const env = verificationEnvironment({
+      PATH: "/bin", HOME: "/home/u", JAVA_HOME: "/jdk17", CI: "false",
+      GITHUB_TOKEN: "t", NPM_TOKEN: "n", AWS_SECRET_ACCESS_KEY: "s",
+    });
+    assert.deepEqual(env, { PATH: "/bin", HOME: "/home/u", JAVA_HOME: "/jdk17", CI: "true" });
   });
 });

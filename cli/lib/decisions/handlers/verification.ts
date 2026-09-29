@@ -20,20 +20,30 @@ function selected(answer: AnswerValue, candidates: readonly CheckCandidate[]): C
   throw new Error(`Unknown verification option: ${String(answer)}.`);
 }
 
-function slug(candidate: CheckCandidate): string {
+export function slug(candidate: CheckCandidate): string {
   const key = `${candidate.scope}:${candidate.id}`;
   const prefix = key.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40).replace(/-$/, "");
   return `${prefix}-${createHash("sha256").update(key).digest("hex").slice(0, 8)}`;
 }
+
+/** The exact argv a detected check runs: a Maven phase or a declared npm script. */
+export function commandFor(candidate: CheckCandidate): { executable: string; args: string[] } {
+  if (candidate.id.startsWith("mvn-")) return { executable: "mvn", args: [candidate.command] };
+  return {
+    executable: "npm",
+    args: ["run", candidate.command, ...(candidate.scriptArgs?.length ? ["--", ...candidate.scriptArgs] : [])],
+  };
+}
+
+// Builds and test suites of real modules routinely exceed five minutes.
+export const CHECK_TIMEOUT_SECONDS = 900;
 
 function documents(candidate: CheckCandidate) {
   const name = slug(candidate);
   const checkId = `project.detected.${name}`;
   const toolId = `project.verification.${name}`;
   const implementationId = `project.verification-binding.${name}`;
-  const isMaven = candidate.id.startsWith("mvn-");
-  const executable = isMaven ? "mvn" : "npm";
-  const args = isMaven ? [candidate.command] : ["run", candidate.command];
+  const { executable, args } = commandFor(candidate);
   const tool = {
     apiVersion: "paved/v1", kind: "Tool", id: toolId, version: "0.1.0",
     title: `Run ${candidate.label}`, purpose: `Execute the repository-declared ${candidate.label} check.`,
@@ -41,7 +51,7 @@ function documents(candidate: CheckCandidate) {
     permissions: ["repository-read", "process-control"], environments: ["local"],
     inputs: [], outputs: { format: "text", description: "Process output and exit status." },
     side_effects: ["filesystem", "process"], preconditions: [], idempotency: "unknown",
-    timeout_seconds: 300, retry: { max_attempts: 1, backoff_seconds: 0 },
+    timeout_seconds: CHECK_TIMEOUT_SECONDS, retry: { max_attempts: 1, backoff_seconds: 0 },
     errors: ["execution-failure", "timeout", "implementation-unavailable"],
     evidence: { capture: ["revision", "environment", "timestamps", "output-digest"] },
     availability: "available", confirmation: "none",
@@ -52,7 +62,7 @@ function documents(candidate: CheckCandidate) {
     environments: ["local"],
     invocation: {
       type: "command", executable, arguments: args,
-      working_directory: candidate.scope, timeout_seconds: 300,
+      working_directory: candidate.scope, timeout_seconds: CHECK_TIMEOUT_SECONDS,
     },
     availability: "available",
   };

@@ -35,7 +35,10 @@ import {
 
 const OUTPUT_LIMIT_BYTES = 16 * 1024;
 const RUNTIME_VERSION = "paved-cli-verification-runner/0.1.0";
-const verificationEnvironmentAllowlist = new Set([
+// Process basics plus the variables that select a toolchain. Without them a check runs on
+// whatever the launcher finds first (for example the newest JDK), not the one the user chose.
+// Credentials and tokens are never forwarded.
+export const verificationEnvironmentAllowlist = new Set([
   "PATH",
   "TMPDIR",
   "TMP",
@@ -44,7 +47,29 @@ const verificationEnvironmentAllowlist = new Set([
   "WINDIR",
   "COMSPEC",
   "PATHEXT",
+  "HOME",
+  "USERPROFILE",
+  "USER",
+  "LOGNAME",
+  "LANG",
+  "LC_ALL",
+  "JAVA_HOME",
+  "MAVEN_HOME",
+  "M2_HOME",
+  "GRADLE_USER_HOME",
+  "CHROME_BIN",
 ]);
+
+/** The environment a governed check runs in: allowlisted variables and a non-interactive CI mode. */
+export function verificationEnvironment(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(source)) {
+    if (value !== undefined && verificationEnvironmentAllowlist.has(name.toUpperCase())) env[name] = value;
+  }
+  // Test runners that would otherwise watch for changes or prompt exit after one run.
+  env.CI = "true";
+  return env;
+}
 
 interface VerificationProfile {
   readonly checks: readonly string[];
@@ -344,12 +369,7 @@ export async function spawnApproved(args: {
   stderr: string;
   truncated: boolean;
 }> {
-  const env: NodeJS.ProcessEnv = {};
-  for (const [name, value] of Object.entries(process.env)) {
-    if (value !== undefined && verificationEnvironmentAllowlist.has(name.toUpperCase())) {
-      env[name] = value;
-    }
-  }
+  const env = verificationEnvironment();
 
   return new Promise((resolveRun) => {
     const stdout: Buffer[] = [];
