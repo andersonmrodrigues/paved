@@ -17,5 +17,6 @@
     "evidence",
     "coding-agent"
   ],
-  "displayName": "Paved"
+  "skills": "./skills",
+  "hooks": {}
 }
