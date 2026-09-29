@@ -3,7 +3,9 @@
 Notable user-facing changes to Paved Core are recorded here. This file describes
 releases, not the development sequence used to build them.
 
-## [1.1.0] - Unreleased
+## [1.2.0] - Unreleased
+
+## [1.1.0] - 2026-09-29
 
 ### Added
 
