@@ -17,7 +17,7 @@ import { rulesProvider } from "../../cli/lib/decisions/providers/rules.ts";
 import { detectTestingCandidates, testingAdoptProvider, testingOptionId } from "../../cli/lib/decisions/providers/testing.ts";
 import { testingAdoptHandler } from "../../cli/lib/decisions/handlers/testing.ts";
 import { ensureAgentsBlock } from "../../cli/lib/agents-block.ts";
-import { resolveTestingTool } from "../../cli/lib/test-runner.ts";
+import { resolveTestingTool, runTestingTool } from "../../cli/lib/test-runner.ts";
 import { initializeConsumer } from "../../cli/lib/generator-runtime.ts";
 
 const coreRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -389,6 +389,94 @@ describe("testing command adoption", () => {
     assert.ok(binding.invocation.arguments.includes("--watch=false"));
     assert.equal(resolveTestingTool(project, coreRoot).status, "resolved");
     assert.deepEqual(testingAdoptProvider(ctx), []);
+  });
+
+  it("offers all detected module tests and records a separate binding for each", () => {
+    const project = initialized({
+      "lib/pom.xml": "<project><artifactId>lib</artifactId></project>",
+      "api/pom.xml": "<project><artifactId>api</artifactId></project>",
+      "admin/pom.xml": "<project><artifactId>admin</artifactId></project>",
+    });
+    const ctx = { ...context(project), command: "init" };
+    const [decision] = testingAdoptProvider(ctx);
+    assert.ok(decision);
+    assert.equal(decision.recommended, "all");
+    assert.deepEqual(decision.options.map((option) => option.label).filter((label) => label.includes("mvn test")), [
+      "mvn test in admin", "mvn test in api", "mvn test in lib",
+    ]);
+    const paths = testingAdoptHandler.apply("all", ctx);
+    assert.equal(paths.length, 6);
+    const bindings = paths.filter((path) => path.startsWith(".paved/tool-implementations/"))
+      .map((path) => parse(readFileSync(join(project, path), "utf8")) as { invocation: { working_directory: string } });
+    assert.deepEqual(bindings.map((binding) => binding.invocation.working_directory), ["admin", "api", "lib"]);
+    assert.deepEqual(testingAdoptProvider(ctx), []);
+  });
+
+  it("runs every adopted module test and reports a failure from any module", async () => {
+    const project = initialized({
+      "lib/package.json": JSON.stringify({ scripts: { test: "node -e \"process.exit(0)\"" } }),
+      "api/package.json": JSON.stringify({ scripts: { test: "node -e \"process.exit(1)\"" } }),
+      "admin/package.json": JSON.stringify({ scripts: { test: "node -e \"process.exit(0)\"" } }),
+    });
+    const ctx = { ...context(project), command: "init" };
+    testingAdoptHandler.apply("all", ctx);
+    const result = await runTestingTool({ projectRoot: project, coreRoot, inputs: {} });
+    assert.equal(result.status, "failed");
+    assert.equal(result.tools?.length, 3);
+    assert.deepEqual(result.tools?.map((tool) => tool.status), ["succeeded", "failed", "succeeded"]);
+    assert.equal(result.evidences?.length, 3);
+    assert.equal(result.evidence, result.evidences?.[1]);
+  });
+
+  it("does not reduce a configured module suite when one binding is missing", () => {
+    const project = initialized({
+      "api/pom.xml": "<project><artifactId>api</artifactId></project>",
+      "admin/pom.xml": "<project><artifactId>admin</artifactId></project>",
+    });
+    const paths = testingAdoptHandler.apply("all", { ...context(project), command: "init" });
+    rmSync(join(project, paths.find((path) => path.startsWith(".paved/tool-implementations/"))!));
+    assert.equal(resolveTestingTool(project, coreRoot).status, "unavailable");
+  });
+
+  it("installs a local Maven dependency before testing its consumers", () => {
+    const library = "<project><groupId>example</groupId><artifactId>shared</artifactId><version>1.0</version></project>";
+    const consumer = (artifact: string) => `<project><groupId>example</groupId><artifactId>${artifact}</artifactId><version>1.0</version><dependencies><dependency><groupId>example</groupId><artifactId>shared</artifactId><version>1.0</version></dependency></dependencies></project>`;
+    const project = initialized({
+      "a-api/pom.xml": consumer("api"),
+      "b-admin/pom.xml": consumer("admin"),
+      "z-library/pom.xml": library,
+    });
+    const candidates = detectTestingCandidates(project);
+    assert.deepEqual(candidates.map((candidate) => [candidate.scope, candidate.command]), [
+      ["z-library", "install"], ["a-api", "test"], ["b-admin", "test"],
+    ]);
+    testingAdoptHandler.apply("all", { ...context(project), command: "init" });
+    const resolution = resolveTestingTool(project, coreRoot);
+    assert.equal(resolution.status, "suite");
+    if (resolution.status !== "suite") return;
+    assert.deepEqual(resolution.members.map((member) => [
+      member.implementation.invocation.working_directory,
+      member.implementation.invocation.arguments,
+    ]), [
+      ["z-library", ["install"]], ["a-api", ["test"]], ["b-admin", ["test"]],
+    ]);
+  });
+
+  it("adopts Maven verification checks in dependency order", () => {
+    const library = "<project><groupId>example</groupId><artifactId>shared</artifactId><version>1.0</version></project>";
+    const api = "<project><groupId>example</groupId><artifactId>api</artifactId><version>1.0</version><dependencies><dependency><groupId>example</groupId><artifactId>shared</artifactId><version>1.0</version></dependency></dependencies></project>";
+    const project = initialized({ "a-api/pom.xml": api, "z-library/pom.xml": library });
+    const candidates = detectCheckCandidates(project).filter((candidate) => candidate.id === "mvn-test");
+    assert.deepEqual(candidates.map((candidate) => [candidate.scope, candidate.command]), [
+      ["z-library", "install"], ["a-api", "test"],
+    ]);
+    verificationHandler.apply("all", { ...context(project), command: "init" });
+    const profile = parse(readFileSync(join(project, ".paved/verification/profile.yaml"), "utf8")) as { checks: string[] };
+    const checks = profile.checks.map((id) => {
+      const candidate = detectCheckCandidates(project).find((item) => id.includes(item.scope.replace(/[^a-z0-9]+/g, "-")) && id.includes(item.id));
+      return candidate?.scope;
+    });
+    assert.ok(checks.indexOf("z-library") < checks.indexOf("a-api"));
   });
 
   it("writes nothing when the user declines", () => {

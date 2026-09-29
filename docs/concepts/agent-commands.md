@@ -15,11 +15,11 @@ commands invoke the packaged runtime through a project-local bootstrap launcher.
 
 | Command | Purpose and input | Lifecycle / relevant context | Side effects and output | Failure behavior |
 |---|---|---|---|---|
-| `init` | Bootstrap and initialize Paved; no input | `UNINITIALIZED`; repository evidence | Acquires a pinned runtime, initializes `.paved/`, asks which detected checks gate verification, which test command workflows run, which observed conventions become rules, maintains the `AGENTS.md` block, then generates context | Never resets existing state; malformed or unverified runtime state fails. |
+| `init` | Bootstrap and initialize Paved; no input | `UNINITIALIZED`; repository evidence | Acquires a pinned runtime, initializes `.paved/`, asks which detected checks gate verification, which detected module test commands workflows run, which observed conventions become rules, maintains the `AGENTS.md` block, then generates context | Never resets existing state; malformed or unverified runtime state fails. |
 | `status` | Inspect Paved state; no input | Any lifecycle; manifest and lock | Read-only machine-readable state and diagnostics | Reports missing/invalid state without writes. |
 | `plan` | Plan a requested change and acceptance constraints | `RESOLVED`, `GENERATED`, `VALIDATED`, or `READY`; project context, rules, workflow and verification profile | Agent response: affected areas, constraints, tasks, risks, verification and unknowns | Missing workflow/context blocks; existing patterns are not automatically architecture. |
 | `implement` | Execute an approved plan or reference | Same development states; project context, rules, workflow, skills and tool bindings | Planned application edits and disposable evidence; returns changes and gaps | Missing approval/context/tool blocks; human-owned state is protected. |
-| `test` | Optional JSON inputs declared by the testing Tool (`paved test --inputs '<json>'`) | Same development states; exactly one testing Tool and valid ToolImplementation | Bounded process execution and sanitized, incomplete testing evidence; does not run Paved verification | A missing/ambiguous Tool, invalid binding, unsafe path, malformed output, timeout or nonzero exit fails explicitly. Application scripts are never inferred or run. |
+| `test` | Optional JSON inputs declared by a manually configured testing Tool (`paved test --inputs '<json>'`) | Same development states; an adopted module test suite or one manually configured testing Tool | Bounded execution of every adopted module test with sanitized, incomplete evidence per command; does not run Paved verification | A missing/ambiguous Tool, invalid binding, unsafe path, malformed output, timeout or nonzero exit fails explicitly. Application scripts are never inferred at execution time. |
 | `verify` | Run the configured profile; no arbitrary check selectors | Same development states; verification profile and approved Tool bindings | Uses the existing verification engine; may write disposable evidence | Missing profile, unresolved tools or failed checks block. |
 | `review` | Optional change scope | Same development states; project context, rules, verification profile and review skill | Agent response with findings, risks, evidence gaps and unknowns | Missing evidence is a gap, not a pass; review never replaces verification. |
 | `debug` | Failure report, expected behavior and reproduction evidence | Same development states; feature map, bug workflow and debugging skills | Read-only investigation: observations, hypotheses, unknowns and next step | Hypotheses remain unconfirmed until observed; missing evidence is explicit. |
@@ -44,12 +44,16 @@ phase order and plan approval, calls the testing Tool during validation, runs
 authoritative Paved verification, and requires matching workflow evidence
 before completion.
 
-The CLI `test` operation invokes an explicitly declared testing Tool using the
-existing Tool contracts, ToolImplementation resolver and bounded process
-runner. It records sanitized evidence as incomplete/unverified; `verify`
+The CLI `test` operation invokes every test Tool adopted from detected modules,
+or one manually declared testing Tool, using the existing Tool contracts,
+ToolImplementation resolver and bounded process runner. It records sanitized
+evidence per command as incomplete/unverified; `verify`
 continues to execute only checks configured in the project verification
 profile. The Codex and Claude projections call the same `test` handler through
 the integrity-checking launcher.
+For Maven projects with local dependencies, the Java adapter orders the modules
+and installs consumed artifacts before downstream tests in both testing suites
+and newly adopted verification profiles.
 
 ## Distribution status
 

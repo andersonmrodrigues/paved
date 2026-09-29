@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { planMavenDependencies } from "../../../../adapters/technology/java/maven-dependencies.ts";
 import { discoverSources } from "../../generator-runtime.ts";
 import type { DecisionCandidate, DecisionProvider } from "../gate.ts";
 import type { DecisionEvidence } from "../record.ts";
@@ -61,13 +62,18 @@ export function detectCheckCandidates(projectRoot: string): CheckCandidate[] {
   const candidates: CheckCandidate[] = [];
   const sources = discoverSources(projectRoot);
   const paths = sources.map((source) => source.path);
+  const mavenScopes = sources.filter((source) => basename(source.path) === "pom.xml").map((source) => scopeOf(source.path));
+  const mavenPlan = planMavenDependencies(projectRoot, mavenScopes);
+  const mavenRank = new Map(mavenPlan.scopes.map((scope, index) => [scope, index]));
   for (const source of sources) {
     const evidence: DecisionEvidence = { type: "file", location: source.path, sha256: source.sha256 };
     const scope = scopeOf(source.path);
 
     if (basename(source.path) === "pom.xml") {
       for (const check of MAVEN_CHECKS) {
-        candidates.push({ ...check, scope, source: evidence });
+        candidates.push(check.id === "mvn-test" && mavenPlan.installs.has(scope)
+          ? { ...check, label: "mvn install", command: "install", scope, source: evidence }
+          : { ...check, scope, source: evidence });
       }
     }
 
@@ -93,7 +99,14 @@ export function detectCheckCandidates(projectRoot: string): CheckCandidate[] {
   }
   return candidates
     .map((candidate) => ({ ...candidate, source: { type: "file" as const, location: candidate.source.location, sha256: candidate.source.sha256 } }))
-    .sort((a, b) => `${a.scope}:${a.id}`.localeCompare(`${b.scope}:${b.id}`, "en"));
+    .sort((a, b) => {
+      const aRank = a.id.startsWith("mvn-") ? mavenRank.get(a.scope) : undefined;
+      const bRank = b.id.startsWith("mvn-") ? mavenRank.get(b.scope) : undefined;
+      if (aRank !== undefined && bRank !== undefined) return aRank - bRank || a.id.localeCompare(b.id, "en");
+      if (aRank !== undefined) return -1;
+      if (bRank !== undefined) return 1;
+      return `${a.scope}:${a.id}`.localeCompare(`${b.scope}:${b.id}`, "en");
+    });
 }
 
 /**

@@ -153,10 +153,14 @@ The `--json` option renders the same data model for scripts and integrations.
 The command family `paved evidence ...` and `paved tool ...` remains
 contract-only in this release.
 
-`paved test` executes only one explicitly declared `testing-run` Tool with a
-valid ToolImplementation, using the bounded process runner and recording
-sanitized, incomplete evidence. It does not discover or run application package
+`paved test` executes the explicitly adopted `testing-run` Tools for every
+detected module, using the bounded process runner and recording sanitized,
+incomplete evidence for each command. A manually declared testing Tool remains
+supported. It does not discover scripts at execution time or run undeclared
 scripts, and it does not replace `paved verify`.
+For local Maven dependencies, the Java adapter orders modules and uses
+`mvn install` on a consumed module before testing its dependents. Newly adopted
+verification checks use the same order.
 
 `paved feature <request>`, `paved fix <report>`, and `paved refactor <scope>`
 create durable runs under `.paved/generated/runs/`. Resume with `--run <id>

@@ -5,6 +5,13 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Fixed
+
+- In monorepos, init can adopt every detected module test command and `paved test`
+  executes all of them, reporting a failure from any module with per-command evidence.
+  Local Maven dependencies run first and install their artifact before consumers test;
+  newly adopted verification checks use the same order and lifecycle.
+
 ## [1.4.0] - 2026-09-29
 
 ### Added
