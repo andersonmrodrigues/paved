@@ -302,6 +302,30 @@ test('mechanically configured Checkstyle can produce a cited Rule proposal', () 
   assert.ok(rule?.proposals.every(p => p.startsWith('.paved/generated/proposals/rules/')));
 });
 
+test('adopted rules and an existing verification profile withdraw their review drafts', () => {
+  const dir = fixture();
+  mkdirSync(join(dir, 'server'), { recursive: true });
+  writeFileSync(join(dir, 'server/pom.xml'), '<project><artifactId>maven-checkstyle-plugin</artifactId><phase>validate</phase><goal>check</goal><configLocation>checkstyle.xml</configLocation><failOnViolation>true</failOnViolation></project>');
+  writeFileSync(join(dir, 'server/checkstyle.xml'), '<module name="Checker"/>');
+  initializeConsumer(core, dir, 'example');
+  assert.equal(runGenerators(core, dir).errors.length, 0);
+  const ruleDraft = join(dir, '.paved/generated/proposals/rules/server.yaml');
+  const profileDraft = join(dir, '.paved/generated/proposals/verification/profile.yaml');
+  assert.ok(existsSync(ruleDraft) && existsSync(profileDraft));
+  mkdirSync(join(dir, '.paved/rules/style'), { recursive: true });
+  writeFileSync(join(dir, '.paved/rules/style/server.yaml'), readFileSync(ruleDraft, 'utf8'));
+  mkdirSync(join(dir, '.paved/verification'), { recursive: true });
+  writeFileSync(join(dir, '.paved/verification/profile.yaml'), 'apiVersion: paved/v1\nkind: VerificationProfile\nchecks: []\n');
+  const dry = runGenerators(core, dir, { dryRun: true });
+  assert.equal(dry.errors.length, 0);
+  assert.ok(existsSync(ruleDraft) && existsSync(profileDraft), 'a dry run removes nothing');
+  const result = runGenerators(core, dir);
+  assert.equal(result.errors.length, 0);
+  assert.deepEqual(result.executions.find(e => e.generator === 'rules')?.proposals ?? [], []);
+  assert.deepEqual(result.executions.find(e => e.generator === 'verification')?.proposals ?? [], []);
+  for (const path of [ruleDraft, `${ruleDraft}.paved.yaml`, profileDraft, `${profileDraft}.paved.yaml`]) assert.equal(existsSync(path), false, path);
+});
+
 test('unavailable selected adapter is reported and generic analysis continues', () => {
   const dir = fixture(); initializeConsumer(core, dir, 'example');
   const path = join(dir, '.paved/manifest.yaml');

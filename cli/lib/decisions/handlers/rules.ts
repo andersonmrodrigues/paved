@@ -2,13 +2,14 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { parse, stringify } from "yaml";
 import { atomicWriteFileSync } from "../../atomic-write.ts";
+import { checkstyleRuleDocument } from "../../generator-runtime.ts";
 import { resolveSafePath } from "../../safe-path.ts";
 import { createRegistry } from "../../schemas.ts";
 import type { AnswerValue } from "../answers.ts";
 import type { DecisionContext, HandlerRegistration } from "../gate.ts";
-import { detectRuleConventions, type RuleConvention } from "../providers/rules.ts";
+import { detectRuleCandidates, moduleOptionId, type RuleConvention } from "../providers/rules.ts";
 
-function documentFor(item: RuleConvention) {
+function conventionDocument(item: RuleConvention) {
   return {
     apiVersion: "paved/v1", kind: "Rule", id: `project.quality.${item.id}`,
     title: `Follow the ${item.id} configuration`,
@@ -24,13 +25,17 @@ function documentFor(item: RuleConvention) {
 
 function apply(answer: AnswerValue, context: DecisionContext): readonly string[] {
   if (answer === "decline") return [];
-  if (answer !== "adopt") throw new Error(`Unknown rule option: ${String(answer)}.`);
-  const found = detectRuleConventions(context.projectRoot, true);
-  if (found.length === 0) return [];
+  const found = detectRuleCandidates(context.projectRoot, true);
+  const chosenModule = found.modules.find((item) => moduleOptionId(item) === answer);
+  if (answer !== "adopt" && chosenModule === undefined) throw new Error(`Unknown rule option: ${String(answer)}.`);
+  const files = answer === "adopt"
+    ? [
+      ...found.modules.map((item) => ({ path: item.rulePath, document: checkstyleRuleDocument(item) as unknown })),
+      ...found.conventions.map((item) => ({ path: `.paved/rules/quality/${item.id}.yaml`, document: conventionDocument(item) as unknown })),
+    ]
+    : [{ path: chosenModule!.rulePath, document: checkstyleRuleDocument(chosenModule!) as unknown }];
+  if (files.length === 0) return [];
   const registry = createRegistry(join(context.coreRoot, "schemas"), ["paved/v1"]);
-  const files = found.map((item) => ({
-    path: `.paved/rules/quality/${item.id}.yaml`, document: documentFor(item),
-  }));
   for (const file of files) {
     const result = registry.validate(file.document);
     if (!result.valid) throw new Error(`${file.path} is invalid: ${result.errors.join("; ")}`);

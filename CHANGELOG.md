@@ -3,9 +3,19 @@
 Notable user-facing changes to Paved Core are recorded here. This file describes
 releases, not the development sequence used to build them.
 
-## [1.2.0] - Unreleased
+## [Unreleased]
 
-## [1.1.0] - 2026-09-29
+### Fixed
+
+- `paved init` asks about every build-enforced Checkstyle module in the same rules
+  question instead of leaving per-module rule proposals for manual YAML review, and no
+  longer mistakes `checkstyle-suppressions.xml` for the Checkstyle configuration.
+- Generators withhold (and remove stale) rule and verification proposals once the
+  matching project document exists or the user answered the corresponding decision.
+- The release changelog step ships `[Unreleased]` entries under the version being
+  released.
+
+## [1.2.0] - 2026-09-29
 
 ### Added
 
@@ -16,10 +26,15 @@ releases, not the development sequence used to build them.
 
 ### Changed
 
-- Automatic scoped capability provider resolution for multi-stack repositories.
 - `paved update` applies only explicitly registered, deterministic migrations to
   legacy documents in its staged transaction; unknown or ambiguous document versions
   remain blocked.
+
+## [1.1.0] - 2026-09-28
+
+### Changed
+
+- Automatic scoped capability provider resolution for multi-stack repositories.
 
 ## [1.0.0] - Unreleased
 
