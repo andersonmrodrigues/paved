@@ -43,7 +43,7 @@ describe("generated plugin", () => {
   it("keeps plugin identity and runtime versions in their own sources", () => {
     const source = readPluginSource(ROOT);
     const core = readJson<{ version: string }>(join(ROOT, "package.json"));
-    for (const manifest of ["plugin.json", ".codex-plugin/plugin.json", ".claude-plugin/plugin.json"]) {
+    for (const manifest of ["plugin.json", ".codex-plugin/plugin.json", ".claude-plugin/plugin.json", ".cursor-plugin/plugin.json"]) {
       const value = readJson<{ name: string; version: string; description: string }>(join(plugin, manifest));
       assert.equal(value.name, source.name, manifest);
       assert.equal(value.version, source.version, manifest);
@@ -77,6 +77,16 @@ describe("generated plugin", () => {
     for (const path of ["hooks/hooks.json", "hooks/paved-prompt-submit.mjs"]) {
       assert.ok(provenance.files[path] !== undefined, `${path} must be covered by generated provenance`);
     }
+  });
+
+  it("declares Cursor skills and disables the shared non-Cursor prompt hook", () => {
+    const cursor = readJson<{ name: string; skills: string; hooks: Record<string, unknown> }>(
+      join(plugin, ".cursor-plugin", "plugin.json"),
+    );
+    assert.equal(cursor.name, "paved");
+    assert.equal(cursor.skills, "./skills");
+    assert.deepEqual(cursor.hooks, {});
+    assert.ok(provenance.files[".cursor-plugin/plugin.json"] !== undefined);
   });
 
   it("bundles a runtime whose bytes and contents match the provenance", () => {
@@ -167,6 +177,21 @@ describe("repository marketplaces", () => {
     assert.ok(marketplace.owner.name.length > 0);
     assert.deepEqual(marketplace.plugins.map((entry) => [entry.name, entry.source]), [["paved", "./plugins/paved"]]);
     assert.ok(statSync(join(ROOT, marketplace.plugins[0]!.source, ".claude-plugin", "plugin.json")).isFile());
+  });
+
+  it("list the generated plugin for Cursor by relative path", () => {
+    const marketplace = readJson<{
+      name: string;
+      owner: { name: string };
+      metadata: { description: string };
+      plugins: { name: string; source: string; description: string; version: string }[];
+    }>(join(ROOT, ".cursor-plugin", "marketplace.json"));
+    assert.equal(marketplace.name, "paved");
+    assert.ok(marketplace.owner.name.length > 0);
+    assert.ok(marketplace.metadata.description.length > 0);
+    assert.deepEqual(marketplace.plugins.map((entry) => [entry.name, entry.source]), [["paved", "./plugins/paved"]]);
+    assert.equal(marketplace.plugins[0]?.version, readPluginSource(ROOT).version);
+    assert.ok(statSync(join(ROOT, marketplace.plugins[0]!.source, ".cursor-plugin", "plugin.json")).isFile());
   });
 
   it("pass Claude Code strict plugin validation", { skip: hostAvailable("claude") ? false : "claude CLI is not installed" }, () => {
