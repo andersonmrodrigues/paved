@@ -5,6 +5,23 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Changed
+
+- `paved update` adopts a newer runtime carried by the plugin: it verifies and activates
+  it, rewrites `.paved/paved.lock` through the transactional update and keeps the
+  previous state for `runtime rollback`. `update --dry-run` reports the runtime it would
+  adopt; the same or an older plugin runtime never changes the pin
+  ([ADR 0032](docs/decisions/0032-update-adopts-newer-plugin-runtime.md)).
+
+### Fixed
+
+- A runtime upgrade is no longer blocked by the rollback record of the previous
+  successful upgrade, so consecutive upgrades work.
+- A runtime upgrade works in a fresh clone, where `.paved/runtime/` does not exist yet.
+- `paved update` accepts a Core minor within the same stable major (for example 1.10 to
+  1.11), as the versioning policy promises; it had applied the `0.x` rule and refused
+  every minor. Moving to an older minor or another major still needs a migration.
+
 ## [1.11.0] - 2026-09-30
 
 ### Added

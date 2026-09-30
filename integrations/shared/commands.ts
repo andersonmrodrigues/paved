@@ -184,7 +184,7 @@ const COMMAND_DEFINITIONS: readonly AgentCommandDefinition[] = [
     failureSemantics: [
       "Unknown compatibility, migration requirements, and ownership conflicts stop before unsafe writes.",
       "Remote updates remain unsupported.",
-      "A different runtime version is never activated by update alone: the launcher's `runtime upgrade` verifies and activates it inside the update transaction, and `runtime rollback` restores the previous runtime and lock.",
+      "When the plugin carries a newer runtime than paved.lock pins, update verifies and activates it inside the update transaction and rewrites the lock; `runtime rollback` restores the previous runtime and lock. The same or an older plugin runtime never changes the pin.",
     ],
   },
   {

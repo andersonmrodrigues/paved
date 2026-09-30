@@ -43,8 +43,8 @@ only the plugin version, and a Core release bumps the runtime and, because the
 bundled artifact changes, the plugin as well. A repository's `paved.lock` pins its
 runtime by version, SHA-512 integrity and installed content digest, and that pin
 wins over any plugin. A plugin carrying another runtime only reports
-`PAVED_RUNTIME_UPDATE_AVAILABLE`; `runtime upgrade` adopts it through the Core's
-transactional update and `runtime rollback` restores the previous lock and runtime.
+`PAVED_RUNTIME_UPDATE_AVAILABLE`; `update` adopts a newer one (and `runtime upgrade`
+any one) through the Core's transactional update and `runtime rollback` restores the previous lock and runtime.
 `plugins/paved/provenance.json` records both versions and every file digest.
 
 ## Change classification

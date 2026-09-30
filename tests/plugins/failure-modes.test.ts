@@ -194,10 +194,11 @@ describe("plugin launcher failure modes", () => {
     assert.deepEqual(readFileSync(cached), readFileSync(tarball), "a truncated cache is replaced from the bundled artifact");
   });
 
-  it("refuses rollback without a trustworthy record and an upgrade over a pending one", () => {
+  it("refuses rollback without a trustworthy record and replaces a leftover record on the next upgrade", () => {
     const target = project();
     const init = paved()(target, "init", "--json");
     assert.ok(init.status === 0 || init.status === 1, init.stdout + init.stderr);
+    const initialLock = readFileSync(join(target, ".paved", "paved.lock"));
     expectFailure(paved()(target, "runtime", "rollback", "--json"), "PAVED_RUNTIME_ROLLBACK_UNAVAILABLE");
     expectFailure(paved()(target, "runtime", "explode", "--json"), "PAVED_RUNTIME_USAGE");
     const runtime = join(target, ".paved", "runtime");
@@ -206,9 +207,64 @@ describe("plugin launcher failure modes", () => {
     writeFileSync(join(runtime, "rollback.json"), JSON.stringify({ previous: selection, lock_sha256: "0".repeat(64), created_at: new Date().toISOString() }));
     expectFailure(paved()(target, "runtime", "rollback", "--json"), "PAVED_RUNTIME_ROLLBACK_CORRUPT");
     const patch = repackRuntime(tarball, NEXT_PATCH_VERSION, root);
-    const newer = launcher(pluginVariant(plugin, root, "plugin-conflict", { ...patch, version: NEXT_PATCH_VERSION }), npmCache);
-    expectFailure(newer(target, "runtime", "upgrade", "--json"), "PAVED_RUNTIME_UPGRADE_CONFLICT");
+    const newer = launcher(pluginVariant(plugin, root, "plugin-leftover", { ...patch, version: NEXT_PATCH_VERSION }), npmCache);
+    const upgraded = newer(target, "runtime", "upgrade", "--json");
+    assert.ok(upgraded.status === 0 || upgraded.status === 1, upgraded.stdout + upgraded.stderr);
+    assert.equal((upgraded.json.data as { changed: boolean }).changed, true, upgraded.stdout);
+    const rolledBack = newer(target, "runtime", "rollback", "--json");
+    assert.equal(rolledBack.status, 0, rolledBack.stdout + rolledBack.stderr);
+    assert.deepEqual(readFileSync(join(target, ".paved", "paved.lock")), initialLock, "the replaced record rolls back to the state before the upgrade");
     expectFailure(paved()(project(), "runtime", "upgrade", "--json"), "PAVED_RUNTIME_UPGRADE_UNAVAILABLE");
+  });
+
+  it("adopts a newer plugin runtime through update, repeatedly, and never downgrades", () => {
+    const target = project();
+    const init = paved()(target, "init", "--json");
+    assert.ok(init.status === 0 || init.status === 1, init.stdout + init.stderr);
+    const lockPath = join(target, ".paved", "paved.lock");
+    const initialLock = readFileSync(lockPath);
+    const lockedVersion = () => /^runtime:\n  package: paved-core\n  version: (.+)$/m.exec(readFileSync(lockPath, "utf8"))?.[1];
+    const [major, minor, patchLevel] = CORE_VERSION.split(".").map(Number) as [number, number, number];
+    const nextNext = `${major}.${minor}.${patchLevel + 2}`;
+    const newer = launcher(pluginVariant(plugin, root, "plugin-update-1", { ...repackRuntime(tarball, NEXT_PATCH_VERSION, root), version: NEXT_PATCH_VERSION }), npmCache);
+    const newest = launcher(pluginVariant(plugin, root, "plugin-update-2", { ...repackRuntime(tarball, nextNext, root), version: nextNext }), npmCache);
+
+    const planned = newer(target, "update", "--dry-run", "--json");
+    assert.equal(planned.status, 0, planned.stdout + planned.stderr);
+    assert.deepEqual((planned.json.data as { runtime: unknown }).runtime, { from: CORE_VERSION, to: NEXT_PATCH_VERSION });
+    assert.deepEqual(readFileSync(lockPath), initialLock, "a dry run adopts nothing");
+
+    const first = newer(target, "update", "--json");
+    assert.ok(first.status === 0 || first.status === 1, first.stdout + first.stderr);
+    assert.equal(first.json.command, "update");
+    assert.equal((first.json.data as { changed: boolean }).changed, true, first.stdout);
+    assert.equal(lockedVersion(), NEXT_PATCH_VERSION);
+
+    const second = newest(target, "update", "--json");
+    assert.ok(second.status === 0 || second.status === 1, second.stdout + second.stderr);
+    assert.equal(lockedVersion(), nextNext, "a second consecutive update is not blocked by the first one's rollback record");
+
+    const older = newer(target, "update", "--json");
+    assert.ok(older.status === 0 || older.status === 1, older.stdout + older.stderr);
+    assert.match(older.stderr, /PAVED_RUNTIME_UPDATE_AVAILABLE/);
+    assert.equal(lockedVersion(), nextNext, "an older plugin never downgrades the project");
+
+    const fresh = project();
+    const freshInit = paved()(fresh, "init", "--json");
+    assert.ok(freshInit.status === 0 || freshInit.status === 1, freshInit.stdout + freshInit.stderr);
+    const freshLock = readFileSync(join(fresh, ".paved", "paved.lock"));
+    rmSync(join(fresh, ".paved", "runtime"), { recursive: true, force: true });
+    const cloned = newer(fresh, "update", "--json");
+    assert.ok(cloned.status === 0 || cloned.status === 1, cloned.stdout + cloned.stderr);
+    assert.match(readFileSync(join(fresh, ".paved", "paved.lock"), "utf8"), new RegExp(`^  version: ${NEXT_PATCH_VERSION.replaceAll(".", "\\.")}$`, "m"), "a fresh clone without runtime state is updated too");
+    const freshRollback = newer(fresh, "runtime", "rollback", "--json");
+    assert.equal(freshRollback.status, 0, freshRollback.stdout + freshRollback.stderr);
+    assert.deepEqual(readFileSync(join(fresh, ".paved", "paved.lock")), freshLock);
+
+    const same = newest(target, "update", "--json");
+    assert.ok(same.status === 0 || same.status === 1, same.stdout + same.stderr);
+    assert.equal(same.json.command, "update");
+    assert.equal((same.json.data as { changed: boolean }).changed, false, "the same runtime keeps the ordinary update");
   });
 
   it("adopts a lock written by the direct CLI only through an explicit, reversible upgrade", () => {

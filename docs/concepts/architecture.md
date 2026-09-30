@@ -191,8 +191,8 @@ consumer references. `adapters`, `cli`, `docs` and `tests` are not.
   `npm run build:plugin`; it is never edited by hand and never read as the source
   of truth. The launcher refuses to treat the Core checkout as a consumer.
 - **Plugin ≠ Consumer state.** Installing, updating or removing the plugin never
-  changes `.paved/`. A repository's runtime changes only through
-  `runtime upgrade`, which runs the Core's transactional update.
+  changes `.paved/`. A repository's runtime changes only through `update` (to a
+  newer plugin runtime) or `runtime upgrade`, both running the Core's transactional update.
 - **Agent integration ≠ business logic.** Skills describe how to invoke Paved; they
   hold no application entities, rules or domain behavior.
 
