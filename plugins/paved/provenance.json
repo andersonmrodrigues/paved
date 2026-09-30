@@ -11,28 +11,28 @@
   "source": {
     "package": "paved-core",
     "version": "1.11.0",
-    "content_sha256": "6ea29ebfaafa8e852803cb7a9259c16bab90979a84b7294de5a2c7f9c96a686f"
+    "content_sha256": "dc10df608a033bbda2b47463959302ef6a773db0277e5674c3c97db42e6ae0e9"
   },
   "runtime": {
     "package": "paved-core",
     "version": "1.11.0",
     "file": "runtime/paved-core-1.11.0.tgz",
-    "integrity": "sha512-PIalxh0t+8wlrAPVTWODX+0TKof91HvdQs9kIeTPufV7oaz1eqDD2uwP2pzkTJS2SczINiEffsM0IIIXp4IVQw==",
-    "content_sha256": "6ea29ebfaafa8e852803cb7a9259c16bab90979a84b7294de5a2c7f9c96a686f",
-    "bytes": 1464353
+    "integrity": "sha512-93O2L4KaQ5GcF1dTbtYnofDLkdlTl/EezN6YT7TidV/SyMxKQ6ku8EOpMCNI3x5TkTYnRz25RY3L3Qri65Iqbw==",
+    "content_sha256": "dc10df608a033bbda2b47463959302ef6a773db0277e5674c3c97db42e6ae0e9",
+    "bytes": 1465477
   },
   "files": {
     ".claude-plugin/plugin.json": "b3851fd3a097c24750f31866029eb6a2ae8ab936dde320f76394ae1315efd094",
     ".codex-plugin/plugin.json": "91f8f10b3ba5693675d677592e6c74e3093e7d37a95a1ea9e6fb4c64975023ec",
     ".cursor-plugin/plugin.json": "bc73525a23f34a21573f6abf7673194e0817a7f5ca6d0616f9662a2ab56b7bd2",
-    "README.md": "68baf53e3b1e1b063a8c6ef9890d7c2bf3428473cfb6ad135a756806d96ca871",
+    "README.md": "5a6da7684e57cb3482b73909b1666627875e6d9a443d41d5cfb2a4d3b508436a",
     "VERSION": "272bc91e0090267f931e4afb8cbf47facd446b6556710cfe5f70621caeb8bb19",
-    "bin/bootstrap.json": "4c62be8ce785066da5c27288f6053900c8e9eff83934364460df62e41f425523",
-    "bin/paved.mjs": "bfa6c07e5742f8a0bde7e2ee4b9b6e303a0539cdafe229e01a2a61869b3c68f8",
+    "bin/bootstrap.json": "9303aeb967723005ab2c3f63070acd3cc7752e5d65eed95b324f3afcd23e0b6c",
+    "bin/paved.mjs": "491cd1e32aa4f6a8c5b60f44c330adfcc19515b67cc5b06870c24a5a81837643",
     "hooks/hooks.json": "540562f93b2411c8774254099888431ee8fad4863078dc95b46e173747254a81",
     "hooks/paved-prompt-submit.mjs": "5a38158ece8439c5f2ae2bf32e75b27f7f5aef9c729a3f9b421da79c489ff703",
     "plugin.json": "79f45c5d8b66c5a98fb58e6b066c09f9ed3ca101379d793b900cfb80d63f8f2e",
-    "runtime/paved-core-1.11.0.tgz": "1ac021efd14fc4b43fd937086860b0edefd6aaf8953dd8238904373339e1d600",
+    "runtime/paved-core-1.11.0.tgz": "ca5bafc248b425a7c583baf841fa5fe69832107c51cd0bbe5df61b43f7391e4d",
     "skills/backend-performance/SKILL.md": "8ae0dab8322ff0be362a478af991a6c34c3e811193abfa1d89853737bdec8fc5",
     "skills/bug-investigation/SKILL.md": "b92c8bce06874c24d6cfaa778bba81a5ce51a3f64dba0dca95b30f605ba1f87b",
     "skills/bug-investigation/examples/investigation-log.md": "79e105f8a07ae446e818549d72d5dbb96e516c0d25db190e5a2ebe4bac0a736c",
@@ -81,7 +81,7 @@
     "skills/threat-modeling/examples/threat-model.md": "2392c1e75e4f8eb35078cbc5b260e523943ffef79cd1dc3d5b7ea46d8314a837",
     "skills/threat-modeling/references/stride.md": "b485065f3d6d86e26abe82585c616c20b9ed5e32a3365dd3cfded8408a4d53fd",
     "skills/unit-testing/SKILL.md": "b45d1536d142d86cdc7187a9e5ee62ec0af71033d9f14b1e849146e32208281c",
-    "skills/update/SKILL.md": "321e71696d819bc79725143243a8f7657800f7a9d734fd1846545484fb83e340",
+    "skills/update/SKILL.md": "503d622e3bd09a67de482ffe4a2df0970258188ed8d3ee026a7fe764645001a9",
     "skills/verify/SKILL.md": "e75ef33a2978316a3b3d36fa23fa9fc801c63ba915e76461748f1cb658c0fca7"
   }
 }

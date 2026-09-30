@@ -309,6 +309,25 @@ test("source-only update commits generated context while preserving another cons
   } finally { rmSync(a, { recursive: true, force: true }); rmSync(b, { recursive: true, force: true }); }
 });
 
+test("Core minor movement within a stable major is compatible; downgrades and new majors are not", () => {
+  const target = consumer("consumer-a");
+  try {
+    initializeConsumer(core, target, "consumer-a");
+    const lockPath = join(target, ".paved/paved.lock");
+    const original = readFileSync(lockPath, "utf8");
+    const [major, minor] = CORE_VERSION.split(".").map(Number) as [number, number];
+    const planFrom = (version: string) => {
+      const lock = parse(original) as { core: { version: string } };
+      lock.core.version = version;
+      writeFileSync(lockPath, stringify(lock));
+      return planConsumerUpdate({ projectRoot: target, coreRoot: core }).compatibility;
+    };
+    if (major >= 1 && minor >= 1) assert.equal(planFrom(`${major}.${minor - 1}.0`), "compatible", "an older minor updates");
+    assert.equal(planFrom(`${major}.${minor + 1}.0`), "unknown", "a newer minor never downgrades silently");
+    assert.equal(planFrom(`${major + 1}.0.0`), "unknown", "another major needs a migration");
+  } finally { rmSync(target, { recursive: true, force: true }); }
+});
+
 test("unknown Core movement and invalid project context block update before writes", () => {
   const unknown = consumer("consumer-a");
   const migration = consumer("consumer-b");
