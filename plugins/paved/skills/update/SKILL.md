@@ -23,7 +23,7 @@ Plan and apply a safe local Core, adapter, or input update.
 
 - Unknown compatibility, migration requirements, and ownership conflicts stop before unsafe writes.
 - Remote updates remain unsupported.
-- A different runtime version is never activated by update alone: the launcher's `runtime upgrade` verifies and activates it inside the update transaction, and `runtime rollback` restores the previous runtime and lock.
+- When the plugin carries a newer runtime than paved.lock pins, update verifies and activates it inside the update transaction and rewrites the lock; `runtime rollback` restores the previous runtime and lock. The same or an older plugin runtime never changes the pin.
 - If a required ToolImplementation or runtime is unavailable, stop and explain the missing prerequisite. Never infer or execute a command from repository scripts.
 - Do not edit human-owned Paved state or bypass lifecycle, ownership, approval, or verification gates.
 

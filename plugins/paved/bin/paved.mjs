@@ -198,6 +198,20 @@ function lockedRuntime(ctx) {
 }
 
 // Fields absent on either side (a registry pin has no integrity until acquisition) do not differ.
+// Semantic version order; a prerelease sorts before its release.
+function compareVersions(a, b) {
+  const parse = (value) => { const [core, pre] = value.split('-', 2); return { parts: core.split('.').map(Number), pre }; };
+  const left = parse(a);
+  const right = parse(b);
+  for (let index = 0; index < 3; index += 1) {
+    if (left.parts[index] !== right.parts[index]) return left.parts[index] - right.parts[index];
+  }
+  if (left.pre === right.pre) return 0;
+  if (left.pre === undefined) return 1;
+  if (right.pre === undefined) return -1;
+  return left.pre < right.pre ? -1 : 1;
+}
+
 function sameRuntime(a, b) {
   const same = (field) => !a[field] || !b[field] || a[field] === b[field];
   return a.version === b.version && same('integrity') && same('content_sha256');
@@ -348,11 +362,24 @@ function rollbackRecord(ctx) {
 
 function launch(ctx, config, argv) {
   const locked = lockedRuntime(ctx);
+  // `update` adopts a newer plugin runtime; an older plugin never downgrades the project.
+  if (argv[0] === 'update' && (locked === null || (locked && compareVersions(config.version, locked.version) > 0))) {
+    if (argv.includes('--dry-run')) {
+      emit('update', 'success', { dryRun: true, changed: true, runtime: { from: locked?.version ?? null, to: config.version } });
+      process.exit(0);
+    }
+    runtimeUpgrade(ctx, config, 'update');
+  }
   if (locked === null) {
-    fail('PAVED_RUNTIME_LOCK_MIGRATION_REQUIRED', 'This project was initialized without a pinned project-local runtime.', `Run the launcher with \`runtime upgrade\` to adopt runtime ${config.version} through a transactional Paved update (reversible with \`runtime rollback\`), or keep using the direct Paved CLI.`);
+    fail('PAVED_RUNTIME_LOCK_MIGRATION_REQUIRED', 'This project was initialized without a pinned project-local runtime.', `Run the launcher with \`update\` to adopt runtime ${config.version} through a transactional Paved update (reversible with \`runtime rollback\`), or keep using the direct Paved CLI.`);
   }
   if (locked && !sameRuntime(locked, config)) {
-    notice('PAVED_RUNTIME_UPDATE_AVAILABLE', `This Paved plugin provides runtime ${config.version}; the project stays on runtime ${locked.version} pinned by paved.lock.`, 'Review the change, then run the launcher with `runtime upgrade`. The pinned runtime keeps working until then.');
+    const order = compareVersions(config.version, locked.version);
+    notice('PAVED_RUNTIME_UPDATE_AVAILABLE', `This Paved plugin provides runtime ${config.version}; the project stays on runtime ${locked.version} pinned by paved.lock.`, order > 0
+      ? 'Run the launcher with `update` to adopt it. The pinned runtime keeps working until then.'
+      : order < 0
+        ? 'Update the Paved plugin; an older plugin never downgrades the project.'
+        : 'The plugin carries a different build of the pinned version; reinstall the plugin, or adopt it explicitly with `runtime upgrade`.');
   }
   const expected = effectivePin(config, locked);
   let selection = existsSync(ctx.selectionPath) ? readJson(ctx.selectionPath) : undefined;
@@ -385,7 +412,7 @@ function runtimeStatus(ctx, config) {
     locked: locked ?? null,
     selection: selection ?? null,
     migrationRequired: locked === null,
-    updateAvailable: locked === null || Boolean(locked && !sameRuntime(locked, config)),
+    updateAvailable: locked === null || Boolean(locked && compareVersions(config.version, locked.version) > 0),
     rollbackAvailable: Boolean(record),
   });
   process.exit(0);
@@ -394,17 +421,23 @@ function runtimeStatus(ctx, config) {
 // Activates the plugin's runtime and lets that runtime move paved.lock through the Core's
 // transactional update. The previous runtime and lock bytes are kept for rollback. A legacy
 // lock has no previous runtime; adopting one records `previous: null`.
-function runtimeUpgrade(ctx, config) {
+function runtimeUpgrade(ctx, config, command = 'runtime') {
   const locked = lockedRuntime(ctx);
   if (locked === undefined) fail('PAVED_RUNTIME_UPGRADE_UNAVAILABLE', 'Runtime upgrade requires an initialized project.', 'Run init first.');
   withBootstrapLock(ctx, () => {
     let current = null;
-    if (locked !== null) {
+    // A fresh clone has no runtime state (.paved/runtime/ is ignored). It upgrades like a legacy
+    // lock: nothing to restore but the lock, and the pinned runtime is reacquired on demand.
+    if (locked !== null && existsSync(ctx.selectionPath)) {
       current = readJson(ctx.selectionPath);
-      validateSelection(ctx, current, locked);
-      if (sameRuntime(locked, config)) { emit('runtime', 'success', { changed: false, runtime: current }); return; }
+      // An interrupted upgrade leaves a selection that differs from the lock and is caught here.
+      // Past this check the state is consistent, so a leftover record from an earlier upgrade
+      // is only a stale backup and the new one replaces it.
+      validateSelection(ctx, current, locked, rollbackRecord(ctx)
+        ? 'An interrupted runtime upgrade left a different selection; run the launcher with `runtime rollback`.'
+        : undefined);
     }
-    if (rollbackRecord(ctx)) fail('PAVED_RUNTIME_UPGRADE_CONFLICT', 'A previous runtime upgrade is still recorded.', 'Run `runtime rollback`, or remove .paved/runtime/rollback.json after confirming the current runtime.');
+    if (locked && sameRuntime(locked, config)) { emit(command, 'success', { changed: false, runtime: current }); return; }
     // Acquisition fails before anything is recorded, so a rejected artifact leaves no rollback state.
     const next = acquire(ctx, config);
     ensureIgnored(ctx);
@@ -418,7 +451,7 @@ function runtimeUpgrade(ctx, config) {
     try { result = JSON.parse(child.stdout); } catch { result = undefined; }
     const after = lockedRuntime(ctx);
     if (!child.error && result?.status !== 'failed' && after && sameRuntime(after, next)) {
-      emit('runtime', result.status, { changed: true, previous: current, runtime: next, update: result.data ?? null }, result.diagnostics ?? []);
+      emit(command, result.status, { changed: true, previous: current, runtime: next, update: result.data ?? null }, result.diagnostics ?? []);
       return;
     }
     // The Core update is transactional; restoring the selection returns to the previous state.
@@ -428,7 +461,7 @@ function runtimeUpgrade(ctx, config) {
       rmSync(ctx.rollbackPath, { force: true });
       rmSync(ctx.rollbackLockPath, { force: true });
     }
-    emit('runtime', 'failed', { changed: false, runtime: current, update: result?.data ?? null }, [
+    emit(command, 'failed', { changed: false, runtime: current, update: result?.data ?? null }, [
       ...(result?.diagnostics ?? []),
       diagnostic('PAVED_RUNTIME_UPGRADE_FAILED', `Runtime ${next.version} could not update this project; ${current ? `runtime ${current.version} remains selected` : 'the lock is unchanged'}.`, 'Resolve the reported update diagnostics, then retry the upgrade.'),
     ]);
