@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-09-30
+
 ### Changed
 
 - `task-specification` 0.2.0 also fills in an existing issue or ticket, including one
