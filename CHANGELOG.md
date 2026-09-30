@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-09-30
+
 ### Added
 
 - `paved preview` reviews a folder: every Markdown file in it, with navigation between
