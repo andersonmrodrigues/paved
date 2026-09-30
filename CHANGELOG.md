@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-09-30
+
 ### Changed
 
 - `task-specification` and `task-review` 0.3.0 present every draft and review in
