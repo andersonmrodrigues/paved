@@ -108,7 +108,13 @@ notice on stderr.
 
 ## Upgrade or roll back a repository's runtime
 
-Run the plugin launcher from the repository. Its path is `bin/paved.mjs` in the
+After updating the plugin, run `paved update` (the `paved:update` skill) in the
+repository. When the plugin carries a newer runtime than `.paved/paved.lock` pins,
+update verifies and activates it, rewrites the lock through the Core's transactional
+update and keeps the previous state for rollback; `update --dry-run` only reports the
+runtime it would adopt. The same or an older plugin runtime never changes the pin.
+
+The launcher also exposes the runtime operations directly. Its path is `bin/paved.mjs` in the
 installed plugin directory (Claude Code: `installPath` from
 `claude plugin list --json`; Codex: under
 `$CODEX_HOME/plugins/cache/paved/paved/<version>/`).
@@ -119,7 +125,7 @@ node <plugin>/bin/paved.mjs runtime upgrade --json   # verify, activate and upda
 node <plugin>/bin/paved.mjs runtime rollback --json  # restore the previous runtime and lock
 ```
 
-`runtime upgrade` verifies the new runtime, activates it, and lets that runtime run
+`runtime upgrade` (the path `update` uses) verifies the new runtime, activates it, and lets that runtime run
 the Core's transactional `update`. If the update fails, the previous runtime stays
 selected and the lock is unchanged. A successful upgrade keeps the previous lock
 bytes and runtime selection so that `runtime rollback` can restore them exactly.
@@ -127,7 +133,7 @@ Commit the updated `.paved/paved.lock` once you have reviewed the change.
 
 A repository initialized earlier with the direct CLI has a lock without a runtime
 entry. The launcher reports `PAVED_RUNTIME_LOCK_MIGRATION_REQUIRED` for it and
-changes nothing; `runtime upgrade` adopts the plugin's runtime through the same
+changes nothing; `update` or `runtime upgrade` adopts the plugin's runtime through the same
 transactional update, and `runtime rollback` restores the original lock.
 
 ## Remove
@@ -173,7 +179,7 @@ next action:
   with its content digest, in `provenance.json`. npm runs with `--ignore-scripts`.
 - Archive entries must be regular files or directories under `package/`; links,
   absolute paths, `..` segments and special permission bits are refused.
-- A different runtime is activated only through `runtime upgrade`, never silently.
+- A different runtime is activated only by `update` (newer runtimes only) or `runtime upgrade`, never by other commands.
 - The prompt hook reads the event's `cwd` and checks Paved state marker paths. It never
   stores, transmits, or logs the prompt; it emits routing guidance only for initialized
   repositories and exits successfully without output otherwise.

@@ -756,11 +756,13 @@ function updateStatusDiagnostics(diagnostics: readonly Diagnostic[]): boolean {
 
 function candidateCompatibility(previous: string | undefined, next: string): "compatible" | "unknown" {
   if (!previous || previous === next) return "compatible";
-  const before = previous.split(".").map(Number);
-  const after = next.split(".").map(Number);
-  // For pre-1.0 Core, only patch movement within the same minor line has a
-  // compatibility claim. A broader move needs explicit migration evidence.
-  return before[0] === after[0] && before[1] === after[1] ? "compatible" : "unknown";
+  const [beforeMajor, beforeMinor] = previous.split(".").map(Number) as [number, number];
+  const [afterMajor, afterMinor] = next.split(".").map(Number) as [number, number];
+  if (beforeMajor !== afterMajor) return "unknown";
+  // A 0.x minor may break (docs/concepts/versioning.md), so only patches move freely there.
+  // From 1.0 a minor is additive; moving to an older minor could drop what the project uses.
+  if (afterMajor === 0) return beforeMinor === afterMinor ? "compatible" : "unknown";
+  return afterMinor >= beforeMinor ? "compatible" : "unknown";
 }
 
 function updateLockGenerators(
@@ -870,7 +872,7 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
   if (nextRuntime && nextRuntime.version !== core.version) diagnostics.push(diagnostic({
     code: "PAVED_RUNTIME_UPDATE_REQUIRED", component: "cli.update", category: "resolution",
     message: `The lock pins runtime ${nextRuntime.version}; Core ${core.version} cannot be activated through a local content update.`,
-    remediation: "Run the Paved launcher with `runtime upgrade` so it verifies and activates a matching runtime before the lock changes.",
+    remediation: "Run update through the Paved launcher so it verifies and activates a matching runtime before the lock changes.",
   }));
   if (compatibility === "unknown") diagnostics.push(diagnostic({ code: "PAVED_UPDATE_COMPATIBILITY_UNKNOWN",
     component: "cli.update", category: "resolution",

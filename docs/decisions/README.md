@@ -36,6 +36,7 @@ writing a new record that supersedes it, not by editing the old one.
 | [0029](0029-module-testing-suites.md) | Module testing suites | Accepted |
 | [0030](0030-local-markdown-review.md) | Local Markdown review for plans and specs | Accepted |
 | [0031](0031-prompt-aware-plugin-hooks.md) | Prompt-aware plugin hooks | Accepted |
+| [0032](0032-update-adopts-newer-plugin-runtime.md) | Update adopts a newer plugin runtime | Accepted |
 
 ## Format
 
