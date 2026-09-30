@@ -29,6 +29,8 @@ export interface CliFlags {
   readonly inputs?: string;
   readonly run?: string;
   readonly advance?: boolean;
+  readonly approve?: boolean;
+  readonly reply?: string;
   readonly note?: string;
   readonly evidence?: string;
   readonly project?: string;
@@ -165,7 +167,7 @@ function takeValue(argv: readonly string[], index: number, flag: string, command
 function commandUsage(command: CommandName | undefined): string {
   if (command !== undefined) {
     const selectors = command === "generate" ? " [generator-id...]" : command === "agent"
-      ? " <operation> [integration|command-name]" : command === "preview" ? " <start|serve|status|wait|resolve|stop> <file.md> [cursor|comment-id]" : "";
+      ? " <operation> [integration|command-name]" : command === "preview" ? " <start|serve|status|wait|working|resolve|stop> <file.md|folder> [cursor|comment-id]" : "";
     const commandOptions: string[] = [];
     const rule = COMMAND_RULES[command];
     if (rule.adapters) commandOptions.push("  --adapter <id>   Select an adapter for status, doctor, or verification content resolution; repeatable.");
@@ -173,8 +175,8 @@ function commandUsage(command: CommandName | undefined): string {
     if (rule.noGenerate) commandOptions.push("  --no-generate    Initialize without running generators.");
     if (command === "test") commandOptions.push("  --inputs <json>  Supply declared Tool inputs as a JSON object.");
     if (command === "decision") commandOptions.push("  --decision <json>  Raise an agent-authored question.", "  --reason <text>   Explain a revision.");
-    if (command === "preview") commandOptions.push("  --run <id>       Bind the review to a workflow plan approval.");
-    if (["feature", "fix", "refactor", "plan", "implement", "review", "debug"].includes(command)) commandOptions.push("  --run <id> --advance --note <text> --evidence <path>  Resume the durable workflow.");
+    if (command === "preview") commandOptions.push("  --reply <text>   With resolve, tell the reviewer what changed.");
+    if (["feature", "fix", "refactor", "plan", "implement", "review", "debug"].includes(command)) commandOptions.push("  --run <id> --advance --note <text> --evidence <path>  Resume the durable workflow.", "  --run <id> --approve  Record the user's approval of the current plan, given in the conversation, and resume.");
     return [
       `Usage: paved ${command}${selectors} [options]`,
       "",
@@ -247,6 +249,8 @@ function parse(argv: readonly string[]): Parsed {
   let inputs: string | undefined;
   let run: string | undefined;
   let advance = false;
+  let approve = false;
+  let reply: string | undefined;
   let note: string | undefined;
   let evidence: string | undefined;
   const adapters: string[] = [];
@@ -328,13 +332,26 @@ function parse(argv: readonly string[]): Parsed {
     }
 
     if (["--run", "--note", "--evidence"].includes(token)) {
-      if (!command || !["feature", "fix", "refactor", "plan", "implement", "review", "debug", "preview"].includes(command) || (command === "preview" && token !== "--run")) return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by executable workflows or preview --run.`) };
+      if (!command || !["feature", "fix", "refactor", "plan", "implement", "review", "debug"].includes(command)) return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by executable workflows.`) };
       const value = takeValue(argv, index, token, command);
       if (typeof value !== "string") return { kind: "error", result: value };
       if (token === "--run") run = value;
       if (token === "--note") note = value;
       if (token === "--evidence") evidence = value;
       index += 1;
+      continue;
+    }
+    if (token === "--reply") {
+      if (command !== "preview") return { kind: "error", result: usage(command ?? "cli", "--reply is supported only by preview resolve.") };
+      const value = takeValue(argv, index, token, command);
+      if (typeof value !== "string") return { kind: "error", result: value };
+      reply = value;
+      index += 1;
+      continue;
+    }
+    if (token === "--approve") {
+      if (!command || !["feature", "fix", "refactor", "plan", "implement", "review", "debug"].includes(command)) return { kind: "error", result: usage(command ?? "cli", "--approve is supported only by executable workflows.") };
+      approve = true;
       continue;
     }
     if (token === "--advance") {
@@ -422,7 +439,9 @@ function parse(argv: readonly string[]): Parsed {
     json,
     noGenerate,
     advance,
+    approve,
     answers,
+    ...(reply === undefined ? {} : { reply }),
     ...(answeredBy === undefined ? {} : { answeredBy }),
     ...(run === undefined ? {} : { run }),
     ...(note === undefined ? {} : { note }),

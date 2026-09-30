@@ -19,7 +19,7 @@ cannot produce a file. Which export is meant? (a) download one certificate as a 
 following the report export; (b) download all of a student's certificates at once;
 (c) something else." The user chose (a).
 
-**Result, written to `.paved/generated/tasks/export-certificates.md` and opened in the preview; the item's body was replaced after the user approved it there.**
+**Result, written to `.paved/generated/tasks/export-certificates.md` and opened in the preview; the item's body was replaced after the user said yes in the chat.**
 
 ```markdown
 ### Summary

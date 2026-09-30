@@ -54,10 +54,10 @@ work; do not put machine state or local evidence here.
 
 For `plan`, `feature`, `fix`, and `refactor`, write the plan at
 `.paved/documents/plans/<run-id>.md`. Open that exact file with
-`paved preview start .paved/documents/plans/<run-id>.md --run <run-id> --json`.
-Resolve comments on that file before advancing for approval; approval is bound to its
-exact digest. A resumed run must continue to use the plan path recorded in its existing
-run events.
+`paved preview start .paved/documents/plans/<run-id>.md --json`, or a folder with
+`paved preview start <folder> --json` when several documents are reviewed together
+(a plan with its specs, an epic with its tasks). A resumed run must continue to use the
+plan path recorded in its existing run events.
 
 ## Gates and approvals
 
@@ -69,15 +69,17 @@ and the evidence so far, and wait (`awaiting-approval`). Record who decided and 
 never approve your own run, and an approval covers only what was shown.
 
 For a Markdown plan awaiting approval, use the canonical plan path above. Present the
-preview URL and keep the agent turn active with `paved preview wait
-.paved/documents/plans/<run-id>.md <revision> --json`. Comments reach you only while
-`wait` runs, so call it again after every timeout and never end the turn while the plan
-is open for review and not approved. Apply each selected-text comment
-to that file and mark it resolved with `paved preview resolve
-.paved/documents/plans/<run-id>.md <comment-id> --json`. After editing, advance the
-workflow once to request approval for the revised plan hash. The preview's human
-Approve button writes the approval record for the exact version shown; after it is
-clicked, advance the workflow until the gate records the decision.
+preview URL and keep the agent turn active with `paved preview wait <target> <revision>
+--json`. Comments reach you only while `wait` runs, so call it again after every timeout
+until the user says in the conversation that the review is finished. Each comment names
+its document: mark it with `paved preview working <target> <comment-id> --json`, apply
+it, then `paved preview resolve <target> <comment-id> --reply "<what changed>" --json`.
+After editing, advance the workflow once to request approval for the revised plan hash.
+
+The preview approves nothing. Ask for the approval in the conversation, and only after
+an explicit yes to the current plan run the workflow with `--run <run-id> --approve`: it
+records the decision for the exact plan version, under the local user, and resumes. An
+unclear reply, silence or your own judgment is never an approval.
 
 | Approval | Asked for |
 |---|---|
