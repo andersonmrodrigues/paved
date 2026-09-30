@@ -5,6 +5,16 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Changed
+
+- `change-review` 0.4.0 reviews against the stated intent in three passes (rules,
+  diff, change), separates blocking findings from notes, discards pre-existing,
+  tool-caught, silenced and speculative candidates, and validates every blocking
+  finding against the code before recording it. Rule findings must quote the rule and
+  fall within its scope.
+- `security-review` 0.4.0 requires a traced source-to-sink path for every finding and
+  keeps untraced hardening ideas as notes.
+
 ## [1.9.0] - 2026-09-29
 
 ## [1.8.0] - 2026-09-29
