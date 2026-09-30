@@ -5,6 +5,13 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Changed
+
+- `task-specification` and `task-review` 0.3.0 present every draft and review in
+  `paved preview` instead of printing it in the chat: the reply carries the URL and a
+  short summary, and the preview's approval is the confirmation to write to the tracker.
+  The chat is a fallback only when the user asks or the preview cannot start.
+
 ## [1.13.0] - 2026-09-30
 
 ### Changed
