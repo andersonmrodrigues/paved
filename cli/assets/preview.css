@@ -15,10 +15,10 @@ nav a { display: block; flex: 1; padding: 7px 8px; border-radius: 6px; color: #2
 nav a:hover { background: #f1f4f1; }
 nav a[aria-current=page] { background: #e3eee7; font-weight: 600; }
 .badge { min-width: 20px; padding: 1px 6px; border-radius: 10px; background: #ffe7a3; color: #6b5210; font-size: 12px; text-align: center; }
-.pager { max-width: 850px; margin: 0 auto 10px; display: flex; justify-content: space-between; }
-.document-pane { padding: 28px 5vw 70px; overflow: auto; }
-.document-header { max-width: 850px; margin: 0 auto 16px; display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
-article { max-width: 850px; min-height: 75vh; margin: auto; padding: 44px 56px; background: white; border: 1px solid #e2e7e1; border-radius: 12px; box-shadow: 0 8px 30px #153b280b; line-height: 1.65; overflow-wrap: anywhere; }
+.pager { margin: 0 0 10px; display: flex; justify-content: space-between; }
+.document-pane { padding: 24px 24px 70px; overflow: auto; }
+.document-header { margin: 0 0 16px; display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+article { min-height: 75vh; padding: 40px 48px; background: white; border: 1px solid #e2e7e1; border-radius: 12px; box-shadow: 0 8px 30px #153b280b; line-height: 1.65; overflow-wrap: anywhere; }
 article h1, article h2, article h3 { line-height: 1.22; margin-top: 1.6em; }
 article h1:first-child { margin-top: 0; }
 article h1 { font-size: 2.2rem; }
