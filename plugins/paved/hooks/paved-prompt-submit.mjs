@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 const context = [
   "Paved routing for this repository:",
   "- For repository changes, testing, planning, or review, consult Paved state and use the matching available Paved command or workflow.",
+  "- To write, fill in, or review a task, issue, ticket, story, bug, or epic for this repository, including one given by link, use paved:task-specification to write or fill it in and paved:task-review to review it.",
   "- For repository-specific questions, consult only the relevant Paved context and answer directly; do not create a workflow when none is needed.",
   "- For requests unrelated to this repository, proceed normally without invoking Paved.",
   "- Respect explicit user direction. If a required Paved command is unavailable, explain the blocker rather than silently substituting an undeclared process.",

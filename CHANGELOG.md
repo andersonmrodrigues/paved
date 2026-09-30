@@ -5,6 +5,18 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Changed
+
+- `task-specification` 0.2.0 also fills in an existing issue or ticket, including one
+  given by link, keeping what its author wrote. Both task skills now use the
+  repository's own issue template when there is one (a project addendum still wins),
+  offer options instead of guessing when the repository allows several readings, never
+  add unsupported content, and may open long drafts in `paved preview`, where approval
+  is the confirmation to write to the tracker. The quality bar adds splitting patterns,
+  failure-case criteria and a ready-to-implement check.
+- The prompt hook routes writing, filling in and reviewing tasks and issues to
+  `paved:task-specification` and `paved:task-review`.
+
 ## [1.12.0] - 2026-09-30
 
 ### Changed
