@@ -40,8 +40,16 @@ The diff is final enough to review.
 6. **Check failure behavior**: errors do not leak internals, and a failed security check
    denies rather than allows.
 7. **Run the security checks** the profile has.
-8. **Record findings** with severity and the boundary they concern. Fix what is in
-   scope; raise what is not.
+8. **Trace each candidate** from source to sink before calling it a finding: name the
+   untrusted source, the path it takes through the changed code and the sink it
+   reaches, and confirm no guard on that path already stops it. A candidate with no
+   nameable source, or one stopped by an existing guard, is dropped; one the diff did not
+   introduce is raised separately, not recorded here. When the agent can, have a
+   separate pass re-trace each finding from the code.
+9. **Record findings** with severity, the boundary they concern and the traced path.
+   Hardening ideas that no traced path demands are notes, kept apart from findings.
+   Fix what is in scope; raise what is not. With no finding, list the boundaries
+   examined and why each holds.
 
 ## Tools
 
@@ -64,6 +72,7 @@ review supports no claim by itself; it tells the human reviewer where to look.
 ## Completion criteria
 
 - Every touched boundary was examined and is listed in the review.
+- Every finding carries a traced source-to-sink path.
 - No unresolved finding of high severity remains in scope.
 
 ## Failure modes
@@ -73,6 +82,7 @@ review supports no claim by itself; it tells the human reviewer where to look.
 | Review of intent, not code | Findings describe what the code should do | Re-read the diff |
 | Trusting internal callers | "Only called internally" with no enforcement | Treat as a boundary or record the assumption |
 | Scanner as the review | Only tool output is reported | Walk steps 1 to 6 as well |
+| Theoretical finding | No source, path or sink can be named for it | Trace it (step 8) or turn it into a note |
 
 ## References
 
