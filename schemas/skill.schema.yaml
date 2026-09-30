@@ -38,7 +38,7 @@ properties:
     unevaluatedProperties: false
   category:
     description: Must equal the parent directory name and the middle segment of `id`.
-    enum: [bootstrap, discovery, development, debugging, testing, performance, security, code-review, gardener, decisions]
+    enum: [bootstrap, discovery, development, debugging, testing, performance, security, code-review, gardener, decisions, product]
   context:
     description: >
       Context areas the skill reads. The Core manifest's `context_areas` maps each area

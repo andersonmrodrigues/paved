@@ -1,0 +1,24 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.product.task-review
+version: 0.1.0
+status: experimental
+category: product
+context:
+  required: []
+  optional: [product, domain, feature-map, architecture, integrations, rules, verification]
+tools:
+  required: [core.repository.structure, core.repository.files]
+  optional: []
+rules:
+  - core.quality.unknowns-stay-unknown
+  - core.architecture.follow-existing-patterns
+depends_on:
+  required: [core.product.task-specification]
+  optional: []
+verification:
+  required: []
+evidence:
+  required: [review]
+references:
+  - examples/task-review.md
