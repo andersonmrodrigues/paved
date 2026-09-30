@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [1.15.1] - 2026-09-30
+
 ### Changed
 
 - The preview's document uses the full width between the document list and the
