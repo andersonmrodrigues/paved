@@ -1,9 +1,23 @@
 # Task template
 
 The default shape of a task written for a tracker. Write the content in the language the
-user writes in; keep the section order. A project changes section titles, language or
-fields by extending `core.product.task-specification` with an addendum; the addendum wins
-over this file wherever they differ.
+user writes in; keep the section order.
+
+## Which template applies
+
+Use the first that exists, and say which one you used:
+
+1. The project addendum that extends `core.product.task-specification`.
+2. The repository's own issue or task template, in the place the project's code host or
+   tracker reads templates from. Keep its sections, field names, order and allowed
+   values; fill in its fields instead of adding sections it does not have.
+3. The default below.
+
+When the chosen template lacks a section this file requires (for example acceptance
+criteria), put that content where the template leaves room for it instead of adding a
+section the team did not ask for.
+
+## Default template
 
 ```markdown
 **Type:** Feature | Bug | Improvement | Technical debt
