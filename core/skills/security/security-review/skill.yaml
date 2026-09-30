@@ -1,7 +1,7 @@
 apiVersion: paved/v1
 kind: Skill
 id: core.security.security-review
-version: 0.3.0
+version: 0.4.0
 status: experimental
 category: security
 context:
