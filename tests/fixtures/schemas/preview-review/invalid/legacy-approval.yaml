@@ -1,0 +1,11 @@
+# expect-error: must NOT have additional properties
+apiVersion: paved/v1
+kind: PreviewReview
+target: docs/plan.md
+target_kind: file
+revision: 1
+approval:
+  document_sha256: '0000000000000000000000000000000000000000000000000000000000000000'
+  decided_by: someone
+  decided_at: '2026-09-29T10:00:00.000Z'
+comments: []

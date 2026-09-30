@@ -3,32 +3,36 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Revisão de documento · Paved</title>
+  <title>Revisão de documentos · Paved</title>
   <link rel="stylesheet" href="/preview.css">
   <script src="/preview.js" defer></script>
 </head>
 <body>
-  <header><div><strong>Paved</strong><span>Revisão de documento</span></div><span id="connection">Conectando…</span></header>
+  <header><div><strong>Paved</strong><span id="target">Revisão de documentos</span></div><span id="connection">Conectando…</span></header>
   <main>
+    <nav id="navigation" aria-label="Documentos" hidden>
+      <h2>Documentos</h2>
+      <ul id="documents"></ul>
+    </nav>
     <section class="document-pane">
       <div class="document-header"><small id="filename"></small><span id="version"></span></div>
+      <div class="pager" id="pager" hidden><button id="previous" class="quiet">← Anterior</button><button id="next" class="quiet">Próximo →</button></div>
       <article id="document" aria-label="Documento para revisão"></article>
     </section>
     <aside>
       <div class="aside-header"><h2>Comentários</h2><span id="count"></span></div>
-      <p class="hint">Selecione um trecho do documento para comentar. O agente receberá o comentário nesta revisão.</p>
+      <p class="hint">Selecione um trecho do documento para comentar. O agente recebe os comentários enquanto acompanha a revisão; avise no chat quando terminar.</p>
       <section id="compose" hidden>
         <blockquote id="selection-quote"></blockquote>
         <label for="comment-body">Seu comentário</label>
         <textarea id="comment-body" rows="4" maxlength="10000" placeholder="O que precisa mudar?"></textarea>
         <div class="actions"><button id="cancel-comment" class="quiet">Cancelar</button><button id="send-comment">Comentar</button></div>
       </section>
-      <div id="comments"></div>
-      <section class="approval">
-        <h2>Aprovação</h2>
-        <p id="approval-state">Aguardando revisão.</p>
-        <button id="approve">Aprovar esta versão</button>
+      <section id="handoff" hidden>
+        <p id="handoff-reason"></p>
+        <button id="copy-prompt">Copiar prompt para o agente</button>
       </section>
+      <div id="comments"></div>
       <p id="message" role="status"></p>
     </aside>
   </main>

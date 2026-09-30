@@ -1,9 +1,11 @@
 apiVersion: paved/v1
 kind: PreviewReview
-document: docs/plan.md
+target: docs/plans
+target_kind: folder
 revision: 1
 comments:
   - id: 98f4869a-8b87-4a6b-bd79-a0853cef709b
+    document: docs/plans/plan.md
     quote: Change this text
     prefix: 'Before '
     suffix: ' after'

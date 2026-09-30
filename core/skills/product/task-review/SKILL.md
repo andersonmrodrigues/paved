@@ -67,15 +67,16 @@ task against what the repository says.
    task, or, when the repository shows a few plausible answers, a short set of options
    for the user to choose from.
 9. **Present it in the preview.** Put the verdict, the findings, what changed and the
-   rewritten task or the split tasks in one Markdown file under
-   `.paved/generated/tasks/`, open it with `paved preview start <file> --json` (no run)
-   and reply in the chat with the URL, the verdict and the count of blocking findings
-   only. Run the preview loop from the workflow instructions until the reviewer
-   approves, applying and resolving each comment. Fall back to the chat only when the
-   user asks for it or the preview fails to start, and say which.
-10. **Apply** only with consent: the preview's approval, or an explicit yes to the exact
-    text. If a tracker integration is available, then update the task's description.
-    Never close, move, reassign or delete the task.
+   rewritten task in one Markdown file under `.paved/generated/tasks/`; for a split, use
+   a folder with the review as its first file and one file per proposed task. Open it
+   with `paved preview start <file-or-folder> --json` and reply in the chat with the
+   URL, the verdict and the count of blocking findings only. Run the preview loop from
+   the workflow instructions, applying each comment and resolving it with a reply,
+   until the user says the review is finished. Fall back to the chat only when the user
+   asks for it or the preview fails to start, and say which.
+10. **Apply** only after an explicit yes in the chat to the exact text; the preview
+    approves nothing. If a tracker integration is available, then update the task's
+    description. Never close, move, reassign or delete the task.
 
 ## Tools
 

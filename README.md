@@ -98,7 +98,7 @@ agent can resume them and people can inspect plans, approvals and results.
 | `review` | You want findings about a change, including risks and evidence gaps. Review does not replace verification. |
 | `test` | You want Paved to run the test commands explicitly mapped to detected modules. For local Maven dependencies, Paved orders modules and installs dependencies before testing dependents. |
 | `verify` | You want to run the repository's configured verification profile. |
-| `preview` | You want to review Markdown plans or specs, comment on selected text, and approve the exact current version. |
+| `preview` | You want to review a Markdown plan, spec or a folder of them (an epic and its tasks), commenting on selected text and following each comment until the agent resolves it. |
 
 You can also use `status` to inspect readiness, `doctor` to diagnose setup, `generate`
 to refresh project context, and `update` to apply a compatible local Core update.

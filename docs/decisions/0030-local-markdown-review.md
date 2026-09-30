@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-29
+- **Amended by:** [0033](0033-comment-only-folder-preview.md) (folders, comment status, approval moves to the conversation)
 
 ## Context
 
