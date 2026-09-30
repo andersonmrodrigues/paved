@@ -70,11 +70,14 @@ never approve your own run, and an approval covers only what was shown.
 
 For a Markdown plan awaiting approval, use the canonical plan path above. Present the
 preview URL and keep the agent turn active with `paved preview wait
-.paved/documents/plans/<run-id>.md <revision> --json`. Apply each selected-text comment
+.paved/documents/plans/<run-id>.md <revision> --json`. Comments reach you only while
+`wait` runs, so call it again after every timeout and never end the turn while the plan
+is open for review and not approved. Apply each selected-text comment
 to that file and mark it resolved with `paved preview resolve
 .paved/documents/plans/<run-id>.md <comment-id> --json`. After editing, advance the
 workflow once to request approval for the revised plan hash. The preview's human
-Approve button writes the approval record for that exact hash.
+Approve button writes the approval record for the exact version shown; after it is
+clicked, advance the workflow until the gate records the decision.
 
 | Approval | Asked for |
 |---|---|
