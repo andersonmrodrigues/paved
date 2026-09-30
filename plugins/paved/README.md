@@ -7,7 +7,7 @@ This directory is the installable plugin for Cursor, Codex and Claude Code. It i
 `npm run build:plugin` in the Paved repository and must not be edited by hand.
 
 - Runtime: `paved-core@1.12.0` bundled at `runtime/paved-core-1.12.0.tgz`
-- Runtime integrity: `sha512-317FEA5/oV4k1I2TcLz7zhliqrx9HmZJUthIQmEEzxQuF/g5DlmyEVmNyf2Lp0N35/RKUNpyPkuSIDSf1B9Vng==`
+- Runtime integrity: `sha512-EEN+lCY65YWnUcdfIzhmvCPW9iGDrfYUi4MszV7tyVsEozQF8HARvD/EQZFNDQNNjn0qAYi88NSp73q+PubHdw==`
 - Launcher: `bin/paved.mjs`
 - Prompt routing: `hooks/hooks.json` adds advisory Paved context for initialized repositories in Codex and Claude Code; Cursor loads the skills without this hook.
 - Skills: `/paved:<command>` in Claude Code, `paved:<command>` in Codex, and `/status` (or another skill name) in Cursor
