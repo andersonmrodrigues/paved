@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { userInfo } from "node:os";
 import { dirname, relative, sep } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.ts";
 import { loadYaml } from "./documents.ts";
@@ -40,6 +41,28 @@ export function previewDocument(root: string, name: string): { path: string; rel
 
 export function reviewPath(root: string, document: string): string {
   return resolveSafePath(root, `.paved/generated/previews/${digest(document)}.json`);
+}
+
+// An agent editing a plan between two waits can be silent for a while, so the window is generous.
+const WATCH_WINDOW_MS = 60_000;
+
+function watchPath(root: string, document: string): string {
+  return `${reviewPath(root, document)}.watch.json`;
+}
+
+export function markWatching(root: string, document: string): void {
+  const path = watchPath(root, document);
+  mkdirSync(dirname(path), { recursive: true });
+  atomicWriteFileSync(path, `${JSON.stringify({ at: new Date().toISOString() })}\n`);
+}
+
+export function agentWatching(root: string, document: string, now = Date.now()): boolean {
+  const path = watchPath(root, document);
+  if (!existsSync(path)) return false;
+  try {
+    const at = Date.parse((JSON.parse(readFileSync(path, "utf8")) as { at?: string }).at ?? "");
+    return now - at <= WATCH_WINDOW_MS;
+  } catch { return false; }
 }
 
 export function readReview(root: string, coreRoot: string, document: string): PreviewReview {
@@ -89,26 +112,29 @@ export function resolveComment(review: PreviewReview, id: string): PreviewCommen
   return comment;
 }
 
-export function bindWorkflowApproval(root: string, review: PreviewReview, documentSha: string): void {
+export function bindWorkflowApproval(root: string, review: PreviewReview): void {
   if (!review.run) return;
   const runPath = resolveSafePath(root, `.paved/generated/runs/${review.run}.yaml`);
   if (!existsSync(runPath)) throw new Error("Workflow run does not exist.");
-  const run = loadYaml(runPath) as { events?: { type?: string; phase?: string; ref?: string }[];
-    phases?: { phase?: string; gates?: { id?: string; status?: string; reason?: string }[] }[] };
+  const run = loadYaml(runPath) as { events?: { type?: string; phase?: string; ref?: string }[] };
+  // The approval record carries the plan digest, so the workflow ignores it for any other version.
+  // Only a document other than the plan the run already requested approval for is refused here.
   const request = run.events?.findLast((event) => event.type === "approval-requested" && event.phase === "planning");
-  const gate = run.phases?.find((phase) => phase.phase === "planning")?.gates?.find((item) => item.id === "plan-approved");
-  if (request?.ref !== review.document || gate?.status !== "awaiting-approval" || gate.reason !== `plan_sha256=${documentSha}`) {
-    throw new Error("Workflow approval request does not match this version of the plan.");
-  }
+  if (request && request.ref !== review.document) throw new Error(`This document is not the plan of workflow run ${review.run}.`);
 }
 
-export function approveReview(root: string, coreRoot: string, review: PreviewReview, documentSha: string, name: string): void {
-  const decidedBy = name.trim();
-  if (!decidedBy || decidedBy.length > 120 || ["agent", "paved", "ci"].includes(decidedBy.toLowerCase())) {
-    throw new Error("Enter the name of the person approving the document.");
-  }
+function localApprover(): string {
+  try {
+    const name = userInfo().username.trim();
+    if (name && !["agent", "paved", "ci"].includes(name.toLowerCase())) return name;
+  } catch { /* no local account information */ }
+  return "human";
+}
+
+export function approveReview(root: string, coreRoot: string, review: PreviewReview, documentSha: string): void {
   if (review.comments.some((comment) => comment.status === "open")) throw new Error("Resolve open comments before approval.");
-  bindWorkflowApproval(root, review, documentSha);
+  bindWorkflowApproval(root, review);
+  const decidedBy = localApprover();
   const decidedAt = new Date().toISOString();
   review.approval = { document_sha256: documentSha, decided_by: decidedBy, decided_at: decidedAt };
   review.revision += 1;

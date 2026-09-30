@@ -70,11 +70,11 @@ export function renderCommand(command: AgentCommandContract, rendering: CommandR
     "2. Follow the structured result's status, diagnostics, evidence, and next action. Stop when the runtime blocks execution.",
     ...(command.name === "preview" ? [
       "3. Start with `paved preview start <file.md> --run <run-id> --json` for a workflow plan, or omit `--run` for a standalone spec. Give the returned URL to the user.",
-      "4. Keep the review active: call `paved preview wait <file.md> <revision> --json`, starting with the revision from `status`. Repeat after timeouts. When comments arrive, edit the document, advance its workflow once to refresh the plan hash if bound to a run, then call `paved preview resolve <file.md> <comment-id> --json` for each addressed comment. Never resolve before applying the change.",
+      "4. Keep the review active: call `paved preview wait <file.md> <revision> --json`, starting with the revision from `status`, and follow its `next_action`. Do not end your turn while the review is open and not approved; a timeout means call `wait` again immediately, because comments reach you only while `wait` runs. When comments arrive, edit the document, advance its workflow once to refresh the plan hash if bound to a run, then call `paved preview resolve <file.md> <comment-id> --json` for each addressed comment. Never resolve before applying the change.",
       "5. Keep watching until `approved` is true for the current document version. The browser writes the human approval; the agent must never write the approval file. Then resume the workflow with `--run <run-id> --advance` if applicable.",
     ] : []),
     ...(["plan", "feature", "fix", "refactor"].includes(command.name) ? [
-      "3. Save the plan at `.paved/documents/plans/<run-id>.md`. When the planning phase requests human approval, start `paved preview start .paved/documents/plans/<run-id>.md --run <run-id> --json` and present its URL. Follow the `paved.preview` review loop on that exact file: handle selected-text comments, resolve each after editing, and wait for browser approval of the exact plan version before advancing.",
+      "3. Save the plan at `.paved/documents/plans/<run-id>.md`. When the planning phase requests human approval, start `paved preview start .paved/documents/plans/<run-id>.md --run <run-id> --json` and present its URL. Follow the `paved.preview` review loop on that exact file without ending your turn: handle selected-text comments, resolve each after editing, and wait for browser approval of the exact plan version before advancing.",
     ] : []),
     "",
     "## Failure behavior",
