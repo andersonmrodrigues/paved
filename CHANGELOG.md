@@ -5,6 +5,17 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- A `product` skill category with `task-specification` 0.1.0, which turns a request
+  into tracker-ready tasks grounded in the repository (type, description, expected
+  result, verifiable acceptance criteria, technical context, steps to reproduce) and
+  splits requests too large for one task, and `task-review` 0.1.0, which reviews an
+  existing task against the same template and the repository and returns validated
+  findings, a verdict and a corrected version. Both write to a tracker only after the
+  user confirms the exact text; projects customize the template by extending
+  `core.product.task-specification` with an addendum.
+
 ### Fixed
 
 - The Markdown preview approves a plan with a single Approve button: it no longer asks
