@@ -1,38 +1,34 @@
 $schema: https://json-schema.org/draft/2020-12/schema
 $id: urn:paved:schema:preview-review:v1
 title: Paved Markdown preview review
-description: Local, disposable review comments bound to one Markdown file.
+description: Local, disposable review comments on one Markdown file or on the Markdown files of a folder.
 type: object
 additionalProperties: false
-required: [apiVersion, kind, document, revision, comments]
+required: [apiVersion, kind, target, target_kind, revision, comments]
 properties:
   apiVersion: { const: paved/v1 }
   kind: { const: PreviewReview }
-  document: { type: string, minLength: 1 }
+  target: { type: string, minLength: 1 }
+  target_kind: { enum: [file, folder] }
   revision: { type: integer, minimum: 0 }
-  run: { type: string, pattern: '^[a-z][a-z0-9-]{5,80}$' }
-  approval:
-    type: object
-    additionalProperties: false
-    required: [document_sha256, decided_by, decided_at]
-    properties:
-      document_sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
-      decided_by: { type: string, minLength: 1 }
-      decided_at: { $ref: 'urn:paved:schema:common:v1#/$defs/dateTime' }
   comments:
     type: array
     items:
       type: object
       additionalProperties: false
-      required: [id, quote, prefix, suffix, offset, body, status, created_at, document_sha256]
+      required: [id, document, quote, prefix, suffix, offset, body, status, created_at, document_sha256]
       properties:
         id: { type: string, pattern: '^[a-f0-9-]{36}$' }
+        document: { type: string, minLength: 1 }
         quote: { type: string, minLength: 1, maxLength: 4000 }
         prefix: { type: string, maxLength: 80 }
         suffix: { type: string, maxLength: 80 }
         offset: { type: integer, minimum: 0 }
         body: { type: string, minLength: 1, maxLength: 10000 }
-        status: { enum: [open, resolved] }
+        status: { enum: [open, received, working, resolved] }
         created_at: { $ref: 'urn:paved:schema:common:v1#/$defs/dateTime' }
+        received_at: { $ref: 'urn:paved:schema:common:v1#/$defs/dateTime' }
+        working_at: { $ref: 'urn:paved:schema:common:v1#/$defs/dateTime' }
         resolved_at: { $ref: 'urn:paved:schema:common:v1#/$defs/dateTime' }
+        reply: { type: string, minLength: 1, maxLength: 4000 }
         document_sha256: { type: string, pattern: '^[a-f0-9]{64}$' }

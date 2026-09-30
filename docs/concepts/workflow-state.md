@@ -70,23 +70,25 @@ class.
 ## Plan approval
 
 Planning writes an `awaiting-approval` gate tied to the SHA-256 digest of the
-concrete plan file. A human records the decision in
-`.paved/approvals/<run-id>.json` with `run`, `plan_sha256`, `decision`
-(`approved` or `rejected`), `decided_by`, and `decided_at`. The runtime checks
-the file, decision, plan content and recorded gate on every resume. Command
-arguments and edits to a generated run alone cannot satisfy the gate. A
-same-user agent still has filesystem access to a human-owned approval file;
-teams requiring adversarial approval separation need an external identity or
-signature authority.
+concrete plan file. The decision lives in `.paved/approvals/<run-id>.json` with
+`run`, `plan_sha256`, `decision` (`approved` or `rejected`), `decided_by`, and
+`decided_at`. The user approves in the conversation; after an explicit yes, the agent
+runs the workflow with `--run <run-id> --approve`, which records the approval for the
+current plan digest under the local user and resumes. A person may also write the file
+directly, for example to reject. The runtime checks the file, decision, plan content
+and recorded gate on every resume, and `--approve` refuses when the plan changed since
+the request. The record rests on the agent following the instruction to approve only
+after an explicit yes; teams requiring adversarial approval separation need an external
+identity or signature authority.
 
 For workflow Markdown plans, the canonical file is
 `.paved/documents/plans/<run-id>.md`; `paved preview start
-.paved/documents/plans/<run-id>.md --run <run-id>` opens a local review.
-Selected-text comments remain in `.paved/generated/previews/`, and the agent
-can wait for comments and mark them resolved after editing. The browser's Approve
-button writes the same human-owned approval record only when there are no open
-comments and the plan hash matches the pending gate. If the plan changes during
-review, advancing the workflow issues a new approval request for its current hash.
+.paved/documents/plans/<run-id>.md` opens a local review, and a folder opens its
+Markdown files together. Selected-text comments remain in
+`.paved/generated/previews/`; the agent waits for them, marks each as being worked on
+and resolves it with a reply after editing. The preview approves nothing. If the plan
+changes during review, advancing the workflow issues a new approval request for its
+current hash.
 
 Events are append-only reporting and provenance. Approval and evidence events
 are cross-checked against their referenced files when a run resumes. The

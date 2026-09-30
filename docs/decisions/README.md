@@ -37,6 +37,7 @@ writing a new record that supersedes it, not by editing the old one.
 | [0030](0030-local-markdown-review.md) | Local Markdown review for plans and specs | Accepted |
 | [0031](0031-prompt-aware-plugin-hooks.md) | Prompt-aware plugin hooks | Accepted |
 | [0032](0032-update-adopts-newer-plugin-runtime.md) | Update adopts a newer plugin runtime | Accepted |
+| [0033](0033-comment-only-folder-preview.md) | Comment-only preview of files and folders | Accepted |
 
 ## Format
 
