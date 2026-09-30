@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-09-30
+
 ### Added
 
 - A `product` skill category with `task-specification` 0.1.0, which turns a request
