@@ -5,6 +5,11 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Changed
+
+- The preview's document uses the full width between the document list and the
+  comments instead of a narrow centered column.
+
 ## [1.15.0] - 2026-09-30
 
 ### Added
