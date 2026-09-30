@@ -17,8 +17,13 @@ Thanks for helping improve Paved.
 
 ```bash
 npm ci
+git config core.hooksPath .githooks
 npm run check
 ```
+
+The `commit-msg` hook in `.githooks/` rejects `Co-authored-by` lines: commits record one
+author. If you already use a global `core.hooksPath`, call `.githooks/commit-msg` from it
+instead.
 
 The repository requires Node.js 22.18 or later.
 
