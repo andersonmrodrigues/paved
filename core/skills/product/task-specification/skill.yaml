@@ -1,7 +1,7 @@
 apiVersion: paved/v1
 kind: Skill
 id: core.product.task-specification
-version: 0.2.0
+version: 0.3.0
 status: experimental
 category: product
 context:
