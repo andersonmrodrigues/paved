@@ -49,8 +49,8 @@ All Core skills are `experimental`.
 | `code-review` | `change-review` | 0.2.0 | Review a finished change across all dimensions |
 | `gardener` | `gardener` | 0.2.0 | Turn recurring corrections into structural improvements |
 | `decisions` | `decisions` | 0.1.0 | Relay Paved decisions without taking authorship from the user |
-| `product` | `task-specification` | 0.1.0 | Turn a request into tracker-ready tasks grounded in the repository |
-| | `task-review` | 0.1.0 | Review an existing task against the template and the repository |
+| `product` | `task-specification` | 0.2.0 | Write new tracker items or fill in existing ones, grounded in the repository |
+| | `task-review` | 0.2.0 | Review an existing task or issue against the project's template and the repository |
 
 A skill is identified by `<namespace>.<category>.<name>` (for example
 `core.debugging.root-cause-analysis`); `SKILL.md` keeps the short `name` that agents

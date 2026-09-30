@@ -22,7 +22,8 @@ with `.paved/manifest.yaml` or `.git`, and emits
 that root contains both `.paved/manifest.yaml` and `.paved/paved.lock`.
 
 The context points repository changes, testing, planning, and review toward matching
-Paved commands; repository questions toward relevant context without creating a
+Paved commands; writing, filling in, or reviewing tracker items toward the task
+specification and task review skills; repository questions toward relevant context without creating a
 workflow; unrelated requests to normal conversation; and unavailable commands to an
 explicit blocker explanation. It respects explicit user direction.
 

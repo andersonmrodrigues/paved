@@ -45,6 +45,8 @@ describe("prompt submit hook", () => {
     assert.equal(output.hookSpecificOutput.hookEventName, "UserPromptSubmit");
     assert.match(output.hookSpecificOutput.additionalContext, /Paved/i);
     assert.match(output.hookSpecificOutput.additionalContext, /unrelated/i);
+    assert.match(output.hookSpecificOutput.additionalContext, /paved:task-specification/);
+    assert.match(output.hookSpecificOutput.additionalContext, /paved:task-review/);
     assert.doesNotMatch(result.stdout, /private user prompt/);
   });
 
