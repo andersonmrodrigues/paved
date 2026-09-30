@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import MarkdownIt from "markdown-it";
 import { atomicWriteFileSync } from "./atomic-write.ts";
-import { addComment, approveReview, digest, previewDocument, readReview, reviewPath, writeReview } from "./preview-review.ts";
+import { addComment, agentWatching, approveReview, digest, previewDocument, readReview, reviewPath, writeReview } from "./preview-review.ts";
 
 const markdown = new MarkdownIt({ html: false, linkify: true, breaks: false });
 
@@ -83,7 +83,7 @@ export async function servePreview(root: string, coreRoot: string, file: string,
         const current = readReview(root, coreRoot, document.relative);
         const sha = digest(source);
         return json(response, 200, { document: document.relative, sha, html: markdown.render(source), review: current,
-          approved: current.approval?.document_sha256 === sha });
+          approved: current.approval?.document_sha256 === sha, watching: agentWatching(root, document.relative) });
       }
       if (url.pathname === "/api/comments" && request.method === "POST") {
         const value = await body(request);
@@ -97,7 +97,7 @@ export async function servePreview(root: string, coreRoot: string, file: string,
         const current = readReview(root, coreRoot, document.relative);
         const sha = digest(readFileSync(document.path));
         if (value.document_sha256 !== sha) return error(response, 409, "The document changed. Review the latest version before approving.");
-        approveReview(root, coreRoot, current, sha, typeof value.decided_by === "string" ? value.decided_by : "");
+        approveReview(root, coreRoot, current, sha);
         return json(response, 200, { approved: true });
       }
       if (url.pathname === "/api/stop" && request.method === "POST" && request.headers.authorization === `Bearer ${token}`) {

@@ -5,6 +5,17 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Fixed
+
+- The Markdown preview approves a plan with a single Approve button: it no longer asks
+  for the approver's name (the local user running the preview is recorded) and no longer
+  fails with "Workflow approval request does not match this version of the plan" when
+  the plan is approved before the workflow requests approval for that exact version.
+- Preview comments no longer appear to go nowhere: `paved preview wait` records that the
+  agent is watching, the page shows whether the agent is following the review and tells
+  the reviewer to ask in chat when it is not, and every `wait` result carries a
+  `next_action` (a timeout says to wait again instead of ending the turn).
+
 ## [1.10.0] - 2026-09-30
 
 ### Changed
