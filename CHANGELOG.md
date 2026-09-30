@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-09-29
+
 ## [1.8.0] - 2026-09-29
 
 ### Added

@@ -11,7 +11,7 @@
       "name": "paved",
       "source": "./plugins/paved",
       "description": "Paved engineering workflows and skills for AI coding agents.",
-      "version": "1.9.0",
+      "version": "1.9.1",
       "author": {
         "name": "Anderson Rodrigues"
       },
@@ -19,7 +19,12 @@
       "repository": "https://github.com/andersonmrodrigues/paved",
       "license": "MIT",
       "category": "development",
-      "keywords": ["paved", "engineering", "workflow", "coding-agent"]
+      "keywords": [
+        "paved",
+        "engineering",
+        "workflow",
+        "coding-agent"
+      ]
     }
   ]
 }

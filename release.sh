@@ -147,6 +147,16 @@ function updateVersionLine(path, version) {
 updateVersionLine("package.json", coreVersion);
 updateVersionLine("plugins/plugin-source.json", pluginVersion);
 
+const cursorMarketplacePath = ".cursor-plugin/marketplace.json";
+const cursorMarketplace = JSON.parse(fs.readFileSync(cursorMarketplacePath, "utf8"));
+const pluginName = JSON.parse(fs.readFileSync("plugins/plugin-source.json", "utf8")).name;
+const cursorPlugins = cursorMarketplace.plugins.filter((plugin) => plugin.name === pluginName);
+if (cursorPlugins.length !== 1) {
+  throw new Error(`Expected one ${pluginName} plugin entry in ${cursorMarketplacePath}.`);
+}
+cursorPlugins[0].version = pluginVersion;
+fs.writeFileSync(cursorMarketplacePath, JSON.stringify(cursorMarketplace, null, 2) + "\n");
+
 const manifestPath = "manifest.yaml";
 const manifest = fs.readFileSync(manifestPath, "utf8");
 if (!/^version: .*$/m.test(manifest)) {
@@ -314,6 +324,7 @@ git add \
   package-lock.json \
   manifest.yaml \
   plugins/plugin-source.json \
+  .cursor-plugin/marketplace.json \
   plugins/paved \
   CHANGELOG.md
 
