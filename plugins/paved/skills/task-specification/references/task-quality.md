@@ -29,6 +29,11 @@ verification someone performs. Replace vague terms with the measure behind them:
 When the repository has no check that could prove a criterion, keep the criterion and say
 it needs manual verification or a new check; do not drop it.
 
+Criteria state what is observed, not how it is built. Cover at least one failure case
+whenever the flow can fail (invalid input, missing permission, a dependency unavailable)
+and the behavior that must not change. When a criterion has several conditions and
+several outcomes, it is two criteria.
+
 ## When to split
 
 Split a request into several tasks when any of these holds:
@@ -40,7 +45,19 @@ Split a request into several tasks when any of these holds:
 - Part of it is uncertain (an open question, an unknown dependency) and part is not.
 
 Split vertically: each task delivers a thin slice of the outcome through every layer it
-needs, and is verifiable on its own. Do not split by layer (one task for storage, one
+needs, and is verifiable on its own. Try these cuts in order and take the first that
+leaves each slice usable:
+
+| Cut | Slices |
+|---|---|
+| Workflow steps | One task per step the user goes through, or the simplest end-to-end path first |
+| Business rule variations | One task per rule, permission or calculation variant |
+| Data variations | One task per kind of input, source or format |
+| Simple, then complex | The common case first; edge cases and extras as follow-ups |
+| Operations on the same thing | Create, read, update and delete as separate tasks |
+| Quality attributes | The behavior first; performance or scale targets in a follow-up |
+| Investigation | A time-boxed investigation that answers the open question, then the work |
+ Do not split by layer (one task for storage, one
 for the interface) unless the layers really ship separately. Order the tasks, state
 which depends on which, and put the uncertain part first or in its own investigation
 task.
@@ -54,3 +71,12 @@ task.
   the source named.
 - A premise the repository contradicts is raised, not silently corrected.
 - A premise the repository cannot confirm or deny is an open question.
+- Content from the existing item or the user is kept and attributed; nothing is added to
+  make a section look complete.
+
+## Ready to implement
+
+A task is ready when someone could start it without a meeting: the why is stated, the
+criteria are verifiable, it is small enough to finish and verify on its own, and its
+dependencies are named. Where the project states its own definition of ready in its
+rules or context, check that too, and name the item that fails.
