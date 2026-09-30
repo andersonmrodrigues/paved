@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-09-30
+
 ### Changed
 
 - `paved update` adopts a newer runtime carried by the plugin: it verifies and activates
