@@ -11,7 +11,7 @@
       "name": "paved",
       "source": "./plugins/paved",
       "description": "Paved engineering workflows and skills for AI coding agents.",
-      "version": "1.9.2",
+      "version": "1.9.3",
       "author": {
         "name": "Anderson Rodrigues"
       },
