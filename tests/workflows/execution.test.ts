@@ -49,6 +49,35 @@ describe("executable workflow state", () => {
       assert.equal((listed.data as { decisions: { id: string }[] }).decisions.some((item) => item.id === id), true);
     } finally { rmSync(project, { recursive: true, force: true }); }
   });
+  it("records the user's conversational approval for the exact current plan with --approve", async () => {
+    const project = mkdtempSync(join(tmpdir(), "paved-workflow-approve-"));
+    try {
+      writeFileSync(join(project, "README.md"), "# Consumer\n");
+      initializeConsumer(core, project, "consumer");
+      const invoke = (...argv: string[]) => dispatchCli({ argv: [...argv, "--project", project, "--json"] });
+      const id = ((await invoke("feature", "Enable a behavior")).data as { run: string }).run;
+      assert.equal((await invoke("feature", "--run", id, "--approve")).diagnostics[0]?.code, "PAVED_WORKFLOW_APPROVAL_NOT_REQUESTED");
+      await invoke("feature", "--run", id, "--advance", "--note", "Scope is clear");
+      await invoke("feature", "--run", id, "--advance", "--note", "Architecture inspected");
+      const plan = join(project, ".paved/generated/plan.md");
+      writeFileSync(plan, "Implement the behavior with a test.\n");
+      const requested = await invoke("feature", "--run", id, "--advance", "--note", "Plan", "--evidence", ".paved/generated/plan.md");
+      assert.match(JSON.stringify(requested), /--approve/);
+
+      writeFileSync(plan, "Implement the behavior with a regression test.\n");
+      const stale = await invoke("feature", "--run", id, "--approve");
+      assert.equal((stale.data as { status: string }).status, "awaiting-approval", JSON.stringify(stale));
+      assert.throws(() => readFileSync(join(project, `.paved/approvals/${id}.json`)));
+
+      const approved = await invoke("feature", "--run", id, "--approve");
+      assert.equal((approved.data as { currentPhase: string }).currentPhase, "implementation", JSON.stringify(approved));
+      const record = JSON.parse(readFileSync(join(project, `.paved/approvals/${id}.json`), "utf8")) as { plan_sha256: string; decided_by: string; decision: string };
+      assert.equal(record.plan_sha256, createHash("sha256").update(readFileSync(plan)).digest("hex"));
+      assert.equal(record.decision, "approved");
+      assert.ok(!["agent", "paved", "ci"].includes(record.decided_by));
+      assert.equal((await invoke("feature", "--run", id, "--approve")).diagnostics[0]?.code, "PAVED_WORKFLOW_APPROVAL_NOT_REQUESTED");
+    } finally { rmSync(project, { recursive: true, force: true }); }
+  });
   it("persists feature phases and blocks implementation until a matching plan is approved", async () => {
     const project = mkdtempSync(join(tmpdir(), "paved-workflow-"));
     try {
@@ -73,7 +102,7 @@ describe("executable workflow state", () => {
       assert.equal((withoutApproval.data as { status: string } | undefined)?.status, "awaiting-approval", JSON.stringify(withoutApproval));
       const relayedApproval = await invoke("feature", "--run", id, "--advance",
         "--answer", "d-0123456789abcdef0123=approve", "--answered-by", "agent@example.com");
-      assert.match(JSON.stringify(relayedApproval), /approvals/);
+      assert.match(JSON.stringify(relayedApproval), /--approve/);
       const run = parse(readFileSync(runPath, "utf8")) as { phases: { phase: string; status: string; gates?: { reason?: string }[] }[] };
       assert.equal(run.phases.find((phase) => phase.phase === "implementation")?.status, "pending");
       const planSha = run.phases.find((phase) => phase.phase === "planning")?.gates?.find((gate) => gate.reason?.startsWith("plan_sha256="))?.reason?.slice(12);

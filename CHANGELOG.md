@@ -5,6 +5,23 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- `paved preview` reviews a folder: every Markdown file in it, with navigation between
+  documents and comments on any of them in one review and one `wait` loop.
+- Comments show whether the agent received them, is working on them or resolved them;
+  `paved preview working` and `paved preview resolve --reply` report it, and the reply
+  appears in the browser. When the agent is not watching, the page copies a prompt with
+  the pending comments for any agent's terminal.
+- `--approve` on executable workflows records the user's conversational approval for
+  the current plan digest and resumes the run.
+
+### Changed
+
+- The preview approves nothing and no longer takes `--run`: approvals and
+  confirmations are asked in the conversation. `task-specification` and `task-review`
+  0.4.0 ask before writing to the tracker and put split tasks in a folder preview.
+
 ## [1.14.0] - 2026-09-30
 
 ### Changed

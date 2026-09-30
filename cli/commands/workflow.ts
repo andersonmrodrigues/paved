@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import { stringify } from "yaml";
 import { atomicWriteFileSync } from "../lib/atomic-write.ts";
 import { discoverSources } from "../lib/generator-runtime.ts";
 import { loadYaml } from "../lib/documents.ts";
 import { inspectConsumer } from "../lib/consumer-state.ts";
+import { localApprover } from "../lib/local-identity.ts";
 import { resolveSafePath } from "../lib/safe-path.ts";
 import { sanitizeToolOutput } from "../lib/tools.ts";
 import { createRegistry } from "../lib/schemas.ts";
@@ -240,6 +241,14 @@ function approval(invocation: CommandInvocation, run: Run, planSha: string): { d
   return { decision: document.decision as "approved" | "rejected", decided_by: document.decided_by, decided_at: document.decided_at };
 }
 
+// The user approves in the conversation; this records that decision for the exact plan version shown.
+function recordApproval(invocation: CommandInvocation, run: Run, planSha: string): void {
+  const path = resolveSafePath(invocation.paths.projectRoot, `.paved/approvals/${run.id}.json`);
+  mkdirSync(dirname(path), { recursive: true });
+  atomicWriteFileSync(path, `${JSON.stringify({ run: run.id, plan_sha256: planSha, decision: "approved",
+    decided_by: localApprover(), decided_at: now() }, null, 2)}\n`);
+}
+
 function completeAndStartNext(run: Run, phase: Phase): void {
   phase.status = "completed";
   run.events.push({ at: now(), type: "phase-completed", phase: phase.phase });
@@ -286,10 +295,12 @@ async function advance(invocation: CommandInvocation, command: WorkCommand, work
     run.events.push({ at: now(), type: "retry-started", phase: phase.phase });
   }
   if (!phase) throw new Error("Run has no active phase.");
+  if (invocation.flags.approve && phase.phase !== "planning") return blocked(command, "PAVED_WORKFLOW_APPROVAL_NOT_REQUESTED", "No plan awaits approval in this run.", `Resume with paved ${command} --run ${run.id} --advance --json.`, { run: run.id });
   const note = invocation.flags.note?.trim();
   const evidence = evidencePath(invocation);
   if (phase.phase === "planning") {
     const gate = phase.gates?.find((item) => item.id === "plan-approved");
+    if (!gate && invocation.flags.approve) return blocked(command, "PAVED_WORKFLOW_APPROVAL_NOT_REQUESTED", "No plan awaits approval in this run.", `Request approval first with paved ${command} --run ${run.id} --advance --evidence <plan-path> --note <summary> --json.`, { run: run.id });
     if (!gate) {
       if (!evidence || !note) return blocked(command, "PAVED_WORKFLOW_PLAN_REQUIRED", "A concrete plan file and summary are required before approval.", `Run paved ${command} --run ${run.id} --advance --evidence <plan-path> --note <summary> --json.`, { run: run.id });
       const planSha = sha(readFileSync(evidence));
@@ -300,7 +311,7 @@ async function advance(invocation: CommandInvocation, command: WorkCommand, work
       run.status = "awaiting-approval";
       run.events.push({ at: now(), type: "approval-requested", phase: "planning", ref: projectRelative(invocation.paths.projectRoot, evidence), detail: `plan_sha256=${planSha}` });
       save(run, workflow, invocation);
-      return result(command, run, `A human must write .paved/approvals/${run.id}.json with run, plan_sha256, decision, decided_by, and decided_at. Then resume with --run ${run.id} --advance.`);
+      return result(command, run, `Show the plan to the user and ask for approval in the conversation. Only after an explicit yes, run paved ${command} --run ${run.id} --approve --json.`);
     }
     const planSha = gate.reason?.replace(/^plan_sha256=/, "");
     if (!planSha || !/^[a-f0-9]{64}$/.test(planSha)) throw new Error("Workflow approval gate has no valid plan digest.");
@@ -315,10 +326,11 @@ async function advance(invocation: CommandInvocation, command: WorkCommand, work
       run.events.push({ at: now(), type: "approval-requested", phase: "planning", ref: planRef, detail: `plan_sha256=${currentSha}` });
       run.status = "awaiting-approval";
       save(run, workflow, invocation);
-      return result(command, run, `The revised plan needs approval in .paved/approvals/${run.id}.json for plan_sha256 ${currentSha}.`);
+      return result(command, run, `The plan changed, so earlier approval does not cover it. Show the revised plan and ask again; after the user approves it in the conversation, run paved ${command} --run ${run.id} --approve --json.`);
     }
+    if (invocation.flags.approve && gate.status === "awaiting-approval") recordApproval(invocation, run, planSha);
     const decision = approval(invocation, run, planSha);
-    if (!decision) return result(command, run, `Awaiting human approval in .paved/approvals/${run.id}.json for plan_sha256 ${planSha}.`);
+    if (!decision) return result(command, run, `Awaiting the user's approval of plan_sha256 ${planSha}. After an explicit yes in the conversation, run paved ${command} --run ${run.id} --approve --json.`);
     gate.status = decision.decision; gate.decided_by = decision.decided_by; gate.decided_at = decision.decided_at;
     run.events.push({ at: now(), type: "approval-decided", phase: "planning", ref: "plan-approved" });
     if (decision.decision === "rejected") {
@@ -398,7 +410,7 @@ export async function workflowHandler(invocation: CommandInvocation): Promise<Co
   try {
     if (!invocation.flags.run) return start(invocation, command, workflow);
     const run = load(invocation, workflow, invocation.flags.run);
-    if (!invocation.flags.advance) return result(command, run, `Resume with paved ${command} --run ${run.id} --advance --json.`);
+    if (!invocation.flags.advance && !invocation.flags.approve) return result(command, run, `Resume with paved ${command} --run ${run.id} --advance --json.`);
     return await advance(invocation, command, workflow, run);
   } catch (error) {
     return blocked(command, "PAVED_WORKFLOW_STATE_INVALID", error instanceof Error ? error.message : "Workflow failed.", "Inspect the workflow run and correct its state before retrying.");
