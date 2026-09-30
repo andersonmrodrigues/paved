@@ -63,16 +63,19 @@ Where a context area is absent, fall back to the code and say so in the task.
 7. **Check** each task against `references/task-quality.md` and fix what fails. Every
    criterion must name how it would be verified, even when that is a manual check.
 8. **Show it in the preview, not in the chat.** Write every draft, including a single
-   short task, to a Markdown file under `.paved/generated/tasks/`: the text ready to
-   paste, then the contradicted premises and open questions. Open it with
-   `paved preview start <file> --json` (no run) and give the user the URL with a
+   short task, as Markdown under `.paved/generated/tasks/`: the text ready to paste,
+   then the contradicted premises and open questions. One task is one file; split tasks
+   go in one folder, one file per task plus an overview with their order and
+   dependencies, so the reviewer moves between them. Open the file or folder with
+   `paved preview start <file-or-folder> --json` and give the user the URL with a
    summary of at most three lines; do not print the draft in the chat. Follow the
-   preview loop in the workflow instructions: keep waiting, apply each comment to the
-   file and resolve it, until the reviewer approves. Approval there is the user's
-   confirmation. Print the full text in the chat only when the user asks for it or the
-   preview cannot start, and then say why.
-9. **Write to the tracker** only after that confirmation and only when a tracker
-   integration is available: create new items, or replace the existing item's body.
+   preview loop in the workflow instructions: keep waiting, apply each comment to its
+   file and resolve it with a reply, until the user says the review is finished. Print
+   the full text in the chat only when the user asks for it or the preview cannot
+   start, and then say why.
+9. **Ask to write.** The preview approves nothing: ask in the chat whether to create or
+   update the items, naming them. Only after an explicit yes, and only when a tracker
+   integration is available, create new items or replace the existing item's body.
    Never change its title, state, assignee or labels unless the user asked for it.
 
 ## Tools
