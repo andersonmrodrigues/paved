@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-09-30
+
 ### Changed
 
 - `change-review` 0.4.0 reviews against the stated intent in three passes (rules,
