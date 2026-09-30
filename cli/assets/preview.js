@@ -60,7 +60,8 @@ function renderComments() {
     body.textContent = comment.body;
     const status = document.createElement('span');
     status.className = 'status';
-    status.textContent = comment.status === 'resolved' ? 'Resolvido pelo agente' : 'Aberto · aguardando ajuste';
+    status.textContent = comment.status === 'resolved' ? 'Resolvido pelo agente'
+      : state.watching ? 'Aberto · aguardando ajuste do agente' : 'Aberto · o agente não está acompanhando; peça no chat para aplicar os comentários';
     card.append(quote, body, status);
     comments.append(card);
   }
@@ -76,7 +77,7 @@ async function refresh() {
   try {
     const next = await request('/api/state');
     state = next;
-    document.getElementById('connection').textContent = 'Conectado';
+    document.getElementById('connection').textContent = next.watching ? 'Conectado · agente acompanhando' : 'Conectado · agente não está acompanhando';
     document.getElementById('filename').textContent = next.document;
     document.getElementById('version').textContent = `Versão ${next.sha.slice(0, 8)}`;
     if (next.sha !== lastSha) {
@@ -122,13 +123,14 @@ document.getElementById('send-comment').addEventListener('click', async () => {
     await request('/api/comments', { ...selected, body });
     compose.hidden = true;
     document.getElementById('comment-body').value = '';
-    message('Comentário enviado.');
+    message(state.watching ? 'Comentário enviado. O agente vai aplicar o ajuste.'
+      : 'Comentário salvo, mas o agente não está acompanhando esta revisão. Peça no chat para ele aplicar os comentários.');
     await refresh();
   } catch (error) { message(error.message); }
 });
 document.getElementById('approve').addEventListener('click', async () => {
   try {
-    await request('/api/approve', { document_sha256: state.sha, decided_by: document.getElementById('reviewer').value });
+    await request('/api/approve', { document_sha256: state.sha });
     message('Documento aprovado.');
     await refresh();
   } catch (error) { message(error.message); }

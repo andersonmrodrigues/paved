@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { createDiagnostic, createResult, type CommandResult } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
-import { digest, previewDocument, readReview, resolveComment, writeReview } from "../lib/preview-review.ts";
+import { digest, markWatching, previewDocument, readReview, resolveComment, writeReview } from "../lib/preview-review.ts";
 import { servePreview, serverInfoPath, type PreviewServerInfo } from "../lib/preview-server.ts";
 
 function failure(message: string): CommandResult {
@@ -75,17 +75,26 @@ export async function previewHandler(invocation: CommandInvocation): Promise<Com
     if (operation === "wait") {
       const since = argument === undefined ? -1 : Number(argument);
       if (!Number.isSafeInteger(since) || since < -1) return failure("Wait cursor must be a nonnegative revision.");
+      const waitAgain = (revision: number) => `paved preview wait ${document.relative} ${revision} --json`;
       for (let attempt = 0; attempt < 60; attempt += 1) {
+        markWatching(root, document.relative);
         const review = readReview(root, coreRoot, document.relative);
         if (review.revision > since) {
           const sha = digest(readFileSync(document.path));
-          return createResult({ command: "preview", status: "success", data: { revision: review.revision,
-            approved: review.approval?.document_sha256 === sha,
-            comments: review.comments.filter((comment) => comment.status === "open") } });
+          const approved = review.approval?.document_sha256 === sha;
+          const open = review.comments.filter((comment) => comment.status === "open");
+          const nextAction = approved
+            ? (review.run ? `The reviewer approved this version. Resume the workflow with --run ${review.run} --advance.` : "The reviewer approved this version.")
+            : open.length > 0
+              ? `Apply each open comment to ${document.relative}, resolve it with paved preview resolve, then call ${waitAgain(review.revision)} without ending the turn.`
+              : `Call ${waitAgain(review.revision)} without ending the turn.`;
+          return createResult({ command: "preview", status: "success", data: { revision: review.revision, approved,
+            comments: open, next_action: nextAction } });
         }
         await delay(500);
       }
-      return createResult({ command: "preview", status: "success", data: { revision: since, timeout: true } });
+      return createResult({ command: "preview", status: "success", data: { revision: since, timeout: true,
+        next_action: `No reviewer activity yet. Call ${waitAgain(since)} again now; a timeout is not a reason to end the turn while the review is not approved.` } });
     }
     if (operation === "resolve") {
       if (!argument) return failure("Supply the comment id to resolve.");
