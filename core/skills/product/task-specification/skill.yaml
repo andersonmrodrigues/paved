@@ -1,0 +1,28 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.product.task-specification
+version: 0.1.0
+status: experimental
+category: product
+context:
+  required: []
+  optional: [product, domain, feature-map, architecture, integrations, rules, verification]
+tools:
+  required: [core.repository.structure, core.repository.files]
+  optional: []
+rules:
+  - core.quality.unknowns-stay-unknown
+  - core.architecture.follow-existing-patterns
+depends_on:
+  required: []
+  optional: [core.discovery.context-discovery]
+verification:
+  required: []
+evidence:
+  required: []
+references:
+  - references/task-template.md
+  - references/task-quality.md
+  - examples/feature-task.md
+  - examples/bug-task.md
+  - examples/split-epic.md
