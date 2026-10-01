@@ -1,0 +1,130 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:agent-integration:v1
+title: Paved agent integration package
+description: Metadata for a thin projection from Paved Core into an agent-native skill/plugin format.
+type: object
+additionalProperties: false
+required:
+  - apiVersion
+  - kind
+  - id
+  - version
+  - target
+  - supported_paved_api_versions
+  - supported_core_range
+  - capabilities
+  - scope
+  - provenance
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { const: AgentIntegration }
+  id:
+    type: string
+    pattern: "^paved\\.integration\\.[a-z0-9]+(?:-[a-z0-9]+)*$"
+  version: { $ref: "urn:paved:schema:common:v1#/$defs/semver" }
+  target:
+    type: object
+    additionalProperties: false
+    required: [agent, version_range]
+    properties:
+      agent:
+        type: string
+        enum: [codex, claude-code]
+      version_range:
+        type: string
+        minLength: 1
+  supported_paved_api_versions:
+    type: array
+    minItems: 1
+    uniqueItems: true
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  supported_core_range:
+    type: string
+    minLength: 1
+  capabilities:
+    type: array
+    minItems: 1
+    uniqueItems: true
+    items:
+      type: string
+      enum: [context, skills, workflows, tools, verification, status, diagnostics, lifecycle, command-discovery, command-invocation, compatibility]
+  commands:
+    type: array
+    uniqueItems: true
+    items: { $ref: "#/$defs/command" }
+  scope:
+    const: project
+  provenance:
+    type: object
+    additionalProperties: false
+    required: [owner, generated]
+    properties:
+      owner: { const: paved }
+      generated: { const: true }
+$defs:
+  command:
+    type: object
+    additionalProperties: false
+    required:
+      - id
+      - group
+      - description
+      - input
+      - output
+      - required_context
+      - required_capabilities
+      - allowed_side_effects
+      - lifecycle
+      - cli_command
+      - failure_semantics
+      - interaction
+      - decision_sources
+      - answer_channels
+    properties:
+      id:
+        type: string
+        pattern: "^paved\\.[a-z][a-z0-9-]*$"
+      group: { enum: [development, management] }
+      description: { type: string, minLength: 1 }
+      input:
+        type: object
+        additionalProperties: false
+        required: [required, description]
+        properties:
+          required: { type: boolean }
+          description: { type: string, minLength: 1 }
+      output: { type: string, minLength: 1 }
+      required_context:
+        type: array
+        uniqueItems: true
+        items: { type: string, minLength: 1 }
+      required_capabilities:
+        type: array
+        uniqueItems: true
+        items: { type: string, minLength: 1 }
+      allowed_side_effects:
+        type: array
+        uniqueItems: true
+        items: { type: string, minLength: 1 }
+      lifecycle:
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items:
+          enum: [UNINITIALIZED, INITIALIZED, RESOLVED, GENERATED, VALIDATED, READY, STALE, INCOMPATIBLE, BROKEN]
+      workflow: { type: string, minLength: 1 }
+      tool: { type: string, minLength: 1 }
+      cli_command: { type: string, minLength: 1 }
+      failure_semantics:
+        type: array
+        minItems: 1
+        items: { type: string, minLength: 1 }
+      interaction: { enum: [conversational, read-only] }
+      decision_sources:
+        type: array
+        uniqueItems: true
+        items: { enum: [runtime, agent] }
+      answer_channels:
+        type: array
+        uniqueItems: true
+        items: { enum: [relayed, human-authored] }

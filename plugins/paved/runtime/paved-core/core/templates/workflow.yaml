@@ -1,0 +1,41 @@
+apiVersion: paved/v1
+kind: Workflow
+id: project.example-workflow
+title: Example workflow
+description: >-
+  What class of change this workflow carries from request to completion. Use when a task
+  is that kind of change; name the neighbouring workflow for similar tasks.
+version: 0.1.0
+status: experimental
+change_type: feature
+inputs:
+  - id: request
+    description: What the task asks for.
+    required: true
+context:
+  required: []
+  optional: [feature-map]
+phases:
+  - phase: context
+    goal: Restate the task and locate the relevant context.
+    skills: [core.discovery.context-discovery]
+  - phase: implementation
+    goal: Make the change.
+  - phase: verification
+    goal: Run the checks that prove the planned claims.
+    verification:
+      required: [unit]
+      recommended: [integration]
+  - phase: evidence
+    goal: Record claims, check results and gaps.
+  - phase: completion
+    goal: Confirm every completion criterion is met.
+    gates:
+      - id: criteria-met
+        condition: The evidence record is complete and valid.
+evidence:
+  required: [check-result, diff]
+outputs: [change, evidence]
+completion:
+  criteria:
+    - What must be true for this class of change, beyond the standard completion rule.

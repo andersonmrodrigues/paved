@@ -1,0 +1,148 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:skill:v1
+title: Paved skill contract
+description: >
+  `skill.yaml` next to a SKILL.md. The SKILL.md stays compliant with the Agent Skills
+  specification (https://agentskills.io/specification): its frontmatter (`name`,
+  `description`) is what agents discover, and its body is the procedure. skill.yaml holds
+  what tooling can check: identity, lifecycle, the context, tools, rules and skills the
+  skill depends on, and the verification and evidence that prove its outcome. Prose
+  (procedure, criteria, failure modes) belongs in SKILL.md only. See
+  docs/concepts/skills.md.
+type: object
+additionalProperties: false
+required: [apiVersion, kind, id, version, status, category, context, verification, evidence]
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { const: Skill }
+  id:
+    description: >
+      <namespace>.<category>.<name>. The last segment must equal the directory name and
+      the `name` in SKILL.md frontmatter; the middle segment must equal `category`.
+    $ref: "urn:paved:schema:common:v1#/$defs/skillRef"
+  version:
+    description: >
+      Version of this skill, independent of the Core release that ships it. Major: the
+      skill's purpose, required context, required tools, dependencies or required
+      verification changed, so work that satisfied it before may not now. Minor: new
+      optional context, tools or steps compatible with the existing procedure. Patch:
+      wording. `experimental` skills stay below 1.0.0; `stable` skills are 1.0.0 or later.
+    $ref: "urn:paved:schema:common:v1#/$defs/semver"
+  status: { $ref: "urn:paved:schema:common:v1#/$defs/lifecycleStatus" }
+  deprecation:
+    description: Required when, and only when, `status` is `deprecated`.
+    $ref: "urn:paved:schema:common:v1#/$defs/deprecation"
+    type: object
+    properties:
+      replaced_by: { $ref: "urn:paved:schema:common:v1#/$defs/skillRef" }
+    unevaluatedProperties: false
+  category:
+    description: Must equal the parent directory name and the middle segment of `id`.
+    enum: [bootstrap, discovery, development, debugging, testing, performance, security, code-review, gardener, decisions, product]
+  context:
+    description: >
+      Context areas the skill reads. The Core manifest's `context_areas` maps each area
+      to where it lives in a consumer. A missing required area is a failure mode the
+      skill handles, never something the agent fills in.
+    type: object
+    additionalProperties: false
+    required: [required]
+    properties:
+      required: { $ref: "#/$defs/contextAreas" }
+      optional: { $ref: "#/$defs/contextAreas" }
+  tools:
+    description: >
+      Tool ids the skill may use. `required` tools must exist in the effective set;
+      `optional` tools are used when present (typically provided by an adapter or the
+      project) and the skill says what to do without them.
+    type: object
+    additionalProperties: false
+    properties:
+      required: { $ref: "#/$defs/toolRefs" }
+      optional: { $ref: "#/$defs/toolRefs" }
+  rules:
+    description: >
+      Rule ids the skill must respect in addition to rules that apply by scope. A
+      referenced rule must exist; rules are never optional.
+    type: array
+    uniqueItems: true
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/ruleRef" }
+  depends_on:
+    description: >
+      Skills this skill hands work to during its procedure. `required`: the procedure
+      cannot complete without it. `optional`: used only in some situations. The
+      dependency graph must be acyclic. Dependencies are loaded when the step that names
+      them is reached, not when this skill is activated.
+    type: object
+    additionalProperties: false
+    properties:
+      required: { $ref: "#/$defs/skillRefs" }
+      optional: { $ref: "#/$defs/skillRefs" }
+  verification:
+    description: >
+      Check types that prove this skill's outcome. Each `required` type appears in the
+      evidence as a passed check or as a gap with a reason. `recommended` types are run
+      when the project's profile has them; not running one is a warning. `optional`
+      types are run when relevant; not running one is informational.
+    type: object
+    additionalProperties: false
+    required: [required]
+    properties:
+      required: { $ref: "#/$defs/checkTypes" }
+      recommended: { $ref: "#/$defs/checkTypes" }
+      optional: { $ref: "#/$defs/checkTypes" }
+  evidence:
+    description: >
+      Evidence kinds a record must contain for work done with this skill. Empty only for
+      skills that change nothing (discovery, analysis); quality checks require it for
+      skills that change code.
+    type: object
+    additionalProperties: false
+    required: [required]
+    properties:
+      required:
+        type: array
+        uniqueItems: true
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/evidenceKind" }
+  references:
+    description: >
+      Supporting files, loaded only when SKILL.md points to them: `references/` (detail),
+      `examples/` (synthetic examples), `scripts/` (deterministic helpers), `assets/`
+      (templates). One level deep; every file in those directories is listed here.
+    type: array
+    uniqueItems: true
+    items:
+      type: string
+      pattern: "^(references|examples|scripts|assets)/[a-z0-9]+(-[a-z0-9]+)*\\.[a-z0-9]+$"
+allOf:
+  - if:
+      properties: { status: { const: deprecated } }
+    then:
+      required: [deprecation]
+    else:
+      not: { required: [deprecation] }
+  - if:
+      properties: { status: { const: experimental } }
+    then:
+      properties: { version: { type: string, pattern: "^0\\." } }
+  - if:
+      properties: { status: { const: stable } }
+    then:
+      properties: { version: { type: string, not: { pattern: "^0\\." } } }
+$defs:
+  contextAreas:
+    type: array
+    uniqueItems: true
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/contextArea" }
+  toolRefs:
+    type: array
+    uniqueItems: true
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/toolRef" }
+  skillRefs:
+    type: array
+    uniqueItems: true
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/skillRef" }
+  checkTypes:
+    type: array
+    uniqueItems: true
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/checkType" }

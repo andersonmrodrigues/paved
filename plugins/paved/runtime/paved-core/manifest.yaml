@@ -1,0 +1,274 @@
+# Paved Core manifest. Validated by schemas/manifest.schema.yaml (kind: Core).
+# `version` must equal the VERSION file; tests enforce it.
+apiVersion: paved/v1
+kind: Core
+name: paved-core
+version: 1.15.1
+supported_api_versions:
+  - paved/v1
+
+schemas:
+  Core: schemas/manifest.schema.yaml
+  Project: schemas/manifest.schema.yaml
+  Lock: schemas/lock.schema.yaml
+  Adapter: schemas/adapter.schema.yaml
+  CapabilityRegistry: schemas/capability-registry.schema.yaml
+  Rule: schemas/rule.schema.yaml
+  Skill: schemas/skill.schema.yaml
+  Workflow: schemas/workflow.schema.yaml
+  WorkflowRun: schemas/workflow-run.schema.yaml
+  Tool: schemas/tool.schema.yaml
+  ToolImplementation: schemas/tool-implementation.schema.yaml
+  Evidence: schemas/evidence.schema.yaml
+  VerificationProfile: schemas/verification.schema.yaml
+  Check: schemas/check.schema.yaml
+  Decision: schemas/decision.schema.yaml
+  Feature: schemas/feature.schema.yaml
+  ContextDocument: schemas/project-context.schema.yaml
+  Overrides: schemas/override.schema.yaml
+  Generator: schemas/generator.schema.yaml
+  GeneratedArtifact: schemas/generated-artifact.schema.yaml
+  GardenerObservation: schemas/gardener-observation.schema.yaml
+  GardenerProposal: schemas/gardener-proposal.schema.yaml
+  GardenerReviews: schemas/gardener-review.schema.yaml
+  CoreImprovementCandidate: schemas/core-improvement-candidate.schema.yaml
+  AgentIntegration: schemas/agent-integration.schema.yaml
+  PreviewReview: schemas/preview-review.schema.yaml
+
+# Schemas that define shared structures, not a document kind.
+schema_definitions:
+  - schemas/common.schema.yaml
+  - schemas/provenance.schema.yaml
+
+content:
+  instructions: core/instructions
+  skills: core/skills
+  workflows: core/workflows
+  rules: core/rules
+  tools: core/tools
+  tool_implementations: core/tool-implementations
+  verification: core/verification
+  templates: core/templates
+  generators: generators
+  adapters: adapters
+
+# Static dependency model of this repository. A component may link to, import or
+# reference only itself and the components in `depends_on`. Distributed components ship
+# in a Core release and may depend only on other distributed components.
+# Enforced by tests/core/boundaries.test.ts. Explained in docs/concepts/boundaries.md.
+components:
+  - name: schemas
+    path: schemas
+    distributed: true
+    depends_on: []
+    responsibility: Machine-readable contracts for every Paved document kind.
+  - name: core
+    path: core
+    distributed: true
+    depends_on: [schemas]
+    responsibility: Universal agent behavior - instructions, skills, workflows, rules, tools, verification model, templates.
+  - name: generators
+    path: generators
+    distributed: true
+    depends_on: [schemas, core]
+    responsibility: Contracts for turning a consumer repository into Project Context and proposals.
+  - name: adapters
+    path: adapters
+    distributed: false
+    depends_on: [schemas, core]
+    responsibility: Reusable technology knowledge, versioned independently of the Core.
+  - name: cli
+    path: cli
+    distributed: false
+    depends_on: [schemas, core, generators, adapters, integrations]
+    responsibility: Command contracts and shared libraries that load, validate, resolve, generate and verify.
+  - name: integrations
+    path: integrations
+    distributed: false
+    depends_on: [schemas, core]
+    responsibility: Thin agent-specific projections of the public Paved integration contract.
+  - name: plugins
+    path: plugins
+    distributed: false
+    depends_on: [schemas, core, integrations]
+    responsibility: The generated, installable Paved plugin for Codex and Claude Code and the build that produces it from the Core.
+  - name: docs
+    path: docs
+    distributed: false
+    depends_on: [schemas, core, generators, adapters, cli, integrations, plugins, tests]
+    responsibility: Architecture, decisions and guides for maintainers and integrators.
+  - name: tests
+    path: tests
+    distributed: false
+    depends_on: [schemas, core, generators, adapters, cli, integrations, plugins]
+    responsibility: Self-tests of every contract in this repository.
+
+# Where each context area a skill declares (skill.yaml `context`) lives in a consumer.
+# `technology` also includes the knowledge of the selected adapters.
+context_areas:
+  manifest: .paved/manifest.yaml
+  architecture: .paved/project/architecture/
+  domain: .paved/project/domain/
+  product: .paved/project/product/
+  integrations: .paved/project/integrations/
+  technology: .paved/project/technology/
+  feature-map: .paved/project/feature-map/
+  rules: .paved/rules/
+  verification: .paved/verification/profile.yaml
+  tools: .paved/tools/
+  overrides: .paved/overrides/overrides.yaml
+
+# What a consumer repository contains and who may write each path.
+# Longest matching path wins. See docs/concepts/multi-repository.md and
+# docs/concepts/ownership-and-regeneration.md.
+consumer_layout:
+  - path: AGENTS.md
+    ownership: human-owned
+    required: false
+    committed: true
+    description: >
+      Repository entrypoint for agents. `paved init` adds a delimited Paved block
+      pointing to .paved/ and never rewrites text outside that block.
+  - path: .paved/manifest.yaml
+    ownership: human-owned
+    required: true
+    committed: true
+    schema: Project
+    description: Declares the project, its compatible Core range and its adapters. The only mandatory file.
+  - path: .paved/paved.lock
+    ownership: tool-managed
+    required: false
+    committed: true
+    schema: Lock
+    description: Exact Core and adapter versions and digests resolved by the CLI. Written only by `paved init` and `paved update`.
+  - path: .paved/runtime/
+    ownership: tool-managed
+    required: false
+    committed: false
+    description: >
+      Project-local Paved runtime activated by the agent launcher: verified installations
+      under versions/, the selection pinned by paved.lock, a disposable artifact cache and
+      an optional rollback record. Written only by the launcher; ignores itself in Git and
+      is reacquired from the lock.
+  - path: .paved/project/
+    ownership: generated-reviewed
+    required: false
+    committed: true
+    schema: ContextDocument
+    description: >
+      Project Context as Markdown with ContextDocument frontmatter (architecture,
+      domain, product, integrations, technology). Drafted by generators, reviewed and corrected by
+      humans. Human edits are preserved.
+  - path: .paved/project/feature-map/
+    ownership: generated-reviewed
+    required: false
+    committed: true
+    schema: Feature
+    description: One Feature document per feature.
+  - path: .paved/rules/
+    ownership: project-owned
+    required: false
+    committed: true
+    schema: Rule
+    description: Project rules (id prefix `project.`).
+  - path: .paved/verification/
+    ownership: project-owned
+    required: false
+    committed: true
+    description: >
+      Verification profile (profile.yaml, schema VerificationProfile) and
+      project-specific verification material. Required for the `ready` state.
+  - path: .paved/verification/checks/
+    ownership: project-owned
+    required: false
+    committed: true
+    schema: Check
+    description: Project check definitions (<group>/<name>.yaml, id project.<group>.<name>). Checks reference Tool capabilities; implementations are resolved separately.
+  - path: .paved/verification/evidence/
+    ownership: project-owned
+    required: false
+    committed: true
+    schema: Evidence
+    description: >
+      Evidence records the project keeps (retention `release` or `audit`), copied from
+      .paved/generated/evidence/. Large artifacts stay outside version control and are referenced by
+      location and digest.
+  - path: .paved/tools/
+    ownership: project-owned
+    required: false
+    committed: true
+    schema: Tool
+    description: Project tool contracts (id prefix `project.`).
+  - path: .paved/tool-implementations/
+    ownership: project-owned
+    required: false
+    committed: true
+    schema: ToolImplementation
+    description: Project bindings from Tool capabilities to executable implementations.
+  - path: .paved/skills/
+    ownership: project-owned
+    required: false
+    committed: true
+    description: Project skills (SKILL.md + skill.yaml, id prefix `project.`). Short names must be unique among active skills.
+  - path: .paved/workflows/
+    ownership: project-owned
+    required: false
+    committed: true
+    description: Project workflows (WORKFLOW.md + workflow.yaml, id prefix `project.`). Short names must be unique among active workflows.
+  - path: .paved/documents/
+    ownership: project-owned
+    required: false
+    committed: true
+    description: Durable, versioned Markdown work documents such as intents, plans, specs, tasks, and research. Related documents use the workflow run id; unlike workflow state and local evidence, these documents are kept with the project change.
+  - path: .paved/overrides/
+    ownership: human-owned
+    required: false
+    committed: true
+    description: Typed, reasoned adjustments to inherited content (overrides.yaml, schema Overrides, plus addenda).
+  - path: .paved/generated/
+    ownership: disposable
+    required: false
+    committed: false
+    description: >
+      Regenerable output: generator proposals, generation state and evidence records.
+      Core cache materialization is planned. Safe to delete.
+  - path: .paved/gardener/
+    ownership: human-owned
+    required: false
+    committed: true
+    schema: GardenerReviews
+    description: Optional human review decisions for advisory Gardener proposals.
+  - path: .paved/generated/runs/
+    ownership: disposable
+    required: false
+    committed: false
+    schema: WorkflowRun
+    description: >
+      One record per workflow run (<run-id>.yaml): phase and gate status, failures,
+      approvals and events. Kept until the change it describes is merged or abandoned.
+  - path: .paved/generated/evidence/
+    ownership: disposable
+    required: false
+    committed: false
+    schema: Evidence
+    description: >
+      Evidence records of local and CI runs (<id>.yaml, retention `local` or `change`)
+      and their small artifacts. Attached to the change request or CI run; kept records
+      move to .paved/verification/evidence/.
+  - path: .paved/decisions/
+    ownership: tool-managed
+    required: false
+    committed: true
+    schema: Decision
+    description: >
+      Material project-scoped decisions Paved asked and the project answered, with their
+      evidence, answer provenance and the state each answer produced. Written only by
+      Paved commands; the authority for configuration Paved wrote on the project's behalf.
+  - path: .paved/approvals/
+    ownership: human-owned
+    required: false
+    committed: true
+    description: >
+      Human-authored approval records for irreversible decisions and plan approval
+      (<run-id>.json, <decision-id>.json), bound by digest to the exact content approved.
+      Paved never writes this path.

@@ -1,22 +1,27 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { join, relative, sep } from "node:path";
 import { after, describe, it } from "node:test";
 import { AGENT_COMMANDS } from "../../integrations/shared/commands.ts";
 import { loadCanonicalSkills } from "../../integrations/shared/catalog.ts";
 import {
-  PLUGIN_DIRECTORY, PROVENANCE_FILE, archiveContentDigest, packRuntime, planPlugin, readPluginSource,
-  reconcilePlugin, selectRuntime, writePlugin, type PluginProvenance,
+  PLUGIN_DIRECTORY, PROVENANCE_FILE, RUNTIME_DIRECTORY, packRuntime, planPlugin, readPluginSource,
+  reconcilePlugin, writePlugin, type PluginProvenance,
 } from "../../plugins/build.ts";
-import { ROOT, filesRecursive, rel } from "../helpers.ts";
+import { ROOT, filesRecursive, rel, treeIntegrity } from "../helpers.ts";
 import { codexVisibleSkills, hostAvailable, installWithCodex, repositorySnapshot, workspace } from "./support.ts";
 
 const plugin = join(ROOT, PLUGIN_DIRECTORY);
 const readJson = <T>(path: string): T => JSON.parse(readFileSync(path, "utf8")) as T;
 const provenance = readJson<PluginProvenance>(join(plugin, PROVENANCE_FILE));
 const sha256 = (value: Buffer) => createHash("sha256").update(value).digest("hex");
+/** Every file under a directory, relative and slash-separated, bundled node_modules included. */
+const allFiles = (dir: string): string[] => readdirSync(dir, { recursive: true, withFileTypes: true })
+  .filter((entry) => entry.isFile())
+  .map((entry) => relative(dir, join(entry.parentPath, entry.name)).split(sep).join("/"))
+  .sort();
 const temporary: string[] = [];
 after(() => { for (const path of temporary) rmSync(path, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); });
 
@@ -27,13 +32,13 @@ const expectedSkills = (): string[] => {
 
 describe("generated plugin", () => {
   it("is exactly what the build produces from the current Core", () => {
-    const runtime = selectRuntime(ROOT, packRuntime(ROOT, { build: false }));
+    const runtime = packRuntime(ROOT, { build: false });
     const result = reconcilePlugin(ROOT, planPlugin(ROOT, runtime));
     assert.deepEqual(result, { drift: [], conflicts: [] }, "run `npm run build:plugin` and commit plugins/paved/");
   });
 
   it("records a digest for every file and nothing else", () => {
-    const present = filesRecursive(plugin, () => true).map((file) => rel(file).slice(PLUGIN_DIRECTORY.length + 1)).filter((path) => path !== PROVENANCE_FILE).sort();
+    const present = allFiles(plugin).filter((path) => path !== PROVENANCE_FILE);
     assert.deepEqual(present, Object.keys(provenance.files).sort());
     for (const [path, digest] of Object.entries(provenance.files)) assert.equal(sha256(readFileSync(join(plugin, path))), digest, path);
     assert.equal(provenance._paved_generated, true);
@@ -52,10 +57,11 @@ describe("generated plugin", () => {
     assert.equal(readFileSync(join(plugin, "VERSION"), "utf8").trim(), source.version);
     assert.equal(provenance.plugin.version, source.version);
     assert.equal(provenance.runtime.version, core.version, "the bundled runtime is this repository's paved-core");
-    const bootstrap = readJson<{ version: string; integrity: string; tarball: string }>(join(plugin, "bin", "bootstrap.json"));
+    const bootstrap = readJson<{ version: string; integrity: string; runtime: string; tarball?: string }>(join(plugin, "bin", "bootstrap.json"));
     assert.equal(bootstrap.version, provenance.runtime.version);
     assert.equal(bootstrap.integrity, provenance.runtime.integrity);
-    assert.equal(join("bin", bootstrap.tarball), join("bin", "..", provenance.runtime.file));
+    assert.equal(join("bin", bootstrap.runtime), join("bin", "..", provenance.runtime.directory));
+    assert.equal(bootstrap.tarball, undefined, "the plugin ships no archive");
   });
 
   it("ships a square PNG listing icon within Claude's directory limits", () => {
@@ -100,18 +106,20 @@ describe("generated plugin", () => {
     assert.ok(provenance.files[".cursor-plugin/plugin.json"] !== undefined);
   });
 
-  it("bundles a runtime whose bytes and contents match the provenance", () => {
-    const bytes = readFileSync(join(plugin, provenance.runtime.file));
-    assert.equal(bytes.length, provenance.runtime.bytes);
-    assert.equal(`sha512-${createHash("sha512").update(bytes).digest("base64")}`, provenance.runtime.integrity);
-    assert.equal(archiveContentDigest(bytes), provenance.runtime.content_sha256);
-    const listing = spawnSync("tar", ["-tzf", join(plugin, provenance.runtime.file)], { encoding: "utf8" }).stdout.split("\n").filter(Boolean);
-    assert.ok(listing.includes("package/cli/build/cli/index.js"));
-    assert.ok(listing.includes("package/node_modules/yaml/package.json"), "dependencies are bundled for offline activation");
-    assert.ok(listing.includes("package/node_modules/ajv/package.json"));
-    for (const forbidden of ["package/tests/", "package/plugins/", "package/.paved/", "package/docs/"]) {
+  it("bundles an unpacked runtime whose contents match the provenance", () => {
+    const runtime = join(plugin, provenance.runtime.directory);
+    assert.equal(provenance.runtime.directory, RUNTIME_DIRECTORY);
+    assert.equal(treeIntegrity(runtime), provenance.runtime.integrity);
+    const listing = allFiles(runtime);
+    assert.equal(listing.length, provenance.runtime.files);
+    assert.ok(listing.includes("cli/build/cli/index.js"));
+    assert.ok(listing.includes("node_modules/yaml/package.json"), "dependencies are bundled for offline activation");
+    assert.ok(listing.includes("node_modules/ajv/package.json"));
+    for (const forbidden of ["tests/", "plugins/", ".paved/", "docs/"]) {
       assert.ok(!listing.some((entry) => entry.startsWith(forbidden)), `${forbidden} must not ship in the runtime`);
     }
+    const archives = allFiles(plugin).filter((path) => /\.(tgz|tar|gz|zip)$/.test(path));
+    assert.deepEqual(archives, [], "every shipped file stays readable to directory reviews");
   });
 
   it("launches through the shared launcher and never embeds machine paths", () => {
@@ -148,7 +156,7 @@ describe("generated plugin", () => {
     for (const path of ["plugins/plugin-source.json", "plugins/icon.png", "core/skills", "integrations/shared", PLUGIN_DIRECTORY]) {
       cpSync(join(ROOT, path), join(root, path), { recursive: true });
     }
-    const runtime = selectRuntime(ROOT, packRuntime(ROOT, { build: false }));
+    const runtime = packRuntime(ROOT, { build: false });
     assert.deepEqual(reconcilePlugin(root, planPlugin(root, runtime)).drift, []);
     const edited = join(root, PLUGIN_DIRECTORY, "skills", "status", "SKILL.md");
     writeFileSync(edited, `${readFileSync(edited, "utf8")}\nLocal note.\n`);

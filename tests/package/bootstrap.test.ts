@@ -3,11 +3,11 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { parse, stringify } from "yaml";
-import { CORE_VERSION } from "../helpers.ts";
+import { CORE_VERSION, treeIntegrity } from "../helpers.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -380,15 +380,3 @@ describe("project-local agent bootstrap", () => {
   });
 });
 
-function treeIntegrity(directory: string): string {
-  const lines: string[] = [];
-  const walk = (current: string) => {
-    for (const entry of readdirSync(current, { withFileTypes: true })) {
-      const full = join(current, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else lines.push(`${relative(directory, full).split(sep).join("/")}\0${createHash("sha256").update(readFileSync(full)).digest("hex")}`);
-    }
-  };
-  walk(directory);
-  return `sha512-${createHash("sha512").update(lines.sort().join("\n")).digest("base64")}`;
-}

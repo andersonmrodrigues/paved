@@ -1,14 +1,14 @@
 // Builds the distributable Paved plugin under plugins/paved/ from Paved Core sources.
 // Everything in that directory is generated: identity comes from plugin-source.json,
 // skills and command skills from the canonical Core catalog, the launcher from
-// integrations/shared/bootstrap.mjs and the runtime from `npm pack` of this repository.
+// integrations/shared/bootstrap.mjs and the runtime from `npm pack` of this repository,
+// unpacked so every shipped file stays readable to plugin directory reviews.
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { gunzipSync } from "node:zlib";
 import { loadCanonicalSkills, skillResources } from "../integrations/shared/catalog.ts";
 import { AGENT_COMMANDS } from "../integrations/shared/commands.ts";
 import { renderCommand, renderSkill, type LauncherReference } from "../integrations/shared/projection.ts";
@@ -16,7 +16,8 @@ import { renderCommand, renderSkill, type LauncherReference } from "../integrati
 export const PLUGIN_DIRECTORY = join("plugins", "paved");
 export const PROVENANCE_FILE = "provenance.json";
 export const GENERATOR_ID = "paved.plugin.build";
-const GENERATOR_VERSION = "1.0.0";
+export const RUNTIME_DIRECTORY = "runtime/paved-core";
+const GENERATOR_VERSION = "2.0.0";
 
 export interface PluginSource {
   readonly name: string;
@@ -35,23 +36,21 @@ export interface PluginSource {
 
 export interface RuntimeArtifact {
   readonly version: string;
-  readonly bytes: Buffer;
+  /** Package files keyed by their path inside the package. */
+  readonly files: ReadonlyMap<string, Buffer>;
   readonly integrity: string;
-  readonly contentSha256: string;
 }
 
 export interface PluginProvenance {
   readonly _paved_generated: true;
   readonly generator: { readonly id: string; readonly version: string };
   readonly plugin: { readonly name: string; readonly version: string };
-  readonly source: { readonly package: "paved-core"; readonly version: string; readonly content_sha256: string };
   readonly runtime: {
     readonly package: "paved-core";
     readonly version: string;
-    readonly file: string;
+    readonly directory: string;
     readonly integrity: string;
-    readonly content_sha256: string;
-    readonly bytes: number;
+    readonly files: number;
   };
   readonly files: Readonly<Record<string, string>>;
 }
@@ -72,43 +71,30 @@ export function readPluginSource(root: string): PluginSource {
   return JSON.parse(readFileSync(join(root, "plugins", "plugin-source.json"), "utf8")) as PluginSource;
 }
 
-/** Digest of the files inside a package tarball, independent of gzip and tar encoding. */
-export function archiveContentDigest(bytes: Buffer): string {
-  const data = gunzipSync(bytes);
-  const entries: string[] = [];
-  let offset = 0;
-  let paxPath: string | undefined;
-  while (offset + 512 <= data.length) {
-    const header = data.subarray(offset, offset + 512);
-    if (header.every((byte) => byte === 0)) break;
-    const field = (start: number, length: number) => header.subarray(start, start + length).toString("utf8").split("\0")[0] ?? "";
-    const size = Number.parseInt(field(124, 12).trim() || "0", 8);
-    const type = String.fromCharCode(header[156] || 48);
-    const body = data.subarray(offset + 512, offset + 512 + size);
-    offset += 512 + Math.ceil(size / 512) * 512;
-    if (type === "x") {
-      paxPath = /(?:^|\n)\d+ path=([^\n]*)\n/.exec(body.toString("utf8"))?.[1];
-      continue;
+/**
+ * Integrity of an unpacked package: SHA-512 over its sorted `path\0sha256` lines. The
+ * launcher computes the same value over the copy it activates.
+ */
+export function directoryIntegrity(files: ReadonlyMap<string, Buffer>): string {
+  const lines = [...files].map(([path, bytes]) => `${path}\0${sha256(bytes)}`).sort();
+  return `sha512-${createHash("sha512").update(lines.join("\n")).digest("base64")}`;
+}
+
+function readTree(directory: string): Map<string, Buffer> {
+  const files = new Map<string, Buffer>();
+  const walk = (current: string) => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const full = join(current, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.isFile()) files.set(relative(directory, full).split(sep).join("/"), readFileSync(full));
+      else throw new Error(`Unexpected entry in packed runtime: ${relative(directory, full)}`);
     }
-    if (type === "g") continue;
-    const prefix = field(345, 155);
-    const name = paxPath ?? (prefix ? `${prefix}/${field(0, 100)}` : field(0, 100));
-    paxPath = undefined;
-    if (type === "0") entries.push(`${name}\0${sha256(body)}`);
-  }
-  return sha256(entries.sort().join("\n"));
-}
-
-export function runtimeArtifact(bytes: Buffer, version: string): RuntimeArtifact {
-  return {
-    version,
-    bytes,
-    integrity: `sha512-${createHash("sha512").update(bytes).digest("base64")}`,
-    contentSha256: archiveContentDigest(bytes),
   };
+  walk(directory);
+  return files;
 }
 
-/** Packs this repository as the paved-core runtime. `build` compiles the CLI first. */
+/** Packs this repository as the paved-core runtime and unpacks it. `build` compiles the CLI first. */
 export function packRuntime(root: string, options: { build: boolean }): RuntimeArtifact {
   if (options.build) {
     const built = spawnSync("npm", ["run", "build"], { cwd: root, encoding: "utf8", shell: false });
@@ -120,31 +106,13 @@ export function packRuntime(root: string, options: { build: boolean }): RuntimeA
     if (packed.status !== 0) throw new Error(`npm pack failed: ${packed.stderr}`);
     const [artifact] = JSON.parse(packed.stdout) as { filename: string; version: string }[];
     if (artifact === undefined) throw new Error("npm pack produced no artifact.");
-    return runtimeArtifact(readFileSync(join(workspace, artifact.filename)), artifact.version);
+    const unpacked = spawnSync("tar", ["-xzf", artifact.filename], { cwd: workspace, encoding: "utf8", shell: false });
+    if (unpacked.status !== 0) throw new Error(`tar failed to unpack the runtime: ${unpacked.stderr}`);
+    const files = readTree(join(workspace, "package"));
+    return { version: artifact.version, files, integrity: directoryIntegrity(files) };
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }
-}
-
-export function runtimeFileName(version: string): string {
-  return `runtime/paved-core-${version}.tgz`;
-}
-
-/** The committed artifact is kept when its content equals a fresh pack, so npm's
- * archive encoding cannot churn the plugin across machines. */
-export function committedRuntime(root: string): RuntimeArtifact | undefined {
-  const provenancePath = join(root, PLUGIN_DIRECTORY, PROVENANCE_FILE);
-  if (!existsSync(provenancePath)) return undefined;
-  const provenance = JSON.parse(readFileSync(provenancePath, "utf8")) as PluginProvenance;
-  const path = join(root, PLUGIN_DIRECTORY, provenance.runtime.file);
-  if (!existsSync(path)) return undefined;
-  const artifact = runtimeArtifact(readFileSync(path), provenance.runtime.version);
-  return artifact.integrity === provenance.runtime.integrity ? artifact : undefined;
-}
-
-export function selectRuntime(root: string, fresh: RuntimeArtifact): RuntimeArtifact {
-  const committed = committedRuntime(root);
-  return committed !== undefined && committed.version === fresh.version && committed.contentSha256 === fresh.contentSha256 ? committed : fresh;
 }
 
 const PLUGIN_LAUNCHER: LauncherReference = {
@@ -204,7 +172,7 @@ function readme(source: PluginSource, runtime: RuntimeArtifact): string {
     "This directory is the installable plugin for Cursor, Codex and Claude Code. It is generated by",
     "`npm run build:plugin` in the Paved repository and must not be edited by hand.",
     "",
-    `- Runtime: \`paved-core@${runtime.version}\` bundled at \`${runtimeFileName(runtime.version)}\``,
+    `- Runtime: \`paved-core@${runtime.version}\` bundled unpacked at \`${RUNTIME_DIRECTORY}/\``,
     `- Runtime integrity: \`${runtime.integrity}\``,
     "- Launcher: `bin/paved.mjs`",
     "- Prompt routing: `hooks/hooks.json` adds advisory Paved context for initialized repositories in Codex and Claude Code; Cursor loads the skills without this hook.",
@@ -246,7 +214,6 @@ export function planPlugin(root: string, runtime: RuntimeArtifact): PluginPlan {
     files.set(`skills/${command.name}/SKILL.md`, Buffer.from(`${rendered}${guidance}`));
   }
 
-  const runtimeFile = runtimeFileName(runtime.version);
   files.set("bin/paved.mjs", readFileSync(join(root, "integrations", "shared", "bootstrap.mjs")));
   files.set("hooks/hooks.json", readFileSync(join(root, "integrations", "shared", "hooks.json")));
   files.set("hooks/paved-prompt-submit.mjs", readFileSync(join(root, "integrations", "shared", "prompt-submit-hook.mjs")));
@@ -254,10 +221,10 @@ export function planPlugin(root: string, runtime: RuntimeArtifact): PluginPlan {
     package: "paved-core",
     version: runtime.version,
     integrity: runtime.integrity,
-    tarball: `../${runtimeFile}`,
+    runtime: `../${RUNTIME_DIRECTORY}`,
     _paved_generated: true,
   }));
-  files.set(runtimeFile, runtime.bytes);
+  for (const [path, bytes] of runtime.files) files.set(`${RUNTIME_DIRECTORY}/${path}`, bytes);
   files.set("README.md", Buffer.from(readme(source, runtime)));
   files.set("VERSION", Buffer.from(`${source.version}\n`));
 
@@ -265,14 +232,12 @@ export function planPlugin(root: string, runtime: RuntimeArtifact): PluginPlan {
     _paved_generated: true,
     generator: { id: GENERATOR_ID, version: GENERATOR_VERSION },
     plugin: { name: source.name, version: source.version },
-    source: { package: "paved-core", version: runtime.version, content_sha256: runtime.contentSha256 },
     runtime: {
       package: "paved-core",
       version: runtime.version,
-      file: runtimeFile,
+      directory: RUNTIME_DIRECTORY,
       integrity: runtime.integrity,
-      content_sha256: runtime.contentSha256,
-      bytes: runtime.bytes.length,
+      files: runtime.files.size,
     },
     files: Object.fromEntries([...files.keys()].sort().map((path) => [path, sha256(files.get(path)!)])),
   };
@@ -352,7 +317,7 @@ export function writePlugin(root: string, plan: PluginPlan): Reconciliation {
 function main(argv: readonly string[]): number {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const check = argv.includes("--check");
-  const runtime = selectRuntime(root, packRuntime(root, { build: !argv.includes("--no-build") }));
+  const runtime = packRuntime(root, { build: !argv.includes("--no-build") });
   const plan = planPlugin(root, runtime);
   if (check) {
     const result = reconcilePlugin(root, plan);

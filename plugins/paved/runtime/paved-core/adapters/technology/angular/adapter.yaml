@@ -1,0 +1,60 @@
+apiVersion: paved/v1
+kind: Adapter
+id: technology/angular
+title: Angular
+version: 0.2.0
+summary: Static evidence about Angular workspaces, dependencies and routes.
+requires:
+  core: ^1.0.0
+  adapters:
+    - id: technology/typescript
+      version: ^0.1.0
+detect:
+  all_files: [angular.json, package.json]
+  file_contains:
+    - glob: package.json
+      pattern: '"@angular/core"\s*:'
+  confidence: strong
+provides:
+  capabilities:
+    - id: application.modules
+      evidence:
+        - glob: package-lock.json
+          pattern: '"node_modules/@angular/core":\s*\{\s*"version":\s*"([0-9.]+)"'
+          statement: Angular core resolved version in package lock
+          capture: 1
+          requires_siblings: [angular.json]
+        - glob: package.json
+          pattern: '"@angular/core"\s*:\s*"([^"\n]+)"'
+          statement: Angular core dependency version
+          capture: 1
+          requires_siblings: [angular.json]
+        - glob: angular.json
+          pattern: '"projects"\s*:'
+          statement: Angular workspace projects configuration
+    - id: application.ui-routes
+      evidence:
+        - glob: '**/app-routing.module.ts'
+          pattern: 'path:\s*["\x27]([a-zA-Z0-9_/:.-]+)["\x27]'
+          statement: Angular route declaration
+          capture: 1
+        - glob: '**/app.routes.ts'
+          pattern: 'path:\s*["\x27]([a-zA-Z0-9_/:.-]+)["\x27]'
+          statement: Angular route declaration
+          capture: 1
+    - id: testing.structure
+      evidence:
+        - glob: '**/*.spec.ts'
+          pattern: '^\s*(describe|it|test)\s*\('
+          statement: Angular test declaration
+        - glob: '**/*.test.ts'
+          pattern: '^\s*(describe|it|test)\s*\('
+          statement: Angular test declaration
+sources:
+  - title: Angular workspace configuration
+    url: https://angular.dev/reference/configs/workspace-config
+    retrieved_at: 2026-09-27
+  - title: Angular routing guide
+    url: https://angular.dev/guide/routing
+    retrieved_at: 2026-09-27
+reviewed_at: 2026-09-27

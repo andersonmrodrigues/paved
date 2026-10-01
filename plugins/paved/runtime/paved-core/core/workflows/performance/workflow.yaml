@@ -1,0 +1,73 @@
+apiVersion: paved/v1
+kind: Workflow
+id: core.performance
+title: Performance
+description: >-
+  Improves latency, throughput or resource use by measurement: baseline, profile,
+  hypothesis, one change, the same measurement again, comparison. Use when a task is
+  about speed, resource cost, a performance regression or a failing performance budget.
+version: 0.2.0
+status: experimental
+change_type: performance
+inputs:
+  - id: problem
+    description: What is slow or costly, and where it was observed.
+    required: true
+  - id: target
+    description: The metric and value that would count as solved.
+    required: false
+  - id: workload
+    description: The input and load under which the problem appears.
+    required: false
+context:
+  required: []
+  optional: [architecture, verification, tools]
+rules: [core.performance.measure-before-optimizing]
+phases:
+  - phase: context
+    goal: Define the metric, workload, environment and target.
+    skills: [core.discovery.context-discovery]
+    gates:
+      - id: target-defined
+        condition: Metric, workload and target are stated or agreed with a human.
+  - phase: discovery
+    goal: Measure the baseline and profile to locate the bottleneck.
+    skills: [core.performance.profiling]
+    gates:
+      - id: baseline-recorded
+        condition: A baseline measurement with its variance exists under the stated workload.
+  - phase: planning
+    goal: Form one hypothesis aimed at the largest measured contributor.
+    skills: [core.performance.profiling]
+  - phase: implementation
+    goal: Apply one change on the side of the system the profile points to.
+    skills: [core.performance.backend-performance, core.performance.frontend-performance]
+  - phase: validation
+    goal: Build, lint and run behavior tests.
+    verification:
+      recommended: [build, static-analysis, unit]
+  - phase: verification
+    goal: Measure the result under the baseline's workload and prove behavior is unchanged.
+    verification:
+      required: [performance, unit]
+      recommended: [integration]
+    gates:
+      - id: comparable-measurement
+        condition: The result was measured with the baseline's workload, environment and repetitions.
+  - phase: evidence
+    goal: Record baseline, result, variance, the change and behavior check results.
+  - phase: review
+    goal: Weigh the measured gain against the complexity added.
+    skills: [core.code-review.change-review]
+  - phase: completion
+    goal: Confirm every completion criterion and report the outcome.
+    gates:
+      - id: criteria-met
+        condition: The evidence record is complete and valid.
+evidence:
+  required: [measurement, check-result, diff]
+outputs: [change, measurement, evidence, review]
+completion:
+  criteria:
+    - The target is met, or the evidence explains why it cannot be with a reasonable change.
+    - The measured difference exceeds the run-to-run variance.

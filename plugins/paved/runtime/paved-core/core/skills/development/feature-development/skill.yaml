@@ -1,0 +1,27 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.development.feature-development
+version: 0.4.0
+status: experimental
+category: development
+context:
+  required: []
+  optional: [feature-map, architecture, rules, verification]
+tools:
+  required: [core.repository.diff, core.repository.status]
+rules:
+  - core.architecture.follow-existing-patterns
+  - core.architecture.respect-declared-boundaries
+  - core.security.no-secrets-in-source
+  - core.quality.evidence-before-completion
+depends_on:
+  optional:
+    - core.discovery.context-discovery
+    - core.testing.unit-testing
+    - core.testing.integration-testing
+    - core.testing.e2e-testing
+verification:
+  required: [unit]
+  recommended: [build, static-analysis, integration, e2e]
+evidence:
+  required: [check-result, diff]

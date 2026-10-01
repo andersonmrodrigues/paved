@@ -1,0 +1,60 @@
+apiVersion: paved/v1
+kind: Adapter
+id: technology/flutter
+title: Flutter
+version: 0.1.0
+summary: Static evidence about Flutter applications, packages and test organization.
+requires:
+  core: ^1.0.0
+  adapters:
+    - id: technology/dart
+      version: ^0.1.0
+detect:
+  file_contains:
+    - glob: pubspec.yaml
+      pattern: '(^|\n)\s*flutter\s*:'
+    - glob: pubspec.yaml
+      pattern: '(^|\n)\s*sdk\s*:\s*flutter'
+  confidence: strong
+provides:
+  capabilities:
+    - id: source.build
+      evidence:
+        - glob: pubspec.yaml
+          pattern: '(^|\n)\s*flutter\s*:'
+          statement: Flutter SDK dependency declaration
+    - id: source.structure
+      evidence:
+        - glob: 'lib/**/*.dart'
+          pattern: '^\s*(class|enum|mixin|extension)\s+([A-Za-z][A-Za-z0-9_]*)'
+          statement: Flutter library declaration
+          capture: 2
+    - id: testing.structure
+      evidence:
+        - glob: 'test/**/*.dart'
+          pattern: '^\s*(void\s+)?(test|group)\s*\('
+          statement: Flutter unit or widget test
+        - glob: 'integration_test/**/*.dart'
+          pattern: '^\s*(void\s+)?(test|group)\s*\('
+          statement: Flutter integration test
+    - id: api.http
+      evidence:
+        - glob: 'lib/**/*.dart'
+          pattern: '\b(Uri\.parse|http\.(get|post|put|delete)|Dio\s*\()'
+          statement: Flutter HTTP client usage
+    - id: api.openapi
+      evidence:
+        - glob: '**/openapi.yaml'
+          pattern: '["'']?openapi["'']?\s*:'
+          statement: OpenAPI document used by Flutter project
+        - glob: '**/openapi.yml'
+          pattern: '["'']?openapi["'']?\s*:'
+          statement: OpenAPI document used by Flutter project
+        - glob: '**/openapi.json'
+          pattern: '"openapi"\s*:'
+          statement: OpenAPI document used by Flutter project
+sources:
+  - title: Flutter project configuration
+    url: https://docs.flutter.dev/tools/pubspec
+    retrieved_at: 2026-09-27
+reviewed_at: 2026-09-27
