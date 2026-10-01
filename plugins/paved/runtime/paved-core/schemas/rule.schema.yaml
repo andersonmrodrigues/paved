@@ -1,0 +1,75 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:rule:v1
+title: Paved rule
+description: >
+  A reusable constraint. Core rules live in core/rules/<category>/<name>.yaml with id
+  core.<category>.<name>. Projects add rules in .paved/rules/ with id project.<category>.<name>.
+  Severity: `error` blocks completion when violated, `warning` must be explained in the
+  evidence, `info` is advisory. There is no separate "blocking" level: error is blocking.
+type: object
+additionalProperties: false
+required: [apiVersion, kind, id, title, rationale, applies_to, rule, enforcement, severity, verification]
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { const: Rule }
+  id: { $ref: "urn:paved:schema:common:v1#/$defs/ruleRef" }
+  title: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  rationale:
+    description: Why the rule exists. A rule without a reason cannot be evaluated or retired.
+    $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+  applies_to:
+    description: Scope selectors. An omitted selector means "any". An empty object means everywhere.
+    type: object
+    additionalProperties: false
+    properties:
+      paths:
+        description: Glob patterns of files the rule constrains.
+        $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyStringList"
+      workflows:
+        type: array
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/workflowRef" }
+      change_types:
+        type: array
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/changeType" }
+      adapters:
+        type: array
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/adapterId" }
+  rule:
+    description: The constraint itself, stated so that compliance can be judged.
+    $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+  enforcement:
+    type: object
+    additionalProperties: false
+    required: [mechanism]
+    properties:
+      mechanism:
+        description: >
+          `automated`: a check fails when the rule is violated. `agent`: the agent must
+          self-check and record the result in evidence. `review`: a human reviewer decides.
+        enum: [automated, agent, review]
+      layer:
+        description: >
+          Where enforcement currently lives, using the Gardener priority order. Rules
+          enforced by `rule` or `documentation` are candidates for promotion.
+        enum: [architecture, static-analysis, ci, rule, skill, documentation]
+      check:
+        description: Check type (or project check id) that enforces the rule when mechanism is automated.
+        type: string
+    if:
+      properties: { mechanism: { const: automated } }
+    then:
+      required: [check]
+  severity: { $ref: "urn:paved:schema:common:v1#/$defs/severity" }
+  verification:
+    description: How compliance is demonstrated in an evidence record.
+    $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+  overridable:
+    description: Whether a project may change severity or disable the rule through .paved/overrides/. Defaults to true.
+    type: boolean
+  examples:
+    type: object
+    additionalProperties: false
+    properties:
+      compliant: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyStringList" }
+      violation: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyStringList" }
+  references: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyStringList" }

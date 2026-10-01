@@ -1,0 +1,22 @@
+apiVersion: paved/v1
+kind: Generator
+id: project-context/product
+version: 0.2.0
+status: experimental
+summary: >
+  Collects product knowledge (users, roles, user journeys, terminology) that the repository states explicitly, and lists what must come from humans.
+depends_on: [project-context/domain]
+inputs:
+  - kind: repository
+    description: README and documentation, UI routes and navigation, role and permission definitions, user-facing text.
+  - kind: human-input
+    description: Answers to questions the generator records as unknowns.
+outputs:
+  - path: .paved/project/product/
+    format: markdown
+    metadata: inline
+    schema: ContextDocument
+change_detection:
+  strategy: [source-hash, on-demand]
+  watch:
+    - "**/*"

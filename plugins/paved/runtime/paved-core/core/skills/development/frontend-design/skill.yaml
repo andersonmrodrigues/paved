@@ -1,0 +1,22 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.development.frontend-design
+version: 0.1.0
+status: experimental
+category: development
+context:
+  required: []
+  optional: [product, architecture, feature-map, rules, technology, verification]
+tools:
+  required: []
+  optional: []
+rules:
+  - core.architecture.follow-existing-patterns
+depends_on:
+  required: []
+  optional: []
+verification:
+  required: [unit]
+  recommended: [build, static-analysis, e2e]
+evidence:
+  required: [check-result, diff]

@@ -1,0 +1,23 @@
+# <generated file>.paved.yaml: sidecar marking a generated file that cannot carry its own
+# provenance (here, a proposed rule). Written by generators, never by hand.
+apiVersion: paved/v1
+kind: GeneratedArtifact
+artifact:
+  path: .paved/generated/proposals/rules/quality/example-rule.yaml
+  format: yaml
+  schema: Rule
+  api_version: paved/v1
+  proposal_for: .paved/rules/quality/example-rule.yaml
+ownership: disposable
+provenance:
+  generator: rules
+  generator_version: 0.1.0
+  generated_at: 2026-01-01T00:00:00Z
+  source_revision: 4f2c9e1
+  sources:
+    - id: review-comments
+      type: human
+      location: Review comments on two changes that repeated the same mistake.
+  output_sha256: "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
+  review:
+    status: unreviewed

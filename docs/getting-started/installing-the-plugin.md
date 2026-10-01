@@ -69,10 +69,10 @@ The first command activates the runtime. The plugin's launcher (`bin/paved.mjs`)
 1. finds the consumer repository: `--project` if given, otherwise the nearest
    directory above the current one that holds `.paved/manifest.yaml` or `.git`.
    It refuses the plugin installation and the Paved Core source checkout;
-2. verifies the bundled `paved-core` tarball against the SHA-512 integrity pinned
-   in the plugin, and inspects every archive entry before extraction;
-3. installs it offline under `.paved/runtime/` with install scripts disabled and
-   no dependencies outside the artifact;
+2. copies the bundled, unpacked `paved-core` runtime under `.paved/runtime/` and
+   verifies the copy against the SHA-512 integrity pinned in the plugin, refusing
+   links and unexpected executables. Nothing is downloaded and npm does not run;
+3. checks that the copy holds the pinned version and no dependencies outside it;
 4. records the installed content digest, and checks it before every command.
 
 `.paved/runtime/` ignores itself in Git. `init` records the runtime in
@@ -175,10 +175,13 @@ next action:
   clone the marketplace repository; the launcher runs only when you invoke a Paved
   command, and it reaches the npm registry only when a lock pins a runtime the
   plugin does not bundle, under the same integrity checks.
-- The runtime artifact is pinned by SHA-512 in `bin/bootstrap.json` and recorded,
-  with its content digest, in `provenance.json`. npm runs with `--ignore-scripts`.
-- Archive entries must be regular files or directories under `package/`; links,
-  absolute paths, `..` segments and special permission bits are refused.
+- The runtime ships unpacked, as readable files, and is pinned by a SHA-512 over its
+  file digests in `bin/bootstrap.json` and `provenance.json`. Activating it runs no
+  npm and no install scripts.
+- Runtime files must be regular files; links, special permission bits and
+  non-JavaScript executables are refused. A registry artifact, used only for a lock
+  the plugin does not bundle, is installed with `--ignore-scripts` after the same
+  checks on every archive entry.
 - A different runtime is activated only by `update` (newer runtimes only) or `runtime upgrade`, never by other commands.
 - The prompt hook reads the event's `cwd` and checks Paved state marker paths. It never
   stores, transmits, or logs the prompt; it emits routing guidance only for initialized

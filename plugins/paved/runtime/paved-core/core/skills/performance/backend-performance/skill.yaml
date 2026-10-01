@@ -1,0 +1,16 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.performance.backend-performance
+version: 0.1.0
+status: experimental
+category: performance
+context:
+  required: []
+  optional: [architecture, integrations]
+depends_on:
+  required: [core.performance.profiling]
+verification:
+  required: [performance]
+  recommended: [integration]
+evidence:
+  required: [measurement]

@@ -1,0 +1,56 @@
+apiVersion: paved/v1
+kind: Tool
+id: core.repository.history
+title: Show history
+purpose: >
+  Find when and in which change code was introduced or modified, to date a
+  regression, find the last known-good revision, or read the reasoning recorded
+  in revision history.
+safety: read-only
+inputs:
+  - name: range
+    description: Revision range to inspect. Omit to inspect available history.
+    required: false
+    pattern: ^(?!-)[^\s]+$
+    type: string
+  - name: path
+    description: Limit the history to changes touching this repository-relative path.
+    required: false
+    pattern: ^(?!/)(?!.*\.\.)\S+$
+    type: string
+outputs:
+  format: text
+  description: Revision history with identifiers, authors, dates and descriptions, newest first.
+side_effects: []
+confirmation: none
+examples:
+  - description: Revisions touching one directory since a known-good revision.
+  - description: Recent revisions.
+version: 0.1.0
+capability: repository-history
+permissions:
+  - repository-read
+environments:
+  - local
+  - ci
+  - ephemeral
+preconditions:
+  - id: precondition-1
+    kind: repository
+    description: A source-controlled repository is available.
+idempotency: idempotent
+timeout_seconds: 60
+retry:
+  max_attempts: 1
+  backoff_seconds: 0
+errors:
+  - execution-failure
+  - failed-precondition
+  - timeout
+evidence:
+  capture:
+    - revision
+    - environment
+    - timestamps
+    - output-digest
+availability: available

@@ -1,0 +1,16 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.performance.profiling
+version: 0.2.0
+status: experimental
+category: performance
+context:
+  required: []
+  optional: [verification, architecture, tools]
+rules: [core.performance.measure-before-optimizing]
+verification:
+  required: [performance]
+  recommended: [unit, integration]
+evidence:
+  required: [measurement, check-result]
+references: [references/measurement-protocol.md, examples/measurement-report.md]

@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, sep } from "node:path";
-import { ROOT } from "../helpers.ts";
+import { RUNTIME_DIRECTORY } from "../../plugins/build.ts";
+import { ROOT, treeIntegrity } from "../helpers.ts";
 
 export interface Invocation {
   readonly status: number | null;
@@ -152,34 +153,28 @@ export function applicationDigest(root: string, ignore: readonly string[] = []):
   return createHash("sha256").update(entries.join("\n")).digest("hex");
 }
 
-/** Repacks a runtime tarball as another version, as a later Paved release would be. */
-export function repackRuntime(tarball: string, version: string, parent: string): { path: string; integrity: string } {
-  const work = join(parent, `repack-${version}`);
-  mkdirSync(work, { recursive: true });
-  const extracted = spawnSync("tar", ["-xzf", tarball, "-C", work], { encoding: "utf8" });
-  if (extracted.status !== 0) throw new Error(extracted.stderr);
-  const pkg = join(work, "package");
+/** Copies an unpacked runtime as another version, as a later Paved release would ship it. */
+export function repackRuntime(runtime: string, version: string, parent: string): { path: string; integrity: string } {
+  const pkg = join(parent, `runtime-${version}`);
+  rmSync(pkg, { recursive: true, force: true });
+  cpSync(runtime, pkg, { recursive: true });
   const metadata = JSON.parse(readFileSync(join(pkg, "package.json"), "utf8")) as { version: string };
   const previous = metadata.version;
   metadata.version = version;
   writeFileSync(join(pkg, "package.json"), `${JSON.stringify(metadata, null, 2)}\n`);
   writeFileSync(join(pkg, "VERSION"), `${version}\n`);
   writeFileSync(join(pkg, "manifest.yaml"), readFileSync(join(pkg, "manifest.yaml"), "utf8").replace(`version: ${previous}`, `version: ${version}`));
-  const packed = spawnSync("npm", ["pack", "--ignore-scripts", "--pack-destination", parent, "--json"], { cwd: pkg, encoding: "utf8", shell: false });
-  if (packed.status !== 0) throw new Error(packed.stderr);
-  const [artifact] = JSON.parse(packed.stdout) as { filename: string; integrity: string }[];
-  rmSync(work, { recursive: true, force: true });
-  return { path: join(parent, artifact!.filename), integrity: artifact!.integrity };
+  return { path: pkg, integrity: treeIntegrity(pkg) };
 }
 
-/** A copy of an installed plugin whose launcher pins a different runtime artifact. */
+/** A copy of an installed plugin whose launcher pins a different unpacked runtime. */
 export function pluginVariant(pluginRoot: string, parent: string, name: string, runtime: { path: string; integrity: string; version: string }): string {
   const target = join(parent, name);
   cpSync(pluginRoot, target, { recursive: true });
-  const file = `paved-core-${runtime.version}.tgz`;
-  cpSync(runtime.path, join(target, "runtime", file));
+  rmSync(join(target, RUNTIME_DIRECTORY), { recursive: true, force: true });
+  cpSync(runtime.path, join(target, RUNTIME_DIRECTORY), { recursive: true });
   writeFileSync(join(target, "bin", "bootstrap.json"), `${JSON.stringify({
-    package: "paved-core", version: runtime.version, integrity: runtime.integrity, tarball: `../runtime/${file}`, _paved_generated: true,
+    package: "paved-core", version: runtime.version, integrity: runtime.integrity, runtime: `../${RUNTIME_DIRECTORY}`, _paved_generated: true,
   }, null, 2)}\n`);
   return target;
 }

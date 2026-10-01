@@ -1,0 +1,50 @@
+apiVersion: paved/v1
+kind: Tool
+id: core.database.inspect
+version: 0.1.0
+title: Inspect database state
+purpose: Provide the database inspect capability through an environment-specific
+  implementation with structured results.
+capability: database-inspect
+safety: read-only
+permissions:
+  - database-read
+environments:
+  - local
+  - ci
+  - ephemeral
+  - shared
+  - production
+inputs: []
+outputs:
+  format: json
+  description: Structured observations and execution metadata for this capability.
+  fields:
+    - status
+side_effects: []
+preconditions: []
+idempotency: idempotent
+timeout_seconds: 300
+retry:
+  max_attempts: 1
+  backoff_seconds: 0
+errors:
+  - invalid-input
+  - failed-precondition
+  - permission-denied
+  - timeout
+  - execution-failure
+  - implementation-unavailable
+  - malformed-output
+evidence:
+  capture:
+    - revision
+    - environment
+    - timestamps
+    - output-digest
+    - artifacts
+availability: available
+confirmation: none
+examples:
+  - description: Resolve this capability through a selected adapter or project
+      implementation.

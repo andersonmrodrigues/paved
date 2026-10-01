@@ -3,3 +3,5 @@ node_modules/
 /cli/build/
 .DS_Store
 docs/superpowers/
+# The plugin ships its runtime unpacked, bundled dependencies included.
+!/plugins/paved/runtime/paved-core/node_modules/

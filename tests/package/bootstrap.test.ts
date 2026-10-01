@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { parse, stringify } from "yaml";
-import { CORE_VERSION } from "../helpers.ts";
+import { CORE_VERSION, treeIntegrity } from "../helpers.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -317,4 +317,66 @@ describe("project-local agent bootstrap", () => {
       rmSync(workspace, { recursive: true, force: true });
     }
   });
+
+  it("activates a bundled unpacked runtime without npm and rejects tampered trees", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "paved-bootstrap-tree-"));
+    try {
+      const packed = spawnSync("npm", ["pack", "--ignore-scripts", "--pack-destination", workspace, "--json"], { cwd: root, encoding: "utf8", shell: false });
+      assert.equal(packed.status, 0, packed.stderr);
+      const [artifact] = JSON.parse(packed.stdout) as { filename: string }[];
+      assert.equal(spawnSync("tar", ["-xzf", join(workspace, artifact!.filename), "-C", workspace]).status, 0);
+      const bundled = join(workspace, "package");
+      const integrity = treeIntegrity(bundled);
+
+      const consumer = join(workspace, "consumer");
+      const integration = join(consumer, ".agents", "skills", "paved-runtime");
+      mkdirSync(integration, { recursive: true });
+      assert.equal(spawnSync("git", ["init", "-q"], { cwd: consumer }).status, 0);
+      cpSync(join(root, "integrations", "shared", "bootstrap.mjs"), join(integration, "bootstrap.mjs"));
+      const configure = (fields: Record<string, unknown>) => {
+        rmSync(join(consumer, ".paved"), { recursive: true, force: true });
+        writeFileSync(join(integration, "bootstrap.json"), JSON.stringify({ package: "paved-core", version: CORE_VERSION, ...fields }));
+      };
+      // An empty PATH proves activation never shells out to npm.
+      const invoke = (...args: string[]) => spawnSync(process.execPath, [join(integration, "bootstrap.mjs"), ...args], {
+        cwd: consumer, encoding: "utf8", shell: false, env: { ...process.env, PATH: "" },
+      });
+      const code = (result: ReturnType<typeof invoke>) => (JSON.parse(result.stdout) as { diagnostics: { code: string }[] }).diagnostics[0]?.code;
+      const versions = () => join(consumer, ".paved", "runtime", "versions");
+      const tampered = (name: string, change: (tree: string) => void) => {
+        const tree = join(workspace, name);
+        cpSync(bundled, tree, { recursive: true });
+        change(tree);
+        return tree;
+      };
+
+      configure({ runtime: bundled });
+      assert.equal(code(invoke("--version", "--json")), "PAVED_RUNTIME_INTEGRITY_UNAVAILABLE");
+      configure({ runtime: bundled, tarball: join(workspace, artifact!.filename), integrity });
+      assert.equal(code(invoke("--version", "--json")), "PAVED_RUNTIME_CONFIG_INVALID");
+      configure({ runtime: join(workspace, "missing"), integrity });
+      assert.equal(code(invoke("--version", "--json")), "PAVED_RUNTIME_PACKAGE_UNAVAILABLE");
+
+      configure({ runtime: tampered("edited", (tree) => writeFileSync(join(tree, "VERSION"), "tampered\n")), integrity });
+      assert.equal(code(invoke("--version", "--json")), "PAVED_RUNTIME_INTEGRITY_MISMATCH");
+      assert.deepEqual(readdirSync(versions()), [], "a rejected tree is never activated");
+      configure({ runtime: tampered("linked", (tree) => symlinkSync(join(workspace, "outside"), join(tree, "outside"))), integrity });
+      assert.equal(code(invoke("--version", "--json")), "PAVED_RUNTIME_SYMLINK");
+      configure({ runtime: tampered("executable", (tree) => chmodSync(join(tree, "VERSION"), 0o755)), integrity });
+      assert.equal(code(invoke("--version", "--json")), "PAVED_RUNTIME_UNEXPECTED_EXECUTABLE");
+      assert.deepEqual(readdirSync(join(consumer, ".paved", "runtime")).filter((entry) => entry.startsWith("staging-")), []);
+
+      configure({ runtime: bundled, integrity });
+      const activated = invoke("--version", "--json");
+      assert.equal(activated.status, 0, activated.stdout + activated.stderr);
+      const selection = JSON.parse(readFileSync(join(consumer, ".paved", "runtime", "selection.json"), "utf8")) as { integrity: string; directory: string };
+      assert.equal(selection.integrity, integrity);
+      assert.deepEqual(readdirSync(join(versions(), selection.directory, "node_modules")), ["paved-core"]);
+      const status = JSON.parse(invoke("runtime", "status", "--json").stdout) as { data: { plugin: { bundled: boolean } } };
+      assert.equal(status.data.plugin.bundled, true);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
 });
+

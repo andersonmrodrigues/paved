@@ -1,0 +1,174 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:manifest:v1
+title: Paved manifest
+description: >
+  Two manifest kinds share this schema. `Core` is the manifest at the root of the Paved
+  Core repository: it declares what the Core provides and the consumer layout contract.
+  `Project` is `.paved/manifest.yaml` in a consumer repository: it declares which Core
+  and adapter versions the project depends on. Everything else about a project lives in
+  its own file under .paved/ (context, rules, verification, overrides); the manifest does
+  not repeat it. Technologies are declared by selecting adapters.
+type: object
+required: [apiVersion, kind]
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { enum: [Core, Project] }
+oneOf:
+  - $ref: "#/$defs/core"
+  - $ref: "#/$defs/project"
+$defs:
+  core:
+    type: object
+    additionalProperties: false
+    required: [apiVersion, kind, name, version, supported_api_versions, schemas, schema_definitions, content, context_areas, components, consumer_layout]
+    properties:
+      apiVersion: true
+      kind: { const: Core }
+      name: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+      version:
+        $ref: "urn:paved:schema:common:v1#/$defs/semver"
+        description: Must equal the VERSION file.
+      supported_api_versions:
+        description: Document API versions this Core release can read.
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items: { type: string, pattern: "^paved/v\\d+$" }
+      schemas:
+        description: Map from document kind to its schema file.
+        type: object
+        minProperties: 1
+        additionalProperties: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+      schema_definitions:
+        description: Schemas that define shared structures rather than a document kind.
+        type: array
+        uniqueItems: true
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+      context_areas:
+        description: >
+          Where each context area a skill can declare lives in a consumer repository.
+          Keys are exactly the `contextArea` values; skills name areas, and this map
+          resolves them to paths.
+        type: object
+        minProperties: 1
+        propertyNames: { $ref: "urn:paved:schema:common:v1#/$defs/contextArea" }
+        additionalProperties: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+      content:
+        description: Roots where each kind of Core content is discovered by convention.
+        type: object
+        additionalProperties: false
+        required: [instructions, skills, workflows, rules, tools, tool_implementations, verification, templates, generators, adapters]
+        properties:
+          instructions: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+          skills: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+          workflows: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+          rules: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+          tools: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+          tool_implementations: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+          verification: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+          templates: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+          generators: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+          adapters: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+      components:
+        description: >
+          Top-level parts of the Core repository and the static dependencies each may
+          have on the others (links, imports, references). `distributed` marks parts that
+          ship in a Core release; they may depend only on other distributed parts.
+          Enforced by tests/core/boundaries.test.ts. See docs/concepts/boundaries.md.
+        type: array
+        minItems: 1
+        items:
+          type: object
+          additionalProperties: false
+          required: [name, path, distributed, depends_on, responsibility]
+          properties:
+            name: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+            path: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+            distributed: { type: boolean }
+            depends_on:
+              type: array
+              uniqueItems: true
+              items: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+            responsibility: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      consumer_layout:
+        description: >
+          The contract for what a consumer repository contains and who may write each
+          path. Generators and the CLI must consult this before writing anything.
+        type: array
+        minItems: 1
+        items:
+          type: object
+          additionalProperties: false
+          required: [path, ownership, required, description]
+          properties:
+            path: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+            ownership: { $ref: "urn:paved:schema:common:v1#/$defs/ownership" }
+            required:
+              description: Whether a consumer must have this path to be a valid Paved repository.
+              type: boolean
+            schema:
+              description: Document kind files at this path must validate as (the frontmatter, for Markdown).
+              type: string
+            committed:
+              description: Whether the path is expected to be committed to version control.
+              type: boolean
+            description: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+
+  project:
+    type: object
+    additionalProperties: false
+    required: [apiVersion, kind, project, paved]
+    properties:
+      apiVersion: true
+      kind: { const: Project }
+      project:
+        type: object
+        additionalProperties: false
+        required: [name]
+        properties:
+          name: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+          description: { type: string }
+          owners:
+            description: People or teams who review Project Context and approve overrides and human gates.
+            $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyStringList"
+      paved:
+        type: object
+        additionalProperties: false
+        required: [core]
+        properties:
+          core:
+            $ref: "urn:paved:schema:common:v1#/$defs/semverRange"
+            description: Core versions this project is compatible with.
+      adapters:
+        description: Adapters the project uses. Usually proposed by technology detection and confirmed by a human.
+        type: array
+        uniqueItems: true
+        items:
+          type: object
+          additionalProperties: false
+          required: [id, version]
+          properties:
+            id: { $ref: "urn:paved:schema:common:v1#/$defs/adapterId" }
+            version: { $ref: "urn:paved:schema:common:v1#/$defs/semverRange" }
+      capability_providers:
+        description: >
+          Explicit provider selections, needed only where repository evidence cannot decide.
+          A string overrides the provider for the whole repository; a list selects providers
+          for specific repository paths, and paths it does not name are still inferred.
+        type: object
+        propertyNames: { pattern: "^[a-z]+\\.[a-z][a-z0-9.-]*$" }
+        additionalProperties:
+          oneOf:
+            - $ref: "urn:paved:schema:common:v1#/$defs/adapterId"
+            - type: array
+              minItems: 1
+              items:
+                type: object
+                additionalProperties: false
+                required: [path, provider]
+                properties:
+                  path:
+                    description: Repository-relative directory the selection governs, including its subdirectories; "." is the repository root.
+                    type: string
+                    pattern: "^(\\.|[A-Za-z0-9_@][A-Za-z0-9_@.+-]*(/[A-Za-z0-9_@][A-Za-z0-9_@.+-]*)*)$"
+                  provider: { $ref: "urn:paved:schema:common:v1#/$defs/adapterId" }

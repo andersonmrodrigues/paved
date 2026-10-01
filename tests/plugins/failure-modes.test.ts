@@ -4,10 +4,10 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { gzipSync } from "node:zlib";
-import { PLUGIN_DIRECTORY, runtimeFileName } from "../../plugins/build.ts";
+import { PLUGIN_DIRECTORY, RUNTIME_DIRECTORY } from "../../plugins/build.ts";
 import { CORE_VERSION, NEXT_PATCH_VERSION, ROOT } from "../helpers.ts";
 import { applicationDigest, codeOf, consumer, launcher, pluginVariant, repackRuntime, workspace, type Invocation } from "./support.ts";
 
@@ -37,7 +37,8 @@ function tar(entries: readonly TarEntry[]): Buffer {
 }
 
 const packageJson = JSON.stringify({ name: "paved-core", version: "1.0.0" });
-const RUNTIME = runtimeFileName(CORE_VERSION);
+// The launcher also accepts a local tarball; these tests pack the bundled runtime into one.
+const ARCHIVE = "runtime/paved-core.tgz";
 const integrityOf = (bytes: Buffer) => `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
 
 describe("plugin launcher failure modes", () => {
@@ -50,7 +51,9 @@ describe("plugin launcher failure modes", () => {
     root = workspace("failure-modes");
     plugin = join(root, "installed", "paved");
     cpSync(join(ROOT, PLUGIN_DIRECTORY), plugin, { recursive: true });
-    tarball = join(plugin, RUNTIME);
+    const packed = spawnSync("npm", ["pack", "--ignore-scripts", "--pack-destination", root, "--json"], { cwd: join(plugin, RUNTIME_DIRECTORY), encoding: "utf8", shell: false });
+    assert.equal(packed.status, 0, packed.stderr);
+    tarball = join(root, (JSON.parse(packed.stdout) as { filename: string }[])[0]!.filename);
     npmCache = join(root, "npm-cache");
     mkdirSync(npmCache);
   });
@@ -72,7 +75,8 @@ describe("plugin launcher failure modes", () => {
   };
   const bundledConfig = () => JSON.parse(readFileSync(join(plugin, "bin", "bootstrap.json"), "utf8")) as Record<string, unknown>;
   const paved = () => launcher(plugin, npmCache);
-  const withArchive = (bytes: Buffer) => variant({ ...bundledConfig(), integrity: integrityOf(bytes) }, (dir) => writeFileSync(join(dir, RUNTIME), bytes));
+  const archiveConfig = (bytes: Buffer) => ({ package: "paved-core", version: CORE_VERSION, integrity: integrityOf(bytes), tarball: `../${ARCHIVE}` });
+  const withArchive = (bytes: Buffer) => variant(archiveConfig(bytes), (dir) => writeFileSync(join(dir, ARCHIVE), bytes));
   const notActivated = (dir: string) => assert.ok(!existsSync(join(dir, ".paved", "runtime", "selection.json")), "no runtime was selected");
 
   it("rejects a missing, malformed or unsafe launcher configuration", () => {
@@ -81,19 +85,32 @@ describe("plugin launcher failure modes", () => {
     expectFailure(variant("{ not json")(target, "status", "--json"), "PAVED_RUNTIME_STATE_INVALID");
     expectFailure(variant({ ...bundledConfig(), package: "left-pad" })(target, "status", "--json"), "PAVED_RUNTIME_CONFIG_INVALID");
     expectFailure(variant({ ...bundledConfig(), integrity: "md5-abc" })(target, "status", "--json"), "PAVED_RUNTIME_CONFIG_INVALID");
-    expectFailure(variant({ ...bundledConfig(), tarball: "../../../outside.tgz" })(target, "status", "--json"), "PAVED_RUNTIME_PATH_ESCAPE");
-    expectFailure(variant({ ...bundledConfig(), tarball: "../runtime/linked.tgz" }, (dir) => symlinkSync(tarball, join(dir, "runtime", "linked.tgz")))(target, "status", "--json"), "PAVED_RUNTIME_SYMLINK");
+    expectFailure(variant({ ...bundledConfig(), runtime: "../../../outside" })(target, "status", "--json"), "PAVED_RUNTIME_PATH_ESCAPE");
+    expectFailure(variant({ ...bundledConfig(), runtime: "../runtime/linked" }, (dir) => symlinkSync(join(plugin, RUNTIME_DIRECTORY), join(dir, "runtime", "linked")))(target, "status", "--json"), "PAVED_RUNTIME_SYMLINK");
+    expectFailure(variant({ ...bundledConfig(), tarball: `../${ARCHIVE}` })(target, "status", "--json"), "PAVED_RUNTIME_CONFIG_INVALID");
     expectFailure(variant({ ...bundledConfig(), integrity: undefined })(target, "status", "--json"), "PAVED_RUNTIME_INTEGRITY_UNAVAILABLE");
     notActivated(target);
   });
 
-  it("rejects a missing or corrupt runtime artifact before extraction", () => {
+  it("rejects a missing or tampered bundled runtime before activation", () => {
     const target = project();
-    expectFailure(variant(bundledConfig(), (dir) => rmSync(join(dir, RUNTIME)))(target, "status", "--json"), "PAVED_RUNTIME_PACKAGE_UNAVAILABLE");
-    const corrupt = Buffer.from(readFileSync(tarball));
+    const runtimeOf = (dir: string) => join(dir, RUNTIME_DIRECTORY);
+    expectFailure(variant(bundledConfig(), (dir) => rmSync(runtimeOf(dir), { recursive: true }))(target, "status", "--json"), "PAVED_RUNTIME_PACKAGE_UNAVAILABLE");
+    expectFailure(variant(bundledConfig(), (dir) => writeFileSync(join(runtimeOf(dir), "cli", "build", "cli", "index.js"), "console.log('owned');\n"))(target, "status", "--json"), "PAVED_RUNTIME_INTEGRITY_MISMATCH");
+    expectFailure(variant(bundledConfig(), (dir) => writeFileSync(join(runtimeOf(dir), "node_modules", "injected.js"), "export {};\n"))(target, "status", "--json"), "PAVED_RUNTIME_INTEGRITY_MISMATCH");
+    expectFailure(variant(bundledConfig(), (dir) => symlinkSync("/etc/passwd", join(runtimeOf(dir), "linked")))(target, "status", "--json"), "PAVED_RUNTIME_SYMLINK");
+    expectFailure(variant(bundledConfig(), (dir) => chmodSync(join(runtimeOf(dir), "VERSION"), 0o755))(target, "status", "--json"), "PAVED_RUNTIME_UNEXPECTED_EXECUTABLE");
+    notActivated(target);
+  });
+
+  it("rejects a missing or corrupt local runtime archive before extraction", () => {
+    const target = project();
+    const bytes = readFileSync(tarball);
+    expectFailure(variant(archiveConfig(bytes))(target, "status", "--json"), "PAVED_RUNTIME_PACKAGE_UNAVAILABLE");
+    const corrupt = Buffer.from(bytes);
     corrupt[corrupt.length - 100] = (corrupt[corrupt.length - 100]! + 1) % 256;
-    expectFailure(variant(bundledConfig(), (dir) => writeFileSync(join(dir, RUNTIME), corrupt))(target, "status", "--json"), "PAVED_RUNTIME_INTEGRITY_MISMATCH");
-    assert.ok(!existsSync(join(target, ".paved", "runtime", "cache", basename(RUNTIME))), "a rejected artifact is not cached");
+    expectFailure(variant(archiveConfig(bytes), (dir) => writeFileSync(join(dir, ARCHIVE), corrupt))(target, "status", "--json"), "PAVED_RUNTIME_INTEGRITY_MISMATCH");
+    assert.ok(!existsSync(join(target, ".paved", "runtime", "cache", `paved-core-${CORE_VERSION}.tgz`)), "a rejected artifact is not cached");
     notActivated(target);
   });
 
@@ -185,13 +202,23 @@ describe("plugin launcher failure modes", () => {
     assert.ok(!existsSync(lock), "the recovered lock is released");
     assert.ok(!existsSync(join(target, ".paved", "runtime", "staging-1-abandoned")), "abandoned staging is removed");
 
-    const cached = join(target, ".paved", "runtime", "cache", basename(RUNTIME));
-    truncateSync(cached, 1024);
     rmSync(join(target, ".paved", "runtime", "versions"), { recursive: true });
     rmSync(join(target, ".paved", "runtime", "selection.json"));
     const reacquired = paved()(target, "status", "--json");
     assert.ok(reacquired.status === 0 || reacquired.status === 1, reacquired.stdout + reacquired.stderr);
-    assert.deepEqual(readFileSync(cached), readFileSync(tarball), "a truncated cache is replaced from the bundled artifact");
+
+    const archived = project();
+    const bytes = readFileSync(tarball);
+    const fromArchive = variant(archiveConfig(bytes), (dir) => writeFileSync(join(dir, ARCHIVE), bytes));
+    const archivedInit = fromArchive(archived, "init", "--json");
+    assert.ok(archivedInit.status === 0 || archivedInit.status === 1, archivedInit.stdout + archivedInit.stderr);
+    const cached = join(archived, ".paved", "runtime", "cache", `paved-core-${CORE_VERSION}.tgz`);
+    truncateSync(cached, 1024);
+    rmSync(join(archived, ".paved", "runtime", "versions"), { recursive: true });
+    rmSync(join(archived, ".paved", "runtime", "selection.json"));
+    const rearchived = fromArchive(archived, "status", "--json");
+    assert.ok(rearchived.status === 0 || rearchived.status === 1, rearchived.stdout + rearchived.stderr);
+    assert.deepEqual(readFileSync(cached), bytes, "a truncated cache is replaced from the local archive");
   });
 
   it("refuses rollback without a trustworthy record and replaces a leftover record on the next upgrade", () => {
@@ -206,7 +233,7 @@ describe("plugin launcher failure modes", () => {
     writeFileSync(join(runtime, "rollback.lock"), "tampered\n");
     writeFileSync(join(runtime, "rollback.json"), JSON.stringify({ previous: selection, lock_sha256: "0".repeat(64), created_at: new Date().toISOString() }));
     expectFailure(paved()(target, "runtime", "rollback", "--json"), "PAVED_RUNTIME_ROLLBACK_CORRUPT");
-    const patch = repackRuntime(tarball, NEXT_PATCH_VERSION, root);
+    const patch = repackRuntime(join(plugin, RUNTIME_DIRECTORY), NEXT_PATCH_VERSION, root);
     const newer = launcher(pluginVariant(plugin, root, "plugin-leftover", { ...patch, version: NEXT_PATCH_VERSION }), npmCache);
     const upgraded = newer(target, "runtime", "upgrade", "--json");
     assert.ok(upgraded.status === 0 || upgraded.status === 1, upgraded.stdout + upgraded.stderr);
@@ -226,8 +253,8 @@ describe("plugin launcher failure modes", () => {
     const lockedVersion = () => /^runtime:\n  package: paved-core\n  version: (.+)$/m.exec(readFileSync(lockPath, "utf8"))?.[1];
     const [major, minor, patchLevel] = CORE_VERSION.split(".").map(Number) as [number, number, number];
     const nextNext = `${major}.${minor}.${patchLevel + 2}`;
-    const newer = launcher(pluginVariant(plugin, root, "plugin-update-1", { ...repackRuntime(tarball, NEXT_PATCH_VERSION, root), version: NEXT_PATCH_VERSION }), npmCache);
-    const newest = launcher(pluginVariant(plugin, root, "plugin-update-2", { ...repackRuntime(tarball, nextNext, root), version: nextNext }), npmCache);
+    const newer = launcher(pluginVariant(plugin, root, "plugin-update-1", { ...repackRuntime(join(plugin, RUNTIME_DIRECTORY), NEXT_PATCH_VERSION, root), version: NEXT_PATCH_VERSION }), npmCache);
+    const newest = launcher(pluginVariant(plugin, root, "plugin-update-2", { ...repackRuntime(join(plugin, RUNTIME_DIRECTORY), nextNext, root), version: nextNext }), npmCache);
 
     const planned = newer(target, "update", "--dry-run", "--json");
     assert.equal(planned.status, 0, planned.stdout + planned.stderr);

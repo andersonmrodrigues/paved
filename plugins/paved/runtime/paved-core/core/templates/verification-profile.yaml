@@ -1,0 +1,14 @@
+# .paved/verification/profile.yaml: project-owned. List only checks that exist.
+# Each id names a check definition (Core, adapter or .paved/verification/checks/).
+apiVersion: paved/v1
+kind: VerificationProfile
+checks:
+  - core.paved.schema-validation
+  - core.paved.reference-validation
+  - project.test.unit
+policy:
+  # Who must have recorded a check result before it supports a claim: agent, paved or ci.
+  minimum_recorder: agent
+unavailable:
+  - type: e2e
+    reason: The project has no end-to-end suite yet.

@@ -1,0 +1,78 @@
+---
+name: gardener
+description: >-
+  Turns recurring agent mistakes and human corrections into structural improvements of
+  the paved path, choosing the strongest enforcement layer available (architecture,
+  static analysis, CI, rule, skill, documentation). Use when the same correction happens
+  twice, when a rule keeps being violated, or when asked to improve Paved.
+---
+
+# Gardener
+
+## When to use
+
+- A human corrects the same kind of agent mistake a second time.
+- A rule is repeatedly violated, overridden or disputed.
+- A skill or context document keeps leading agents astray.
+- Someone asks to improve rules, skills or verification.
+
+## Required context
+
+The concrete incidents: what the agent did, what the correction was, where it happened.
+Without at least two concrete incidents, record the observation and stop.
+
+## Preconditions
+
+- The pattern is recurring, not a one-off.
+- The correct behavior is agreed with a human.
+
+## Procedure
+
+1. **Collect** the incidents: task, mistake, correction, files involved.
+2. **Name the pattern** in one sentence ("agents add a second HTTP client instead of
+   using the existing one").
+3. **Find the root cause in the path**: missing context, missing rule, weak enforcement,
+   misleading skill, or an architecture that makes the mistake easy.
+4. **Choose the layer**, trying each in order and stopping at the first that works (see
+   [references/enforcement-layers.md](references/enforcement-layers.md)):
+   architecture, static analysis, CI, rule, skill, documentation.
+5. **Choose the owner**: Core (true for every repository), an adapter (true for a
+   technology), or the project (true here). Most fixes belong to the project.
+6. **Write a proposal**: pattern, incidents, layer, owner, concrete change, and how to
+   verify that it prevents the mistake.
+7. Hand the proposal to a human. Do not apply changes to rules, skills, Core or project
+   architecture on your own.
+
+## Tools
+
+`core.repository.diff` to cite the incidents precisely.
+
+## Rules
+
+`core.quality.unknowns-stay-unknown`: a proposal cites incidents, not impressions.
+
+## Verification
+
+None is required of the proposal itself. A good proposal includes a check or test that
+would have caught the original incidents.
+
+## Evidence
+
+A review artifact containing the proposal and the incidents it is based on.
+
+## Completion criteria
+
+- The proposal names the pattern, incidents, layer, owner and verification.
+- A stronger layer was considered and rejected with a reason before settling on a weaker one.
+
+## Failure modes
+
+| Failure | Signal | Response |
+|---|---|---|
+| Documentation by default | Proposal adds prose where a check is possible | Go back to step 4 |
+| Project knowledge in Core | Proposal puts a project convention into the Core | Move it to the project |
+| Rule inflation | Many narrow rules for one underlying issue | Fix the underlying design instead |
+
+## References
+
+- [references/enforcement-layers.md](references/enforcement-layers.md)

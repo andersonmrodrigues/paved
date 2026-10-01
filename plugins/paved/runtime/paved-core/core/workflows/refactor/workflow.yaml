@@ -1,0 +1,73 @@
+apiVersion: paved/v1
+kind: Workflow
+id: core.refactor
+title: Refactor
+description: >-
+  Changes the structure of code while preserving its behavior, in small verified steps.
+  Use when code must be renamed, moved, split, merged or simplified and nothing it does
+  should change.
+version: 0.3.0
+status: experimental
+change_type: refactor
+inputs:
+  - id: request
+    description: The structural goal and the code in scope.
+    required: true
+  - id: target-structure
+    description: The intended shape after the refactor.
+    required: false
+context:
+  required: []
+  optional: [architecture, rules, verification]
+rules: [core.architecture.respect-declared-boundaries]
+phases:
+  - phase: context
+    goal: State the structural goal and confirm that behavior must not change.
+    skills: [core.discovery.context-discovery]
+  - phase: discovery
+    goal: Map the code in scope, its callers, and the invariants its tests pin.
+    skills: [core.discovery.context-discovery]
+    gates:
+      - id: behavior-pinned
+        condition: Tests covering every invariant exist and pass before any change, or characterization tests were added.
+      - id: uncovered-risk
+        when: Some invariant cannot be pinned by a test.
+        condition: A human accepted refactoring that code without a test net.
+        approval: risk-acceptance
+  - phase: planning
+    goal: Split the refactor into small steps that each keep tests passing.
+    skills: [core.development.refactoring]
+    gates:
+      - id: plan-approved
+        condition: A human approved the structural plan before implementation.
+        approval: implementation-plan
+  - phase: implementation
+    goal: Apply the steps, running the covering tests after each one.
+    skills: [core.development.refactoring]
+    retry: { class: retryable, max_attempts: 3 }
+  - phase: validation
+    goal: Build, lint and run the tests covering the code in scope.
+    verification:
+      recommended: [build, static-analysis, unit]
+  - phase: verification
+    goal: Prove behavior is unchanged and the structural goal is reached.
+    verification:
+      required: [unit]
+      recommended: [integration, architecture]
+  - phase: evidence
+    goal: Record the baseline, the non-regression and structure claims, and their support.
+  - phase: review
+    goal: Confirm no behavior change slipped in and nothing is left unused.
+    skills: [core.code-review.change-review]
+  - phase: completion
+    goal: Confirm the structural goal and non-regression.
+    gates:
+      - id: criteria-met
+        condition: The evidence record is complete and valid.
+evidence:
+  required: [check-result, diff]
+outputs: [change, evidence, review]
+completion:
+  criteria:
+    - Non-regression is supported by checks that exercise the refactored code.
+    - The structural goal stated in context is met.

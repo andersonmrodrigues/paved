@@ -1,0 +1,20 @@
+apiVersion: paved/v1
+kind: Generator
+id: tools
+version: 0.1.0
+status: contract
+summary: >
+  Proposes tool contracts for operations the repository already scripts (starting the app, seeding data, reading logs), with a conservative safety class.
+depends_on: []
+inputs:
+  - kind: repository
+    description: Scripts directories, task-runner definitions, container and compose files, documented commands.
+outputs:
+  - path: .paved/generated/proposals/tools/
+    format: yaml
+    metadata: sidecar
+    schema: Tool
+change_detection:
+  strategy: [source-hash]
+  watch:
+    - "**/*"

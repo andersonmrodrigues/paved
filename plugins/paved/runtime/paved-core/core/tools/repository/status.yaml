@@ -1,0 +1,44 @@
+apiVersion: paved/v1
+kind: Tool
+id: core.repository.status
+title: Working tree status
+purpose: >
+  See which files have pending or untracked changes before and after a change,
+  to confirm the change touches only what was intended.
+safety: read-only
+inputs: []
+outputs:
+  format: text
+  description: Text describing pending and untracked changes by path.
+side_effects: []
+confirmation: none
+examples:
+  - description: List changes in the working tree.
+version: 0.1.0
+capability: repository-status
+permissions:
+  - repository-read
+environments:
+  - local
+  - ci
+  - ephemeral
+preconditions:
+  - id: precondition-1
+    kind: repository
+    description: A source-controlled repository is available.
+idempotency: idempotent
+timeout_seconds: 30
+retry:
+  max_attempts: 1
+  backoff_seconds: 0
+errors:
+  - execution-failure
+  - failed-precondition
+  - timeout
+evidence:
+  capture:
+    - revision
+    - environment
+    - timestamps
+    - output-digest
+availability: available

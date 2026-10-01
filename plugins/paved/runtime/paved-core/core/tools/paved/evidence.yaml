@@ -1,0 +1,61 @@
+apiVersion: paved/v1
+kind: Tool
+id: core.paved.evidence
+title: Assess an evidence record
+purpose: >
+  Recompute the completion decision of an evidence record from its observations
+  and check it against the workflow, the skills and the check definitions that
+  produced it, so completion is decided by deterministic code rather than by the
+  agent.
+safety: read-only
+inputs:
+  - name: record
+    description: Repository-relative path of the evidence record.
+    required: true
+    pattern: ^(?!/)(?!.*\.\.)\S+\.yaml$
+    type: string
+  - name: against
+    description: What to assess the record against. Omit to assess everything.
+    required: false
+    pattern: ^(completion|workflow|skills)$
+    type: string
+outputs:
+  format: json
+  description: The evaluated status and verification level, the evidence strength,
+    and the blocking, warning and informational findings.
+  fields:
+    - status
+    - verification
+side_effects: []
+confirmation: none
+examples:
+  - description: Recompute completion for a record.
+version: 0.1.0
+capability: paved-evidence
+permissions:
+  - repository-read
+environments:
+  - local
+  - ci
+  - ephemeral
+preconditions:
+  - id: precondition-1
+    kind: repository
+    description: The Paved CLI is installed at a version compatible with the
+      repository's manifest.
+idempotency: idempotent
+timeout_seconds: 120
+retry:
+  max_attempts: 1
+  backoff_seconds: 0
+errors:
+  - execution-failure
+  - failed-precondition
+  - timeout
+evidence:
+  capture:
+    - revision
+    - environment
+    - timestamps
+    - output-digest
+availability: planned
