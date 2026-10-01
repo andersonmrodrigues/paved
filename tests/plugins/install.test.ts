@@ -8,14 +8,13 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync,
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { parse, stringify } from "yaml";
-import { PLUGIN_DIRECTORY, runtimeFileName } from "../../plugins/build.ts";
-import { CORE_VERSION, NEXT_MAJOR_VERSION, NEXT_PATCH_VERSION, ROOT } from "../helpers.ts";
+import { PLUGIN_DIRECTORY, RUNTIME_DIRECTORY } from "../../plugins/build.ts";
+import { NEXT_MAJOR_VERSION, NEXT_PATCH_VERSION, ROOT, treeIntegrity } from "../helpers.ts";
 import {
   applicationDigest, claudeDetails, codeOf, consumer, hostAvailable, installWithClaude, installWithCodex,
   launcher, pluginVariant, remoteCacheEntries, repackRuntime, repositorySnapshot, workspace, type Invocation,
 } from "./support.ts";
 
-const RUNTIME = runtimeFileName(CORE_VERSION);
 
 const hosts = hostAvailable("codex") && hostAvailable("claude");
 const skip = hosts ? false : "the codex and claude CLIs are required for the clean-room install test";
@@ -59,9 +58,10 @@ describe("clean-room plugin installation", { skip }, () => {
 
     for (const installed of [codexPlugin, claudePlugin]) {
       assert.ok(!realpathSync(installed).startsWith(realpathSync(ROOT)), `${installed} must not be the development checkout`);
-      for (const file of ["bin/paved.mjs", "bin/bootstrap.json", "provenance.json", RUNTIME, "skills/init/SKILL.md", "hooks/hooks.json", "hooks/paved-prompt-submit.mjs"]) {
+      for (const file of ["bin/paved.mjs", "bin/bootstrap.json", "provenance.json", "skills/init/SKILL.md", "hooks/hooks.json", "hooks/paved-prompt-submit.mjs"]) {
         assert.deepEqual(readFileSync(join(installed, file)), readFileSync(join(ROOT, PLUGIN_DIRECTORY, file)), `${installed}: ${file}`);
       }
+      assert.equal(treeIntegrity(join(installed, RUNTIME_DIRECTORY)), treeIntegrity(join(ROOT, PLUGIN_DIRECTORY, RUNTIME_DIRECTORY)), `${installed}: the host installs the whole unpacked runtime`);
       const hook = spawnSync(process.execPath, [join(installed, "hooks", "paved-prompt-submit.mjs")], { input: event, encoding: "utf8" });
       assert.equal(hook.status, 0, hook.stderr);
       assert.equal(JSON.parse(hook.stdout).hookSpecificOutput.hookEventName, "UserPromptSubmit");
@@ -175,8 +175,8 @@ describe("clean-room plugin installation", { skip }, () => {
     const before = readFileSync(join(project, ".paved", "paved.lock"));
     const oldCore = data<{ coreRoot: string }>(current(project, "status", "--json")).coreRoot;
 
-    const tarball = join(codexPlugin, RUNTIME);
-    const patch = repackRuntime(tarball, NEXT_PATCH_VERSION, root);
+    const runtime = join(codexPlugin, RUNTIME_DIRECTORY);
+    const patch = repackRuntime(runtime, NEXT_PATCH_VERSION, root);
     const newer = launcher(pluginVariant(codexPlugin, root, `plugin-${NEXT_PATCH_VERSION}`, { ...patch, version: NEXT_PATCH_VERSION }), npmCache);
     const notified = ok(newer(project, "status", "--json"), "status with newer plugin");
     assert.match(notified.stderr, /PAVED_RUNTIME_UPDATE_AVAILABLE/);
@@ -202,7 +202,7 @@ describe("clean-room plugin installation", { skip }, () => {
     assert.equal(data<{ coreRoot: string }>(ok(current(project, "status", "--json"), "status after rollback")).coreRoot, oldCore);
     assert.equal(codeOf(newer(project, "runtime", "rollback", "--json")), "PAVED_RUNTIME_ROLLBACK_UNAVAILABLE");
 
-    const major = repackRuntime(tarball, NEXT_MAJOR_VERSION, root);
+    const major = repackRuntime(runtime, NEXT_MAJOR_VERSION, root);
     const incompatible = launcher(pluginVariant(codexPlugin, root, `plugin-${NEXT_MAJOR_VERSION}`, { ...major, version: NEXT_MAJOR_VERSION }), npmCache);
     const refused = incompatible(project, "runtime", "upgrade", "--json");
     assert.equal(refused.status, 5, refused.stdout + refused.stderr);

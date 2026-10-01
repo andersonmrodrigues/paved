@@ -1,0 +1,58 @@
+apiVersion: paved/v1
+kind: Adapter
+id: technology/dart
+title: Dart
+version: 0.1.0
+summary: Static evidence about Dart packages, SDK constraints and tests.
+requires:
+  core: ^1.0.0
+detect:
+  all_files: [pubspec.yaml]
+  file_contains:
+    - glob: pubspec.yaml
+      pattern: '(^|\n)\s*(name|environment|dependencies)\s*:'
+  confidence: strong
+provides:
+  capabilities:
+    - id: source.build
+      evidence:
+        - glob: pubspec.yaml
+          pattern: '(^|\n)\s*environment\s*:'
+          statement: Dart package environment configuration
+    - id: source.dependencies
+      evidence:
+        - glob: pubspec.yaml
+          pattern: '(^|\n)\s*(dependencies|dev_dependencies)\s*:'
+          statement: Dart dependency configuration
+    - id: source.structure
+      evidence:
+        - glob: '**/*.dart'
+          pattern: '^\s*(library|part|class|enum|mixin|extension)\s+([A-Za-z][A-Za-z0-9_]*)'
+          statement: Dart source declaration
+          capture: 2
+    - id: testing.structure
+      evidence:
+        - glob: 'test/**/*.dart'
+          pattern: '^\s*(void\s+)?(main|group|test)\s*\('
+          statement: Dart test source
+    - id: api.http
+      evidence:
+        - glob: '**/*.dart'
+          pattern: '\b(Uri\.parse|http\.(get|post|put|delete)|Dio\s*\()'
+          statement: Dart HTTP client usage
+    - id: api.openapi
+      evidence:
+        - glob: '**/openapi.yaml'
+          pattern: '(^|\n)\s*openapi\s*:'
+          statement: OpenAPI contract document
+        - glob: '**/openapi.yml'
+          pattern: '(^|\n)\s*openapi\s*:'
+          statement: OpenAPI contract document
+        - glob: '**/openapi.json'
+          pattern: '"openapi"\s*:'
+          statement: OpenAPI contract document
+sources:
+  - title: Dart package layout
+    url: https://dart.dev/tools/pub/pubspec
+    retrieved_at: 2026-09-27
+reviewed_at: 2026-09-27

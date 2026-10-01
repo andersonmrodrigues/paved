@@ -1,0 +1,40 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:project-context:v1
+title: Paved Project Context document
+description: >
+  YAML frontmatter of every Markdown document under .paved/project/<area>/ (kind
+  ContextDocument). Feature map entries are YAML documents with their own schema
+  (feature). Together they are the materialized Project Context.
+
+  Uncertainty is explicit and uses one representation everywhere: KNOWN is `observed`
+  or `declared` confidence; INFERRED is `inferred`; UNKNOWN is an entry in `unknowns`;
+  CONFLICTING is an entry in `conflicts`; STALE is computed from the source hashes in
+  `provenance` and never stored, because a stored staleness flag is itself stale.
+  Review status is in `provenance.review`. Managed blocks in the body may state their
+  own confidence and cite their own sources (docs/concepts/traceability.md).
+type: object
+additionalProperties: false
+required: [apiVersion, kind, area, title, confidence]
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { const: ContextDocument }
+  area:
+    description: Must equal the directory under .paved/project/ the document lives in.
+    enum: [architecture, domain, product, integrations, technology]
+  title: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  confidence:
+    description: >
+      Weakest confidence of any statement outside managed blocks that state their own.
+      A document mixing observed and inferred statements is `inferred`.
+    $ref: "urn:paved:schema:common:v1#/$defs/confidence"
+  unknowns:
+    type: array
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/unknown" }
+  conflicts:
+    type: array
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/conflict" }
+  provenance: { $ref: "urn:paved:schema:provenance:v1" }
+if:
+  properties: { confidence: { enum: [observed, inferred] } }
+then:
+  required: [provenance]

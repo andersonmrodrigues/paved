@@ -1,0 +1,14 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.security.threat-modeling
+version: 0.1.0
+status: experimental
+category: security
+context:
+  required: []
+  optional: [architecture, integrations, domain]
+verification:
+  required: []
+evidence:
+  required: [review]
+references: [references/stride.md, examples/threat-model.md]

@@ -1,7 +1,7 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import { tmpdir } from "node:os";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { loadYaml } from "../cli/lib/documents.ts";
 import { createRegistry, type SchemaRegistry } from "../cli/lib/schemas.ts";
@@ -11,6 +11,20 @@ export const CORE_VERSION = readFileSync(join(ROOT, "VERSION"), "utf8").trim();
 const [coreMajor, coreMinor, corePatch] = CORE_VERSION.split(".").map(Number) as [number, number, number];
 export const NEXT_PATCH_VERSION = `${coreMajor}.${coreMinor}.${corePatch + 1}`;
 export const NEXT_MAJOR_VERSION = `${coreMajor + 1}.0.0`;
+
+/** Integrity of an unpacked runtime, computed independently of the build and the launcher. */
+export function treeIntegrity(directory: string): string {
+  const lines: string[] = [];
+  const walk = (current: string) => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const full = join(current, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else lines.push(`${relative(directory, full).split(sep).join("/")}\0${createHash("sha256").update(readFileSync(full)).digest("hex")}`);
+    }
+  };
+  walk(directory);
+  return `sha512-${createHash("sha512").update(lines.sort().join("\n")).digest("base64")}`;
+}
 
 const temporaryDirectories = new Set<string>();
 

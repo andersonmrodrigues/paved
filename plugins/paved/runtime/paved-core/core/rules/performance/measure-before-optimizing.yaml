@@ -1,0 +1,20 @@
+apiVersion: paved/v1
+kind: Rule
+id: core.performance.measure-before-optimizing
+title: Measure before and after a performance change
+rationale: >
+  Performance changes made without measurement often add complexity without benefit, or
+  improve the wrong path.
+applies_to:
+  change_types: [performance]
+rule: >
+  Record a baseline measurement under a stated workload before changing code for
+  performance, and the same measurement after. A performance claim without both is
+  unsupported.
+enforcement:
+  mechanism: agent
+  layer: skill
+severity: error
+verification: >
+  The evidence contains `measurement` artifacts or `performance` checks for both the
+  baseline and the result, with the workload and environment stated.

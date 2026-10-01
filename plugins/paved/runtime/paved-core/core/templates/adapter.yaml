@@ -1,0 +1,24 @@
+# adapters/<category>/<name>/adapter.yaml
+apiVersion: paved/v1
+kind: Adapter
+id: technology/example
+title: Example language
+version: 0.1.0
+summary: Reusable knowledge about one technology. Nothing specific to any consumer project.
+requires:
+  core: ^0.2.0
+detect:
+  any_files:
+    - example.config
+provides:
+  capabilities:
+    - id: source.build
+      evidence:
+        - glob: example.config
+          pattern: 'build'
+          statement: Example build configuration marker
+sources:
+  - title: Official documentation page the content is based on
+    url: https://example.org/docs
+    retrieved_at: 2026-01-01
+reviewed_at: 2026-01-01

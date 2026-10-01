@@ -2,3 +2,5 @@ node_modules/
 .worktrees/
 /cli/build/
 .DS_Store
+# The plugin ships its runtime unpacked, bundled dependencies included.
+!/plugins/paved/runtime/paved-core/node_modules/
