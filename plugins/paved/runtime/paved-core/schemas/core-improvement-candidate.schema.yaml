@@ -1,0 +1,29 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:core-improvement-candidate:v1
+title: Review-only Core improvement candidate
+type: object
+additionalProperties: false
+required: [apiVersion, kind, id, status, pattern, consumers, observations, generality, technology_independence, approval_required, problem, uncertainty]
+properties:
+  apiVersion: { const: paved/v1 }
+  kind: { const: CoreImprovementCandidate }
+  id: { type: string, pattern: '^core-candidate-[a-f0-9]{20}$' }
+  status: { const: CANDIDATE }
+  pattern: { type: string }
+  consumers: { type: array, minItems: 2, uniqueItems: true, items: { type: string } }
+  observations:
+    type: array
+    minItems: 2
+    items:
+      type: object
+      additionalProperties: false
+      required: [consumer, observation, evidence]
+      properties:
+        consumer: { type: string }
+        observation: { type: string, pattern: '^observation-[a-f0-9]{20}$' }
+        evidence: { type: array, minItems: 2, items: { $ref: 'urn:paved:schema:gardener-observation:v1#/$defs/evidenceRef' } }
+  generality: { const: unknown }
+  technology_independence: { const: unknown }
+  approval_required: { const: true }
+  problem: { type: string }
+  uncertainty: { type: string }

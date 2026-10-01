@@ -1,0 +1,60 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:tool-implementation:v1
+title: Paved Tool implementation binding
+description: >
+  Binds one Tool capability to an implementation supplied by Core, an adapter or a
+  project. The contract's identity, safety, permissions and output meaning remain fixed.
+type: object
+additionalProperties: false
+required: [apiVersion, kind, id, tool, version, contract, source, environments, invocation, availability]
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { const: ToolImplementation }
+  id: { $ref: "urn:paved:schema:common:v1#/$defs/toolRef" }
+  tool: { $ref: "urn:paved:schema:common:v1#/$defs/toolRef" }
+  version: { $ref: "urn:paved:schema:common:v1#/$defs/semver" }
+  contract: { $ref: "urn:paved:schema:common:v1#/$defs/semverRange" }
+  source: { enum: [core, adapter, project] }
+  environments:
+    type: array
+    minItems: 1
+    uniqueItems: true
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/environmentKind" }
+  invocation:
+    type: object
+    additionalProperties: false
+    required: [type]
+    properties:
+      type: { enum: [command, synthetic] }
+      executable:
+        description: Executable path or name. The runner invokes it with an argument vector, never through a shell.
+        type: string
+        pattern: "^[A-Za-z0-9._/-]+$"
+      arguments:
+        description: Fixed argv elements. No shell expansion or interpolation.
+        type: array
+        items: { type: string }
+      input_bindings:
+        description: Validated Tool inputs appended as distinct argv elements.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [input]
+          properties:
+            input: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+            flag:
+              anyOf:
+                - { const: "--" }
+                - { type: string, pattern: "^--?[A-Za-z0-9][A-Za-z0-9-]*$" }
+      working_directory: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+      timeout_seconds: { type: integer, minimum: 1, maximum: 86400 }
+      synthetic_result:
+        description: Deterministic fixture output only; never accepted in Core or real projects.
+        type: object
+    allOf:
+      - if: { properties: { type: { const: command } }, required: [type] }
+        then: { required: [executable], not: { required: [synthetic_result] } }
+      - if: { properties: { type: { const: synthetic } }, required: [type] }
+        then: { required: [synthetic_result], not: { required: [executable] } }
+  availability: { enum: [available, planned, disabled] }

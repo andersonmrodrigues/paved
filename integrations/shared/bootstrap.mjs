@@ -4,7 +4,7 @@
 // runtime under .paved/runtime/ and hands the arguments to the packaged Paved CLI.
 import { createHash, randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
@@ -94,7 +94,9 @@ function checkMode(path, mode, label) {
   if (mode & 0o111 && !scriptPattern.test(path)) fail('PAVED_RUNTIME_UNEXPECTED_EXECUTABLE', `${label} contains an unexpected executable: ${path}.`, 'Use an unmodified paved-core release artifact.');
 }
 
-function digestTree(root) {
+// One `path\0sha256` line per regular file, in walk order. Links, special files and
+// unexpected executables are refused.
+function treeEntries(root) {
   const entries = [];
   function walk(path) {
     for (const entry of readdirSync(path, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name, 'en'))) {
@@ -108,7 +110,17 @@ function digestTree(root) {
     }
   }
   walk(root);
-  return createHash('sha256').update(entries.join('\n')).digest('hex');
+  return entries;
+}
+
+function digestTree(root) {
+  return createHash('sha256').update(treeEntries(root).join('\n')).digest('hex');
+}
+
+// Integrity of an unpacked package directory: SHA-512 over its sorted file lines, so the
+// plugin build can compute the same value without depending on directory walk order.
+function treeIntegrity(root) {
+  return `sha512-${createHash('sha512').update(treeEntries(root).sort().join('\n')).digest('base64')}`;
 }
 
 // Checked before npm sees the archive: only regular files and directories under package/,
@@ -162,14 +174,18 @@ function readConfig() {
   if (lstatSync(configPath, { throwIfNoEntry: false })?.isSymbolicLink()) fail('PAVED_RUNTIME_SYMLINK', 'Integration bootstrap config is a symbolic link.', 'Reinstall the Paved integration without symbolic links.');
   if (!existsSync(configPath)) fail('PAVED_RUNTIME_CONFIG_INVALID', 'Integration bootstrap config is missing.', 'Reinstall a valid Paved agent integration.');
   const config = readJson(configPath);
-  if (config.package !== 'paved-core' || !versionPattern.test(config.version || '') || (config.integrity && !integrityPattern.test(config.integrity)) || (config.tarball !== undefined && typeof config.tarball !== 'string')) {
+  const optionalPath = (value) => value === undefined || (typeof value === 'string' && value !== '');
+  if (config.package !== 'paved-core' || !versionPattern.test(config.version || '') || (config.integrity && !integrityPattern.test(config.integrity))
+    || !optionalPath(config.tarball) || !optionalPath(config.runtime) || (config.tarball && config.runtime)) {
     fail('PAVED_RUNTIME_CONFIG_INVALID', 'Integration bootstrap config is invalid.', 'Reinstall a valid Paved agent integration.');
   }
-  if (config.tarball && !isAbsolute(config.tarball)) {
-    // A bundled artifact is addressed relative to the launcher and must stay in its package.
-    const bundled = resolve(launcherDir, config.tarball);
-    noSymlinks(bundled, packageRoot);
-    config.tarball = bundled;
+  // A bundled artifact is addressed relative to the launcher and must stay in its package.
+  for (const field of ['tarball', 'runtime']) {
+    if (config[field] && !isAbsolute(config[field])) {
+      const bundled = resolve(launcherDir, config[field]);
+      noSymlinks(bundled, packageRoot);
+      config[field] = bundled;
+    }
   }
   return config;
 }
@@ -269,9 +285,20 @@ function cacheArtifact(ctx, config) {
 // Installs and verifies a runtime version without selecting it. Callers hold the bootstrap lock.
 function acquire(ctx, pinned) {
   const config = { ...pinned };
-  mkdirSync(join(ctx.runtimeDir, 'cache'), { recursive: true });
   mkdirSync(join(ctx.runtimeDir, 'versions'), { recursive: true });
-  if (config.tarball && !config.integrity) fail('PAVED_RUNTIME_INTEGRITY_UNAVAILABLE', 'A local runtime tarball requires an independently pinned SHA-512 integrity.', 'Supply the expected integrity with the integration package.');
+  if ((config.tarball || config.runtime) && !config.integrity) fail('PAVED_RUNTIME_INTEGRITY_UNAVAILABLE', 'A local runtime artifact requires an independently pinned SHA-512 integrity.', 'Supply the expected integrity with the integration package.');
+  if (config.runtime) {
+    if (!statSync(config.runtime, { throwIfNoEntry: false })?.isDirectory()) fail('PAVED_RUNTIME_PACKAGE_UNAVAILABLE', 'Configured bundled runtime directory is unavailable.', 'Reinstall the Paved plugin.');
+    // The copy, not the source, is verified, so what gets activated is what was checked.
+    return install(ctx, config, (staging) => {
+      const target = join(staging, 'node_modules', 'paved-core');
+      cpSync(config.runtime, target, { recursive: true, verbatimSymlinks: true });
+      const actual = treeIntegrity(target);
+      if (actual !== config.integrity) fail('PAVED_RUNTIME_INTEGRITY_MISMATCH', 'The bundled runtime does not match its pinned integrity.', 'Reinstall the Paved plugin; do not activate an unverified runtime.');
+      return actual;
+    });
+  }
+  mkdirSync(join(ctx.runtimeDir, 'cache'), { recursive: true });
   if (!config.integrity) {
     let metadata;
     try { metadata = JSON.parse(run('npm', ['view', `paved-core@${config.version}`, 'dist', '--json'], ctx.projectRoot)); }
@@ -281,12 +308,21 @@ function acquire(ctx, pinned) {
   }
   const { cache, integrity } = cacheArtifact(ctx, config);
   validateArchive(cache);
+  return install(ctx, config, (staging) => {
+    // A verified local artifact bundles its dependencies, so nothing is resolved remotely.
+    run('npm', ['install', '--ignore-scripts', '--no-bin-links', '--no-audit', '--no-fund', '--package-lock=false', ...(config.tarball ? ['--offline'] : []), '--prefix', staging, cache], ctx.projectRoot);
+    return integrity;
+  });
+}
+
+// Populates a fresh staging directory, checks the installed package and moves it into
+// versions/ under its content digest.
+function install(ctx, config, populate) {
   const staging = join(ctx.runtimeDir, `staging-${process.pid}-${randomBytes(4).toString('hex')}`);
   try {
     mkdirSync(staging);
     process.once('exit', () => { if (existsSync(staging)) rmSync(staging, { recursive: true, force: true }); });
-    // A verified local artifact bundles its dependencies, so nothing is resolved remotely.
-    run('npm', ['install', '--ignore-scripts', '--no-bin-links', '--no-audit', '--no-fund', '--package-lock=false', ...(config.tarball ? ['--offline'] : []), '--prefix', staging, cache], ctx.projectRoot);
+    const integrity = populate(staging);
     const unexpected = readdirSync(join(staging, 'node_modules')).filter((name) => name !== 'paved-core' && name !== '.package-lock.json');
     if (unexpected.length > 0) fail('PAVED_RUNTIME_UNEXPECTED_DEPENDENCY', `The runtime resolved dependencies outside the pinned artifact: ${unexpected.join(', ')}.`, 'Use a paved-core release artifact with bundled dependencies.');
     const installed = join(staging, 'node_modules', 'paved-core');
@@ -408,7 +444,7 @@ function runtimeStatus(ctx, config) {
   const record = rollbackRecord(ctx);
   emit('runtime', 'success', {
     projectRoot: ctx.projectRoot,
-    plugin: { package: config.package, version: config.version, integrity: config.integrity ?? null, bundled: Boolean(config.tarball) },
+    plugin: { package: config.package, version: config.version, integrity: config.integrity ?? null, bundled: Boolean(config.tarball || config.runtime) },
     locked: locked ?? null,
     selection: selection ?? null,
     migrationRequired: locked === null,

@@ -1,0 +1,49 @@
+apiVersion: paved/v1
+kind: Tool
+id: core.runtime.start
+version: 0.1.0
+title: Start runtime state
+purpose: Provide the runtime start capability through an environment-specific
+  implementation with structured results.
+capability: runtime-start
+safety: safe-mutation
+permissions:
+  - process-control
+environments:
+  - local
+  - ci
+  - ephemeral
+inputs: []
+outputs:
+  format: json
+  description: Structured observations and execution metadata for this capability.
+  fields:
+    - status
+side_effects:
+  - process
+preconditions: []
+idempotency: unknown
+timeout_seconds: 300
+retry:
+  max_attempts: 1
+  backoff_seconds: 0
+errors:
+  - invalid-input
+  - failed-precondition
+  - permission-denied
+  - timeout
+  - execution-failure
+  - implementation-unavailable
+  - malformed-output
+evidence:
+  capture:
+    - revision
+    - environment
+    - timestamps
+    - output-digest
+    - artifacts
+availability: available
+confirmation: none
+examples:
+  - description: Resolve this capability through a selected adapter or project
+      implementation.

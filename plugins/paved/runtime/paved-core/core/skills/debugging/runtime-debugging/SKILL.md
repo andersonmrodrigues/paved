@@ -1,0 +1,83 @@
+---
+name: runtime-debugging
+description: >-
+  Observes a running system to explain its behavior: logs, metrics, traces, health
+  endpoints and configuration, read-only first and never destructive in shared or
+  production environments. Use when a defect or incident shows up only in a running
+  environment, or when code reading alone cannot explain what the system does.
+---
+
+# Runtime debugging
+
+## When to use
+
+During incidents, and during bug work when the defect cannot be reproduced locally or
+depends on the environment (data, configuration, load, timing).
+
+## Required context
+
+Which environment, which component, and when the behavior was seen. Useful: the
+integrations context (what the component talks to) and the observability tools the
+project declares in `.paved/tools/`.
+
+## Preconditions
+
+- You have been granted access to the environment by a human, for this purpose.
+- You know whether the environment is shared or production. If unsure, treat it as
+  production.
+
+## Procedure
+
+1. **Frame the question**: what exactly is unexplained, in which time window.
+2. **Read before touching.** Start with signals that change nothing: logs around the time
+   window, metrics, traces, health and version endpoints, the deployed configuration.
+   Confirm which revision is actually running before comparing with code.
+3. **Correlate.** Line up the symptom with deploys, configuration changes, traffic,
+   dependency failures. A correlation is a lead, not a cause.
+4. **Narrow down** with more specific reads: filter by request, identifier or node.
+5. **Add observation only if reading is not enough**, and only in a way a human approved:
+   a temporary log level, a diagnostic flag. Write down how to undo it before doing it.
+6. **Never** restart, redeploy, change data, clear caches or run load against a shared
+   or production environment without explicit human confirmation for that action.
+7. **Hand findings back**: the observations, their sources and time windows. Confirming
+   a cause is the job of the calling skill.
+8. **Undo** every temporary change from step 5 and record that you did.
+
+## Tools
+
+None from the Core. Observability tools differ per project; use those declared in
+`.paved/tools/` or supplied by adapters, and respect their safety class.
+
+## Rules
+
+`core.quality.unknowns-stay-unknown`: a correlation in step 3 is reported as such.
+`core.security.no-secrets-in-source`: logs and configuration often contain secrets and
+personal data; quote only what the finding needs, redacted.
+
+## Verification
+
+Required: `runtime` — the observation was made on the running system, with its source.
+
+## Evidence
+
+Log excerpts or metric readings with their source, environment, time window and the
+revision running there, redacted.
+
+## Completion criteria
+
+- The unexplained behavior is explained by observations, or narrowed down with the
+  remaining unknowns listed.
+- Every temporary change is undone.
+
+## Failure modes
+
+| Failure | Signal | Response |
+|---|---|---|
+| Wrong revision | Code read does not match what is deployed | Confirm the running revision first |
+| Destructive shortcut | A restart or data fix is tempting | Stop; ask a human |
+| Leaked data | Evidence contains secrets or personal data | Redact before recording |
+| Correlation taken as cause | Conclusion rests on timing alone | Report it as a lead |
+
+## References
+
+None.

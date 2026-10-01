@@ -1,0 +1,80 @@
+---
+name: e2e-testing
+description: >-
+  Writes or updates end-to-end tests that drive the system the way a user or client
+  does, through its public interface, for the few flows that matter most. Use when a
+  claim is about a complete user-visible flow that lower-level tests cannot prove.
+---
+
+# End-to-end testing
+
+## When to use
+
+For critical flows only: those whose failure a user would notice first, and claims that
+depend on many components working together. Everything a lower level can prove belongs
+there; end-to-end tests are the slowest and least precise.
+
+## Required context
+
+The verification profile (how end-to-end tests run and against what environment).
+Useful: the product context (which flows are critical) and the feature map (entry
+points).
+
+## Preconditions
+
+- The project has an end-to-end setup, or the profile records `e2e` as unavailable, in
+  which case this skill records a gap and stops.
+- The flow is described as user-visible steps and expected outcomes.
+
+## Procedure
+
+1. **Discover the existing suite**: where it lives, how it starts the system, how it
+   selects elements or calls endpoints, how it creates and removes test data, and how
+   it waits for asynchronous results.
+2. **Check lower levels first.** If a unit or integration test can prove the claim,
+   write that instead and say why no end-to-end test was added.
+3. **Script the flow as a user would**: through the public interface only, never by
+   reaching into internal state to set up or check results.
+4. **Select stable handles**: dedicated test attributes or public identifiers the suite
+   already uses, not layout positions or visible text that changes with copy edits.
+5. **Wait on conditions, never on fixed delays.** A sleep hides timing problems until
+   the day the environment is slower.
+6. **Isolate data**: each test creates and removes what it needs, so the suite can run
+   in parallel and repeatedly.
+7. **Run the test several times**; a test that fails intermittently is fixed or removed,
+   not retried until green.
+
+## Tools
+
+None. The command and the target environment come from the verification profile.
+
+## Rules
+
+None beyond those that apply by scope.
+
+## Verification
+
+Required: `e2e`.
+
+## Evidence
+
+A check result for the end-to-end run, with the environment it ran against.
+
+## Completion criteria
+
+- The flow's claims are asserted through the public interface.
+- The test passes on repeated runs.
+- Claims a lower level could prove were tested there instead.
+
+## Failure modes
+
+| Failure | Signal | Response |
+|---|---|---|
+| Flaky test | Passes on retry | Find the race; wait on a condition |
+| Backdoor setup | Test writes internal state directly | Use the public interface or the suite's fixtures |
+| Pyramid inverted | Many end-to-end tests for local logic | Move those claims down a level |
+| Environment unavailable | Suite cannot start the system | Record a gap; do not fake the environment |
+
+## References
+
+None.

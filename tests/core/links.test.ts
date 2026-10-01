@@ -9,7 +9,10 @@ const LINK = /\]\(([^)\s]+)\)/g;
 describe("markdown links", () => {
   it("resolve to existing files", () => {
     const broken: string[] = [];
-    for (const file of filesRecursive(ROOT, (f) => f.endsWith(".md"))) {
+    // The plugin's bundled runtime is the npm package as packed; its docs links point at
+    // files the package does not ship.
+    const markdown = filesRecursive(ROOT, (f) => f.endsWith(".md")).filter((f) => !rel(f).startsWith("plugins/paved/runtime/"));
+    for (const file of markdown) {
       for (const match of readFileSync(file, "utf8").matchAll(LINK)) {
         const target = match[1]!;
         if (/^(https?:|mailto:|#)/.test(target)) continue;

@@ -58,13 +58,16 @@ is installed through each agent's native plugin installation from this repositor
 
 - No install hooks, MCP server or `curl | sh` step. Code runs only when a Paved
   command is invoked.
-- The bundled runtime tarball is pinned by SHA-512 in `bin/bootstrap.json` and in
-  `provenance.json`, which also records a digest for every plugin file. The test
-  suite fails when the committed plugin differs from a fresh build.
-- Before extraction the launcher accepts only regular files and directories under
-  `package/`, and rejects links, absolute paths, `..` segments, special permission
-  bits and non-JavaScript executables. npm runs with `--ignore-scripts`; resolved
-  dependencies must come from the artifact itself.
+- The bundled runtime ships unpacked, so every file can be reviewed. It is pinned by
+  a SHA-512 over its file digests in `bin/bootstrap.json` and in `provenance.json`,
+  which also records a digest for every plugin file. The test suite fails when the
+  committed plugin differs from a fresh build.
+- The launcher verifies the copy it activates, not the source, and accepts only
+  regular files: links, special permission bits and non-JavaScript executables are
+  refused, and no npm or install script runs. A registry or local tarball artifact
+  is checked entry by entry before extraction (no links, absolute paths or `..`
+  segments) and installed with `--ignore-scripts`; resolved dependencies must come
+  from the artifact itself.
 - The launcher writes only under the consumer's `.paved/runtime/` and refuses the
   plugin directory and the Core checkout as consumers. A different runtime is
   activated only by `runtime upgrade`, with rollback.

@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-28
 - **Extends:** [0024](0024-agent-integration-projections.md), [0025](0025-packaged-runtime-and-workflow-execution.md)
-- **Amended by:** [0032](0032-update-adopts-newer-plugin-runtime.md) (`update` adopts a newer plugin runtime)
+- **Amended by:** [0032](0032-update-adopts-newer-plugin-runtime.md) (`update` adopts a newer plugin runtime), [0034](0034-unpacked-plugin-runtime.md) (the runtime ships unpacked)
 
 ## Context
 

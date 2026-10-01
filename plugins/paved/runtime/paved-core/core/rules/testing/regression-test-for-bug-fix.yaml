@@ -1,0 +1,20 @@
+apiVersion: paved/v1
+kind: Rule
+id: core.testing.regression-test-for-bug-fix
+title: A bug fix comes with a test that fails without it
+rationale: >
+  Without a test that reproduces the bug, there is no proof the fix addresses the cause,
+  and nothing prevents the bug from returning.
+applies_to:
+  change_types: [bug-fix]
+rule: >
+  Add an automated test that fails on the code before the fix and passes after it, at the
+  lowest level that reproduces the bug. If no automated test is feasible, record a
+  reproduction artifact and explain why.
+enforcement:
+  mechanism: agent
+  layer: skill
+severity: error
+verification: >
+  The evidence contains a passed check for the new test, with a summary stating it failed
+  before the fix, or a gap with a reproduction artifact.

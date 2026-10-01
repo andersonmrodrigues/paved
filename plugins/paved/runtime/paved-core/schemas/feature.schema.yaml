@@ -1,0 +1,99 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:feature:v1
+title: Paved feature map entry
+description: >
+  One file per feature under .paved/project/feature-map/. Maps a capability of the
+  project to the code, data, context and checks involved, so an agent can go from a task
+  to the right files without scanning the whole repository. Architecture-neutral: an
+  entry point can be a screen, an endpoint, a command, a message consumer or a library
+  function. Product semantics (rules, permissions, states) belong in the domain and
+  product context documents the entry links to. Feature ids are project-local names;
+  only projects have features.
+type: object
+additionalProperties: false
+required: [apiVersion, kind, id, name, summary, status, code, confidence]
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { const: Feature }
+  id: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+  name: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  summary: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  status: { enum: [active, experimental, deprecated, removed] }
+  confidence:
+    description: Confidence of the entry as a whole. Items may state a different (usually weaker) confidence.
+    $ref: "urn:paved:schema:common:v1#/$defs/confidence"
+  actors:
+    description: Who or what uses the feature (roles, other systems), as named in the project.
+    $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyStringList"
+  code:
+    type: object
+    additionalProperties: false
+    required: [paths]
+    properties:
+      paths:
+        description: Glob patterns of source files that implement the feature.
+        type: array
+        minItems: 1
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      entrypoints:
+        description: Where execution enters the feature.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [kind, location]
+          properties:
+            kind:
+              description: "`ui`: a screen or component. `http`/`rpc`: a remote interface. `cli`: a command. `event`: a message or event consumer. `job`: scheduled or batch work. `library`: a public function or type."
+              enum: [ui, http, rpc, cli, event, job, library, other]
+            name:
+              description: How the project names it (a route, command, topic, symbol).
+              type: string
+            location: { $ref: "urn:paved:schema:common:v1#/$defs/fileRef" }
+            confidence: { $ref: "urn:paved:schema:common:v1#/$defs/confidence" }
+      tests:
+        type: array
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  data:
+    description: Data the feature reads or writes, named as the project names it.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [name, access]
+      properties:
+        name: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+        access: { enum: [read, write, read-write] }
+        location: { $ref: "urn:paved:schema:common:v1#/$defs/fileRef" }
+        confidence: { $ref: "urn:paved:schema:common:v1#/$defs/confidence" }
+  dependencies:
+    type: object
+    additionalProperties: false
+    properties:
+      features:
+        description: Other feature ids this feature relies on.
+        type: array
+        uniqueItems: true
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+      integrations:
+        description: External systems, as named in the integrations context.
+        $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyStringList"
+  context:
+    description: Project Context documents relevant to this feature.
+    type: array
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+  verification:
+    description: Ids of checks from the project verification profile that exercise this feature.
+    type: array
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+  unknowns:
+    type: array
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/unknown" }
+  conflicts:
+    type: array
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/conflict" }
+  provenance: { $ref: "urn:paved:schema:provenance:v1" }
+if:
+  properties: { confidence: { enum: [observed, inferred] } }
+then:
+  required: [provenance]

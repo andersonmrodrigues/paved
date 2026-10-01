@@ -1,0 +1,74 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:generator:v1
+title: Paved generator contract
+description: >
+  `generator.yaml` next to a GENERATOR.md. Declares what a generator reads, what it may
+  write and how it detects that its output is stale. Output paths are resolved against
+  the consumer layout in the Core manifest; generators may only write to paths whose
+  ownership is `generated-reviewed` or `disposable` (checked by tests).
+type: object
+additionalProperties: false
+required: [apiVersion, kind, id, version, status, summary, inputs, outputs, change_detection]
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { const: Generator }
+  id: { $ref: "urn:paved:schema:common:v1#/$defs/generatorId" }
+  version: { $ref: "urn:paved:schema:common:v1#/$defs/semver" }
+  status:
+    description: "`contract`: specified, not implemented. `experimental` and `stable` once implemented."
+    enum: [contract, experimental, stable]
+  summary: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  depends_on:
+    description: Generators whose output this one reads.
+    type: array
+    uniqueItems: true
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/generatorId" }
+  inputs:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      additionalProperties: false
+      required: [kind, description]
+      properties:
+        kind: { enum: [repository, manifest, adapter, project-context, verification-profile, evidence, human-input] }
+        description: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  outputs:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      additionalProperties: false
+      required: [path, format, metadata]
+      properties:
+        path:
+          description: Consumer-relative path or directory (trailing slash) the generator writes.
+          $ref: "urn:paved:schema:common:v1#/$defs/relativePath"
+        format: { enum: [markdown, yaml] }
+        metadata:
+          description: >
+            `inline`: the output carries its own provenance (the schema has a provenance
+            field). `sidecar`: each file gets a GeneratedArtifact sidecar. Required for
+            outputs whose schema cannot hold provenance.
+          enum: [inline, sidecar]
+        schema:
+          description: Document kind the output must validate against (the whole document for YAML, the frontmatter for Markdown).
+          type: string
+  change_detection:
+    type: object
+    additionalProperties: false
+    required: [strategy]
+    properties:
+      strategy:
+        description: >
+          `source-hash`: re-run when the hash of any recorded source changes.
+          `manifest-change`: re-run when the project manifest or adapter set changes.
+          `on-demand`: only when requested.
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items: { enum: [source-hash, manifest-change, on-demand] }
+      watch:
+        description: Glob patterns whose changes make the output stale.
+        type: array
+        items: { type: string }
