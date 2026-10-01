@@ -40,16 +40,22 @@ How to change this repository without breaking consumers.
 
 ## Releasing
 
-1. Move `[Unreleased]` entries under a new version heading in `CHANGELOG.md`.
-2. Update `VERSION`, `manifest.yaml` `version` and `package.json` `version` to the same
-   value (a test enforces it). Bump `plugins/plugin-source.json` `version` whenever the
-   plugin content changes.
-3. `npm run build:plugin`, commit `plugins/paved/`, then `npm run check`. Any change to
-   the Core sources the plugin projects (skills, commands, launcher, runtime package)
-   must be followed by `npm run build:plugin`; the drift test fails otherwise.
-4. Tag the release. Consumers install through the repository marketplaces
+Releases go through a pull request; nothing pushes to `main` directly.
+
+1. Run the `release` workflow from the Actions tab (or
+   `gh workflow run release.yml -f bump=patch|minor|major`). It runs
+   [`release-prepare.sh`](../../release-prepare.sh), which bumps `VERSION`,
+   `manifest.yaml`, `package.json` and the plugin version together, moves the
+   `[Unreleased]` changelog entries under the new version and rebuilds `plugins/paved/`.
+   It then opens a `release/vX.Y.Z` pull request and runs the `check` workflow on it.
+2. Review and merge the pull request once `check` passes. The merge tags `vX.Y.Z`.
+3. Consumers install through the repository marketplaces
    ([installing the plugin](../getting-started/installing-the-plugin.md)); update that
    guide if the distribution changes.
+
+Any change to the Core sources the plugin projects (skills, commands, launcher, runtime
+package) must be followed by `npm run build:plugin` in the same pull request; the drift
+test fails otherwise.
 
 ## Receiving Gardener proposals
 
