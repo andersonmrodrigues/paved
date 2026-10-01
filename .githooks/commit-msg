@@ -1,0 +1,6 @@
+#!/bin/sh
+# Rejects co-author trailers so tools never appear as repository contributors.
+if grep -qiE '^[[:space:]]*co-authored-by:' "$1"; then
+  echo "commit-msg: remove the Co-authored-by line; this repository does not record co-authors." >&2
+  exit 1
+fi
