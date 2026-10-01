@@ -27,7 +27,6 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      actions: write
     steps:
       - uses: actions/checkout@v4
 
@@ -56,10 +55,7 @@ jobs:
           git commit -m "feat: release v$VERSION"
           git push origin "$branch"
           gh pr create --base main --head "$branch" --title "feat: release v$VERSION" \
-            --body "Bumps the Core to $VERSION, ships the \`[Unreleased]\` changelog entries under it and rebuilds the plugin. Merging tags \`v$VERSION\`."
-          # Pull requests opened with GITHUB_TOKEN trigger no pull_request workflows;
-          # a dispatched run reports the check on the same commit.
-          gh workflow run check.yml --ref "$branch"
+            --body "Bumps the Core to $VERSION, ships the \`[Unreleased]\` changelog entries under it and rebuilds the plugin. Merging tags \`v$VERSION\`. GitHub holds the \`check\` run of a pull request opened by Actions until a maintainer approves it."
 
   tag:
     if: github.event_name == 'push'
