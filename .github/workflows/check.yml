@@ -1,0 +1,42 @@
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The plugin install tests drive the real host CLIs; without them they are skipped.
+      - name: Install Claude Code and Codex CLIs
+        run: npm install --global @anthropic-ai/claude-code @openai/codex
+
+      - name: Typecheck and tests
+        run: npm run check
+
+      - name: Generated plugin matches the build
+        run: npm run check:plugin
+
+      - name: Claude Code plugin validation
+        run: |
+          claude plugin validate --strict ./plugins/paved
+          claude plugin validate .
