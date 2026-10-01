@@ -274,20 +274,20 @@ git diff --stat
 echo
 
 # ------------------------------------------------------------
-# 13. Ensure the generated TGZ exists
+# 13. Ensure the generated runtime matches the release
 # ------------------------------------------------------------
 
-TGZ="plugins/paved/runtime/paved-core-${NEW_VERSION}.tgz"
+RUNTIME_DIR="plugins/paved/runtime/paved-core"
+RUNTIME_VERSION="$(node -p 'require("./plugins/paved/runtime/paved-core/package.json").version' 2>/dev/null || true)"
 
-if [[ ! -f "$TGZ" ]]; then
-  echo "ERROR: expected runtime artifact not found:"
-  echo "  $TGZ"
+if [[ "$RUNTIME_VERSION" != "$NEW_VERSION" ]]; then
+  echo "ERROR: expected runtime ${NEW_VERSION} in ${RUNTIME_DIR}, found '${RUNTIME_VERSION:-none}'."
   exit 1
 fi
 
 echo "Runtime artifact:"
-echo "  $TGZ"
-echo "  $(du -h "$TGZ" | cut -f1)"
+echo "  $RUNTIME_DIR (paved-core@${RUNTIME_VERSION})"
+echo "  $(du -sh "$RUNTIME_DIR" | cut -f1)"
 
 # ------------------------------------------------------------
 # 14. Final safety review
@@ -359,7 +359,7 @@ echo "Version: v${NEW_VERSION}"
 echo "Branch : main"
 echo
 echo "Plugin runtime:"
-echo "  plugins/paved/runtime/paved-core-${NEW_VERSION}.tgz"
+echo "  plugins/paved/runtime/paved-core/ (paved-core@${NEW_VERSION})"
 echo
 echo "Next step:"
 echo "  update the plugin in Codex/Claude and test the consumer repository."

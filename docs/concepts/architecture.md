@@ -177,7 +177,7 @@ consumer references. `adapters`, `cli`, `docs` and `tests` are not.
  │ .claude-plugin/marketplace    │        │ .paved/runtime/     (ignored)       │
  │ plugins/paved/  (generated)   │        │   cache/  versions/  selection.json │
  │   skills/  bin/paved.mjs      │ launch │ .paved/ context, rules, workflows   │
- │   runtime/paved-core-<v>.tgz ─┼───────►│ application code (never written     │
+ │   runtime/paved-core/ ────────┼───────►│ application code (never written     │
  └───────────────────────────────┘ verify │   by the launcher)                  │
         ▲ native plugin installation      └─────────────────────────────────────┘
    Codex · Claude Code                         ▲ runtime executes workflows,
