@@ -69,6 +69,8 @@ contract.
 - Keep `VERSION`, `manifest.yaml` and `package.json` aligned.
 - Update `CHANGELOG.md` for user-facing changes.
 - Run `npm run check` before proposing a release.
+- Release through the `release` workflow; see
+  [Releasing](docs/maintenance/evolving-the-core.md#releasing).
 - Keep public documentation honest about stable vs experimental interfaces.
 
 ## Pull requests
