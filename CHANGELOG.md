@@ -10,6 +10,14 @@ releases, not the development sequence used to build them.
 - The plugin ships a listing icon at `.claude-plugin/icon.png` for Claude's plugin
   directory.
 
+### Changed
+
+- The plugin ships its `paved-core` runtime unpacked under `runtime/paved-core/`
+  instead of as a tarball, so plugin directories can review every file. The launcher
+  copies it into `.paved/runtime/` and verifies the copy against a SHA-512 over its
+  file digests, without running npm. Projects pinned to an earlier runtime see the
+  usual update notice and adopt it with `update`.
+
 ## [1.15.1] - 2026-09-30
 
 ### Changed

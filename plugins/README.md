@@ -13,7 +13,8 @@ This component distributes Paved as one plugin for Cursor, Codex and Claude Code
 The plugin is a distribution and invocation layer. Its `bin/paved.mjs` launcher is
 [`integrations/shared/bootstrap.mjs`](../integrations/shared/bootstrap.mjs), its skills are
 rendered from `core/skills/` and the shared command catalog, and its runtime is the
-`paved-core` package packed from this repository with its dependencies bundled. Workflows,
+`paved-core` package packed from this repository with its dependencies bundled, then
+unpacked into `paved/runtime/paved-core/` so plugin directories can review every file. Workflows,
 Tools, verification, lifecycle and provenance stay in that runtime.
 
 The repository-backed marketplaces that list the plugin are

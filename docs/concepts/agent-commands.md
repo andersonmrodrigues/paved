@@ -61,7 +61,7 @@ and newly adopted verification profiles.
 Paved is distributed as a native Codex and Claude Code plugin through
 GitHub-backed marketplace distribution from this repository; see
 [Installing the Paved plugin](../getting-started/installing-the-plugin.md). The
-plugin bundles the `paved-core` runtime tarball, so activation needs no registry.
+plugin bundles the `paved-core` runtime unpacked, so activation needs no registry.
 `paved-core` is not published to npm and the plugin is not listed in a public
 plugin directory; the launcher's registry path applies only to a lock that pins a
 runtime the plugin does not bundle.
