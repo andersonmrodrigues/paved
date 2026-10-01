@@ -3,7 +3,8 @@
 This component distributes Paved as one plugin for Cursor, Codex and Claude Code.
 
 - [`plugin-source.json`](plugin-source.json) is the only authored plugin identity: name,
-  version, description and presentation metadata.
+  version, description and presentation metadata. [`icon.png`](icon.png) is the listing
+  icon, copied to `paved/.claude-plugin/icon.png`.
 - [`build.ts`](build.ts) builds the runtime artifact and projects the Core into the plugin.
 - `paved/` is the generated, installable plugin. Never edit it by hand; run
   `npm run build:plugin` and commit the result. `npm run check:plugin` and the test suite

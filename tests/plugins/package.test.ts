@@ -58,6 +58,17 @@ describe("generated plugin", () => {
     assert.equal(join("bin", bootstrap.tarball), join("bin", "..", provenance.runtime.file));
   });
 
+  it("ships a square PNG listing icon within Claude's directory limits", () => {
+    const icon = readFileSync(join(plugin, ".claude-plugin", "icon.png"));
+    assert.deepEqual(icon, readFileSync(join(ROOT, "plugins", "icon.png")));
+    assert.deepEqual(icon.subarray(0, 8), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    const width = icon.readUInt32BE(16);
+    const height = icon.readUInt32BE(20);
+    assert.equal(width, height);
+    assert.ok(width >= 512 && width <= 2048, `icon is ${width}px`);
+    assert.ok(icon.length < 2 * 1024 * 1024);
+  });
+
   it("bundles one prompt hook discoverable by both plugin hosts", () => {
     const codex = readJson<Record<string, unknown>>(join(plugin, ".codex-plugin", "plugin.json"));
     const claude = readJson<Record<string, unknown>>(join(plugin, ".claude-plugin", "plugin.json"));
@@ -134,7 +145,7 @@ describe("generated plugin", () => {
   it("refuses to overwrite a hand-edited generated file and replaces untouched ones", () => {
     const root = workspace("plugin-edit");
     temporary.push(root);
-    for (const path of ["plugins/plugin-source.json", "core/skills", "integrations/shared", PLUGIN_DIRECTORY]) {
+    for (const path of ["plugins/plugin-source.json", "plugins/icon.png", "core/skills", "integrations/shared", PLUGIN_DIRECTORY]) {
       cpSync(join(ROOT, path), join(root, path), { recursive: true });
     }
     const runtime = selectRuntime(ROOT, packRuntime(ROOT, { build: false }));
