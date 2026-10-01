@@ -47,8 +47,10 @@ Releases go through a pull request; nothing pushes to `main` directly.
    [`release-prepare.sh`](../../release-prepare.sh), which bumps `VERSION`,
    `manifest.yaml`, `package.json` and the plugin version together, moves the
    `[Unreleased]` changelog entries under the new version and rebuilds `plugins/paved/`.
-   It then opens a `release/vX.Y.Z` pull request and runs the `check` workflow on it.
-2. Review and merge the pull request once `check` passes. The merge tags `vX.Y.Z`.
+   It then opens a `release/vX.Y.Z` pull request.
+2. GitHub holds the `check` run of a pull request opened by Actions: approve it from
+   the pull request ("Approve workflows to run"), then merge once `check` passes. The
+   merge tags `vX.Y.Z`.
 3. Consumers install through the repository marketplaces
    ([installing the plugin](../getting-started/installing-the-plugin.md)); update that
    guide if the distribution changes.
