@@ -5,6 +5,11 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- The plugin ships a listing icon at `.claude-plugin/icon.png` for Claude's plugin
+  directory.
+
 ## [1.15.1] - 2026-09-30
 
 ### Changed
