@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-10-02
+
 ### Changed
 
 - Claude Code installs the plugin from `plugins/claude/paved/`. That copy ships the
