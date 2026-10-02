@@ -5,6 +5,11 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Changed
+
+- Reworded the remediation for missing workflow evidence, which Claude's directory
+  scan mistook for a credential read.
+
 ## [1.16.0] - 2026-10-02
 
 ### Changed
