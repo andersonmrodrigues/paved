@@ -1,0 +1,20 @@
+# .paved/tool-implementations/<group>/<name>.yaml
+# A binding for the Tool in tool.yaml. The runner passes validated inputs as argv
+# elements; it never invokes a shell.
+apiVersion: paved/v1
+kind: ToolImplementation
+id: project.test.run-unit
+tool: project.test.run-unit
+version: 0.1.0
+contract: ^0.1.0
+source: project
+environments: [local, ci]
+invocation:
+  type: command
+  executable: ./scripts/test-unit
+  arguments: []
+  timeout_seconds: 900
+  input_bindings:
+    - input: scope
+      flag: --scope
+availability: available

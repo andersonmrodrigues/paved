@@ -1,0 +1,20 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.discovery.context-discovery
+version: 0.3.0
+status: experimental
+category: discovery
+context:
+  required: []
+  optional: [manifest, feature-map, architecture, technology, rules, verification]
+tools:
+  required: [core.repository.status]
+  optional: [core.repository.history, core.repository.diff]
+rules:
+  - core.architecture.follow-existing-patterns
+  - core.quality.unknowns-stay-unknown
+verification:
+  required: []
+evidence:
+  required: []
+references: [references/repository-signals.md]

@@ -1,0 +1,128 @@
+---
+name: change-review
+description: >-
+  Reviews a finished change before completion across correctness, scope, architecture,
+  consistency, maintainability, tests, security, performance and evidence. Use when a
+  change reaches the review phase of a workflow, or when a human asks for a review.
+---
+
+# Change review
+
+## When to use
+
+In the `review` phase, after verification and evidence. Also when a human asks for a
+review of a change made by anyone.
+
+## Required context
+
+None is required beyond the diff and its evidence record. Useful: the rules that apply
+to the changed files and the architecture context.
+
+## Preconditions
+
+Verification has run and an evidence record exists (it may be incomplete).
+
+## Procedure
+
+Read the stated intent first (the task, its claims and plan), then read the diff with
+`core.repository.diff` top to bottom and confirm with `core.repository.status` that
+nothing is left out. Review against that intent: a hunk the intent does not explain is a
+scope finding; code that does something other than the intent is a correctness finding.
+
+Run three passes, each reading the diff afresh. When the agent can run reviewers with
+isolated context, run each pass as one, given only the intent and the diff:
+
+- **Rules pass**: the rules in scope. A rule applies to a file only when its scope
+  covers that file's path; a violation quotes the exact rule text it breaks.
+- **Diff pass**: defects visible in the changed lines alone, without outside context.
+- **Change pass**: defects in what the change introduces, reading surrounding code where
+  the diff alone cannot settle it.
+
+Each pass goes through the dimensions below and notes candidates; stop at none.
+
+1. **Scope**: every hunk is explained by the task; nothing unrelated rode along.
+2. **Correctness**: the code does what the claims say, including absent or empty
+   values, boundaries, error paths, concurrency and resource cleanup.
+3. **Architecture**: dependencies respect declared boundaries; responsibilities sit in
+   the layer where siblings put them.
+4. **Consistency**: naming, structure, error handling and logging match the siblings.
+5. **Maintainability**: no dead code, debug output or leftovers; no duplication a reader
+   would have to keep in sync; comments explain why, not what.
+6. **Tests**: they assert the claimed behavior, including the edge cases from step 2,
+   and would fail if the behavior broke.
+7. **Security**: if the change touches input, access control, sensitive data,
+   configuration or dependencies, run `security-review`.
+8. **Performance**: look for work inside loops that could be done once, unbounded
+   growth, and new remote calls on hot paths.
+9. **Evidence**: each supporting check actually exercises its claim. A passing suite
+   that never touches the changed code supports nothing.
+10. **Rules**: compliance entries in the evidence match the diff.
+
+**Classify** each candidate. A *blocking* finding is a defect you can demonstrate: code
+that will not build or load; wrong behavior for an input or state you can name; a
+dependency a declared boundary forbids; an unexplained hunk; a claim its evidence does
+not exercise; a violation of an in-scope rule whose text you can quote. Any other
+surviving candidate, typically from steps 4, 5 and 8, is a *note*: recorded, never a
+reason to hold the change.
+
+**Discard** candidates that are:
+
+| Candidate | Why it is not a finding |
+|---|---|
+| Present before the change | Not introduced here; raise it separately if it matters |
+| Caught by a configured check | The check reports it with better precision |
+| Silenced on purpose in the code | Someone already decided; the silence is the record |
+| Dependent on an input or state you cannot name | Speculation; name the input or drop it |
+| A preference a senior reviewer would not raise | Noise that buries real findings |
+
+**Validate** every blocking finding before recording it: re-open the code and confirm
+the defect exists as stated (the symbol is really undefined, the branch is really
+reachable, the rule's scope really covers the file), apart from the pass that found it
+when the agent supports that. A finding that does not survive validation is dropped.
+Keep one finding per defect, even when several passes found it.
+
+Fix findings in scope, then re-run the checks the fixes affect. Record the rest. A review
+with no finding says so and lists what it examined: the passes, the rules in scope and
+the claims whose evidence was confirmed.
+
+## Tools
+
+`core.repository.diff` and `core.repository.status`.
+
+## Rules
+
+All rules in scope; `core.architecture.follow-existing-patterns` for step 4 and
+`core.quality.evidence-before-completion` for step 9.
+
+## Verification
+
+None is required of the review itself. Recommended: `static-analysis` on the final diff.
+Any fix made during review is verified like any other change.
+
+## Evidence
+
+A review artifact with blocking findings, their severity and their resolution, notes
+listed apart, and what was examined. The agent's own
+review supports no claim; it prepares the human review.
+
+## Completion criteria
+
+- No unexplained hunk in the diff.
+- Every claim's support was confirmed to exercise the claim.
+- Every blocking finding was validated against the code before it was recorded.
+- Findings are fixed, or recorded with a reason; notes are recorded apart from them.
+
+## Failure modes
+
+| Failure | Signal | Response |
+|---|---|---|
+| Rubber stamp | Review finds nothing in a non-trivial diff | Go through steps 2 and 9 explicitly |
+| Evidence theater | Claims backed by checks unrelated to the change | Downgrade the claim or add a real check |
+| Style over substance | Findings are all about formatting | Revisit correctness and tests first |
+| False positive | A recorded finding the code does not bear out | Validate before recording; drop what fails |
+| Inherited blame | A finding points at lines the diff did not touch | Discard it, or raise it outside this review |
+| Rule by vibe | A rule finding without quoted text or out of the rule's scope | Quote the rule and check its scope, or drop it |
+
+## References
+
+None.

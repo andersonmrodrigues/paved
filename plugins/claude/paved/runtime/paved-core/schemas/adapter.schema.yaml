@@ -1,0 +1,134 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:adapter:v1
+title: Paved technology adapter
+description: >
+  `adapter.yaml` at the root of an adapter directory (adapters/<category>/<name>/).
+  Adapters carry reusable knowledge about a technology. They never carry knowledge
+  about a specific consumer project. The id's category is the adapter's type; its name
+  gives the namespace (adapter-<name>) of every rule, tool and skill it provides.
+  Compatibility is declared in `requires` and checked against the resolved Core and the
+  project's other adapters.
+type: object
+additionalProperties: false
+required: [apiVersion, kind, id, version, summary, requires, detect, sources, reviewed_at]
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { const: Adapter }
+  id: { $ref: "urn:paved:schema:common:v1#/$defs/adapterId" }
+  title:
+    description: Human-readable name of the technology.
+    $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+  version: { $ref: "urn:paved:schema:common:v1#/$defs/semver" }
+  summary: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  requires:
+    type: object
+    additionalProperties: false
+    required: [core]
+    properties:
+      core: { $ref: "urn:paved:schema:common:v1#/$defs/semverRange" }
+      adapters:
+        description: Other adapters this one builds on (a framework adapter usually requires its language adapter).
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [id, version]
+          properties:
+            id: { $ref: "urn:paved:schema:common:v1#/$defs/adapterId" }
+            version: { $ref: "urn:paved:schema:common:v1#/$defs/semverRange" }
+  detect:
+    description: >
+      Deterministic signals used by technology detection. A match only proposes the
+      adapter; the project manifest is the decision.
+    type: object
+    additionalProperties: false
+    minProperties: 1
+    properties:
+      any_files:
+        description: Glob patterns; at least one must match.
+        $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyStringList"
+      all_files:
+        description: Glob patterns; all must match.
+        $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyStringList"
+      file_contains:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [glob, pattern]
+          properties:
+            glob: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+            pattern:
+              description: Regular expression matched against file contents.
+              type: string
+              minLength: 1
+      confidence:
+        description: Confidence when a content signal matches; filename-only matches remain weak.
+        enum: [strong, medium]
+  provides:
+    description: Paths relative to the adapter directory.
+    type: object
+    additionalProperties: false
+    properties:
+      knowledge: { type: array, items: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" } }
+      skills: { type: array, items: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" } }
+      rules: { type: array, items: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" } }
+      tools: { type: array, items: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" } }
+      tool_implementations: { type: array, items: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" } }
+      capabilities:
+        description: Repository-static evidence providers for Core capability semantics.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [id, evidence]
+          properties:
+            id: { type: string, pattern: "^[a-z]+\\.[a-z][a-z0-9.-]*$" }
+            evidence:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                additionalProperties: false
+                required: [glob, pattern, statement]
+                properties:
+                  glob: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+                  pattern: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+                  statement: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+                  capture:
+                    description: Optional safe token capture group used as structured evidence.
+                    type: integer
+                    minimum: 1
+                    maximum: 9
+                  requires_siblings:
+                    description: Files required beside a matched source before its evidence is considered.
+                    type: array
+                    items: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+      check_suggestions:
+        description: Checks the verification generator may propose for projects using this technology.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [type, command, description]
+          properties:
+            type: { $ref: "urn:paved:schema:common:v1#/$defs/checkType" }
+            command: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+            description: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  sources:
+    description: >
+      Official documentation the adapter content is based on. Required so that stale
+      knowledge can be found and re-checked.
+    type: array
+    minItems: 1
+    items:
+      type: object
+      additionalProperties: false
+      required: [title, url, retrieved_at]
+      properties:
+        title: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+        url: { type: string, pattern: "^https://" }
+        retrieved_at: { $ref: "urn:paved:schema:common:v1#/$defs/date" }
+  reviewed_at:
+    description: Last date a maintainer confirmed the content is current.
+    $ref: "urn:paved:schema:common:v1#/$defs/date"

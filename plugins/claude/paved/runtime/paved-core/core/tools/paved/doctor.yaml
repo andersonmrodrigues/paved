@@ -1,0 +1,57 @@
+apiVersion: paved/v1
+kind: Tool
+id: core.paved.doctor
+title: Diagnose the Paved setup
+purpose: >
+  Validate the repository's Paved documents without changing them: schemas and
+  API versions, qualified references, and the provenance of generated and
+  observed knowledge. Used by the Core checks that verify Paved configuration.
+safety: read-only
+inputs:
+  - name: scope
+    description: Restrict the diagnosis to one family of findings.
+    required: false
+    pattern: ^(schemas|references|provenance|composition|overrides|layout)$
+    type: string
+outputs:
+  format: json
+  description: Findings, each with the document path, the problem and a suggested
+    fix. Empty when nothing is wrong.
+  fields:
+    - findings
+side_effects: []
+confirmation: none
+examples:
+  - description: Validate every Paved document against its schema.
+version: 0.1.0
+capability: paved-doctor
+permissions:
+  - repository-read
+environments:
+  - local
+  - ci
+  - ephemeral
+preconditions:
+  - id: precondition-1
+    kind: repository
+    description: The Paved CLI is installed at a version compatible with the
+      repository's manifest.
+  - id: precondition-2
+    kind: repository
+    description: The working directory is the root of the repository.
+idempotency: idempotent
+timeout_seconds: 300
+retry:
+  max_attempts: 1
+  backoff_seconds: 0
+errors:
+  - execution-failure
+  - failed-precondition
+  - timeout
+evidence:
+  capture:
+    - revision
+    - environment
+    - timestamps
+    - output-digest
+availability: planned

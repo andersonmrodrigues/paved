@@ -3,13 +3,13 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { gzipSync } from "node:zlib";
-import { PLUGIN_DIRECTORY, RUNTIME_DIRECTORY } from "../../plugins/build.ts";
+import { CLAUDE_PLUGIN_DIRECTORY, LAUNCHER_DIRECTORY, PLUGIN_DIRECTORY, RUNTIME_DIRECTORY } from "../../plugins/build.ts";
 import { CORE_VERSION, NEXT_PATCH_VERSION, ROOT } from "../helpers.ts";
-import { applicationDigest, codeOf, consumer, launcher, pluginVariant, repackRuntime, workspace, type Invocation } from "./support.ts";
+import { applicationDigest, claudeWithDependencies, codeOf, consumer, launcher, lockedPackages, pluginVariant, repackRuntime, workspace, type Invocation } from "./support.ts";
 
 interface TarEntry { readonly name: string; readonly type?: "0" | "2" | "5"; readonly content?: string; readonly mode?: number; readonly link?: string }
 
@@ -64,7 +64,7 @@ describe("plugin launcher failure modes", () => {
   const variant = (config: Record<string, unknown> | string, extra: (dir: string) => void = () => {}) => {
     const dir = join(root, `plugin-${++counter}`, "paved");
     cpSync(plugin, dir, { recursive: true });
-    writeFileSync(join(dir, "bin", "bootstrap.json"), typeof config === "string" ? config : JSON.stringify(config));
+    writeFileSync(join(dir, LAUNCHER_DIRECTORY, "bootstrap.json"), typeof config === "string" ? config : JSON.stringify(config));
     extra(dir);
     return launcher(dir, npmCache);
   };
@@ -73,7 +73,7 @@ describe("plugin launcher failure modes", () => {
     assert.equal(invocation.json.status, "failed");
     assert.equal(codeOf(invocation), code, invocation.stdout);
   };
-  const bundledConfig = () => JSON.parse(readFileSync(join(plugin, "bin", "bootstrap.json"), "utf8")) as Record<string, unknown>;
+  const bundledConfig = () => JSON.parse(readFileSync(join(plugin, LAUNCHER_DIRECTORY, "bootstrap.json"), "utf8")) as Record<string, unknown>;
   const paved = () => launcher(plugin, npmCache);
   const archiveConfig = (bytes: Buffer) => ({ package: "paved-core", version: CORE_VERSION, integrity: integrityOf(bytes), tarball: `../${ARCHIVE}` });
   const withArchive = (bytes: Buffer) => variant(archiveConfig(bytes), (dir) => writeFileSync(join(dir, ARCHIVE), bytes));
@@ -81,7 +81,7 @@ describe("plugin launcher failure modes", () => {
 
   it("rejects a missing, malformed or unsafe launcher configuration", () => {
     const target = project();
-    expectFailure(variant("", (dir) => rmSync(join(dir, "bin", "bootstrap.json")))(target, "status", "--json"), "PAVED_RUNTIME_CONFIG_INVALID");
+    expectFailure(variant("", (dir) => rmSync(join(dir, LAUNCHER_DIRECTORY, "bootstrap.json")))(target, "status", "--json"), "PAVED_RUNTIME_CONFIG_INVALID");
     expectFailure(variant("{ not json")(target, "status", "--json"), "PAVED_RUNTIME_STATE_INVALID");
     expectFailure(variant({ ...bundledConfig(), package: "left-pad" })(target, "status", "--json"), "PAVED_RUNTIME_CONFIG_INVALID");
     expectFailure(variant({ ...bundledConfig(), integrity: "md5-abc" })(target, "status", "--json"), "PAVED_RUNTIME_CONFIG_INVALID");
@@ -100,6 +100,35 @@ describe("plugin launcher failure modes", () => {
     expectFailure(variant(bundledConfig(), (dir) => writeFileSync(join(runtimeOf(dir), "node_modules", "injected.js"), "export {};\n"))(target, "status", "--json"), "PAVED_RUNTIME_INTEGRITY_MISMATCH");
     expectFailure(variant(bundledConfig(), (dir) => symlinkSync("/etc/passwd", join(runtimeOf(dir), "linked")))(target, "status", "--json"), "PAVED_RUNTIME_SYMLINK");
     expectFailure(variant(bundledConfig(), (dir) => chmodSync(join(runtimeOf(dir), "VERSION"), 0o755))(target, "status", "--json"), "PAVED_RUNTIME_UNEXPECTED_EXECUTABLE");
+    notActivated(target);
+  });
+
+  it("assembles the Claude runtime from the dependencies installed from its lockfile", () => {
+    const claudeOf = (extra: (dir: string) => void = () => {}) => {
+      const dir = claudeWithDependencies(join(ROOT, CLAUDE_PLUGIN_DIRECTORY), join(plugin, RUNTIME_DIRECTORY), join(root, `claude-${++counter}`, "paved"));
+      extra(dir);
+      return launcher(dir, npmCache);
+    };
+    const installed = project();
+    const init = claudeOf()(installed, "init", "--json");
+    assert.ok(init.status === 0 || init.status === 1, init.stdout + init.stderr);
+    const bundled = project();
+    const bundledInit = paved()(bundled, "init", "--json");
+    assert.ok(bundledInit.status === 0 || bundledInit.status === 1, bundledInit.stdout + bundledInit.stderr);
+    const pinned = (dir: string) => readFileSync(join(dir, ".paved", "paved.lock"), "utf8").match(/^runtime:\n(?:  .*\n)+/m)?.[0];
+    assert.equal(pinned(installed), pinned(bundled), "both plugins activate the same verified runtime");
+
+    const target = project();
+    const dependency = (dir: string) => join(dir, lockedPackages(dir)[0]!);
+    expectFailure(claudeOf((dir) => writeFileSync(join(dependency(dir), "injected.js"), "export {};\n"))(target, "status", "--json"), "PAVED_RUNTIME_INTEGRITY_MISMATCH");
+    expectFailure(claudeOf((dir) => { rmSync(dependency(dir), { recursive: true }); symlinkSync(join(plugin, RUNTIME_DIRECTORY, lockedPackages(dir)[0]!), dependency(dir)); })(target, "status", "--json"), "PAVED_RUNTIME_SYMLINK");
+    expectFailure(claudeOf((dir) => rmSync(join(dir, "package-lock.json")))(target, "status", "--json"), "PAVED_RUNTIME_PACKAGE_UNAVAILABLE");
+    // Without installed dependencies the launcher asks npm for the lockfile, and the offline registry has none.
+    expectFailure(claudeOf((dir) => rmSync(join(dir, "node_modules"), { recursive: true }))(target, "status", "--json"), "PAVED_RUNTIME_ACQUISITION_FAILED");
+    assert.deepEqual(readdirSync(join(target, ".paved", "runtime")).filter((name) => name.startsWith("staging-")), [], "no staging or dependency scratch is left behind");
+    const claudeConfig = JSON.parse(readFileSync(join(ROOT, CLAUDE_PLUGIN_DIRECTORY, LAUNCHER_DIRECTORY, "bootstrap.json"), "utf8")) as Record<string, unknown>;
+    expectFailure(variant({ ...bundledConfig(), dependencies: "../../../outside" })(target, "status", "--json"), "PAVED_RUNTIME_PATH_ESCAPE");
+    expectFailure(variant({ ...claudeConfig, runtime: undefined, tarball: `../${ARCHIVE}` })(target, "status", "--json"), "PAVED_RUNTIME_CONFIG_INVALID");
     notActivated(target);
   });
 

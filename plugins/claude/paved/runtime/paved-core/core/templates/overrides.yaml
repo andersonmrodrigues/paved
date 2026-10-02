@@ -1,0 +1,28 @@
+# .paved/overrides/overrides.yaml: human-owned. The only way to modify inherited (Core or
+# adapter) content. Each entry targets one artifact by id, names an owner and a reason.
+# target_sha256 binds the entry to the version of the target it was written against;
+# the CLI fills it in and asks the owner to re-confirm when the target changes.
+apiVersion: paved/v1
+kind: Overrides
+rules:
+  - target: core.performance.measure-before-optimizing
+    action: set-severity
+    severity: warning
+    owner: example-team
+    reason: Why the project needs this adjustment, and when it can be removed.
+skills:
+  - target: core.development.feature-development
+    action: extend
+    addendum: skills/feature-development.md
+    owner: example-team
+    reason: Project-specific steps the Core skill cannot know.
+workflows:
+  - target: core.release
+    action: extend
+    add_gates:
+      - phase: completion
+        id: release-notes-approved
+        condition: Release notes approved by the release owner.
+        approval: release
+    owner: example-team
+    reason: Why the project needs the extra gate.

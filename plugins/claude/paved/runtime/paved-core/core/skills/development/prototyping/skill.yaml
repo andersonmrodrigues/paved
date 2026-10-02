@@ -1,0 +1,14 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.development.prototyping
+version: 0.1.0
+status: experimental
+category: development
+context:
+  required: []
+  optional: [technology]
+verification:
+  required: [runtime]
+  recommended: [build]
+evidence:
+  required: [reproduction, diff]

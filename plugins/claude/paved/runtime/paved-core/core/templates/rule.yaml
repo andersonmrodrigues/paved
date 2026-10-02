@@ -1,0 +1,20 @@
+apiVersion: paved/v1
+kind: Rule
+id: project.quality.example-rule
+title: Short imperative title
+rationale: Why the rule exists, including the failure it prevents.
+applies_to:
+  paths:
+    - src/**
+rule: The constraint, stated so that a reviewer can decide whether a change complies.
+enforcement:
+  mechanism: agent
+  layer: rule
+severity: warning
+verification: How compliance is shown in an evidence record.
+overridable: true
+examples:
+  compliant:
+    - A short description of a compliant change.
+  violation:
+    - A short description of a violating change.

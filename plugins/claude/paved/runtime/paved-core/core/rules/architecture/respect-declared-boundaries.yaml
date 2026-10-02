@@ -1,0 +1,20 @@
+apiVersion: paved/v1
+kind: Rule
+id: core.architecture.respect-declared-boundaries
+title: Respect architectural boundaries the project declares
+rationale: >
+  Boundaries (layers, modules, allowed dependencies) exist to contain change. Crossing
+  them silently erodes the architecture one shortcut at a time.
+applies_to: {}
+rule: >
+  Do not add dependencies that violate boundaries declared in the project's architecture
+  context or enforced by its architecture checks. If the task seems to require crossing
+  a boundary, stop and raise it instead of working around it.
+enforcement:
+  mechanism: agent
+  layer: rule
+severity: error
+verification: >
+  An `architecture` check passes when the project has one; otherwise the evidence
+  records the boundaries reviewed and a `structure` claim backed by a review artifact.
+overridable: false

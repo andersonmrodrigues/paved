@@ -1,0 +1,234 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:workflow-run:v1
+title: Paved workflow run record
+description: >
+  The state of one run of a workflow: its inputs, the status of each phase and gate,
+  the failure that stopped it, the evidence it produced and the events that happened.
+  Written by the Paved workflow runtime as the run progresses, under
+  .paved/generated/runs/<id>.yaml. It is the durable state of the existing
+  workflow engine.
+  Rules that span fields (phase order, retries, approvals, failure codes) are checked by
+  cli/lib/workflows.ts. See docs/concepts/workflow-state.md.
+type: object
+additionalProperties: false
+required: [apiVersion, kind, id, workflow, revision, started_at, status, inputs, phases]
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { const: WorkflowRun }
+  id:
+    description: Run id, unique in the repository (for example a date and a short slug).
+    $ref: "urn:paved:schema:common:v1#/$defs/name"
+  workflow:
+    type: object
+    additionalProperties: false
+    required: [id, version]
+    properties:
+      id: { $ref: "urn:paved:schema:common:v1#/$defs/workflowRef" }
+      version: { $ref: "urn:paved:schema:common:v1#/$defs/semver" }
+  revision:
+    description: Source revision the run started from.
+    $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+  started_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+  ended_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+  status:
+    description: >
+      `running`: a phase is in progress. `awaiting-approval`: a gate waits for a human.
+      `awaiting-input`: a required decision awaits the project owner.
+      `completed`: every completion condition holds. `completed-with-warnings`: complete,
+      with reported warnings (gaps, `warning` rule violations, skipped recommended
+      checks). `failed`: a phase failed and cannot continue without a change. `blocked`:
+      a phase cannot proceed without something only a human can supply. `cancelled`: a
+      human stopped the run.
+    enum: [running, awaiting-approval, awaiting-input, completed, completed-with-warnings, failed, blocked, cancelled]
+  inputs:
+    description: Every input the run received, restated as understood; `source` says where it came from.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [id, value, source]
+      properties:
+        id: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+        value: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+        source:
+          description: "`human`: stated by a person. `ticket`: copied from a tracked request. `repository`: read from the repository."
+          enum: [human, ticket, repository]
+  phases:
+    description: One entry per phase of the workflow, in the workflow's order.
+    type: array
+    minItems: 1
+    items: { $ref: "#/$defs/phaseRun" }
+  decisions:
+    description: Decisions raised inside this run, in the order they were raised.
+    type: array
+    items: { $ref: "urn:paved:schema:decision:v1" }
+  failure:
+    description: The failure that ended or is holding the run. Required when failed or blocked.
+    $ref: "#/$defs/failure"
+  warnings:
+    type: array
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  evidence:
+    description: Path of the run's evidence record.
+    $ref: "urn:paved:schema:common:v1#/$defs/relativePath"
+  outputs:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [kind, description]
+      properties:
+        kind: { enum: [change, evidence, review, measurement, release-candidate, follow-up, context-update] }
+        description: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+        ref:
+          description: Where it is (a path, a revision, a change request).
+          type: string
+  events:
+    description: Append-only log of what happened, for reporting and automation.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [at, type]
+      properties:
+        at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+        type:
+          enum:
+            - run-started
+            - phase-started
+            - phase-completed
+            - phase-skipped
+            - phase-failed
+            - skill-activated
+            - tool-invoked
+            - verification-executed
+            - evidence-recorded
+            - approval-requested
+            - approval-decided
+            - decision-raised
+            - decision-asked
+            - decision-answered
+            - decision-applied
+            - decision-superseded
+            - retry-started
+            - run-completed
+            - run-failed
+            - run-blocked
+            - run-cancelled
+        phase: { $ref: "urn:paved:schema:common:v1#/$defs/phase" }
+        ref:
+          description: Id of the skill, tool, check, gate or evidence item the event concerns.
+          type: string
+        detail: { type: string }
+allOf:
+  - if:
+      properties: { status: { const: awaiting-input } }
+      required: [status]
+    then:
+      required: [decisions]
+  - if:
+      properties: { status: { enum: [failed, blocked] } }
+    then:
+      required: [failure]
+  - if:
+      properties: { status: { const: completed-with-warnings } }
+    then:
+      required: [warnings]
+      properties: { warnings: { type: array, minItems: 1 } }
+  - if:
+      properties: { status: { enum: [completed, completed-with-warnings, failed, blocked, cancelled] } }
+    then:
+      required: [ended_at]
+  - if:
+      properties: { status: { enum: [completed, completed-with-warnings] } }
+    then:
+      required: [evidence]
+$defs:
+  phaseRun:
+    type: object
+    additionalProperties: false
+    required: [phase, status]
+    properties:
+      phase: { $ref: "urn:paved:schema:common:v1#/$defs/phase" }
+      status:
+        enum: [pending, running, completed, skipped, failed, blocked]
+      attempts:
+        description: Attempts started so far. Each retry preserves the evidence of earlier attempts.
+        type: integer
+        minimum: 0
+      skip_reason:
+        description: How the phase's `skip_when` condition holds.
+        $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+      skills:
+        description: Skills this phase activated or continued, or recorded as not applicable.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [id, status]
+          properties:
+            id: { $ref: "urn:paved:schema:common:v1#/$defs/skillRef" }
+            status: { enum: [activated, continued, not-applicable, failed] }
+            reason: { type: string }
+      gates:
+        type: array
+        items: { $ref: "#/$defs/gateRecord" }
+      failure: { $ref: "#/$defs/failure" }
+    allOf:
+      - if:
+          properties: { status: { const: skipped } }
+        then:
+          required: [skip_reason]
+        else:
+          not: { required: [skip_reason] }
+      - if:
+          properties: { status: { enum: [failed, blocked] } }
+        then:
+          required: [failure]
+  gateRecord:
+    description: >
+      `passed`: the agent confirmed the condition (never for approval gates).
+      `not-applicable`: the gate's `when` does not hold; `reason` says why.
+      `awaiting-approval`, `approved`, `rejected`: a human decision; decided ones name the
+      human and the time.
+    type: object
+    additionalProperties: false
+    required: [id, status]
+    properties:
+      id: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+      status: { enum: [passed, not-applicable, awaiting-approval, approved, rejected] }
+      reason: { type: string }
+      requested_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+      decided_by:
+        description: The person who decided. An agent never approves its own run.
+        type: string
+        minLength: 1
+        not: { enum: [agent, paved, ci] }
+      decided_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+    allOf:
+      - if:
+          properties: { status: { enum: [approved, rejected] } }
+        then:
+          required: [decided_by, decided_at]
+      - if:
+          properties: { status: { const: not-applicable } }
+        then:
+          required: [reason]
+  failure:
+    type: object
+    additionalProperties: false
+    required: [code, phase, reason, retry, next_action]
+    properties:
+      code: { $ref: "urn:paved:schema:common:v1#/$defs/failureCode" }
+      phase: { $ref: "urn:paved:schema:common:v1#/$defs/phase" }
+      reason:
+        description: What failed and why, in terms a human can act on.
+        $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+      retry: { $ref: "urn:paved:schema:common:v1#/$defs/retryClass" }
+      next_action:
+        description: What must happen next, and who must do it.
+        $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+      evidence:
+        description: Ids of checks and artifacts in the evidence record that show the failure.
+        type: array
+        items: { type: string, minLength: 1 }

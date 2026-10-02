@@ -1,2 +1,4 @@
-# The generated plugin is verified byte for byte against provenance.json.
+# The generated plugins are verified byte for byte against plugins/provenance/.
 plugins/paved/** -text linguist-generated=true
+plugins/claude/** -text linguist-generated=true
+plugins/provenance/** linguist-generated=true

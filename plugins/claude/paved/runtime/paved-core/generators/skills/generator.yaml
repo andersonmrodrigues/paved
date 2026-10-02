@@ -1,0 +1,21 @@
+apiVersion: paved/v1
+kind: Generator
+id: skills
+version: 0.1.0
+status: contract
+summary: >
+  Proposes project skills or Core skill addenda for procedures the project repeats and documents (for example how to add a migration), when no Core or adapter skill covers them.
+depends_on: [project-context/architecture]
+inputs:
+  - kind: repository
+    description: Contribution guides, runbooks, scripts, repeated change patterns in version history.
+  - kind: adapter
+    description: Adapter skills, to avoid proposing duplicates.
+outputs:
+  - path: .paved/generated/proposals/skills/
+    format: markdown
+    metadata: sidecar
+change_detection:
+  strategy: [on-demand]
+  watch:
+    - "**/*"

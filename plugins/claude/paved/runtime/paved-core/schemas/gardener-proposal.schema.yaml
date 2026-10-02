@@ -1,0 +1,48 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:gardener-proposal:v1
+title: Gardener improvement proposal
+type: object
+additionalProperties: false
+required: [apiVersion, kind, id, scope, status, problem, observation, evidence, evidence_sha256, root_cause, root_cause_state, recommended_layer, layer_rationale, proposed_change, expected_impact, affected_components, uncertainty, provenance]
+properties:
+  apiVersion: { const: paved/v1 }
+  kind: { const: GardenerProposal }
+  id: { type: string, pattern: '^proposal-[a-f0-9]{20}$' }
+  scope:
+    type: object
+    additionalProperties: false
+    required: [consumer, target]
+    properties:
+      consumer: { $ref: 'urn:paved:schema:common:v1#/$defs/nonEmptyString' }
+      target: { const: consumer }
+  status: { enum: [DETECTED, CANDIDATE, UNDER_REVIEW, ACCEPTED, IMPLEMENTED, REJECTED, SUPERSEDED, DEFERRED] }
+  problem: { type: string }
+  observation: { type: string, pattern: '^observation-[a-f0-9]{20}$' }
+  evidence:
+    type: array
+    minItems: 2
+    items: { $ref: 'urn:paved:schema:gardener-observation:v1#/$defs/evidenceRef' }
+  evidence_sha256: { $ref: 'urn:paved:schema:common:v1#/$defs/sha256' }
+  root_cause: { type: string }
+  root_cause_state: { enum: [inferred, unknown] }
+  recommended_layer: { enum: [architecture, static-analysis, rule, skill, workflow, tool, verification, human-review] }
+  layer_rationale: { type: string }
+  proposed_change: { type: string }
+  expected_impact: { type: string }
+  affected_components: { type: array, items: { type: string } }
+  uncertainty: { type: string }
+  provenance: { $ref: 'urn:paved:schema:gardener-observation:v1#/$defs/provenance' }
+  review:
+    type: object
+    additionalProperties: false
+    required: [by, at, reason]
+    properties:
+      by: { type: string, minLength: 1 }
+      at: { $ref: 'urn:paved:schema:common:v1#/$defs/dateTime' }
+      reason: { type: string, minLength: 1 }
+      superseded_by: { type: string, pattern: '^proposal-[a-f0-9]{20}$' }
+allOf:
+  - if: { properties: { status: { enum: [UNDER_REVIEW, ACCEPTED, IMPLEMENTED, REJECTED, SUPERSEDED, DEFERRED] } } }
+    then: { required: [review] }
+  - if: { properties: { status: { const: SUPERSEDED } } }
+    then: { properties: { review: { type: object, required: [superseded_by] } } }

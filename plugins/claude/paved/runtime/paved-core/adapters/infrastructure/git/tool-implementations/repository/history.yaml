@@ -1,0 +1,22 @@
+apiVersion: paved/v1
+kind: ToolImplementation
+id: adapter-git.repository.history
+tool: core.repository.history
+version: 0.1.0
+contract: ^0.1.0
+source: adapter
+environments:
+  - local
+  - ci
+  - ephemeral
+invocation:
+  type: command
+  timeout_seconds: 60
+  executable: git
+  arguments:
+    - log
+  input_bindings:
+    - input: range
+    - input: path
+      flag: --
+availability: available

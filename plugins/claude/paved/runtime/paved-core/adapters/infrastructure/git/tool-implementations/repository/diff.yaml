@@ -1,0 +1,20 @@
+apiVersion: paved/v1
+kind: ToolImplementation
+id: adapter-git.repository.diff
+tool: core.repository.diff
+version: 0.1.0
+contract: ^0.1.0
+source: adapter
+environments:
+  - local
+  - ci
+  - ephemeral
+invocation:
+  type: command
+  timeout_seconds: 60
+  executable: git
+  arguments:
+    - diff
+  input_bindings:
+    - input: base
+availability: available

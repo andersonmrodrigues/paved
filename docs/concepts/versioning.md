@@ -12,8 +12,8 @@ record: [ADR 0006](../decisions/0006-versioning-boundaries.md).
 | **Generator version** | `generator.yaml` `version`, copied into provenance | SemVer 2.0.0 | Output format or strategy changes |
 | **Tool version** | Tool contract `version` | SemVer 2.0.0 | Capability meaning or compatible contract evolves |
 | **ToolImplementation version** | Binding `version`; `contract` names supported Tool range | SemVer 2.0.0 | Binding behavior changes |
-| **Plugin version** | `plugins/plugin-source.json`, projected into the plugin manifests and `plugins/paved/VERSION` | SemVer 2.0.0 | Plugin packaging, skills or launcher change |
-| **Runtime version** | The `paved-core` Core version bundled by the plugin (`bin/bootstrap.json`) and pinned per repository in `paved.lock` `runtime` | Core SemVer | A Core release |
+| **Plugin version** | `plugins/plugin-source.json`, projected into the plugin manifests and each plugin's `VERSION` | SemVer 2.0.0 | Plugin packaging, skills or launcher change |
+| **Runtime version** | The `paved-core` Core version carried by the plugin (`scripts/bootstrap.json`) and pinned per repository in `paved.lock` `runtime` | Core SemVer | A Core release |
 
 The rest is versioned by reference rather than by number:
 
@@ -45,7 +45,7 @@ runtime by version, SHA-512 integrity and installed content digest, and that pin
 wins over any plugin. A plugin carrying another runtime only reports
 `PAVED_RUNTIME_UPDATE_AVAILABLE`; `update` adopts a newer one (and `runtime upgrade`
 any one) through the Core's transactional update and `runtime rollback` restores the previous lock and runtime.
-`plugins/paved/provenance.json` records both versions and every file digest.
+`plugins/provenance/` records both versions and every file digest of each plugin.
 
 ## Change classification
 
