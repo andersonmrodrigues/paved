@@ -1,6 +1,6 @@
 {
   "name": "paved-core",
-  "version": "1.15.2",
+  "version": "1.15.3",
   "description": "An agent-first, verifiable engineering framework for software repositories.",
   "license": "MIT",
   "author": "Anderson Rodrigues",
