@@ -1,0 +1,17 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.bootstrap.repository-onboarding
+version: 0.3.0
+status: experimental
+category: bootstrap
+context:
+  required: []
+tools:
+  required: [core.repository.status]
+rules: [core.quality.unknowns-stay-unknown]
+depends_on:
+  required: [core.discovery.context-discovery]
+verification:
+  required: [static-analysis]
+evidence:
+  required: [diff, check-result]

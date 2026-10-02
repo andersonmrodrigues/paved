@@ -1,0 +1,21 @@
+apiVersion: paved/v1
+kind: Rule
+id: core.quality.evidence-before-completion
+title: Do not report completion without evidence
+rationale: >
+  A claim of success without evidence moves the verification cost to the reviewer and
+  hides failures until later, when they are more expensive.
+applies_to: {}
+rule: >
+  A task is reported as complete only with an evidence record whose claims are supported
+  by passed checks or artifacts able to support them. A successful build alone supports
+  no behavioral claim.
+enforcement:
+  # Becomes `automated` once `paved verify` validates evidence records.
+  mechanism: agent
+  layer: rule
+severity: error
+verification: >
+  The evidence record validates against the evidence schema and every claim is supported
+  as defined in verification/README.md.
+overridable: false

@@ -1,0 +1,19 @@
+# generators/<id>/generator.yaml
+apiVersion: paved/v1
+kind: Generator
+id: example/generator
+version: 0.1.0
+status: contract
+summary: What the generator produces and for whom.
+depends_on: []
+inputs:
+  - kind: repository
+    description: Which files it reads.
+outputs:
+  - path: .paved/generated/proposals/example/
+    format: markdown
+    metadata: sidecar
+change_detection:
+  strategy: [source-hash]
+  watch:
+    - "**/*"

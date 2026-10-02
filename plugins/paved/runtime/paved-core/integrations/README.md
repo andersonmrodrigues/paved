@@ -23,6 +23,6 @@ Paved-owned projections and are never application source. `paved agent install`
 can project both integrations from a packed artifact.
 
 The installable plugin in `plugins/` reuses this layer: its skills are rendered by
-`shared/projection.ts` from the same catalog, and its `bin/paved.mjs` is
+`shared/projection.ts` from the same catalog, and its `scripts/paved.mjs` is
 `shared/bootstrap.mjs` unchanged. Consumers normally install that plugin through
 native plugin installation instead of committing a project-local projection.

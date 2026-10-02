@@ -1,0 +1,20 @@
+apiVersion: paved/v1
+kind: Rule
+id: core.quality.unknowns-stay-unknown
+title: Record unknown project knowledge instead of guessing
+rationale: >
+  Agents and generators trust Project Context. A plausible guess recorded as fact
+  misleads every later task.
+applies_to: {}
+rule: >
+  Do not state project facts (behavior, ownership, conventions, integrations, business
+  rules) that are not supported by the code, the Project Context or a human. Record them
+  as unknowns or ask.
+enforcement:
+  mechanism: review
+  layer: rule
+severity: error
+verification: >
+  Generated context carries provenance; any fact without a source is marked `inferred`
+  and unreviewed, or listed under `unknowns`.
+overridable: false

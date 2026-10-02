@@ -1,0 +1,16 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.debugging.runtime-debugging
+version: 0.1.0
+status: experimental
+category: debugging
+context:
+  required: []
+  optional: [integrations, tools]
+rules:
+  - core.quality.unknowns-stay-unknown
+  - core.security.no-secrets-in-source
+verification:
+  required: [runtime]
+evidence:
+  required: [log]

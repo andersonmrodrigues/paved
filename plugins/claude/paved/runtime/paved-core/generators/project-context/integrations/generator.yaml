@@ -1,0 +1,22 @@
+apiVersion: paved/v1
+kind: Generator
+id: project-context/integrations
+version: 0.2.0
+status: experimental
+summary: >
+  Inventories the external systems the repository talks to (APIs, message brokers, identity providers, storage, third-party services) and how.
+depends_on: [project-context/architecture]
+inputs:
+  - kind: repository
+    description: HTTP and SDK clients, API specifications, messaging configuration, environment variable declarations, infrastructure definitions.
+  - kind: adapter
+    description: Adapter knowledge on how each technology declares clients and connections.
+outputs:
+  - path: .paved/project/integrations/
+    format: markdown
+    metadata: inline
+    schema: ContextDocument
+change_detection:
+  strategy: [source-hash]
+  watch:
+    - "**/*"

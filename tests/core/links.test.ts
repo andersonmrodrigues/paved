@@ -11,7 +11,7 @@ describe("markdown links", () => {
     const broken: string[] = [];
     // The plugin's bundled runtime is the npm package as packed; its docs links point at
     // files the package does not ship.
-    const markdown = filesRecursive(ROOT, (f) => f.endsWith(".md")).filter((f) => !rel(f).startsWith("plugins/paved/runtime/"));
+    const markdown = filesRecursive(ROOT, (f) => f.endsWith(".md")).filter((f) => !/^plugins\/(?:claude\/)?paved\/runtime\//.test(rel(f)));
     for (const file of markdown) {
       for (const match of readFileSync(file, "utf8").matchAll(LINK)) {
         const target = match[1]!;

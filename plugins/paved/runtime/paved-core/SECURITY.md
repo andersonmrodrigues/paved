@@ -53,18 +53,24 @@ capabilities.
 
 ## Plugin distribution
 
-The Codex and Claude Code plugin in `plugins/paved/` is generated and committed; it
-is installed through each agent's native plugin installation from this repository.
+The plugins in `plugins/paved/` (Codex, Cursor) and `plugins/claude/paved/` (Claude Code)
+are generated and committed, and installed through each agent's native plugin
+installation from this repository.
 
-- No install hooks, MCP server or `curl | sh` step. Code runs only when a Paved
-  command is invoked.
-- The bundled runtime ships unpacked, so every file can be reviewed. It is pinned by
-  a SHA-512 over its file digests in `bin/bootstrap.json` and in `provenance.json`,
-  which also records a digest for every plugin file. The test suite fails when the
+- No install hooks, MCP server or downloaded install script. Code runs only when a
+  Paved command is invoked.
+- The runtime ships unpacked, so every file can be reviewed. It is pinned by a
+  SHA-512 over its file digests in `scripts/bootstrap.json` and in
+  `plugins/provenance/`, which also records a digest for every plugin file. The
+  Claude Code plugin pins the runtime's dependencies in a `package-lock.json` that
+  Claude Code installs with `--ignore-scripts`; the launcher checks them together
+  with the runtime against the same SHA-512. The test suite fails when a
   committed plugin differs from a fresh build.
 - The launcher verifies the copy it activates, not the source, and accepts only
   regular files: links, special permission bits and non-JavaScript executables are
-  refused, and no npm or install script runs. A registry or local tarball artifact
+  refused, and no install script runs. npm runs only when the Claude Code plugin's
+  dependencies were not installed (`npm ci --ignore-scripts` from its lockfile) or
+  for a runtime the plugin does not carry. A registry or local tarball artifact
   is checked entry by entry before extraction (no links, absolute paths or `..`
   segments) and installed with `--ignore-scripts`; resolved dependencies must come
   from the artifact itself.

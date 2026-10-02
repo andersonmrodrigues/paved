@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, sep } from "node:path";
-import { RUNTIME_DIRECTORY } from "../../plugins/build.ts";
+import { LAUNCHER_DIRECTORY, RUNTIME_DIRECTORY } from "../../plugins/build.ts";
 import { ROOT, treeIntegrity } from "../helpers.ts";
 
 export interface Invocation {
@@ -92,7 +92,7 @@ export function claudeDetails(configDir: string): string {
  */
 export function launcher(pluginRoot: string, npmCache: string) {
   return (cwd: string, ...args: string[]): Invocation => {
-    const result = spawnSync(process.execPath, [join(pluginRoot, "bin", "paved.mjs"), ...args], {
+    const result = spawnSync(process.execPath, [join(pluginRoot, LAUNCHER_DIRECTORY, "paved.mjs"), ...args], {
       cwd, encoding: "utf8", shell: false, timeout: 180000, maxBuffer: 32 * 1024 * 1024,
       env: { ...process.env, npm_config_offline: "true", npm_config_cache: npmCache, npm_config_registry: "http://127.0.0.1:9/" },
     });
@@ -173,8 +173,24 @@ export function pluginVariant(pluginRoot: string, parent: string, name: string, 
   cpSync(pluginRoot, target, { recursive: true });
   rmSync(join(target, RUNTIME_DIRECTORY), { recursive: true, force: true });
   cpSync(runtime.path, join(target, RUNTIME_DIRECTORY), { recursive: true });
-  writeFileSync(join(target, "bin", "bootstrap.json"), `${JSON.stringify({
+  writeFileSync(join(target, LAUNCHER_DIRECTORY, "bootstrap.json"), `${JSON.stringify({
     package: "paved-core", version: runtime.version, integrity: runtime.integrity, runtime: `../${RUNTIME_DIRECTORY}`, _paved_generated: true,
   }, null, 2)}\n`);
+  return target;
+}
+
+/** The node_modules package paths a plugin's npm lockfile installs. */
+export function lockedPackages(pluginRoot: string): string[] {
+  const lock = JSON.parse(readFileSync(join(pluginRoot, "package-lock.json"), "utf8")) as { packages: Record<string, unknown> };
+  return Object.keys(lock.packages).filter((path) => path !== "").sort();
+}
+
+/**
+ * A copy of the Claude plugin whose node_modules holds what Claude Code installs from its
+ * lockfile, taken from the bundled runtime of the portable plugin so no registry is needed.
+ */
+export function claudeWithDependencies(claudePlugin: string, bundledRuntime: string, target: string): string {
+  cpSync(claudePlugin, target, { recursive: true });
+  for (const path of lockedPackages(claudePlugin)) cpSync(join(bundledRuntime, path), join(target, path), { recursive: true });
   return target;
 }

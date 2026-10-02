@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
 import { describe, it } from "node:test";
@@ -31,6 +32,8 @@ describe("component boundaries", () => {
   it("cover every top-level directory", () => {
     const directories = readdirSync(ROOT)
       .filter((name) => !name.startsWith(".") && name !== "node_modules" && statSync(at(name)).isDirectory())
+      // Ignored directories, such as dist/ from `npm run package:openai`, are local build output.
+      .filter((name) => spawnSync("git", ["check-ignore", "-q", name], { cwd: ROOT }).status !== 0)
       .sort();
     assert.deepEqual(components.map((c) => c.path).sort(), directories);
   });

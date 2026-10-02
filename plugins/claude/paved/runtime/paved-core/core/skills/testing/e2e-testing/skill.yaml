@@ -1,0 +1,13 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.testing.e2e-testing
+version: 0.1.0
+status: experimental
+category: testing
+context:
+  required: [verification]
+  optional: [product, feature-map]
+verification:
+  required: [e2e]
+evidence:
+  required: [check-result]

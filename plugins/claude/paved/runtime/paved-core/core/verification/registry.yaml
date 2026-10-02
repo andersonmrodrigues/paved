@@ -1,0 +1,108 @@
+# Registry of verification check types and evidence artifact kinds.
+#
+# `supports` lists the claim types (see schemas/evidence.schema.yaml) that a passed check
+# of this type, or an artifact of this kind, can back. This is how Paved encodes
+# "it compiles" != "it is correct": a build can never be the only support for a
+# behavior claim. cli/lib/evidence.ts reads this file; tests keep the check type enum in
+# schemas/common.schema.yaml in sync with it.
+#
+# Project-specific `x-` check types have no entry here, so they support no claim type
+# until the Core registers them. Promote a recurring `x-` type into this file.
+#
+# `self_reportable: false` marks artifact kinds that are statements rather than captured
+# output. Recorded by the agent itself, they support no claim: an agent's description of
+# its own work is not evidence of it.
+
+check_types:
+  build:
+    proves: The code compiles or packages with the current toolchain.
+    does_not_prove: That any behavior is correct.
+    supports: []
+  static-analysis:
+    proves: Code satisfies the configured type checker, linters or analyzers.
+    does_not_prove: Runtime behavior. Only as strong as the configured rule set.
+    supports: [structure, security]
+  unit:
+    proves: Isolated units behave as the tests assert.
+    does_not_prove: That units work together, or that the assertions cover the claim.
+    supports: [behavior, non-regression]
+  integration:
+    proves: Components work together with real or realistic collaborators.
+    does_not_prove: End-to-end user flows or production configuration.
+    supports: [behavior, non-regression]
+  e2e:
+    proves: A user-level flow works through the deployed or locally assembled system.
+    does_not_prove: Edge cases outside the exercised flows.
+    supports: [behavior, non-regression]
+  architecture:
+    proves: Declared structural constraints (dependencies, layering, boundaries) hold.
+    does_not_prove: Behavior.
+    supports: [structure]
+  security:
+    proves: Configured security scanners found no issue above threshold.
+    does_not_prove: Absence of vulnerabilities outside the scanners' coverage.
+    supports: [security]
+  performance:
+    proves: A measured metric stays within a declared budget under a declared workload.
+    does_not_prove: Performance under other workloads or environments.
+    supports: [performance, non-regression]
+  runtime:
+    proves: The running system exhibits the behavior (health checks, smoke tests, observed telemetry).
+    does_not_prove: Behavior in paths that were not exercised.
+    supports: [behavior, non-regression]
+  contract:
+    proves: An interface between components (request and response shapes, message formats) matches its declared contract.
+    does_not_prove: That either side behaves correctly beyond the shape of the exchange.
+    supports: [non-regression, structure]
+  database:
+    proves: Stored data satisfies declared invariants, or a schema migration applies (and reverts) on a representative copy.
+    does_not_prove: Behavior of code that reads or writes the data.
+    supports: [behavior, non-regression]
+  configuration:
+    proves: Configuration and declarative documents are valid against their schemas and their references resolve.
+    does_not_prove: That the configured system behaves as intended.
+    supports: [structure, documentation]
+  deployment:
+    proves: An artifact deploys to a target environment and reaches a ready state.
+    does_not_prove: That the deployed system behaves correctly beyond readiness.
+    supports: [behavior]
+  observability:
+    proves: Telemetry from a running system (logs, metrics, traces) meets a declared condition over a declared window.
+    does_not_prove: Behavior the telemetry does not cover, or conditions outside the window.
+    supports: [behavior, performance, non-regression]
+  formal:
+    proves: A model checker or proof assistant verified a stated property of a model or of the code.
+    does_not_prove: That the model matches the code, unless the property was checked on the code itself.
+    supports: [behavior, security]
+  conformance:
+    proves: Paved records (evidence, runs) are complete and consistent with the workflow and skills that produced them.
+    does_not_prove: Anything about the change itself; it checks the record, not the code.
+    supports: []
+
+artifact_kinds:
+  reproduction:
+    description: Steps plus observed result showing the behavior before and/or after the change.
+    supports: [behavior, non-regression]
+  measurement:
+    description: Benchmark or profile output with workload, environment and baseline.
+    supports: [performance]
+  diff:
+    description: The change itself, or a focused excerpt.
+    supports: [structure, documentation]
+  log:
+    description: Log or trace excerpt from an actual execution.
+    supports: [behavior]
+  trace:
+    description: Distributed trace, browser trace or execution trace from an actual run.
+    supports: [behavior, performance]
+  screenshot:
+    description: Visual capture of a UI state.
+    supports: [behavior]
+  review:
+    description: Recorded review by a human or a review skill, with findings.
+    supports: [structure, security, documentation]
+    self_reportable: false
+  manual-observation:
+    description: A human-performed check, described precisely enough to repeat.
+    supports: [behavior]
+    self_reportable: false

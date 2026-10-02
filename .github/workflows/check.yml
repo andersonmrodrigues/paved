@@ -33,10 +33,19 @@ jobs:
       - name: Typecheck and tests
         run: npm run check
 
-      - name: Generated plugin matches the build
+      - name: Generated plugins match the build
         run: npm run check:plugin
 
       - name: Claude Code plugin validation
         run: |
-          claude plugin validate --strict ./plugins/paved
+          claude plugin validate --strict ./plugins/claude/paved
           claude plugin validate .
+
+      - name: OpenAI directory package
+        run: npm run package:openai
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: paved-openai
+          path: dist/*.zip
+          if-no-files-found: error

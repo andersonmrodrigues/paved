@@ -1,0 +1,17 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.decisions.decisions
+version: 0.1.0
+status: experimental
+category: decisions
+context:
+  required: []
+tools:
+  required: []
+  optional: []
+rules: []
+verification:
+  required: []
+evidence:
+  required: []
+references: []

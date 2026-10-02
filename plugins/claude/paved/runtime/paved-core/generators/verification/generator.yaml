@@ -1,0 +1,24 @@
+apiVersion: paved/v1
+kind: Generator
+id: verification
+version: 0.2.0
+status: experimental
+summary: >
+  Proposes a verification profile from the commands the repository already runs (build files, CI configuration, scripts) and adapter check suggestions.
+depends_on: []
+inputs:
+  - kind: repository
+    description: Build and task-runner definitions, CI workflow files, test directories, documented commands.
+  - kind: adapter
+    description: check_suggestions of confirmed adapters.
+  - kind: verification-profile
+    description: The existing profile, so that proposals are diffs against it.
+outputs:
+  - path: .paved/generated/proposals/verification/
+    format: yaml
+    metadata: sidecar
+    schema: VerificationProfile
+change_detection:
+  strategy: [source-hash, manifest-change]
+  watch:
+    - "**/*"

@@ -1,0 +1,40 @@
+# .paved/verification/checks/<group>/<name>.yaml: project-owned. One check per file.
+# The check says what is verified and what counts as passing; the tool it names holds
+# the command. See the Core verification/README.md.
+apiVersion: paved/v1
+kind: Check
+id: project.test.unit
+title: Unit tests pass
+purpose: >-
+  Existing behavior covered by the unit suite still holds. A pass supports behavior and
+  non-regression claims for the code the suite exercises.
+type: unit
+tool: project.test.run-unit
+inputs:
+  scope: all
+applies_to:
+  - src/**
+preconditions:
+  - id: dependencies-installed
+    condition: Project dependencies are installed at the versions the lock file records.
+    when_unmet: blocked
+expected:
+  description: Every test passes.
+  exit_code: 0
+timeout_seconds: 600
+environment:
+  kinds: [local, ci]
+  capture: [runtime]
+outputs:
+  - kind: log
+    description: Full test output.
+failure: >-
+  A test failed or the suite did not start. Keep the output, read the first failure and
+  fix the code or the test it points to; do not retry to get a pass.
+determinism:
+  class: controlled
+  sources: [timestamps, random-data]
+  controls: A fixed clock and a fixed random seed are set by the test setup.
+retry:
+  class: environment-dependent
+  max_attempts: 2

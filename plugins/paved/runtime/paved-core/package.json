@@ -43,6 +43,7 @@
     "build": "tsc -p tsconfig.build.json",
     "build:plugin": "node plugins/build.ts",
     "check:plugin": "node plugins/build.ts --check",
+    "package:openai": "node plugins/package-openai.ts",
     "prepack": "npm run build",
     "pretest": "npm run build",
     "typecheck": "tsc -p tsconfig.json",

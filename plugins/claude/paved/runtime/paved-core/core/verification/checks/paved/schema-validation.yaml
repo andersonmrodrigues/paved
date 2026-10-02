@@ -1,0 +1,26 @@
+apiVersion: paved/v1
+kind: Check
+id: core.paved.schema-validation
+title: Paved documents are valid
+purpose: >-
+  Every document under .paved/ declares a supported API version and validates against the schema for its kind. Supports structure and documentation claims about Paved configuration.
+type: configuration
+tool: core.paved.doctor
+inputs:
+  scope: schemas
+preconditions:
+  - id: cli-available
+    condition: The Paved CLI is installed at a version compatible with the repository's manifest.
+    when_unmet: blocked
+expected:
+  description: The diagnosis lists no schema finding.
+  exit_code: 0
+timeout_seconds: 300
+environment:
+  kinds: [local, ci]
+failure: >-
+  A document is invalid and is ignored by every Paved consumer. Fix the document; never loosen the schema locally.
+determinism:
+  class: deterministic
+retry:
+  class: non-retryable

@@ -1,0 +1,141 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:override:v1
+title: Paved project overrides
+description: >
+  `.paved/overrides/overrides.yaml` in a consumer repository (kind Overrides): the only
+  way a project modifies inherited (Core or adapter) content. Each entry is a typed
+  operation on one target, identified by its qualified id; the list it appears in gives
+  the target's kind. Every entry names an owner and a reason. Overrides never contain
+  copies of their target (Principle 7).
+
+  Operations are deliberately few. There is no `replace` and no free-form `modify`: a
+  project that needs different behavior disables the inherited artifact and adds its
+  own. Tool overrides may additionally restrict policy or explicitly select a compatible
+  ToolImplementation, without changing the capability contract. `target_sha256` records the version of the target the override was written
+  against, so an update can detect that the target changed.
+  Composition semantics: docs/concepts/inheritance.md.
+type: object
+additionalProperties: false
+required: [apiVersion, kind]
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { const: Overrides }
+  tools:
+    description: Restrictions or explicit implementation selection for inherited Tools. Never relaxes the Tool's safety or permissions.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [target, action, owner, reason]
+      properties:
+        target: { $ref: "urn:paved:schema:common:v1#/$defs/toolRef" }
+        action: { enum: [disable, restrict, select-implementation] }
+        implementation: { $ref: "urn:paved:schema:common:v1#/$defs/toolRef" }
+        allowed_environments:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { $ref: "urn:paved:schema:common:v1#/$defs/environmentKind" }
+        timeout_seconds: { type: integer, minimum: 1, maximum: 86400 }
+        max_attempts: { type: integer, minimum: 1, maximum: 3 }
+        require_approval: { const: true }
+        owner: { $ref: "#/$defs/owner" }
+        reason: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+        target_sha256: { $ref: "#/$defs/targetDigest" }
+      allOf:
+        - if: { properties: { action: { const: select-implementation } }, required: [action] }
+          then: { required: [implementation] }
+        - if: { properties: { action: { const: restrict } }, required: [action] }
+          then:
+            anyOf:
+              - required: [allowed_environments]
+              - required: [timeout_seconds]
+              - required: [max_attempts]
+              - required: [require_approval]
+  rules:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [target, action, owner, reason]
+      properties:
+        target:
+          description: Core or adapter rule id. Rules with `overridable` set to false cannot be targeted.
+          $ref: "urn:paved:schema:common:v1#/$defs/ruleRef"
+        action: { enum: [set-severity, disable] }
+        severity: { $ref: "urn:paved:schema:common:v1#/$defs/severity" }
+        applies_to:
+          description: Narrow the override to these paths. Omitted means the whole project.
+          $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyStringList"
+        owner: { $ref: "#/$defs/owner" }
+        reason: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+        target_sha256: { $ref: "#/$defs/targetDigest" }
+      if:
+        properties: { action: { const: set-severity } }
+      then:
+        required: [severity]
+  skills:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [target, action, owner, reason]
+      properties:
+        target: { $ref: "urn:paved:schema:common:v1#/$defs/skillRef" }
+        action:
+          description: "`extend`: the agent reads the addendum after the inherited SKILL.md. `disable`: the skill is not offered in this project."
+          enum: [extend, disable]
+        addendum:
+          description: Markdown file, relative to .paved/overrides/.
+          $ref: "urn:paved:schema:common:v1#/$defs/relativePath"
+        owner: { $ref: "#/$defs/owner" }
+        reason: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+        target_sha256: { $ref: "#/$defs/targetDigest" }
+      if:
+        properties: { action: { const: extend } }
+      then:
+        required: [addendum]
+  workflows:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [target, action, owner, reason]
+      properties:
+        target: { $ref: "urn:paved:schema:common:v1#/$defs/workflowRef" }
+        action:
+          description: "`extend`: add gates or required checks. `disable`: the workflow is not used in this project; a project workflow may take its place."
+          enum: [extend, disable]
+        add_gates:
+          description: Extra gates appended to a phase. Inherited gates cannot be removed.
+          type: array
+          items:
+            $ref: "urn:paved:schema:common:v1#/$defs/gate"
+            type: object
+            required: [phase]
+            properties:
+              phase: { $ref: "urn:paved:schema:common:v1#/$defs/phase" }
+            unevaluatedProperties: false
+        require_checks:
+          description: Profile check ids that become mandatory for this workflow.
+          type: array
+          items: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+        owner: { $ref: "#/$defs/owner" }
+        reason: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+        target_sha256: { $ref: "#/$defs/targetDigest" }
+      if:
+        properties: { action: { const: extend } }
+      then:
+        anyOf:
+          - required: [add_gates]
+          - required: [require_checks]
+$defs:
+  owner:
+    description: Person or team accountable for the exception, who re-confirms it when its target changes.
+    $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+  targetDigest:
+    description: >
+      Digest of the target document when the override was written or last confirmed.
+      When the inherited target changes, the override is flagged for review; until
+      reviewed, subtractive operations (disable, set-severity) are not applied.
+    $ref: "urn:paved:schema:common:v1#/$defs/sha256"

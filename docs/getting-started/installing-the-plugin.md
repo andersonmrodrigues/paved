@@ -1,10 +1,11 @@
 # Installing the Paved plugin
 
-Paved is installed as one native plugin for Cursor, Codex and Claude Code. This repository
+Paved is installed as a native plugin for Cursor, Codex and Claude Code. This repository
 is its own plugin marketplace: GitHub-backed marketplace distribution means each
 agent reads the marketplace file committed at the repository root and installs the
-generated plugin in [`plugins/paved/`](../../plugins/paved/) through its own
-native plugin installation. Nothing is piped into a shell, installed globally, or added
+generated plugin through its own native plugin installation: Codex and Cursor install
+[`plugins/paved/`](../../plugins/paved/), and Claude Code installs
+[`plugins/claude/paved/`](../../plugins/claude/paved/). Nothing is piped into a shell, installed globally, or added
 to the application's dependencies.
 
 > **Publication status:** Paved is not listed in the public Codex, Claude Code or Cursor
@@ -12,7 +13,8 @@ to the application's dependencies.
 > today from the GitHub repository as a marketplace source, as described below.
 
 Requirements: Node.js 22.18 or later and npm on `PATH` (the launcher uses them to
-activate the bundled runtime), plus Git for the marketplace clone.
+activate the runtime, and Claude Code uses npm to install its dependencies), plus Git
+for the marketplace clone.
 
 ## Install
 
@@ -64,14 +66,18 @@ Codex:       paved:init    paved:status    paved:plan    paved:feature   (as ski
 Cursor:      /init        /status         /plan         /feature
 ```
 
-The first command activates the runtime. The plugin's launcher (`bin/paved.mjs`):
+The first command activates the runtime. The plugin's launcher (`scripts/paved.mjs`):
 
 1. finds the consumer repository: `--project` if given, otherwise the nearest
    directory above the current one that holds `.paved/manifest.yaml` or `.git`.
    It refuses the plugin installation and the Paved Core source checkout;
-2. copies the bundled, unpacked `paved-core` runtime under `.paved/runtime/` and
-   verifies the copy against the SHA-512 integrity pinned in the plugin, refusing
-   links and unexpected executables. Nothing is downloaded and npm does not run;
+2. copies the unpacked `paved-core` runtime under `.paved/runtime/` and verifies the
+   copy against the SHA-512 integrity pinned in the plugin, refusing links and
+   unexpected executables. In Codex and Cursor the runtime's dependencies ship with
+   it. In Claude Code they are the packages Claude Code installed from the plugin's
+   `package-lock.json`, added to the copy before it is verified. If they are missing,
+   the launcher installs them from that lockfile with `npm ci --ignore-scripts`. No
+   other download takes place;
 3. checks that the copy holds the pinned version and no dependencies outside it;
 4. records the installed content digest, and checks it before every command.
 
@@ -114,15 +120,15 @@ update verifies and activates it, rewrites the lock through the Core's transacti
 update and keeps the previous state for rollback; `update --dry-run` only reports the
 runtime it would adopt. The same or an older plugin runtime never changes the pin.
 
-The launcher also exposes the runtime operations directly. Its path is `bin/paved.mjs` in the
+The launcher also exposes the runtime operations directly. Its path is `scripts/paved.mjs` in the
 installed plugin directory (Claude Code: `installPath` from
 `claude plugin list --json`; Codex: under
 `$CODEX_HOME/plugins/cache/paved/paved/<version>/`).
 
 ```bash
-node <plugin>/bin/paved.mjs runtime status --json    # plugin, locked and active runtime
-node <plugin>/bin/paved.mjs runtime upgrade --json   # verify, activate and update the lock
-node <plugin>/bin/paved.mjs runtime rollback --json  # restore the previous runtime and lock
+node <plugin>/scripts/paved.mjs runtime status --json    # plugin, locked and active runtime
+node <plugin>/scripts/paved.mjs runtime upgrade --json   # verify, activate and update the lock
+node <plugin>/scripts/paved.mjs runtime rollback --json  # restore the previous runtime and lock
 ```
 
 `runtime upgrade` (the path `update` uses) verifies the new runtime, activates it, and lets that runtime run
@@ -164,7 +170,7 @@ next action:
 | `PAVED_RUNTIME_UNEXPECTED_EXECUTABLE` / `_DEPENDENCY` | The artifact contains unexpected executables or resolved outside dependencies. |
 | `PAVED_RUNTIME_CORRUPT` | The installed runtime changed after activation; reset the runtime cache. |
 | `PAVED_RUNTIME_LOCK_MISMATCH` / `_LOCK_INVALID` | The active runtime differs from, or cannot be read from, `.paved/paved.lock`. |
-| `PAVED_RUNTIME_ACQUISITION_FAILED` | The locked runtime is not bundled with this plugin and could not be fetched. |
+| `PAVED_RUNTIME_ACQUISITION_FAILED` | The locked runtime is not bundled with this plugin, or the Claude Code plugin's dependencies are not installed, and npm could not fetch them. |
 | `PAVED_RUNTIME_CONCURRENT_BOOTSTRAP` | Another activation is running. A lock left by a dead process is recovered automatically. |
 | `PAVED_RUNTIME_UPGRADE_FAILED` / `_UPGRADE_CONFLICT` | The upgrade was refused and the previous state kept, or a rollback is still pending. |
 | `PAVED_RUNTIME_IO_FAILED` | The launcher could not read or write `.paved/runtime/`. |
@@ -173,11 +179,12 @@ next action:
 
 - The plugin contains no install-time hooks or MCP server. Codex and Claude Code
   clone the marketplace repository; the launcher runs only when you invoke a Paved
-  command, and it reaches the npm registry only when a lock pins a runtime the
-  plugin does not bundle, under the same integrity checks.
+  command. It reaches the npm registry only when a lock pins a runtime the plugin
+  does not carry, or when the Claude Code plugin's dependencies were not installed,
+  under the same integrity checks.
 - The runtime ships unpacked, as readable files, and is pinned by a SHA-512 over its
-  file digests in `bin/bootstrap.json` and `provenance.json`. Activating it runs no
-  npm and no install scripts.
+  file digests in `scripts/bootstrap.json` and `plugins/provenance/`. Activating it
+  runs no install scripts.
 - Runtime files must be regular files; links, special permission bits and
   non-JavaScript executables are refused. A registry artifact, used only for a lock
   the plugin does not bundle, is installed with `--ignore-scripts` after the same
@@ -193,9 +200,10 @@ Contributors can install their working copy instead of GitHub:
 
 ```bash
 npm ci
-npm run build:plugin                       # regenerate plugins/paved/
+npm run build:plugin                       # regenerate plugins/paved/ and plugins/claude/paved/
 codex plugin marketplace add "$PWD"        # or: claude plugin marketplace add "$PWD"
 ```
 
 Claude Code can also load the directory directly for one session with
-`claude --plugin-dir ./plugins/paved`.
+`claude --plugin-dir ./plugins/claude/paved` after `npm ci` in that directory; without
+it, the launcher installs the dependencies itself on first use.

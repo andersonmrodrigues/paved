@@ -1,0 +1,51 @@
+apiVersion: paved/v1
+kind: Tool
+id: core.repository.diff
+title: Show changes
+purpose: >
+  Inspect exactly what a change modifies, for self-review and to attach a diff
+  artifact to evidence.
+safety: read-only
+inputs:
+  - name: base
+    description: Base revision to compare with the current working state. Omit to inspect
+      working-file changes relative to the implementation's current change baseline.
+    required: false
+    pattern: ^(?!-)[^\s]+$
+    type: string
+outputs:
+  format: text
+  description: Textual representation of the change set.
+side_effects: []
+confirmation: none
+examples:
+  - description: Changes since a baseline revision.
+  - description: Working-file changes.
+version: 0.1.0
+capability: repository-diff
+permissions:
+  - repository-read
+environments:
+  - local
+  - ci
+  - ephemeral
+preconditions:
+  - id: precondition-1
+    kind: repository
+    description: A source-controlled repository is available.
+idempotency: idempotent
+timeout_seconds: 60
+retry:
+  max_attempts: 1
+  backoff_seconds: 0
+errors:
+  - execution-failure
+  - failed-precondition
+  - timeout
+evidence:
+  capture:
+    - revision
+    - environment
+    - timestamps
+    - output-digest
+availability: available
