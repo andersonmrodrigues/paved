@@ -1,0 +1,26 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:gardener-review:v1
+title: Human Gardener review decisions
+type: object
+additionalProperties: false
+required: [apiVersion, kind, reviews]
+properties:
+  apiVersion: { const: paved/v1 }
+  kind: { const: GardenerReviews }
+  reviews:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [proposal, status, by, at, reason, evidence_sha256]
+      properties:
+        proposal: { type: string, pattern: '^proposal-[a-f0-9]{20}$' }
+        status: { enum: [UNDER_REVIEW, ACCEPTED, IMPLEMENTED, REJECTED, SUPERSEDED, DEFERRED] }
+        by: { type: string, minLength: 1 }
+        at: { $ref: 'urn:paved:schema:common:v1#/$defs/dateTime' }
+        reason: { type: string, minLength: 1 }
+        evidence_sha256: { $ref: 'urn:paved:schema:common:v1#/$defs/sha256' }
+        superseded_by: { type: string, pattern: '^proposal-[a-f0-9]{20}$' }
+      allOf:
+        - if: { properties: { status: { const: SUPERSEDED } } }
+          then: { required: [superseded_by] }

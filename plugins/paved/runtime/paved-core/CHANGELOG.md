@@ -5,6 +5,19 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Changed
+
+- Claude Code installs the plugin from `plugins/claude/paved/`. That copy ships the
+  runtime without `node_modules/`, and its `package-lock.json` pins the runtime's
+  dependencies. Claude Code installs them, and the launcher checks them with the
+  runtime against the same integrity. The plugin now stays within Claude's plugin
+  directory limits. Codex and Cursor keep installing `plugins/paved/`
+  ([ADR 0035](docs/decisions/0035-host-specific-plugin-directories.md)).
+- The plugin launcher moved from `bin/paved.mjs` to `scripts/paved.mjs`.
+- The Codex plugin has OpenAI's listing fields: a short description, a logo and a
+  composer icon. `npm run package:openai` builds the ZIP for OpenAI's plugin
+  directory, without the prompt hook.
+
 ## [1.15.3] - 2026-10-02
 
 ## [1.15.2] - 2026-10-01

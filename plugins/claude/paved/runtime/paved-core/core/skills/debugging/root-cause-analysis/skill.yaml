@@ -1,0 +1,19 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.debugging.root-cause-analysis
+version: 0.3.0
+status: experimental
+category: debugging
+context:
+  required: []
+tools:
+  required: [core.repository.diff]
+  optional: [core.repository.history]
+rules: [core.quality.unknowns-stay-unknown]
+depends_on:
+  optional: [core.debugging.runtime-debugging]
+verification:
+  required: [unit]
+  recommended: [integration, runtime]
+evidence:
+  required: [reproduction]

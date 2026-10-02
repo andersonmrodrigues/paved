@@ -1,0 +1,22 @@
+apiVersion: paved/v1
+kind: ToolImplementation
+id: core.paved.doctor
+tool: core.paved.doctor
+version: 0.1.0
+contract: ^0.1.0
+source: core
+environments:
+  - local
+  - ci
+  - ephemeral
+invocation:
+  type: command
+  timeout_seconds: 300
+  executable: paved
+  arguments:
+    - doctor
+    - --json
+  input_bindings:
+    - input: scope
+      flag: --scope
+availability: planned

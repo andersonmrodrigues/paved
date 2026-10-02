@@ -1,0 +1,54 @@
+apiVersion: paved/v1
+kind: Adapter
+id: technology/java
+title: Java
+version: 0.1.0
+summary: Static evidence about Java sources, dependencies and builds.
+requires:
+  core: ^1.0.0
+detect:
+  any_files: [pom.xml, build.gradle, build.gradle.kts]
+  file_contains:
+    - glob: pom.xml
+      pattern: '<project[ >]'
+    - glob: build.gradle*
+      pattern: 'java|java-library'
+  confidence: strong
+provides:
+  capabilities:
+    - id: source.structure
+      evidence:
+        - glob: '**/*.java'
+          pattern: '^\s*package\s+([a-zA-Z][a-zA-Z0-9_.]*)\s*;'
+          statement: Java package declaration
+          capture: 1
+    - id: source.dependencies
+      evidence:
+        - glob: pom.xml
+          pattern: '<artifactId>([a-zA-Z0-9_.-]+)</artifactId>'
+          statement: Maven artifact declaration
+          capture: 1
+    - id: source.build
+      evidence:
+        - glob: pom.xml
+          pattern: '<project[ >]'
+          statement: Maven build configuration
+        - glob: build.gradle*
+          pattern: 'java|java-library'
+          statement: Gradle Java build configuration
+    - id: source.test
+      evidence:
+        - glob: pom.xml
+          pattern: 'maven-surefire-plugin|junit-jupiter|junit'
+          statement: Java test dependency or plugin declaration
+        - glob: build.gradle*
+          pattern: 'testImplementation|useJUnitPlatform'
+          statement: Gradle Java test configuration
+sources:
+  - title: Java language specification
+    url: https://docs.oracle.com/javase/specs/
+    retrieved_at: 2026-09-27
+  - title: Maven POM reference
+    url: https://maven.apache.org/pom.html
+    retrieved_at: 2026-09-27
+reviewed_at: 2026-09-27

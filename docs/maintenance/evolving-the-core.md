@@ -24,7 +24,7 @@ How to change this repository without breaking consumers.
 | Document kind | Schema in `schemas/`, entry in `manifest.yaml` `schemas`, entry in `KIND_TO_SCHEMA` in `cli/lib/schemas.ts`, template, valid and invalid fixtures in `tests/fixtures/schemas/<schema-name>/`. A shared definition without a kind goes in `schema_definitions` instead ([schemas](../concepts/schemas.md)) | `tests/schemas/` |
 | Top-level directory | An entry in `components` in `manifest.yaml` with its `depends_on` | `tests/core/boundaries.test.ts` |
 | Architectural decision | A record in `docs/decisions/` ([format](../decisions/README.md)) | review |
-| Plugin change | Edit `plugins/plugin-source.json` (identity) or the Core sources it projects, never `plugins/paved/`; run `npm run build:plugin` and commit the result | `tests/plugins/` (drift, manifests, install, failure modes) |
+| Plugin change | Edit `plugins/plugin-source.json` (identity) or the Core sources it projects, never `plugins/paved/` or `plugins/claude/`; run `npm run build:plugin` and commit the result | `tests/plugins/` (drift, manifests, install, failure modes) |
 
 ## Changing contracts
 
@@ -46,14 +46,16 @@ Releases go through a pull request; nothing pushes to `main` directly.
    `gh workflow run release.yml -f bump=patch|minor|major`). It runs
    [`release-prepare.sh`](../../release-prepare.sh), which bumps `VERSION`,
    `manifest.yaml`, `package.json` and the plugin version together, moves the
-   `[Unreleased]` changelog entries under the new version and rebuilds `plugins/paved/`.
+   `[Unreleased]` changelog entries under the new version and rebuilds the plugins.
    It then opens a `release/vX.Y.Z` pull request.
 2. GitHub holds the `check` run of a pull request opened by Actions: approve it from
    the pull request ("Approve workflows to run"), then merge once `check` passes. The
    merge tags `vX.Y.Z`.
 3. Consumers install through the repository marketplaces
    ([installing the plugin](../getting-started/installing-the-plugin.md)); update that
-   guide if the distribution changes.
+   guide if the distribution changes. For OpenAI's plugin directory, upload the
+   `paved-openai` ZIP from the release commit's `check` run, or build it with
+   `npm run package:openai`.
 
 Any change to the Core sources the plugin projects (skills, commands, launcher, runtime
 package) must be followed by `npm run build:plugin` in the same pull request; the drift

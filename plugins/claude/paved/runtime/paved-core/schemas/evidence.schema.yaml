@@ -1,0 +1,447 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:evidence:v1
+title: Paved evidence record
+description: >
+  Proof that a change does what it claims, bound to one revision. The `plan` says which
+  check types and evidence kinds the task requires; `claims` are what the agent asserts;
+  `checks` and `artifacts` are observations, each saying who recorded it, against which
+  revision, with which tool and environment, and when. The schema enforces structure and
+  the key invariants (a `complete` record has no failed checks, unmet criteria or
+  violated `error` rules; a check that did not run cannot pass; every observation is
+  bound to a revision). The completion decision is recomputed deterministically by
+  cli/lib/evidence.ts (`evaluateCompletion`); a record that claims more than the
+  evaluation grants is rejected. See docs/concepts/evidence.md.
+type: object
+additionalProperties: false
+required: [apiVersion, kind, id, created_at, change, plan, claims, checks, completion]
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { const: Evidence }
+  id: { $ref: "#/$defs/localId" }
+  created_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+  producer:
+    type: object
+    additionalProperties: false
+    properties:
+      agent: { type: string }
+      workflow: { $ref: "urn:paved:schema:common:v1#/$defs/workflowRef" }
+      run:
+        description: Id of the workflow run that produced the record.
+        $ref: "urn:paved:schema:common:v1#/$defs/name"
+      skills:
+        type: array
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/skillRef" }
+  verification:
+    description: The verification profile the checks were selected from.
+    type: object
+    additionalProperties: false
+    required: [profile]
+    properties:
+      profile: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+      profile_sha256: { $ref: "urn:paved:schema:common:v1#/$defs/sha256" }
+  supersedes:
+    description: >
+      Ids of earlier records for this task (usually on earlier revisions). A new
+      revision gets a new record; failed records are kept, never rewritten.
+    type: array
+    items: { $ref: "#/$defs/localId" }
+  retention:
+    description: >
+      How long the record must be kept. `local`: until the change is merged or
+      abandoned. `change`: with the change request or CI run. `release`: with the
+      release it verifies. `audit`: as long as the project's audit policy requires.
+    enum: [local, change, release, audit]
+  change:
+    type: object
+    additionalProperties: false
+    required: [summary, revision]
+    properties:
+      summary: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      revision:
+        description: Exact immutable revision (commit id) the evidence is about. The subject of the record.
+        $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+      uncommitted_changes:
+        description: True when checks ran on a working tree with changes not captured by `revision`.
+        type: boolean
+      worktree_sha256:
+        description: Digest of the uncommitted changes (for example of the diff against `revision`). Required when `uncommitted_changes`.
+        $ref: "urn:paved:schema:common:v1#/$defs/sha256"
+      base_ref: { type: string }
+      head_ref: { type: string }
+      files:
+        type: array
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+    if:
+      properties: { uncommitted_changes: { const: true } }
+      required: [uncommitted_changes]
+    then:
+      required: [worktree_sha256]
+  plan:
+    description: >
+      The verification plan: what must exist before the task can be complete. Written in
+      the planning phase from the workflow, the activated skills, the applicable rules
+      and the profile; it may add requirements but never drop one they impose.
+      `required` types must end as passed checks for completion. A recorded gap makes
+      missing verification visible but cannot complete the task; `recommended` types
+      not run are warnings; `optional` types not run are informational.
+    type: object
+    additionalProperties: false
+    required: [required, evidence]
+    properties:
+      required: { $ref: "#/$defs/checkTypes" }
+      recommended: { $ref: "#/$defs/checkTypes" }
+      optional: { $ref: "#/$defs/checkTypes" }
+      evidence:
+        description: Evidence kinds the record must contain.
+        type: array
+        uniqueItems: true
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/evidenceKind" }
+  claims:
+    description: What the change asserts. Every claim needs support.
+    type: array
+    minItems: 1
+    items:
+      type: object
+      additionalProperties: false
+      required: [id, statement, type, supported_by]
+      properties:
+        id: { $ref: "#/$defs/localId" }
+        statement: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+        type:
+          description: >
+            `behavior`: the system now does something (or stops doing something).
+            `non-regression`: existing behavior is preserved. `structure`: code shape,
+            dependencies or boundaries changed. `performance`, `security`, `documentation`
+            as named.
+          enum: [behavior, non-regression, structure, performance, security, documentation]
+        supported_by:
+          type: array
+          minItems: 1
+          items: { $ref: "#/$defs/localId" }
+  checks:
+    type: array
+    items: { $ref: "#/$defs/checkResult" }
+  artifacts:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [id, kind, description, recorded_by, revision, created_at, source]
+      properties:
+        id: { $ref: "#/$defs/localId" }
+        kind:
+          $ref: "urn:paved:schema:common:v1#/$defs/evidenceKind"
+          not: { const: check-result }
+        description: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+        source:
+          description: Where the artifact is stored (file, URL, command output), with its digest when the content can change. Large artifacts are referenced, never embedded.
+          $ref: "urn:paved:schema:provenance:v1#/$defs/source"
+        recorded_by: { $ref: "#/$defs/artifactRecorder" }
+        revision: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+        created_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+        check:
+          description: Local id of the check whose run produced the artifact.
+          $ref: "#/$defs/localId"
+  gaps:
+    description: Verification that was expected but not performed, and why. Gaps are reported, never hidden.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [description, reason]
+      properties:
+        check_type: { $ref: "urn:paved:schema:common:v1#/$defs/checkType" }
+        description: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+        reason: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+        risk: { enum: [low, medium, high] }
+        accepted_by:
+          description: The person who acknowledged the gap. Acknowledgement does not satisfy a required check or permit completion.
+          type: string
+          minLength: 1
+          not: { enum: [agent, paved, ci] }
+  rules:
+    description: Compliance with rules the change was subject to.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [id, severity, status]
+      properties:
+        id: { $ref: "urn:paved:schema:common:v1#/$defs/ruleRef" }
+        severity:
+          description: Effective severity after overrides. Only a violated `error` rule blocks completion.
+          $ref: "urn:paved:schema:common:v1#/$defs/severity"
+        status: { enum: [satisfied, violated, not-applicable, overridden] }
+        note: { type: string }
+      if:
+        properties: { status: { enum: [violated, not-applicable, overridden] } }
+      then:
+        required: [note]
+  completion:
+    type: object
+    additionalProperties: false
+    required: [status, verification, decided_by, criteria]
+    properties:
+      status: { enum: [complete, incomplete, blocked] }
+      verification:
+        description: >
+          `verified`: every required check type passed. `partially-verified`: some
+          required types passed but others did not. `unverified`: no
+          required check type passed. Recomputed by `evaluateCompletion`; a record that
+          states more is rejected.
+        enum: [verified, partially-verified, unverified]
+      decided_by:
+        description: >
+          Who made the completion decision. `paved`: the deterministic assessment
+          (schema + semantics) over recorded observations. `agent`: the agent's own
+          judgement, acceptable only until a Paved runner exists. `human`: a person.
+        enum: [agent, paved, human]
+      criteria:
+        type: array
+        minItems: 1
+        items:
+          type: object
+          additionalProperties: false
+          required: [statement, met]
+          properties:
+            statement: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+            met: { type: boolean }
+            supported_by:
+              type: array
+              items: { $ref: "#/$defs/localId" }
+      notes: { type: string }
+allOf:
+  - if:
+      properties: { completion: { type: object, properties: { status: { const: complete } } } }
+    then:
+      properties:
+        completion:
+          type: object
+          properties:
+            verification: { const: verified }
+            criteria:
+              type: array
+              not: { contains: { type: object, properties: { met: { const: false } } } }
+        checks:
+          type: array
+          not: { contains: { type: object, properties: { status: { enum: [failed, error] } } } }
+        rules:
+          type: array
+          not:
+            contains:
+              type: object
+              required: [status, severity]
+              properties: { status: { const: violated }, severity: { const: error } }
+  - if:
+      properties:
+        checks:
+          type: array
+          contains: { type: object, required: [check], properties: { check: { type: string, pattern: "^project\\." } } }
+    then:
+      required: [verification]
+$defs:
+  checkTypes:
+    type: array
+    uniqueItems: true
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/checkType" }
+  checkResult:
+    type: object
+    additionalProperties: false
+    required: [id, check, type, tool, status, execution]
+    properties:
+      id: { $ref: "#/$defs/localId" }
+      check:
+        description: The check definition that was run.
+        $ref: "urn:paved:schema:common:v1#/$defs/checkRef"
+      type: { $ref: "urn:paved:schema:common:v1#/$defs/checkType" }
+      tool:
+        description: The tool that executed the check and the version of the program it ran.
+        type: object
+        additionalProperties: false
+        required: [id, version]
+        properties:
+          id: { $ref: "urn:paved:schema:common:v1#/$defs/toolRef" }
+          version: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      command:
+        description: The concrete invocation, as run (never containing secret values).
+        type: string
+      execution: { $ref: "#/$defs/execution" }
+      status:
+        description: >
+          `passed`/`failed`: the check ran and gave a verdict. `error`: it started but
+          crashed, timed out or could not produce a verdict. `blocked`: a precondition
+          that should hold did not, so it never ran. `inconclusive`: it ran but cannot
+          decide (a measurement within noise, attempts that disagree). `skipped`: it was
+          not run because it does not apply. Only `passed` supports a claim.
+        enum: [passed, failed, error, blocked, inconclusive, skipped]
+      reason:
+        description: Why the check was blocked or skipped, naming the unmet precondition.
+        $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+      precondition:
+        description: Id of the unmet precondition in the check definition.
+        $ref: "urn:paved:schema:common:v1#/$defs/name"
+      exit_code: { type: integer }
+      summary: { type: string }
+      output_ref:
+        description: Where the full output is stored (path or CI artifact URL). Kept for failed checks so work can continue from it.
+        type: string
+      observations:
+        description: Short, structured facts the run observed (counts, values, messages).
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [name, value]
+          properties:
+            name: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+            value: { type: [string, number, boolean] }
+            unit: { type: string }
+      measurement: { $ref: "#/$defs/measurement" }
+      attempts:
+        description: >
+          Every attempt when the check ran more than once, in order; the last one is the
+          result. Bounded by the check's retry policy.
+        type: array
+        minItems: 2
+        maxItems: 5
+        items:
+          type: object
+          additionalProperties: false
+          required: [status, started_at]
+          properties:
+            status: { enum: [passed, failed, error, inconclusive] }
+            started_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+            summary: { type: string }
+            output_ref: { type: string }
+      flaky:
+        description: Attempts disagreed. A flaky check is never `passed`.
+        type: boolean
+    allOf:
+      - if:
+          properties: { status: { enum: [blocked, skipped] } }
+        then:
+          required: [reason]
+          not: { anyOf: [{ required: [exit_code] }, { required: [measurement] }] }
+      - if:
+          properties: { status: { enum: [failed, error] } }
+        then:
+          required: [summary]
+          anyOf:
+            - required: [output_ref]
+            - required: [observations]
+      - if:
+          properties: { status: { const: passed } }
+        then:
+          anyOf:
+            - required: [exit_code]
+            - required: [output_ref]
+            - required: [observations]
+            - required: [measurement]
+          not: { required: [flaky], properties: { flaky: { const: true } } }
+      - if:
+          properties: { type: { const: performance }, status: { enum: [passed, failed] } }
+        then:
+          required: [measurement]
+  measurement:
+    description: A measured metric compared with a baseline under a threshold taken from the check definition.
+    type: object
+    additionalProperties: false
+    required: [metric, unit, direction, baseline, current, threshold]
+    properties:
+      metric: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      unit: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      direction: { enum: [lower-is-better, higher-is-better] }
+      workload:
+        description: The workload the values were measured under; baseline and current must share it.
+        type: string
+      baseline: { $ref: "#/$defs/sample" }
+      current: { $ref: "#/$defs/sample" }
+      threshold:
+        type: object
+        additionalProperties: false
+        required: [max_regression, relative]
+        properties:
+          max_regression: { type: number, minimum: 0 }
+          relative: { type: boolean }
+  sample:
+    type: object
+    additionalProperties: false
+    required: [value]
+    properties:
+      value: { type: number }
+      samples: { type: integer, minimum: 1 }
+      spread:
+        description: Run-to-run variation, in the metric's unit.
+        type: number
+        minimum: 0
+      revision: { type: string }
+  recorder:
+    description: >
+      Who executed a check and recorded its result, in increasing order of independence
+      from the agent: `agent` (self-reported), `paved` (captured by the Paved runner,
+      which executes the command itself), `ci` (an external CI system).
+    enum: [agent, paved, ci]
+  artifactRecorder:
+    description: >
+      Who recorded an artifact: a check recorder, or `human`. Kinds that are statements
+      rather than captured output (review, manual observation) support no claim when
+      the agent records them (core/verification/registry.yaml).
+    enum: [agent, human, paved, ci]
+  execution:
+    type: object
+    additionalProperties: false
+    required: [recorded_by, revision, started_at]
+    properties:
+      recorded_by: { $ref: "#/$defs/recorder" }
+      revision:
+        description: Revision the check ran against. Must equal `change.revision`.
+        $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+      worktree_sha256:
+        description: Digest of uncommitted changes present when the check ran. Must equal `change.worktree_sha256`.
+        $ref: "urn:paved:schema:common:v1#/$defs/sha256"
+      started_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+      finished_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+      environment: { $ref: "#/$defs/environment" }
+      output_sha256:
+        description: Digest of the captured output, so the output referenced by output_ref can be verified.
+        $ref: "urn:paved:schema:common:v1#/$defs/sha256"
+      run_url:
+        description: Link to the CI run when recorded_by is ci.
+        type: string
+    if:
+      properties: { recorded_by: { const: ci } }
+    then:
+      required: [run_url]
+  environment:
+    description: >
+      What the check ran on. `kind` is required; the other facts are recorded when known
+      and when the check definition asks for them (`environment.capture`). Never record
+      secret values: fact names that look like credentials are rejected.
+    type: object
+    additionalProperties: false
+    required: [kind]
+    properties:
+      kind: { $ref: "urn:paved:schema:common:v1#/$defs/environmentKind" }
+      id:
+        description: Name of the environment (a CI runner label, an environment name).
+        type: string
+      os: { type: string }
+      image:
+        description: Container or machine image, by digest when available.
+        type: string
+      dependencies_sha256:
+        description: Digest of the resolved dependency state (for example a lock file).
+        $ref: "urn:paved:schema:common:v1#/$defs/sha256"
+      configuration:
+        description: Configuration profile the system under check used.
+        type: string
+      facts:
+        description: Further facts (runtime and tool versions, locale, time zone).
+        type: object
+        propertyNames:
+          $ref: "urn:paved:schema:common:v1#/$defs/name"
+          not: { pattern: "(secret|token|password|passwd|credential|private-key|api-key)" }
+        additionalProperties: { type: string }
+  localId:
+    type: string
+    pattern: "^[a-z0-9]+([-_.][a-z0-9]+)*$"

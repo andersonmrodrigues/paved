@@ -1,0 +1,26 @@
+apiVersion: paved/v1
+kind: Rule
+id: core.architecture.follow-existing-patterns
+title: Follow the pattern the repository already uses
+rationale: >
+  Divergent solutions to the same problem make a codebase harder for humans and agents
+  to predict, and each variant must be maintained separately.
+applies_to:
+  change_types: [feature, bug-fix, refactor, performance]
+rule: >
+  Before introducing a structure (module layout, error handling, data access, testing
+  style, configuration), find how the repository already solves the same problem and
+  follow it. A new pattern is allowed only when no existing one fits, and the reason is
+  recorded.
+enforcement:
+  mechanism: review
+  layer: rule
+severity: warning
+verification: >
+  The evidence names the existing code the change follows, or records why a new pattern
+  was needed.
+examples:
+  compliant:
+    - A new endpoint uses the same validation and error mapping as its sibling endpoints.
+  violation:
+    - A new module introduces a second HTTP client wrapper next to an existing one.

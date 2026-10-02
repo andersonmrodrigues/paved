@@ -1,0 +1,54 @@
+apiVersion: paved/v1
+kind: Adapter
+id: technology/quarkus
+title: Quarkus
+version: 0.1.0
+summary: Static evidence about Quarkus runtime dependencies and REST endpoints.
+requires:
+  core: ^1.0.0
+  adapters:
+    - id: technology/java
+      version: ^0.1.0
+detect:
+  file_contains:
+    - glob: pom.xml
+      pattern: '<artifactId>quarkus-(?:bom|resteasy|arc|jdbc-[a-z-]+|maven-plugin)'
+    - glob: build.gradle*
+      pattern: 'io[.]quarkus'
+  confidence: strong
+provides:
+  capabilities:
+    - id: application.runtime
+      evidence:
+        - glob: pom.xml
+          pattern: '<artifactId>(quarkus-[a-z0-9-]+)</artifactId>'
+          statement: Quarkus dependency declaration
+          capture: 1
+    - id: application.http-routes
+      evidence:
+        - glob: '**/*.java'
+          pattern: '@Path\s*\(\s*"([a-zA-Z0-9_./:{}-]+)"\s*\)'
+          statement: Quarkus REST path annotation
+          capture: 1
+    - id: api.http
+      evidence:
+        - glob: '**/*.java'
+          pattern: '@(?:Path|Route)\s*\(\s*"([a-zA-Z0-9_./:{}-]+)"\s*\)'
+          statement: HTTP API route declaration
+          capture: 1
+    - id: api.openapi
+      evidence:
+        - glob: '**/openapi.yaml'
+          pattern: '["'']?openapi["'']?\s*:'
+          statement: OpenAPI contract document
+        - glob: '**/openapi.yml'
+          pattern: '["'']?openapi["'']?\s*:'
+          statement: OpenAPI contract document
+        - glob: '**/openapi.json'
+          pattern: '"openapi"\s*:'
+          statement: OpenAPI contract document
+sources:
+  - title: Quarkus guides
+    url: https://quarkus.io/guides/
+    retrieved_at: 2026-09-27
+reviewed_at: 2026-09-27

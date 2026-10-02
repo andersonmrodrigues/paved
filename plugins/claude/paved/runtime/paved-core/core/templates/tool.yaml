@@ -1,0 +1,49 @@
+apiVersion: paved/v1
+kind: Tool
+id: project.test.run-unit
+title: Run unit tests
+purpose: Run the unit suite or part of it. Prefer it over ad-hoc test commands
+  so results are comparable.
+safety: safe-mutation
+inputs:
+  - name: scope
+    description: "`all`, or a repository-relative path to one test file."
+    required: false
+    pattern: ^(all|[^/\s][^\s]*)$
+    type: string
+outputs:
+  format: text
+  description: Test report; the exit code is 0 when every test passed.
+side_effects:
+  - filesystem
+confirmation: none
+examples:
+  - description: Run the whole suite.
+version: 0.1.0
+capability: test-run-unit
+permissions:
+  - repository-write
+environments:
+  - local
+  - ci
+  - ephemeral
+preconditions:
+  - id: precondition-1
+    kind: dependency
+    description: Dependencies installed.
+idempotency: idempotent
+timeout_seconds: 900
+retry:
+  max_attempts: 1
+  backoff_seconds: 0
+errors:
+  - execution-failure
+  - failed-precondition
+  - timeout
+evidence:
+  capture:
+    - revision
+    - environment
+    - timestamps
+    - output-digest
+availability: available

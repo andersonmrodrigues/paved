@@ -8,11 +8,11 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync,
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { parse, stringify } from "yaml";
-import { PLUGIN_DIRECTORY, RUNTIME_DIRECTORY } from "../../plugins/build.ts";
+import { CLAUDE_PLUGIN_DIRECTORY, LAUNCHER_DIRECTORY, PLUGIN_DIRECTORY, RUNTIME_DIRECTORY } from "../../plugins/build.ts";
 import { NEXT_MAJOR_VERSION, NEXT_PATCH_VERSION, ROOT, treeIntegrity } from "../helpers.ts";
 import {
   applicationDigest, claudeDetails, codeOf, consumer, hostAvailable, installWithClaude, installWithCodex,
-  launcher, pluginVariant, remoteCacheEntries, repackRuntime, repositorySnapshot, workspace, type Invocation,
+  launcher, lockedPackages, pluginVariant, remoteCacheEntries, repackRuntime, repositorySnapshot, workspace, type Invocation,
 } from "./support.ts";
 
 
@@ -56,16 +56,19 @@ describe("clean-room plugin installation", { skip }, () => {
     writeFileSync(join(project, ".paved", "paved.lock"), "version: test\n");
     const event = JSON.stringify({ cwd: project, prompt: "private prompt" });
 
-    for (const installed of [codexPlugin, claudePlugin]) {
+    for (const [installed, source] of [[codexPlugin, PLUGIN_DIRECTORY], [claudePlugin, CLAUDE_PLUGIN_DIRECTORY]] as const) {
       assert.ok(!realpathSync(installed).startsWith(realpathSync(ROOT)), `${installed} must not be the development checkout`);
-      for (const file of ["bin/paved.mjs", "bin/bootstrap.json", "provenance.json", "skills/init/SKILL.md", "hooks/hooks.json", "hooks/paved-prompt-submit.mjs"]) {
-        assert.deepEqual(readFileSync(join(installed, file)), readFileSync(join(ROOT, PLUGIN_DIRECTORY, file)), `${installed}: ${file}`);
+      for (const file of [`${LAUNCHER_DIRECTORY}/paved.mjs`, `${LAUNCHER_DIRECTORY}/bootstrap.json`, "skills/init/SKILL.md", "hooks/hooks.json", "hooks/paved-prompt-submit.mjs"]) {
+        assert.deepEqual(readFileSync(join(installed, file)), readFileSync(join(ROOT, source, file)), `${installed}: ${file}`);
       }
-      assert.equal(treeIntegrity(join(installed, RUNTIME_DIRECTORY)), treeIntegrity(join(ROOT, PLUGIN_DIRECTORY, RUNTIME_DIRECTORY)), `${installed}: the host installs the whole unpacked runtime`);
+      assert.equal(treeIntegrity(join(installed, RUNTIME_DIRECTORY)), treeIntegrity(join(ROOT, source, RUNTIME_DIRECTORY)), `${installed}: the host installs the whole unpacked runtime`);
       const hook = spawnSync(process.execPath, [join(installed, "hooks", "paved-prompt-submit.mjs")], { input: event, encoding: "utf8" });
       assert.equal(hook.status, 0, hook.stderr);
       assert.equal(JSON.parse(hook.stdout).hookSpecificOutput.hookEventName, "UserPromptSubmit");
       assert.doesNotMatch(hook.stdout, /private prompt/);
+    }
+    for (const path of lockedPackages(claudePlugin)) {
+      assert.ok(existsSync(join(claudePlugin, path, "package.json")), `Claude Code installs ${path} from the plugin lockfile`);
     }
     assert.ok(claudeInventory.includes(`Skills (${readdirSync(join(ROOT, PLUGIN_DIRECTORY, "skills")).length})`), claudeInventory);
     for (const name of ["init", "status", "feature", "verify", "context-discovery"]) assert.match(claudeInventory, new RegExp(`\\b${name}\\b`));
@@ -82,7 +85,7 @@ describe("clean-room plugin installation", { skip }, () => {
     const initialized = ok(paved(nested, "init", "--json"), "init");
     assert.equal(data<{ initialized: boolean }>(initialized).initialized, true, initialized.stdout);
     const lock = lockOf(project);
-    const bundled = JSON.parse(readFileSync(join(codexPlugin, "bin", "bootstrap.json"), "utf8")) as { version: string; integrity: string };
+    const bundled = JSON.parse(readFileSync(join(codexPlugin, LAUNCHER_DIRECTORY, "bootstrap.json"), "utf8")) as { version: string; integrity: string };
     assert.equal(lock.runtime.version, bundled.version);
     assert.equal(lock.runtime.integrity, bundled.integrity);
     assert.equal(readFileSync(join(project, ".paved", "runtime", ".gitignore"), "utf8").trim().split("\n").at(-1), "*");
@@ -163,6 +166,8 @@ describe("clean-room plugin installation", { skip }, () => {
     const project = consumer(root, "claude-consumer");
     const paved = launcher(claudePlugin, npmCache);
     ok(paved(project, "init", "--json"), "init");
+    const pinned = JSON.parse(readFileSync(join(codexPlugin, LAUNCHER_DIRECTORY, "bootstrap.json"), "utf8")) as { integrity: string };
+    assert.equal(lockOf(project).runtime.integrity, pinned.integrity, "the dependencies Claude Code installed rebuild the runtime Codex bundles");
     const coreRoot = data<{ coreRoot: string }>(ok(paved(project, "status", "--json"), "status")).coreRoot;
     assert.ok(coreRoot.startsWith(realpathSync(join(project, ".paved", "runtime"))), coreRoot);
     assert.equal(data<{ commands: unknown[] }>(paved(project, "agent", "commands", "--json")).commands.length, 15);

@@ -1,0 +1,16 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.testing.integration-testing
+version: 0.1.0
+status: experimental
+category: testing
+context:
+  required: [verification]
+  optional: [integrations, technology]
+rules:
+  - core.architecture.follow-existing-patterns
+  - core.security.no-secrets-in-source
+verification:
+  required: [integration]
+evidence:
+  required: [check-result]

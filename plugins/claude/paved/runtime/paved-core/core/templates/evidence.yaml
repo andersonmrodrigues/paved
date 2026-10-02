@@ -1,0 +1,112 @@
+# .paved/generated/evidence/<id>.yaml (committed copies: .paved/verification/evidence/).
+# The plan says what must be verified; claims are what the change asserts; checks and
+# artifacts are observations, each bound to the revision it observed and saying who
+# recorded it. See the Core verification/README.md.
+apiVersion: paved/v1
+kind: Evidence
+id: example-change
+created_at: 2026-01-01T00:00:00Z
+producer:
+  agent: example-agent
+  workflow: core.bug
+  skills: [core.debugging.root-cause-analysis, core.testing.regression-testing]
+verification:
+  profile: .paved/verification/profile.yaml
+retention: change
+change:
+  summary: One or two sentences on what changed and why.
+  revision: 4f2c9e1
+  uncommitted_changes: false
+  base_ref: main
+  head_ref: example-branch
+  files:
+    - src/example/file.ext
+plan:
+  required: [unit]
+  optional: [e2e]
+  evidence: [check-result, reproduction, diff]
+claims:
+  - id: fixes-reported-behavior
+    statement: The reported input now produces the expected output.
+    type: behavior
+    supported_by: [regression-test, reproduction-after]
+  - id: no-regression
+    statement: Existing behavior covered by the unit suite is unchanged.
+    type: non-regression
+    supported_by: [unit-suite]
+checks:
+  - id: regression-test
+    check: project.test.unit
+    type: unit
+    tool:
+      id: project.test.run-unit
+      version: example-runner 1.0
+    command: <targeted test command>
+    status: passed
+    exit_code: 0
+    summary: New test fails before the fix and passes after it.
+    execution:
+      recorded_by: agent
+      revision: 4f2c9e1
+      started_at: 2026-01-01T00:00:00Z
+      finished_at: 2026-01-01T00:00:05Z
+      environment:
+        kind: local
+        os: example-os
+        facts:
+          runtime: example-runtime 1.0
+  - id: unit-suite
+    check: project.test.unit
+    type: unit
+    tool:
+      id: project.test.run-unit
+      version: example-runner 1.0
+    command: <full unit command>
+    status: passed
+    exit_code: 0
+    output_ref: .paved/generated/evidence/example-change/unit-suite.log
+    execution:
+      recorded_by: agent
+      revision: 4f2c9e1
+      started_at: 2026-01-01T00:00:10Z
+      environment:
+        kind: local
+artifacts:
+  - id: reproduction-after
+    kind: reproduction
+    description: Steps from the bug report, re-run after the fix, with the observed output.
+    recorded_by: agent
+    revision: 4f2c9e1
+    created_at: 2026-01-01T00:00:30Z
+    source:
+      type: file
+      location: .paved/generated/evidence/example-change/reproduction.md
+  - id: change-diff
+    kind: diff
+    description: The change under review.
+    recorded_by: agent
+    revision: 4f2c9e1
+    created_at: 2026-01-01T00:00:30Z
+    source:
+      type: file
+      location: .paved/generated/evidence/example-change/change.diff
+gaps:
+  - check_type: e2e
+    description: The user-level flow was not exercised end to end.
+    reason: The project verification profile declares no e2e check.
+    risk: low
+rules:
+  - id: core.testing.regression-test-for-bug-fix
+    severity: error
+    status: satisfied
+completion:
+  status: complete
+  verification: verified
+  decided_by: agent
+  criteria:
+    - statement: The reported behavior no longer occurs.
+      met: true
+      supported_by: [fixes-reported-behavior]
+    - statement: No existing test fails.
+      met: true
+      supported_by: [unit-suite]

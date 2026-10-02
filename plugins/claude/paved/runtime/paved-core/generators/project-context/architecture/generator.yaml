@@ -1,0 +1,24 @@
+apiVersion: paved/v1
+kind: Generator
+id: project-context/architecture
+version: 0.2.0
+status: experimental
+summary: >
+  Drafts the architecture overview of a repository: components, their responsibilities, runtime units, dependencies between them and declared boundaries.
+depends_on: []
+inputs:
+  - kind: repository
+    description: Directory structure, build and module definitions, deployment and container files, dependency manifests.
+  - kind: adapter
+    description: Adapter knowledge on how each detected technology structures modules and runtime units.
+  - kind: manifest
+    description: Adapters confirmed in .paved/manifest.yaml.
+outputs:
+  - path: .paved/project/architecture/
+    format: markdown
+    metadata: inline
+    schema: ContextDocument
+change_detection:
+  strategy: [source-hash, manifest-change]
+  watch:
+    - "**/*"

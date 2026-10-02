@@ -1,0 +1,24 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.debugging.bug-investigation
+version: 0.3.0
+status: experimental
+category: debugging
+context:
+  required: []
+  optional: [feature-map, verification]
+tools:
+  required: [core.repository.diff]
+  optional: [core.repository.history]
+rules:
+  - core.testing.regression-test-for-bug-fix
+  - core.quality.unknowns-stay-unknown
+depends_on:
+  required: [core.debugging.root-cause-analysis, core.testing.regression-testing]
+  optional: [core.debugging.runtime-debugging]
+verification:
+  required: [unit]
+  recommended: [integration, e2e, runtime]
+evidence:
+  required: [reproduction, check-result, diff]
+references: [examples/investigation-log.md]

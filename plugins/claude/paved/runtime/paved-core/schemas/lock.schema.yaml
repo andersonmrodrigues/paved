@@ -1,0 +1,96 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:lock:v1
+title: Paved lock file
+description: >
+  `.paved/paved.lock` in a consumer repository. Records exactly which Core and adapter
+  versions were resolved from the ranges in the project manifest, with content digests,
+  so that every agent and CI run in the repository uses the same Paved. Written only by
+  the CLI (ownership `tool-managed`).
+type: object
+additionalProperties: false
+required: [apiVersion, kind, resolved_at, core]
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { const: Lock }
+  resolved_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+  core: { $ref: "#/$defs/resolved" }
+  runtime:
+    description: The exact independently verified paved-core package selected by the project-local launcher.
+    type: object
+    additionalProperties: false
+    required: [package, version, integrity, content_sha256]
+    properties:
+      package: { const: paved-core }
+      version: { $ref: "urn:paved:schema:common:v1#/$defs/semver" }
+      integrity: { type: string, pattern: '^sha512-[A-Za-z0-9+/]+={0,2}$' }
+      content_sha256: { $ref: "urn:paved:schema:common:v1#/$defs/sha256" }
+  adapters:
+    type: array
+    items:
+      allOf:
+        - $ref: "#/$defs/resolved"
+        - type: object
+          required: [id]
+          properties:
+            id: { $ref: "urn:paved:schema:common:v1#/$defs/adapterId" }
+  generators:
+    description: Exact generator contracts available to this consumer; this does not imply that each generator has run.
+    type: array
+    items:
+      allOf:
+        - $ref: "#/$defs/resolved"
+        - type: object
+          required: [id]
+          properties:
+            id: { $ref: "urn:paved:schema:common:v1#/$defs/generatorId" }
+  capabilities:
+    description: >
+      Capability provider decisions and their provenance, recorded only where a decision
+      was needed (more than one candidate adapter, or an explicit manifest selection):
+      which adapter provides the capability in each repository scope, and whether that
+      came from the manifest or was inferred from the evidence listed. Inferred decisions
+      live here, never in the human-owned manifest. Omitted when no decision was needed.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [id, status, candidates, providers]
+      properties:
+        id: { type: string, pattern: "^[a-z]+\\.[a-z][a-z0-9.-]*$" }
+        status: { enum: [resolved, explicitly-selected, scoped, ambiguous] }
+        candidates:
+          description: Resolved adapters that can provide the capability.
+          type: array
+          items: { $ref: "urn:paved:schema:common:v1#/$defs/adapterId" }
+        providers:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [scope, provider, source, evidence]
+            properties:
+              scope: { type: string, minLength: 1 }
+              provider: { $ref: "urn:paved:schema:common:v1#/$defs/adapterId" }
+              source: { enum: [explicit, explicit-scoped, answered-decision, inferred] }
+              evidence:
+                description: Repository files whose detection established the provider in this scope.
+                type: array
+                items: { type: string }
+        ambiguous_scopes:
+          description: Scopes where evidence could not decide; a human must select a provider.
+          type: array
+          items: { type: string }
+$defs:
+  resolved:
+    type: object
+    required: [version, source, sha256]
+    properties:
+      id: true
+      version: { $ref: "urn:paved:schema:common:v1#/$defs/semver" }
+      source:
+        description: Where the content was obtained. Its format depends on the distribution channel (open decision).
+        $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+      sha256:
+        description: Digest of the resolved content, so tampering or drift is detectable.
+        $ref: "urn:paved:schema:common:v1#/$defs/sha256"
+    additionalProperties: false

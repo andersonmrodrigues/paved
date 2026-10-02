@@ -1,0 +1,88 @@
+---
+name: context-discovery
+description: >-
+  Builds an understanding of a repository, or of the part a task touches, before anything
+  is modified: structure, build and runtime, dependencies, tests, CI, configuration,
+  documentation, entry points and architecture clues, plus the Project Context, rules and
+  existing patterns relevant to the task. Use when starting a task, when working in an
+  unfamiliar repository, or when unsure what a change affects.
+---
+
+# Context discovery
+
+## When to use
+
+At the start of every workflow (`context` and `discovery` phases), during onboarding, and
+again whenever the task turns out to touch something you have not read. Discovery
+changes nothing; it produces understanding and a list of unknowns.
+
+## Required context
+
+None is required. Use what exists: `manifest` first, then `feature-map`, and the
+`architecture`, `technology`, `rules` and `verification` areas only as the task needs
+them. In a repository without Paved, the repository itself is the only source.
+
+## Preconditions
+
+The task, or the purpose of the investigation, can be stated in a sentence. If not, ask
+before exploring.
+
+## Procedure
+
+1. **Restate the goal** in one or two sentences, including what is out of scope.
+2. **Use Project Context first when it exists.** Look the feature up in the feature map
+   by name, path or entrypoint and read only the documents its entry links to.
+3. **Survey the repository** when there is no context, or the context does not cover the
+   code: walk the signals in
+   [references/repository-signals.md](references/repository-signals.md) in order, and
+   stop as soon as you can answer the goal.
+4. **Follow the code path** from an entry point to the code the task affects. Prefer
+   reading code over reading summaries of code.
+5. **Find a sibling** that already solves a similar problem (same layer, same kind of
+   change). That is the pattern to follow.
+6. **List rules in scope**: project and Core rules whose `applies_to` matches the files
+   you expect to change.
+7. **Check freshness.** When a context document's recorded sources changed since it was
+   generated, confirm its claims in the code before relying on them.
+8. **Write the unknowns down.** Ask about the ones that change the plan; record the rest.
+
+## Tools
+
+`core.repository.status` shows local changes that may affect the task. `core.repository.history` shows
+where recent work happened and who changed the area. `core.repository.diff` shows what those
+changes did.
+
+## Rules
+
+`core.architecture.follow-existing-patterns` is why step 5 exists.
+`core.quality.unknowns-stay-unknown` is why step 8 exists.
+
+## Verification
+
+Discovery produces no code and has no checks. Its output is judged by the steps that use
+it: did the plan name the affected files, the pattern followed and the unknowns?
+
+## Evidence
+
+None of its own. The summary (files read, pattern chosen, rules in scope, unknowns) goes
+into the plan that the next phase works from.
+
+## Completion criteria
+
+- The affected files and the pattern to follow are named.
+- Applicable rules are listed.
+- Unknowns that affect the plan are resolved or explicitly accepted.
+
+## Failure modes
+
+| Failure | Signal | Response |
+|---|---|---|
+| Context overload | Reading documents unrelated to the goal | Return to the feature map; follow links only |
+| Survey without end | Every signal is being read regardless of the goal | Stop at the first signal that answers it |
+| Stale context | Context disagrees with code | Trust the code; report the discrepancy |
+| No feature entry | Feature map has nothing relevant | Search code by names in the task; suggest an entry |
+
+## References
+
+- [references/repository-signals.md](references/repository-signals.md): where to look,
+  and what each signal tells you.

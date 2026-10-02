@@ -1,0 +1,54 @@
+apiVersion: paved/v1
+kind: CapabilityRegistry
+capabilities:
+  - id: repository.status
+    meaning: Read working tree state without changing files.
+    consumer: core.repository.status
+    tool_capability: repository-status
+  - id: repository.diff
+    meaning: Read repository changes without changing files.
+    consumer: core.repository.diff
+    tool_capability: repository-diff
+  - id: repository.history
+    meaning: Read committed repository history without changing files.
+    consumer: core.repository.history
+    tool_capability: repository-history
+  - id: source.structure
+    meaning: Observe source organization and declared units.
+    consumer: project-context/domain
+  - id: source.dependencies
+    meaning: Observe declared source and build dependencies.
+    consumer: project-context/architecture
+  - id: source.build
+    meaning: Observe build configuration without recommending commands.
+    consumer: project-context/architecture
+  - id: source.test
+    meaning: Observe test configuration without creating verification policy.
+    consumer: verification
+  - id: application.runtime
+    meaning: Observe application runtime declarations.
+    consumer: project-context/architecture
+  - id: application.modules
+    meaning: Observe application module or workspace declarations.
+    consumer: project-context/architecture
+  - id: application.ui-routes
+    meaning: Observe declared user interface routes without inferring product intent.
+    consumer: project-context/feature-map
+  - id: application.http-routes
+    meaning: Observe declared HTTP endpoints without inferring runtime connections.
+    consumer: project-context/integrations
+  - id: database.configuration
+    meaning: Observe database dependency and configuration structure without values.
+    consumer: project-context/integrations
+  - id: database.migrations
+    meaning: Observe database objects declared in repository migrations.
+    consumer: project-context/domain
+  - id: testing.structure
+    meaning: Observe test organization and test-related configuration without inferring quality.
+    consumer: verification
+  - id: api.http
+    meaning: Observe HTTP API implementation and consumption evidence without inferring runtime connections.
+    consumer: project-context/integrations
+  - id: api.openapi
+    meaning: Observe OpenAPI contracts and related declarations without inferring generated code.
+    consumer: project-context/integrations

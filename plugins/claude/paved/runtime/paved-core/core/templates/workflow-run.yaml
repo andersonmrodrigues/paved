@@ -1,0 +1,34 @@
+# A workflow run record, written as the run progresses under
+# .paved/generated/runs/<id>.yaml. See instructions/workflows.md.
+apiVersion: paved/v1
+kind: WorkflowRun
+id: 2026-01-01-example
+workflow:
+  id: core.bug
+  version: 0.2.0
+revision: example-revision
+started_at: 2026-01-01T10:00:00Z
+status: running
+inputs:
+  - id: report
+    value: Export fails for archived items.
+    source: ticket
+phases:
+  - phase: context
+    status: completed
+    attempts: 1
+    skills:
+      - id: core.discovery.context-discovery
+        status: activated
+    gates:
+      - id: expected-behavior-known
+        status: passed
+  - phase: discovery
+    status: running
+    attempts: 1
+events:
+  - at: 2026-01-01T10:00:00Z
+    type: run-started
+  - at: 2026-01-01T10:05:00Z
+    type: phase-started
+    phase: discovery

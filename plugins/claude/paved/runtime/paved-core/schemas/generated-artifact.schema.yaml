@@ -1,0 +1,48 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:generated-artifact:v1
+title: Paved generated artifact
+description: >
+  Sidecar that marks a file as generated (kind GeneratedArtifact), written next to it as
+  `<file>.paved.yaml`. Used for generator output that cannot carry its own metadata:
+  proposals whose format has no room for it (a proposed SKILL.md must keep Agent Skills
+  frontmatter; a proposed rule has no provenance field) and any other generated file.
+  Documents whose schema has a `provenance` field (context documents, feature entries)
+  carry it inline instead and need no sidecar.
+
+  The sidecar lets tooling tell generated from human-authored content, detect human
+  edits (`provenance.output_sha256` against the file), and find the generator and schema
+  version that produced it, so regeneration never silently destroys human work.
+type: object
+additionalProperties: false
+required: [apiVersion, kind, artifact, ownership, provenance]
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { const: GeneratedArtifact }
+  artifact:
+    type: object
+    additionalProperties: false
+    required: [path, format]
+    properties:
+      path:
+        description: Consumer-relative path of the generated file.
+        $ref: "urn:paved:schema:common:v1#/$defs/relativePath"
+      format: { enum: [markdown, yaml, json, text] }
+      schema:
+        description: Document kind the file validates as, when it is a Paved document.
+        type: string
+      api_version:
+        description: apiVersion of the generated document, when it is a Paved document.
+        type: string
+        pattern: "^paved/v\\d+$"
+      proposal_for:
+        description: For a proposal, the project-owned path a human would adopt it into.
+        $ref: "urn:paved:schema:common:v1#/$defs/relativePath"
+  ownership:
+    description: Only generated ownership values are possible; anything else is not a generated artifact.
+    enum: [generated-reviewed, disposable]
+  provenance:
+    description: Must name a generator (not `human`), which makes version and output hash required.
+    $ref: "urn:paved:schema:provenance:v1"
+    type: object
+    properties:
+      generator: { not: { const: human } }

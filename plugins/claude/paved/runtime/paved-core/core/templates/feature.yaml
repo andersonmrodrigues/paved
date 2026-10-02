@@ -1,0 +1,34 @@
+# .paved/project/feature-map/<id>.yaml
+# `confidence: declared` means a human wrote this entry; generated entries use `observed`
+# or `inferred` and must carry `provenance`.
+apiVersion: paved/v1
+kind: Feature
+id: example-feature
+name: Example feature
+summary: What the feature lets a user or system do, in one sentence.
+status: active
+confidence: declared
+actors:
+  - example-role
+code:
+  paths:
+    - src/example/**
+  entrypoints:
+    - kind: http
+      name: <how the project names this entry point>
+      location:
+        path: src/example/entrypoint.ext
+  tests:
+    - test/example/**
+data:
+  - name: example-record
+    access: read-write
+context:
+  - .paved/project/architecture/overview.md
+dependencies:
+  features: []
+verification: []
+unknowns:
+  - topic: Ownership
+    reason: No owner is recorded in the repository.
+    question: Which team owns this feature?
