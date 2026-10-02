@@ -398,7 +398,7 @@ async function advance(invocation, command, workflow, run) {
         if (!run.evidence)
             return blocked(command, "PAVED_WORKFLOW_EVIDENCE_MISSING", "Verified evidence is missing.", "Run the verification phase successfully first.");
         if (!evidence)
-            return blocked(command, "PAVED_WORKFLOW_EVIDENCE_MISSING", "Workflow evidence with a diff and check results is required.", `Pass --evidence <workflow-evidence.yaml> for run ${run.id}.`);
+            return blocked(command, "PAVED_WORKFLOW_EVIDENCE_MISSING", "Workflow evidence with a diff and check results is required.", `Provide --evidence <workflow-evidence.yaml> for run ${run.id}.`);
         const authoritative = loadYaml(resolveSafePath(invocation.paths.projectRoot, run.evidence));
         const record = loadYaml(evidence);
         const schema = createRegistry(join(invocation.paths.coreRoot, "schemas"), ["paved/v1"]).validate(record);
