@@ -56,8 +56,8 @@ capabilities.
 The Codex and Claude Code plugin in `plugins/paved/` is generated and committed; it
 is installed through each agent's native plugin installation from this repository.
 
-- No install hooks, MCP server or `curl | sh` step. Code runs only when a Paved
-  command is invoked.
+- No install hooks, MCP server or downloaded install script. Code runs only when a
+  Paved command is invoked.
 - The bundled runtime ships unpacked, so every file can be reviewed. It is pinned by
   a SHA-512 over its file digests in `bin/bootstrap.json` and in `provenance.json`,
   which also records a digest for every plugin file. The test suite fails when the

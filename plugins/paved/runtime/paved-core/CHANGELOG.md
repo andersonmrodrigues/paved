@@ -11,8 +11,7 @@ releases, not the development sequence used to build them.
 
 ### Added
 
-- The plugin ships a listing icon at `.claude-plugin/icon.png` for Claude's plugin
-  directory.
+- The plugin ships a listing icon for Claude's plugin directory.
 
 ### Changed
 

@@ -31,10 +31,10 @@ export function planMavenDependencies(projectRoot, scopes) {
     for (const project of projects) {
         if (!project.groupId || !project.artifactId)
             continue;
-        const key = `${project.groupId}:${project.artifactId}`;
-        if (byCoordinate.has(key))
-            throw new Error(`Duplicate local Maven coordinate ${key}.`);
-        byCoordinate.set(key, project);
+        const coordinate = `${project.groupId}:${project.artifactId}`;
+        if (byCoordinate.has(coordinate))
+            throw new Error(`Duplicate local Maven coordinate ${coordinate}.`);
+        byCoordinate.set(coordinate, project);
     }
     const dependencies = new Map(projects.map((project) => [project.scope, new Set()]));
     const installs = new Set();

@@ -50,9 +50,9 @@ export function planMavenDependencies(projectRoot: string, scopes: readonly stri
   const byCoordinate = new Map<string, MavenProject>();
   for (const project of projects) {
     if (!project.groupId || !project.artifactId) continue;
-    const key = `${project.groupId}:${project.artifactId}`;
-    if (byCoordinate.has(key)) throw new Error(`Duplicate local Maven coordinate ${key}.`);
-    byCoordinate.set(key, project);
+    const coordinate = `${project.groupId}:${project.artifactId}`;
+    if (byCoordinate.has(coordinate)) throw new Error(`Duplicate local Maven coordinate ${coordinate}.`);
+    byCoordinate.set(coordinate, project);
   }
   const dependencies = new Map(projects.map((project) => [project.scope, new Set<string>()]));
   const installs = new Set<string>();
