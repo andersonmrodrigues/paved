@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [1.16.1] - 2026-10-02
+
 ### Changed
 
 - Reworded the remediation for missing workflow evidence, which Claude's directory
