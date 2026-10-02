@@ -1,0 +1,26 @@
+apiVersion: paved/v1
+kind: Check
+id: core.paved.artifact-provenance
+title: Knowledge and generated artifacts carry provenance
+purpose: >-
+  Observed and inferred context, generated artifacts and their sidecars say where their content came from, cited sources are declared, and managed blocks are well formed.
+type: configuration
+tool: core.paved.doctor
+inputs:
+  scope: provenance
+preconditions:
+  - id: cli-available
+    condition: The Paved CLI is installed at a version compatible with the repository's manifest.
+    when_unmet: blocked
+expected:
+  description: The diagnosis lists no provenance finding.
+  exit_code: 0
+timeout_seconds: 300
+environment:
+  kinds: [local, ci]
+failure: >-
+  Content without provenance cannot be told apart from invention. Add the sources or mark the statement unknown.
+determinism:
+  class: deterministic
+retry:
+  class: non-retryable

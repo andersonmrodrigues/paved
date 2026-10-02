@@ -1,0 +1,135 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:tool:v1
+title: Paved Tool capability contract
+description: >
+  A stable capability, independent of its implementation. Qualified id identifies the
+  capability; ToolImplementation binds it to an executable mechanism. Policy is checked
+  before implementation resolution or execution.
+type: object
+additionalProperties: false
+required: [apiVersion, kind, id, version, title, purpose, capability, safety, permissions, environments, inputs, outputs, side_effects, preconditions, idempotency, timeout_seconds, retry, errors, evidence, availability]
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { const: Tool }
+  id: { $ref: "urn:paved:schema:common:v1#/$defs/toolRef" }
+  version: { $ref: "urn:paved:schema:common:v1#/$defs/semver" }
+  title: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  purpose: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  capability:
+    description: Stable capability key used for discovery. It does not grant execution permission.
+    $ref: "urn:paved:schema:common:v1#/$defs/name"
+  safety: { enum: [read-only, safe-mutation, destructive, high-impact] }
+  permissions:
+    type: array
+    minItems: 1
+    uniqueItems: true
+    items: { enum: [repository-read, repository-write, process-read, process-control, database-read, database-write, network-read, network-write, infrastructure-read, infrastructure-write, observability-read, browser-control] }
+  environments:
+    type: array
+    minItems: 1
+    uniqueItems: true
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/environmentKind" }
+  inputs:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [name, description, type, required]
+      properties:
+        name: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+        description: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+        type: { enum: [string, integer, boolean, path] }
+        required: { type: boolean }
+        pattern: { type: string, minLength: 1 }
+        default: { type: [string, integer, boolean] }
+        sensitive:
+          description: Value must be redacted from logs and evidence; prefer a secret reference.
+          type: boolean
+  outputs:
+    type: object
+    additionalProperties: false
+    required: [format, description]
+    properties:
+      format: { enum: [text, json, yaml, none] }
+      description: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      fields:
+        description: Canonical structured fields for machine consumers; text is supplementary.
+        type: array
+        uniqueItems: true
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+  side_effects:
+    type: array
+    uniqueItems: true
+    items: { enum: [filesystem, git, database, network, process, cloud-resource, external-service, credentials, browser-session] }
+  preconditions:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [id, kind]
+      properties:
+        id: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+        kind: { enum: [repository, working-tree, runtime, service, database, credentials, dependency, environment] }
+        description: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  idempotency: { enum: [idempotent, conditionally-idempotent, non-idempotent, unknown] }
+  timeout_seconds: { type: integer, minimum: 1, maximum: 86400 }
+  retry:
+    type: object
+    additionalProperties: false
+    required: [max_attempts, backoff_seconds]
+    properties:
+      max_attempts: { type: integer, minimum: 1, maximum: 3 }
+      backoff_seconds: { type: integer, minimum: 0, maximum: 3600 }
+  errors:
+    type: array
+    minItems: 1
+    uniqueItems: true
+    items: { enum: [invalid-input, failed-precondition, unavailable-dependency, permission-denied, timeout, execution-failure, environment-failure, transient-failure, policy-violation, unsupported-capability, implementation-unavailable, malformed-output, partial-execution, evidence-unavailable] }
+  evidence:
+    type: object
+    additionalProperties: false
+    required: [capture]
+    properties:
+      capture:
+        type: array
+        uniqueItems: true
+        items: { enum: [input-digest, revision, environment, output-digest, artifacts, timestamps] }
+  availability: { enum: [available, planned, disabled] }
+  confirmation: { enum: [none, required] }
+  examples:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [description]
+      properties:
+        description: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+        inputs: { type: object }
+allOf:
+  - if: { properties: { safety: { const: read-only } }, required: [safety] }
+    then:
+      properties:
+        side_effects: { type: array, maxItems: 0 }
+        permissions:
+          type: array
+          not:
+            contains: { enum: [repository-write, process-control, database-write, network-write, infrastructure-write, browser-control] }
+  - if: { properties: { safety: { enum: [destructive, high-impact] } }, required: [safety] }
+    then:
+      properties:
+        side_effects: { type: array, minItems: 1 }
+        confirmation: { const: required }
+        retry: { type: object, properties: { max_attempts: { const: 1 } } }
+      required: [confirmation]
+  - if: { properties: { idempotency: { enum: [non-idempotent, unknown] } }, required: [idempotency] }
+    then:
+      properties:
+        retry: { type: object, properties: { max_attempts: { const: 1 } } }
+  - if: { properties: { outputs: { type: object, properties: { format: { enum: [json, yaml] } }, required: [format] } }, required: [outputs] }
+    then:
+      properties:
+        outputs:
+          type: object
+          required: [fields]
+          properties:
+            fields: { type: array, minItems: 1 }

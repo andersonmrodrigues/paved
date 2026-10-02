@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 # Prepares a release in the working tree: bumps every version file, ships the
-# [Unreleased] changelog entries under the new version and rebuilds the plugin.
+# [Unreleased] changelog entries under the new version and rebuilds the plugins.
 # It stages the result and prints the new Core version; it never commits or pushes.
 # The release workflow (.github/workflows/release.yml) runs it and opens the PR.
 
@@ -96,8 +96,8 @@ NODE
 
 node release-changelog.mjs CHANGELOG.md "$CURRENT_VERSION" "$NEW_VERSION" "$(date -u +%Y-%m-%d)"
 
-# The CHANGELOG and the version files ship inside the bundled runtime, so the plugin
-# is rebuilt after they change.
+# The CHANGELOG and the version files ship inside the runtime, so the plugins are
+# rebuilt after they change.
 npm run build >&2
 npm run build:plugin >&2
 npm run check:plugin >&2
@@ -109,7 +109,9 @@ if [[ "$(tr -d '[:space:]' < VERSION)" != "$NEW_VERSION" || \
       "$(read_manifest_version)" != "$NEW_VERSION" || \
       "$(read_json_version plugins/plugin-source.json)" != "$NEW_PLUGIN_VERSION" || \
       "$(tr -d '[:space:]' < plugins/paved/VERSION)" != "$NEW_PLUGIN_VERSION" || \
-      "$(read_json_version plugins/paved/runtime/paved-core/package.json)" != "$NEW_VERSION" ]]; then
+      "$(tr -d '[:space:]' < plugins/claude/paved/VERSION)" != "$NEW_PLUGIN_VERSION" || \
+      "$(read_json_version plugins/paved/runtime/paved-core/package.json)" != "$NEW_VERSION" || \
+      "$(read_json_version plugins/claude/paved/runtime/paved-core/package.json)" != "$NEW_VERSION" ]]; then
   echo "ERROR: version synchronization failed." >&2
   exit 1
 fi
@@ -122,6 +124,8 @@ git add \
   plugins/plugin-source.json \
   .cursor-plugin/marketplace.json \
   plugins/paved \
+  plugins/claude \
+  plugins/provenance \
   CHANGELOG.md
 
 if [[ -n "$(git status --porcelain | grep -v '^[MADR] ' || true)" ]]; then

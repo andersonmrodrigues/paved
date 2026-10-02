@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "paved",
-      "source": "./plugins/paved",
+      "source": "./plugins/claude/paved",
       "description": "Paved engineering commands for AI coding agents, executed by a pinned project-local Paved runtime.",
       "category": "development",
       "homepage": "https://github.com/andersonmrodrigues/paved#readme"

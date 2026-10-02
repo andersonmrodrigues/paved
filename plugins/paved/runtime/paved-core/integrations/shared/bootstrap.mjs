@@ -176,11 +176,12 @@ function readConfig() {
   const config = readJson(configPath);
   const optionalPath = (value) => value === undefined || (typeof value === 'string' && value !== '');
   if (config.package !== 'paved-core' || !versionPattern.test(config.version || '') || (config.integrity && !integrityPattern.test(config.integrity))
-    || !optionalPath(config.tarball) || !optionalPath(config.runtime) || (config.tarball && config.runtime)) {
+    || !optionalPath(config.tarball) || !optionalPath(config.runtime) || !optionalPath(config.dependencies) || (config.tarball && config.runtime)
+    || (config.dependencies && !config.runtime)) {
     fail('PAVED_RUNTIME_CONFIG_INVALID', 'Integration bootstrap config is invalid.', 'Reinstall a valid Paved agent integration.');
   }
   // A bundled artifact is addressed relative to the launcher and must stay in its package.
-  for (const field of ['tarball', 'runtime']) {
+  for (const field of ['tarball', 'runtime', 'dependencies']) {
     if (config[field] && !isAbsolute(config[field])) {
       const bundled = resolve(launcherDir, config[field]);
       noSymlinks(bundled, packageRoot);
@@ -293,6 +294,7 @@ function acquire(ctx, pinned) {
     return install(ctx, config, (staging) => {
       const target = join(staging, 'node_modules', 'paved-core');
       cpSync(config.runtime, target, { recursive: true, verbatimSymlinks: true });
+      if (config.dependencies) addDependencies(config.dependencies, target, `${staging}-dependencies`);
       const actual = treeIntegrity(target);
       if (actual !== config.integrity) fail('PAVED_RUNTIME_INTEGRITY_MISMATCH', 'The bundled runtime does not match its pinned integrity.', 'Reinstall the Paved plugin; do not activate an unverified runtime.');
       return actual;
@@ -313,6 +315,32 @@ function acquire(ctx, pinned) {
     run('npm', ['install', '--ignore-scripts', '--no-bin-links', '--no-audit', '--no-fund', '--package-lock=false', ...(config.tarball ? ['--offline'] : []), '--prefix', staging, cache], ctx.projectRoot);
     return integrity;
   });
+}
+
+// A runtime shipped without node_modules takes its dependencies from the plugin's lockfile:
+// as the host installed them next to it, or else installed here by npm from that lockfile.
+// Either way they join the runtime before the whole tree is checked against its integrity.
+function addDependencies(root, target, scratch) {
+  const lockfile = join(root, 'package-lock.json');
+  noSymlinks(lockfile, packageRoot);
+  if (!existsSync(lockfile)) fail('PAVED_RUNTIME_PACKAGE_UNAVAILABLE', 'The plugin dependency lockfile is missing.', 'Reinstall the Paved plugin.');
+  const packages = Object.keys(readJson(lockfile).packages ?? {}).filter((path) => /^node_modules\/(?:@[^/]+\/)?[^/]+$/.test(path));
+  let source = root;
+  if (packages.some((path) => !existsSync(join(root, path, 'package.json')))) {
+    source = scratch;
+    mkdirSync(source);
+    process.once('exit', () => rmSync(scratch, { recursive: true, force: true }));
+    for (const file of ['package.json', 'package-lock.json']) {
+      noSymlinks(join(root, file), packageRoot);
+      cpSync(join(root, file), join(source, file));
+    }
+    run('npm', ['ci', '--ignore-scripts', '--no-bin-links', '--no-audit', '--no-fund'], source);
+  }
+  for (const path of packages) {
+    noSymlinks(join(source, path), source === root ? packageRoot : source);
+    cpSync(join(source, path), join(target, path), { recursive: true, verbatimSymlinks: true });
+  }
+  rmSync(scratch, { recursive: true, force: true });
 }
 
 // Populates a fresh staging directory, checks the installed package and moves it into

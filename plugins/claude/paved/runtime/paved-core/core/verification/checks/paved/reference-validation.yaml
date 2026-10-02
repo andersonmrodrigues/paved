@@ -1,0 +1,26 @@
+apiVersion: paved/v1
+kind: Check
+id: core.paved.reference-validation
+title: References resolve
+purpose: >-
+  Every qualified id in rules, skills, workflows, checks, profiles, evidence and overrides names an artifact of the right kind that exists and is visible to the referencing layer.
+type: configuration
+tool: core.paved.doctor
+inputs:
+  scope: references
+preconditions:
+  - id: cli-available
+    condition: The Paved CLI is installed at a version compatible with the repository's manifest.
+    when_unmet: blocked
+expected:
+  description: The diagnosis lists no reference finding.
+  exit_code: 0
+timeout_seconds: 300
+environment:
+  kinds: [local, ci]
+failure: >-
+  A reference is dangling or crosses a layer boundary. Correct the id or add the missing artifact.
+determinism:
+  class: deterministic
+retry:
+  class: non-retryable

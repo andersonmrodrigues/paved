@@ -175,8 +175,8 @@ consumer references. `adapters`, `cli`, `docs` and `tests` are not.
  ┌───────────────────────────────┐        ┌─────────────────────────────────────┐
  │ .agents/plugins/marketplace   │        │ .paved/paved.lock   (committed pin) │
  │ .claude-plugin/marketplace    │        │ .paved/runtime/     (ignored)       │
- │ plugins/paved/  (generated)   │        │   cache/  versions/  selection.json │
- │   skills/  bin/paved.mjs      │ launch │ .paved/ context, rules, workflows   │
+ │ plugins/paved/  plugins/claude│        │   cache/  versions/  selection.json │
+ │   skills/  scripts/paved.mjs  │ launch │ .paved/ context, rules, workflows   │
  │   runtime/paved-core/ ────────┼───────►│ application code (never written     │
  └───────────────────────────────┘ verify │   by the launcher)                  │
         ▲ native plugin installation      └─────────────────────────────────────┘
@@ -187,7 +187,8 @@ consumer references. `adapters`, `cli`, `docs` and `tests` are not.
 - **Plugin ≠ Runtime.** The plugin carries skills, a launcher and one runtime
   artifact. Workflows, Tools, verification, lifecycle and provenance run only in
   the `paved-core` runtime the launcher activates under `.paved/runtime/`.
-- **Plugin ≠ Core source.** `plugins/paved/` is generated from the Core by
+- **Plugin ≠ Core source.** `plugins/paved/` (Codex, Cursor) and `plugins/claude/paved/`
+  (Claude Code) are generated from the Core by
   `npm run build:plugin`; it is never edited by hand and never read as the source
   of truth. The launcher refuses to treat the Core checkout as a consumer.
 - **Plugin ≠ Consumer state.** Installing, updating or removing the plugin never
@@ -197,7 +198,8 @@ consumer references. `adapters`, `cli`, `docs` and `tests` are not.
   hold no application entities, rules or domain behavior.
 
 See [Installing the Paved plugin](../getting-started/installing-the-plugin.md) and
-[ADR 0026](../decisions/0026-native-plugin-distribution.md).
+[ADR 0026](../decisions/0026-native-plugin-distribution.md) and
+[ADR 0035](../decisions/0035-host-specific-plugin-directories.md).
 
 ## Machine-readable by default
 

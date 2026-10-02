@@ -1,0 +1,15 @@
+# .paved/manifest.yaml: human-owned. Declares what this project depends on.
+apiVersion: paved/v1
+kind: Project
+project:
+  name: example-project
+  description: One sentence on what this repository is.
+  # Who reviews Project Context and approves overrides and human gates.
+  owners:
+    - example-team
+paved:
+  # Core versions this project is compatible with. `paved update` resolves the exact
+  # version into .paved/paved.lock.
+  core: ^0.1.0
+# Proposed by technology detection during `paved init`; confirmed by a human.
+adapters: []

@@ -1,0 +1,17 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.gardener.gardener
+version: 0.3.0
+status: experimental
+category: gardener
+context:
+  required: [manifest]
+  optional: [rules, overrides, architecture, verification]
+tools:
+  required: [core.repository.diff]
+rules: [core.quality.unknowns-stay-unknown]
+verification:
+  required: []
+evidence:
+  required: [review]
+references: [references/enforcement-layers.md]

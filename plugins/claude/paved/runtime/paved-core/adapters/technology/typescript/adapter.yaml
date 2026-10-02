@@ -1,0 +1,67 @@
+apiVersion: paved/v1
+kind: Adapter
+id: technology/typescript
+title: TypeScript
+version: 0.1.0
+summary: Static evidence about TypeScript projects, compiler configuration and tests.
+requires:
+  core: ^1.0.0
+detect:
+  any_files: [tsconfig.json, '**/tsconfig.*.json']
+  file_contains:
+    - glob: 'tsconfig*.json'
+      pattern: '"(compilerOptions|extends)"\s*:'
+    - glob: package.json
+      pattern: '"typescript"\s*:'
+  confidence: strong
+provides:
+  capabilities:
+    - id: source.build
+      evidence:
+        - glob: 'tsconfig*.json'
+          pattern: '"(compilerOptions|extends)"\s*:'
+          statement: TypeScript compiler configuration
+    - id: source.dependencies
+      evidence:
+        - glob: package.json
+          pattern: '"typescript"\s*:\s*"([^"\n]+)"'
+          statement: TypeScript dependency version
+          capture: 1
+    - id: source.structure
+      evidence:
+        - glob: '**/*.ts'
+          pattern: '^\s*(export\s+)?(interface|type|class|function)\s+([A-Za-z][A-Za-z0-9_]*)'
+          statement: TypeScript declaration
+          capture: 3
+    - id: testing.structure
+      evidence:
+        - glob: '**/*.spec.ts'
+          pattern: '^\s*(describe|it|test)\s*\('
+          statement: TypeScript test declaration
+        - glob: '**/*.test.ts'
+          pattern: '^\s*(describe|it|test)\s*\('
+          statement: TypeScript test declaration
+        - glob: package.json
+          pattern: '"(test|test:unit|test:e2e)"\s*:'
+          statement: TypeScript test script
+    - id: api.http
+      evidence:
+        - glob: '**/*.ts'
+          pattern: '@(?:Get|Post|Put|Delete|Controller)\s*\(|(?:app|router)\.(?:get|post|put|delete)\s*\('
+          statement: TypeScript HTTP route declaration
+    - id: api.openapi
+      evidence:
+        - glob: '**/openapi.yaml'
+          pattern: '(^|\n)\s*openapi\s*:'
+          statement: OpenAPI contract document
+        - glob: '**/openapi.yml'
+          pattern: '(^|\n)\s*openapi\s*:'
+          statement: OpenAPI contract document
+        - glob: '**/openapi.json'
+          pattern: '"openapi"\s*:'
+          statement: OpenAPI contract document
+sources:
+  - title: TypeScript configuration reference
+    url: https://www.typescriptlang.org/tsconfig/
+    retrieved_at: 2026-09-27
+reviewed_at: 2026-09-27
