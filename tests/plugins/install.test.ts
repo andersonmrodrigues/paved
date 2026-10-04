@@ -71,7 +71,7 @@ describe("clean-room plugin installation", { skip }, () => {
       assert.ok(existsSync(join(claudePlugin, path, "package.json")), `Claude Code installs ${path} from the plugin lockfile`);
     }
     assert.ok(claudeInventory.includes(`Skills (${readdirSync(join(ROOT, PLUGIN_DIRECTORY, "skills")).length})`), claudeInventory);
-    for (const name of ["init", "status", "feature", "verify", "context-discovery"]) assert.match(claudeInventory, new RegExp(`\\b${name}\\b`));
+    for (const name of ["init", "status", "intent", "execute", "context-discovery"]) assert.match(claudeInventory, new RegExp(`\\b${name}\\b`));
   });
 
   it("governs a repository end to end offline through the Codex-installed launcher", () => {
@@ -98,22 +98,24 @@ describe("clean-room plugin installation", { skip }, () => {
     assert.ok(!coreRoot.startsWith(realpathSync(ROOT)));
     assert.deepEqual(remoteCacheEntries(npmCache), [], "nothing was fetched from a registry");
     const commands = ok(paved(project, "agent", "commands", "--json"), "agent commands");
-    assert.equal(data<{ commands: unknown[] }>(commands).commands.length, 15);
+    assert.equal(data<{ commands: unknown[] }>(commands).commands.length, 7);
 
     configureTesting(project, coreRoot);
     const baseline = applicationDigest(project);
-    const planned = paved(project, "plan", "Enable the sample feature", "--json");
-    assert.equal(planned.status, 0, planned.stdout + planned.stderr);
-    assert.equal(data<{ workflow: { id: string } }>(planned).workflow.id, "core.feature");
-
     const failingTest = paved(project, "test", "--json");
     assert.notEqual(failingTest.status, 0, "the governed test observes the disabled feature");
-    assert.equal(applicationDigest(project), baseline, "plan and test change no application file");
 
-    const started = paved(project, "feature", "Enable the sample feature", "--json");
+    const started = paved(project, "intent", "Enable the sample feature", "--workflow", "feature", "--because", "The request enables new behavior.", "--json");
     assert.equal(started.status, 0, started.stdout + started.stderr);
+    assert.equal(data<{ workflow: { id: string } }>(started).workflow.id, "core.feature");
+    assert.equal(applicationDigest(project), baseline, "intent and test change no application file");
     const run = data<{ run: string }>(started).run;
-    const advance = (...args: string[]) => paved(project, "feature", "--run", run, "--advance", ...args, "--json");
+    const stepFor = (id: string) => {
+      const state = parse(readFileSync(join(project, ".paved", "generated", "runs", `${id}.yaml`), "utf8")) as { phases: { phase: string; status: string }[] };
+      const phase = state.phases.find((item) => item.status !== "completed")?.phase ?? "";
+      return ["context", "discovery"].includes(phase) ? "intent" : phase === "planning" ? "plan" : "execute";
+    };
+    const advance = (...args: string[]) => paved(project, stepFor(run), "--run", run, "--advance", ...args, "--json");
     assert.equal(advance("--note", "Scope understood").status, 0);
     assert.equal(advance("--note", "Architecture inspected").status, 0);
     writeFileSync(join(project, ".paved", "generated", "plan.md"), "Enable src/feature.js and prove it with the project test.\n");
@@ -148,11 +150,11 @@ describe("clean-room plugin installation", { skip }, () => {
     assert.equal(verification.status, 0, verification.stdout + verification.stderr);
     assert.equal(verification.json.status, "success");
 
-    for (const workflow of ["fix", "refactor"] as const) {
-      const created = paved(project, workflow, `Sample ${workflow} request`, "--json");
+    for (const workflow of ["bug", "refactor"] as const) {
+      const created = paved(project, "intent", `Sample ${workflow} request`, "--workflow", workflow, "--because", `The request describes a ${workflow}.`, "--json");
       assert.equal(created.status, 0, created.stdout + created.stderr);
       const id = data<{ run: string }>(created).run;
-      const resumed = paved(project, workflow, "--run", id, "--advance", "--note", "Expected behavior recorded", "--json");
+      const resumed = paved(project, "intent", "--run", id, "--advance", "--note", "Expected behavior recorded", "--json");
       assert.equal(resumed.status, 0, resumed.stdout + resumed.stderr);
       assert.equal(data<{ run: string }>(resumed).run, id);
     }
@@ -170,7 +172,7 @@ describe("clean-room plugin installation", { skip }, () => {
     assert.equal(lockOf(project).runtime.integrity, pinned.integrity, "the dependencies Claude Code installed rebuild the runtime Codex bundles");
     const coreRoot = data<{ coreRoot: string }>(ok(paved(project, "status", "--json"), "status")).coreRoot;
     assert.ok(coreRoot.startsWith(realpathSync(join(project, ".paved", "runtime"))), coreRoot);
-    assert.equal(data<{ commands: unknown[] }>(paved(project, "agent", "commands", "--json")).commands.length, 15);
+    assert.equal(data<{ commands: unknown[] }>(paved(project, "agent", "commands", "--json")).commands.length, 7);
   });
 
   it("never switches runtime silently and upgrades and rolls back explicitly", () => {

@@ -14,7 +14,7 @@ skills:
     owner: example-team
     reason: Project-specific steps the Core skill cannot know.
 workflows:
-  - target: core.release
+  - target: core.feature
     action: extend
     add_gates:
       - phase: completion

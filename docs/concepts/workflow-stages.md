@@ -38,8 +38,8 @@ context → discovery → planning → implementation → validation → verific
 Order is deterministic: phases appear in canonical order, each at most once
 (`assessWorkflowQuality`), and a run executes them in that order, one at a time
 (`assessRun`: no phase starts before every earlier phase is completed or skipped). A
-workflow omits phases that never apply to its class of change (the release workflow
-has no skills in `discovery`, the incident workflow has no `validation`). A phase
+workflow omits what never applies to its class of change (the `refactor` workflow has no
+gate in `context`). A phase
 present in the workflow is always run unless its `skip_when` holds.
 
 ## Skipping
@@ -51,9 +51,7 @@ Skipping is a declared deviation, never a silent one:
   holds, and a `phase-skipped` event;
 - `verification`, `evidence` and `completion` cannot declare `skip_when` (schema).
 
-The Core catalog uses one skip: the incident workflow may skip `discovery` when impact
-is growing and a known, reversible containment exists. Investigation then continues
-after containment, and the permanent fix follows as a separate bug workflow.
+The Core catalog uses no skip.
 
 ## Deviations from the canonical flow
 

@@ -3,22 +3,24 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { describe, it } from "node:test";
-import { applyProjection, planProjection, removeProjection } from "../../integrations/shared/projection.ts";
+import { applyProjection, metadata, planProjection, removeProjection } from "../../integrations/shared/projection.ts";
 import { AGENT_COMMANDS } from "../../integrations/shared/commands.ts";
 import { at } from "../helpers.ts";
+
+const coreRoot = at(".");
 
 describe("agent projections", () => {
   describe("conversational contract parity", () => {
     it("emits the same conversational interaction for Codex and Claude Code", async () => {
       const { renderCommand } = await import("../../integrations/shared/projection.ts");
-      const command = AGENT_COMMANDS.find((item) => item.name === "verify")!;
+      const command = AGENT_COMMANDS.find((item) => item.name === "execute")!;
       const codex = renderCommand(command, {
-        headerLine: "<!-- h -->", title: "$paved-verify",
+        headerLine: "<!-- h -->", title: "$paved-execute",
         launcher: { command: "node bootstrap.mjs" },
-        frontmatter: { name: "paved-verify", description: command.description },
+        frontmatter: { name: "paved-execute", description: command.description },
       });
       const claude = renderCommand(command, {
-        headerLine: "<!-- h -->", title: "/paved:verify", launcher: { command: "node bootstrap.mjs" },
+        headerLine: "<!-- h -->", title: "/paved:execute", launcher: { command: "node bootstrap.mjs" },
       });
       for (const text of [codex, claude]) {
         assert.match(text, /awaiting_input/);
@@ -30,26 +32,25 @@ describe("agent projections", () => {
 
     it("references the skill instead of repeating its prohibitions", async () => {
       const { renderCommand } = await import("../../integrations/shared/projection.ts");
-      const command = AGENT_COMMANDS.find((item) => item.name === "verify")!;
-      const text = renderCommand(command, { headerLine: "<!-- h -->", title: "/paved:verify", launcher: { command: "node b.mjs" } });
+      const command = AGENT_COMMANDS.find((item) => item.name === "execute")!;
+      const text = renderCommand(command, { headerLine: "<!-- h -->", title: "/paved:execute", launcher: { command: "node b.mjs" } });
       assert.doesNotMatch(text, /Never answer a material decision/);
     });
 
-    it("marks read-only commands and declares decision sources", () => {
-      assert.equal(AGENT_COMMANDS.find((item) => item.name === "status")!.interaction, "read-only");
-      assert.equal(AGENT_COMMANDS.find((item) => item.name === "verify")!.interaction, "conversational");
-      assert.deepEqual(AGENT_COMMANDS.find((item) => item.name === "verify")!.decisionSources, ["runtime"]);
-      assert.deepEqual(AGENT_COMMANDS.find((item) => item.name === "plan")!.decisionSources, ["agent"]);
+    it("ships exactly the seven agent commands and declares decision sources", () => {
+      assert.deepEqual(AGENT_COMMANDS.map((item) => item.name), ["init", "status", "intent", "plan", "execute", "preview", "update"]);
+      assert.equal(AGENT_COMMANDS.find((item) => item.name === "status")!.interaction, "conversational");
+      assert.deepEqual(AGENT_COMMANDS.find((item) => item.name === "status")!.decisionSources, ["runtime"]);
+      assert.deepEqual(AGENT_COMMANDS.find((item) => item.name === "intent")!.decisionSources, ["runtime", "agent"]);
+      assert.equal(metadata("codex", at(".")).version, "2.0.0");
     });
 
-    it("directs planning commands to durable canonical plan files", async () => {
+    it("directs the plan step to the durable canonical plan file and its review", async () => {
       const { renderCommand } = await import("../../integrations/shared/projection.ts");
-      for (const name of ["plan", "feature", "fix", "refactor"]) {
-        const command = AGENT_COMMANDS.find((item) => item.name === name)!;
-        const text = renderCommand(command, { headerLine: "<!-- h -->", title: `/paved:${name}`, launcher: { command: "node b.mjs" } });
-        assert.ok(text.includes(".paved/documents/plans/<run-id>.md"), name);
-        assert.ok(text.includes("paved preview start .paved/documents/plans/<run-id>.md"), name);
-      }
+      const command = AGENT_COMMANDS.find((item) => item.name === "plan")!;
+      const text = renderCommand(command, { headerLine: "<!-- h -->", title: "/paved:plan", launcher: { command: "node b.mjs" } });
+      assert.ok(text.includes(".paved/documents/plans/<run-id>.md"));
+      assert.ok(text.includes("paved plan --run <run-id> --approve --json"));
     });
   });
 
@@ -81,12 +82,10 @@ describe("agent projections", () => {
       const skill = codex.files.find((file) => file.relativePath.endsWith("SKILL.md"))!;
       assert.match(skill.content, /^---\s*\n[\s\S]*?\n---\s*\n<!-- Generated by Paved /);
       assert.equal(codex.files.some((file) => file.content.includes("bootstrap.mjs verify --json")), true);
-      const codexTest = codexCommands.find((file) => file.relativePath.endsWith("paved-test/SKILL.md"))!;
-      const claudeTest = claudeCommands.find((file) => file.relativePath.endsWith("test.md"))!;
-      assert.match(codexTest.content, /bootstrap\.mjs test --json/);
-      assert.match(claudeTest.content, /bootstrap\.mjs test --json/);
-      assert.match(codexTest.content, /pass it with --inputs/);
-      assert.match(claudeTest.content, /pass it with --inputs/);
+      for (const gone of ["feature", "doctor", "test", "verify", "gardener"]) {
+        assert.equal(codexCommands.some((file) => basename(dirname(file.relativePath)) === `paved-${gone}`), false, gone);
+        assert.equal(claudeCommands.some((file) => basename(file.relativePath) === `${gone}.md`), false, gone);
+      }
       const plugin = JSON.parse(claude.files.find((file) => file.relativePath === ".claude-plugin/plugin.json")!.content) as {
         description: string;
         _paved?: unknown;
@@ -192,5 +191,32 @@ describe("agent projections", () => {
     } finally {
       rmSync(project, { recursive: true, force: true });
     }
+  });
+
+  it("prune removes Paved-generated command files the plan no longer has, on both hosts", () => {
+    for (const agent of ["claude-code", "codex"] as const) {
+      const root = mkdtempSync(join(tmpdir(), `paved-prune-${agent}-`));
+      try {
+        const plan = planProjection(agent, root, coreRoot);
+        const stale = agent === "codex" ? join(root, ".agents/skills/paved-feature/SKILL.md") : join(root, ".claude/commands/paved/feature.md");
+        mkdirSync(dirname(stale), { recursive: true });
+        writeFileSync(stale, "<!-- Generated by Paved paved.integration.x@1.0.0; edit the canonical skill in Paved Core instead. -->\n# old\n");
+        const result = applyProjection(plan);
+        assert.equal(existsSync(stale), false, `${agent}: stale command kept`);
+        assert.ok(result.removed >= 1);
+        if (agent === "codex") assert.equal(existsSync(dirname(stale)), false, "empty skill directory kept");
+      } finally { rmSync(root, { recursive: true, force: true }); }
+    }
+  });
+
+  it("prune leaves user-owned files", () => {
+    const root = mkdtempSync(join(tmpdir(), "paved-prune-user-"));
+    try {
+      const own = join(root, ".claude/commands/paved/feature.md");
+      mkdirSync(dirname(own), { recursive: true });
+      writeFileSync(own, "# My own feature command\n");
+      applyProjection(planProjection("claude-code", root, coreRoot));
+      assert.equal(readFileSync(own, "utf8"), "# My own feature command\n");
+    } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });

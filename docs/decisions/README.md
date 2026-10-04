@@ -40,6 +40,7 @@ writing a new record that supersedes it, not by editing the old one.
 | [0033](0033-comment-only-folder-preview.md) | Comment-only preview of files and folders | Accepted |
 | [0034](0034-unpacked-plugin-runtime.md) | Unpacked plugin runtime | Accepted; amended by 0035 |
 | [0035](0035-host-specific-plugin-directories.md) | Host-specific plugin directories | Accepted |
+| [0036](0036-intent-plan-execute.md) | Intent, plan and execute | Accepted |
 
 ## Format
 

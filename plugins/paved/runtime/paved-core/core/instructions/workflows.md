@@ -3,6 +3,27 @@
 Load this file when you start a workflow. `workflow.yaml` says what the run needs;
 this file says how to carry it out, what to do when something fails, and what to record.
 
+## Steps
+
+A run goes through three steps over one run id. Each step owns a fixed range of phases;
+a step invoked outside its range returns `PAVED_WORKFLOW_STEP_OUT_OF_RANGE` and names the
+step that owns the current phase.
+
+| Step | Phases |
+|---|---|
+| `paved intent "<request>"` | classification, `context`, `discovery` |
+| `paved plan` | `planning` |
+| `paved execute` | `implementation` through `completion` |
+
+Pass the user's request to `intent` verbatim. Add `--workflow <feature|bug|refactor>
+--because "<evidence>"` only when the evidence shows the kind of change; otherwise omit it
+(optionally `--recommend <id> --because "<evidence>"`) and present the returned decision.
+A request that mixes kinds of change is passed with one `--part` per part and becomes a
+split decision. `plan` and `execute` act on the only open run, or on `--run <id>`; with
+several open runs they ask which one. A bug's failing regression test and a refactor's
+passing baseline run inside `intent`; tests and verification run inside `execute`. When a
+step returns their decisions, present them and repeat the same call with the answers.
+
 ## Before the first phase
 
 Check the standard preconditions, then the workflow's own `preconditions`:
@@ -52,7 +73,7 @@ work; do not put machine state or local evidence here.
 | Tasks | `.paved/documents/tasks/<run-id>.md` |
 | Research | `.paved/documents/research/<run-id>.md` |
 
-For `plan`, `feature`, `fix`, and `refactor`, write the plan at
+`intent` writes the Intent document. In the `plan` step, write the plan at
 `.paved/documents/plans/<run-id>.md`. Open that exact file with
 `paved preview start .paved/documents/plans/<run-id>.md --json`, or a folder with
 `paved preview start <folder> --json` when several documents are reviewed together
@@ -74,10 +95,14 @@ preview URL and keep the agent turn active with `paved preview wait <target> <re
 until the user says in the conversation that the review is finished. Each comment names
 its document: mark it with `paved preview working <target> <comment-id> --json`, apply
 it, then `paved preview resolve <target> <comment-id> --reply "<what changed>" --json`.
-After editing, advance the workflow once to request approval for the revised plan hash.
+After editing, run `paved plan --run <run-id> --advance` once to request approval for the
+revised plan hash. A result that waits on a person about a document carries a `review`
+block naming the document to open; the Intent while its classification is pending, the
+plan with the documents of the same run, and the review record rendered in the `review`
+phase all reach the person this way.
 
 The preview approves nothing. Ask for the approval in the conversation, and only after
-an explicit yes to the current plan run the workflow with `--run <run-id> --approve`: it
+an explicit yes to the current plan run `paved plan --run <run-id> --approve`: it
 records the decision for the exact plan version, under the local user, and resumes. An
 unclear reply, silence or your own judgment is never an approval.
 

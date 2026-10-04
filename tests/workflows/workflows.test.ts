@@ -29,8 +29,14 @@ describe("core workflows", () => {
   const sections = headings(loadMarkdown(at("core", "templates", "workflow.md")).body, 2);
 
   it("include every workflow the Core promises", () => {
-    for (const name of ["feature", "bug", "refactor", "performance", "incident", "release"]) {
+    for (const name of ["feature", "bug", "refactor"]) {
       assert.ok(names.includes(name), `missing workflow ${name}`);
+    }
+  });
+
+  it("do not ship workflows that nothing executes", () => {
+    for (const name of ["performance", "incident", "release"]) {
+      assert.ok(!names.includes(name), `workflow ${name} was removed in 2.0`);
     }
   });
 

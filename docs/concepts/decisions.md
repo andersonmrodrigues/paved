@@ -96,7 +96,7 @@ paved verify --answer d-0123456789abcdef0123=all --answered-by user@example.com
 
 Repeat `--answer` for each decision. For a `multi-choice` decision, repeat it for each
 selected option; commas are not split. Workflow decisions resume on the same command and
-run id, for example `paved feature --run <id> --advance --answer <decision-id>=<value>
+run id, for example `paved execute --run <id> --advance --answer <decision-id>=<value>
 --answered-by <identity>`.
 
 Invalid answers leave the decision `ASKED`. Replaying the same answer is idempotent;

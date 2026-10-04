@@ -12,7 +12,7 @@ description: >-
 
 ## When to use
 
-In the `implementation` phase of the performance workflow, once `profiling` has located
+In the `implementation` phase of a `refactor` or `feature` run that targets performance, once `profiling` has located
 the problem on the client side: loading, rendering or responding to input.
 
 ## Required context

@@ -2,28 +2,28 @@ apiVersion: paved/v1
 kind: WorkflowRun
 id: 2026-09-27-sample
 workflow:
-  id: core.incident
-  version: 0.2.0
+  id: core.bug
+  version: 0.4.0
 revision: 3f2a9c1
 started_at: 2026-09-27T10:00:00Z
 status: running
 inputs:
-  - id: signal
-    value: Error rate above threshold.
+  - id: report
+    value: Export fails for archived items.
     source: human
 phases:
   - phase: context
     status: completed
   - phase: discovery
     status: skipped
-    skip_reason: Impact is growing and disabling the new path is a known reversible containment.
+    skip_reason: The cause is confirmed by the attached stack trace.
   - phase: planning
     status: completed
     gates:
-      - id: mitigation-approved
+      - id: plan-approved
         status: approved
         requested_at: 2026-09-27T10:10:00Z
-        decided_by: on-call owner
+        decided_by: maintainer
         decided_at: 2026-09-27T10:12:00Z
   - phase: implementation
     status: running

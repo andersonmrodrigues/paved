@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, lstatSync, realpathSync, unlinkSync, renameSync, writeFileSync, existsSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, lstatSync, realpathSync, unlinkSync, renameSync, rmdirSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { loadCanonicalSkills, type CanonicalSkill } from "./catalog.ts";
 import { AGENT_COMMANDS, type AgentCommandContract } from "./commands.ts";
@@ -13,7 +13,7 @@ const capabilities = [
 export function metadata(agent: AgentId, projectRoot: string): IntegrationMetadata {
   return {
     id: `paved.integration.${agent}`,
-    version: "1.0.0",
+    version: "2.0.0",
     target: agent,
     capabilities,
     root: agent === "codex" ? join(projectRoot, ".agents", "skills") : projectRoot,
@@ -73,8 +73,15 @@ export function renderCommand(command: AgentCommandContract, rendering: CommandR
       "4. Keep the review active: call `paved preview wait <target> <revision> --json`, starting with the revision from `status`, and follow its `next_action`. A timeout means call `wait` again immediately, because comments reach you only while `wait` runs. Each comment names its `document`. For each one: run `paved preview working <target> <comment-id> --json`, edit that document, then run `paved preview resolve <target> <comment-id> --reply \"<what changed>\" --json`. Never resolve before applying the change, and ask in the conversation when a comment needs a fact you do not have.",
       "5. The preview approves nothing. Keep waiting until the user says in the conversation that the review is finished; ask any approval or confirmation there.",
     ] : []),
-    ...(["plan", "feature", "fix", "refactor"].includes(command.name) ? [
-      "3. Save the plan at `.paved/documents/plans/<run-id>.md`. When the planning phase requests human approval, start `paved preview start .paved/documents/plans/<run-id>.md --json` (or its folder, when the plan comes with specs or tasks) and present its URL. Follow the `paved.preview` review loop without ending your turn: resolve each comment after editing and advance the workflow once after edits so the approval request covers the current plan. When the user approves the plan in the conversation with an explicit yes, run this command with `--run <run-id> --approve --json`; never approve on your own or on an ambiguous reply.",
+    ...(command.name === "intent" ? [
+      "3. Pass the user's request verbatim. When the evidence shows the kind of change, add `--workflow <feature|bug|refactor> --because \"<evidence>\"`. When it does not, omit `--workflow` (optionally `--recommend <id> --because …`) and present the returned decision. When the request mixes kinds of change, pass each part with `--part` and present the split decision. Never classify on a guess.",
+      "4. When the result has a `review` block, start `paved preview start <target> --json` and follow the `paved.preview` review loop.",
+    ] : []),
+    ...(command.name === "plan" ? [
+      "3. Save the plan at `.paved/documents/plans/<run-id>.md` and run this command with `--advance --evidence <plan> --note <summary>`. When the result carries a `review` block, start the preview on its target (with its companions) and follow the `paved.preview` review loop without ending your turn: resolve each comment after editing and advance once after edits so the approval request covers the current plan. When the user approves the plan in the conversation with an explicit yes, run `paved plan --run <run-id> --approve --json`; never approve on your own or on an ambiguous reply.",
+    ] : []),
+    ...(command.name === "execute" ? [
+      "3. Advance one phase at a time. Tests and verification run inside this command; when it returns their decisions, present them and repeat the same call with the answers. In the review phase, open the returned `review` block in the preview. When the result lists `gardener` proposals, show them to the user as advisory and name `paved gardener`.",
     ] : []),
     "",
     "## Failure behavior",
@@ -218,7 +225,37 @@ function generatedByPaved(path: string): boolean {
   catch { return false; }
 }
 
-export function applyProjection(plan: ProjectionPlan): { changed: number; unchanged: number } {
+function prunable(plan: ProjectionPlan): string[] {
+  const keep = new Set(plan.files.map((file) => file.relativePath.split(sep).join("/")));
+  const entries = (dir: string): string[] => {
+    const full = join(plan.integration.root, dir);
+    try {
+      return readdirSync(full, { withFileTypes: true }).filter((entry) => !entry.isSymbolicLink()).map((entry) => entry.name).sort();
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
+      throw error;
+    }
+  };
+  const skillFiles = (dir: string) => entries(dir).map((name) => (dir ? `${dir}/${name}/SKILL.md` : `${name}/SKILL.md`));
+  const candidates = plan.integration.target === "codex"
+    ? skillFiles("")
+    : [...skillFiles("skills"), ...entries(".claude/commands/paved").filter((name) => name.endsWith(".md")).map((name) => `.claude/commands/paved/${name}`)];
+  return candidates.filter((relativePath) => !keep.has(relativePath) && generatedByPaved(safePath(plan.integration, relativePath)));
+}
+
+function prune(plan: ProjectionPlan): number {
+  let removed = 0;
+  for (const relativePath of prunable(plan)) {
+    const path = safePath(plan.integration, relativePath);
+    unlinkSync(path);
+    removed += 1;
+    const parent = resolve(path, "..");
+    if (relativePath.endsWith("/SKILL.md") && readdirSync(parent).length === 0) rmdirSync(parent);
+  }
+  return removed;
+}
+
+export function applyProjection(plan: ProjectionPlan): { changed: number; unchanged: number; removed: number } {
   const pending: { file: ProjectionFile; path: string }[] = [];
   let changed = 0;
   let unchanged = 0;
@@ -247,7 +284,7 @@ export function applyProjection(plan: ProjectionPlan): { changed: number; unchan
     atomicWrite(path, file.content);
     changed += 1;
   }
-  return { changed, unchanged };
+  return { changed, unchanged, removed: prune(plan) };
 }
 
 export function removeProjection(plan: ProjectionPlan): number {

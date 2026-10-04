@@ -2,6 +2,7 @@ import { cpSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { stringify } from "yaml";
 import { atomicWriteFileSync } from "../lib/atomic-write.ts";
+import { agentsBlockInvalidDiagnostic, refreshAgentsBlock, type AgentsBlockResult } from "../lib/agents-block.ts";
 import { generateData, diagnosticsForRun } from "./generate.ts";
 import { inspectConsumer, planConsumerUpdate, type ConsumerUpdatePlan } from "../lib/consumer-state.ts";
 import { runGenerators, type RunResult } from "../lib/generator-runtime.ts";
@@ -88,11 +89,13 @@ export function updateHandler(invocation: CommandInvocation): CommandResult {
 
   if (!plan.changed) {
     const lifecycleState = inspectConsumer({ projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot }).lifecycleState;
+    const status = statusFor(plan.diagnostics);
+    const agentsBlock = invocation.flags.dryRun || status === "failed" ? undefined : refreshAgentsBlock(invocation.paths.coreRoot, invocation.paths.projectRoot);
     return createResult({
       command: "update",
-      status: statusFor(plan.diagnostics),
-      data: updateData(plan, invocation.flags.dryRun, undefined, lifecycleState),
-      diagnostics: plan.diagnostics,
+      status,
+      data: { ...updateData(plan, invocation.flags.dryRun, undefined, lifecycleState), ...agentsBlockData(agentsBlock) },
+      diagnostics: [...plan.diagnostics, ...agentsBlockDiagnostics(agentsBlock)],
     });
   }
 
@@ -135,7 +138,13 @@ export function updateHandler(invocation: CommandInvocation): CommandResult {
       },
     });
     const lifecycleState = inspectConsumer({ projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot }).lifecycleState;
-    return createResult({ command: "update", status: statusFor(staged.diagnostics), data: updateData(plan, false, staged.generation, lifecycleState), diagnostics: staged.diagnostics });
+    const status = statusFor(staged.diagnostics);
+    const agentsBlock = status === "failed" ? undefined : refreshAgentsBlock(invocation.paths.coreRoot, invocation.paths.projectRoot);
+    return createResult({
+      command: "update", status,
+      data: { ...updateData(plan, false, staged.generation, lifecycleState), ...agentsBlockData(agentsBlock) },
+      diagnostics: [...staged.diagnostics, ...agentsBlockDiagnostics(agentsBlock)],
+    });
   } catch (error) {
     if (error instanceof ConsumerOperationLockedError) {
       const diagnostic = createDiagnostic({
@@ -152,4 +161,12 @@ export function updateHandler(invocation: CommandInvocation): CommandResult {
     });
     return createResult({ command: "update", status: "failed", data: updateData(plan, false), diagnostics: [...plan.diagnostics, diagnostic] });
   }
+}
+
+function agentsBlockData(result: AgentsBlockResult | undefined): { agentsBlock?: AgentsBlockResult["status"] } {
+  return result === undefined ? {} : { agentsBlock: result.status };
+}
+
+function agentsBlockDiagnostics(result: AgentsBlockResult | undefined) {
+  return result?.status === "invalid" ? [agentsBlockInvalidDiagnostic(result.reason)] : [];
 }
