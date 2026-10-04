@@ -1,15 +1,15 @@
-# expect-problem: gate mitigation-approved needs a human approval
+# expect-problem: gate plan-approved needs a human approval
 apiVersion: paved/v1
 kind: WorkflowRun
 id: sample-run
 workflow:
-  id: core.incident
-  version: 0.2.0
+  id: core.bug
+  version: 0.4.0
 revision: 3f2a9c1
 started_at: 2026-09-27T10:00:00Z
 status: running
 inputs:
-  - id: signal
+  - id: report
     value: Sample input.
     source: human
 phases:
@@ -20,10 +20,12 @@ phases:
   - phase: planning
     status: completed
     gates:
-      - id: mitigation-approved
+      - id: plan-approved
         status: passed
   - phase: implementation
     status: running
+  - phase: validation
+    status: pending
   - phase: verification
     status: pending
   - phase: evidence
