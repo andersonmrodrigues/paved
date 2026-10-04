@@ -3,7 +3,7 @@
 apiVersion: paved/v1
 kind: Core
 name: paved-core
-version: 1.16.1
+version: 2.0.0
 supported_api_versions:
   - paved/v1
 
