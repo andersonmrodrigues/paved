@@ -19,12 +19,19 @@ workflows. The reasons are in [ADR 0036](../decisions/0036-intent-plan-execute.m
 
 ## Steps
 
-1. **Plugin consumers:** update the Paved plugin in your agent (see
-   [Installing the plugin](installing-the-plugin.md#update-the-plugin)). The 2.0 plugin no longer
-   contains the removed commands.
-2. **Project-local projection** (`.agents/skills/` or `.claude/`): run `paved update`, then
+1. **Allow Core 2 in the manifest.** In `.paved/manifest.yaml`, change `paved.core` from
+   the 1.x range that `init` wrote (for example `^1.16.1`) to `^2.0.0`. `update` refuses a
+   Core outside that range with `PAVED_MANIFEST_CORE_INCOMPATIBLE` and changes nothing, so
+   this is the one manual edit the upgrade needs.
+2. **Plugin consumers:** update the Paved plugin in your agent (see
+   [Installing the plugin](installing-the-plugin.md#update-the-plugin)), then run `paved update`
+   in the repository so it adopts the 2.0 runtime
+   ([Upgrade or roll back a repository's runtime](installing-the-plugin.md#upgrade-or-roll-back-a-repositorys-runtime)).
+   The 2.0 plugin no longer contains the removed commands.
+3. **Project-local projection** (`.agents/skills/` or `.claude/`): run `paved update`, then
    `paved agent update codex` or `paved agent update claude-code`.
-3. Run `paved status` and act on what it reports.
+4. Run `paved status` and act on what it reports. Commit `.paved/manifest.yaml` and
+   `.paved/paved.lock` once you have reviewed the change.
 
 ## What happens automatically
 

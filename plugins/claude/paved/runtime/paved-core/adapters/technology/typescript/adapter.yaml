@@ -5,7 +5,7 @@ title: TypeScript
 version: 0.1.0
 summary: Static evidence about TypeScript projects, compiler configuration and tests.
 requires:
-  core: ^1.0.0
+  core: ^1.0.0 || ^2.0.0
 detect:
   any_files: [tsconfig.json, '**/tsconfig.*.json']
   file_contains:

@@ -5,7 +5,7 @@ title: Java
 version: 0.1.0
 summary: Static evidence about Java sources, dependencies and builds.
 requires:
-  core: ^1.0.0
+  core: ^1.0.0 || ^2.0.0
 detect:
   any_files: [pom.xml, build.gradle, build.gradle.kts]
   file_contains:

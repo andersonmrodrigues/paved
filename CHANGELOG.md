@@ -31,6 +31,8 @@ releases, not the development sequence used to build them.
 - `--approve` is accepted only by `plan`.
 - These removals skip the usual deprecation release. See
   [migrating to 2.0](docs/getting-started/migrating-to-2.md).
+- A project manifest written by 1.x pins `paved.core` to a 1.x range; change it to `^2.0.0`
+  before `update`, which otherwise refuses the new Core with `PAVED_MANIFEST_CORE_INCOMPATIBLE`.
 
 ### Added
 
@@ -52,6 +54,7 @@ releases, not the development sequence used to build them.
 
 - Each workflow's gate logic lives in its own handler module, and a test requires every
   gate of every Core workflow to have one.
+- The bundled adapters declare compatibility with Core 1 and Core 2 (`^1.0.0 || ^2.0.0`).
 
 ## [1.16.1] - 2026-10-02
 
