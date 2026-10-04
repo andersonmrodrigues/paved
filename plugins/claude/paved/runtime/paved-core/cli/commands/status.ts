@@ -2,7 +2,7 @@ import { createDiagnostic, createResult, type CommandResult, type Diagnostic, ty
 import type { CommandInvocation } from "../runtime.ts";
 import { inspectConsumer, type ConsumerInspection } from "../lib/consumer-state.ts";
 import { discoverAgentCommands } from "../lib/agent-commands.ts";
-import { agentsBlockState } from "../lib/agents-block.ts";
+import { agentsBlockInvalidDiagnostic, inspectAgentsBlock } from "../lib/agents-block.ts";
 import { runDecisionGate } from "../lib/decisions/gate.ts";
 import { DecisionStoreError } from "../lib/decisions/store.ts";
 import { repairProvider } from "../lib/decisions/providers/repair.ts";
@@ -60,7 +60,10 @@ export function statusData(inspection: ConsumerInspection): Record<string, unkno
 }
 
 function agentsBlockFindings(inspection: ConsumerInspection): Diagnostic[] {
-  if (!inspection.initialized || agentsBlockState(inspection.coreRoot, inspection.projectRoot) !== "outdated") return [];
+  if (!inspection.initialized) return [];
+  const agents = inspectAgentsBlock(inspection.coreRoot, inspection.projectRoot);
+  if (agents.state === "invalid") return [agentsBlockInvalidDiagnostic(agents.reason)];
+  if (agents.state !== "outdated") return [];
   return [createDiagnostic({
     severity: "warning", category: "findings", code: "PAVED_AGENTS_BLOCK_OUTDATED", component: "consumer.agents",
     message: "The managed Paved block in AGENTS.md differs from the current Core template.",

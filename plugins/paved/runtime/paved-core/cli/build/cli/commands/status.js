@@ -1,7 +1,7 @@
 import { createDiagnostic, createResult } from "../result.js";
 import { inspectConsumer } from "../lib/consumer-state.js";
 import { discoverAgentCommands } from "../lib/agent-commands.js";
-import { agentsBlockState } from "../lib/agents-block.js";
+import { agentsBlockInvalidDiagnostic, inspectAgentsBlock } from "../lib/agents-block.js";
 import { runDecisionGate } from "../lib/decisions/gate.js";
 import { DecisionStoreError } from "../lib/decisions/store.js";
 import { repairProvider } from "../lib/decisions/providers/repair.js";
@@ -57,7 +57,12 @@ export function statusData(inspection) {
     };
 }
 function agentsBlockFindings(inspection) {
-    if (!inspection.initialized || agentsBlockState(inspection.coreRoot, inspection.projectRoot) !== "outdated")
+    if (!inspection.initialized)
+        return [];
+    const agents = inspectAgentsBlock(inspection.coreRoot, inspection.projectRoot);
+    if (agents.state === "invalid")
+        return [agentsBlockInvalidDiagnostic(agents.reason)];
+    if (agents.state !== "outdated")
         return [];
     return [createDiagnostic({
             severity: "warning", category: "findings", code: "PAVED_AGENTS_BLOCK_OUTDATED", component: "consumer.agents",
