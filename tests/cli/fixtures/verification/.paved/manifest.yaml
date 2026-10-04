@@ -3,5 +3,5 @@ kind: Project
 project:
   name: verification-fixture
 paved:
-  core: ^1.0.0
+  core: ">=1.0.0 <3.0.0"
 adapters: []

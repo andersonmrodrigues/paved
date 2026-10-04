@@ -5,7 +5,7 @@ title: Angular
 version: 0.2.0
 summary: Static evidence about Angular workspaces, dependencies and routes.
 requires:
-  core: ^1.0.0
+  core: ^1.0.0 || ^2.0.0
   adapters:
     - id: technology/typescript
       version: ^0.1.0

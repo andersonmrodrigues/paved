@@ -238,7 +238,7 @@ describe('scoped capability provider resolution', () => {
 
   test('the manifest accepts both selection forms and rejects paths that escape the repository', () => {
     const registry = createRegistry(join(core, 'schemas'), ['paved/v1']);
-    const manifest = (providers: unknown) => ({ apiVersion: 'paved/v1', kind: 'Project', project: { name: 'sample' }, paved: { core: '^1.0.0' }, capability_providers: providers });
+    const manifest = (providers: unknown) => ({ apiVersion: 'paved/v1', kind: 'Project', project: { name: 'sample' }, paved: { core: '>=1.0.0 <3.0.0' }, capability_providers: providers });
     assert.equal(registry.validate(manifest({ 'source.build': 'technology/java' })).valid, true);
     assert.equal(registry.validate(manifest({ 'source.build': [{ path: 'services/api', provider: 'technology/java' }, { path: '.', provider: 'technology/typescript' }] })).valid, true);
     for (const path of ['../outside', '/abs', 'web/', 'a/../b', '']) {

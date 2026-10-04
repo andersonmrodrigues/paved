@@ -5,7 +5,7 @@ title: Flutter
 version: 0.1.0
 summary: Static evidence about Flutter applications, packages and test organization.
 requires:
-  core: ^1.0.0
+  core: ^1.0.0 || ^2.0.0
   adapters:
     - id: technology/dart
       version: ^0.1.0
