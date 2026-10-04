@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { agentsBlockState, refreshAgentsBlock } from "../../cli/lib/agents-block.ts";
+import { inspectAgentsBlock, refreshAgentsBlock } from "../../cli/lib/agents-block.ts";
 
 const core = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const template = readFileSync(join(core, "core/templates/AGENTS.md"), "utf8").trimEnd();
@@ -18,10 +18,10 @@ describe("refreshAgentsBlock", () => {
     const before = "# Team notes\n\nKeep tabs.\t\n\n";
     const after = "\n\n## Our rules\n- one\n";
     writeFileSync(join(project, "AGENTS.md"), `${before}${legacy}${after}`);
-    assert.equal(agentsBlockState(core, project), "outdated");
+    assert.equal(inspectAgentsBlock(core, project).state, "outdated");
     assert.equal(refreshAgentsBlock(core, project).status, "updated");
     assert.equal(readFileSync(join(project, "AGENTS.md"), "utf8"), `${before}${template}${after}`);
-    assert.equal(agentsBlockState(core, project), "current");
+    assert.equal(inspectAgentsBlock(core, project).state, "current");
   });
 
   it("never creates a block or a file", () => {
