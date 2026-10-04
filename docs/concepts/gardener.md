@@ -6,6 +6,14 @@ existing Evidence records from `.paved/generated/evidence/` and
 `.paved/generated/state/last-run.json`. It does not run verification or generators.
 The Gardener skill remains the procedure for deeper human-led diagnosis.
 
+`gardener` is a CLI subcommand, not an agent command. Agents meet its results at the end
+of `execute`: when a run completes, `execute` runs the same analysis and lists only the
+candidate proposals not reported before, keyed by proposal id and `evidence_sha256` in
+`.paved/generated/gardener/reported.json`. A reviewed proposal is not listed again; a
+changed `evidence_sha256` lists it again. The list is advisory: it never changes rules,
+skills or checks, and a gardener failure or proposal never changes the run's outcome.
+Adopting a proposal stays a decision taken with `paved gardener`.
+
 ## Observation and evidence
 
 The service validates Evidence against the existing schema. Failed/error checks, violated rules, and missing required verification become observations. Generator conflicts and unknowns become observations from the existing run state. A check may also record an `implementation-pattern` fact; Gardener observes its fingerprint but never proposes a rule from its repetition alone. It never scans source code for frequent patterns or treats current code as desired architecture. It does not read raw check logs or copy summaries, commands, environment values, or unknown text into output. Each observation includes a stable id, consumer scope, category, subject, knowledge state, confidence, occurrence count, first and last recorded time, record/item references, and repository-relative provenance sources with content hashes. The `GardenerObservation` schema reuses the existing provenance source definition.
@@ -24,6 +32,6 @@ The current command never creates active Rules, Skills, Workflows, architecture,
 
 ## Isolation and limits
 
-Analysis always targets one consumer. A consumer pattern remains consumer-scoped even if another consumer has the same pattern. Core promotion needs separate human review with evidence from multiple consumers and a technology-neutral argument; The reusable `considerCoreCandidates` function can compare two or more explicitly supplied consumer results and return a review-only `CoreImprovementCandidate`; the consumer CLI never calls it. Generality and technology independence remain unknown until human review. Technology-specific interpretation remains in adapters and existing check definitions. This implementation does not retain Gardener artifacts in generated state, inspect unstructured agent corrections, infer architecture from code, or aggregate across consumers. Historical observations are limited by the Evidence records a consumer retains and by Generator Runtime's last-run state. Proposal ids are stable for a pattern; new evidence updates the proposal's evidence list without changing its id.
+Analysis always targets one consumer. A consumer pattern remains consumer-scoped even if another consumer has the same pattern. Core promotion needs separate human review with evidence from multiple consumers and a technology-neutral argument; The reusable `considerCoreCandidates` function can compare two or more explicitly supplied consumer results and return a review-only `CoreImprovementCandidate`; the consumer CLI never calls it. Generality and technology independence remain unknown until human review. Technology-specific interpretation remains in adapters and existing check definitions. Apart from the list of already reported proposals that `execute` keeps, this implementation does not retain Gardener artifacts in generated state, inspect unstructured agent corrections, infer architecture from code, or aggregate across consumers. Historical observations are limited by the Evidence records a consumer retains and by Generator Runtime's last-run state. Proposal ids are stable for a pattern; new evidence updates the proposal's evidence list without changing its id.
 
 No remote analysis or learning is used. The command reads local metadata and returns only relative record paths and hashes; the consumer controls evidence retention and access. Treat the human-owned review file as a decision record, not as an enforcement mechanism.

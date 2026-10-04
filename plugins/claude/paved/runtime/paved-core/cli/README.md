@@ -16,12 +16,14 @@ this CLI yet.
 | [`paved update`](commands/update/README.md) | Plan, stage, validate and commit local Core, adapter or source-input changes | `.paved/paved.lock` when resolution changes; affected context and disposable proposals |
 | [`paved generate`](commands/generate/README.md) | Run all generators or selected generator ids and their dependencies | `.paved/project/`, `.paved/generated/`, `.paved/generated/state/last-run.json` |
 | [`paved verify`](commands/verify/README.md) | Run the explicit verification profile through approved Tool bindings and record sanitized evidence | `.paved/generated/evidence/` |
-| [`paved status`](commands/status/README.md) | Report initialized state, lock health, adapters, generator state, proposals and verification profile state | nothing |
-| [`paved doctor`](commands/doctor/README.md) | Report actionable diagnostics for invalid or inconsistent Paved state | nothing |
+| [`paved status`](commands/status/README.md) | Report initialized state, lock health, adapters, generator state, proposals, verification profile state, open runs, diagnostics and repair decisions | nothing, unless a repair decision is answered |
+| [`paved doctor`](commands/doctor/README.md) | The diagnostics and repair decisions of `status`, kept as a CLI subcommand for the launcher and CI | nothing, unless a repair decision is answered |
 | `paved gardener` | Analyze existing consumer evidence and report review proposals | nothing |
 | `paved agent` | List, discover/resolve shared agent command contracts, validate, install, update or uninstall project-local agent projections | `.agents/`, `.claude/` or `.claude-plugin/` projection files |
-| `paved feature`, `paved fix`, `paved refactor` | Start or resume a durable Core workflow; validation invokes `test`, verification invokes `verify` | `.paved/generated/runs/`, evidence |
-| `paved plan`, `paved debug`, `paved implement`, `paved review` | Enter the matching phase of the same workflow runtime | Workflow run state |
+| `paved intent` | Classify a request into the `feature`, `bug` or `refactor` workflow, write the Intent, and run `context` and `discovery` | `.paved/generated/runs/`, `.paved/documents/intents/`, evidence |
+| `paved plan` | Run `planning` on the open run and record the approval the user gives in the conversation | `.paved/generated/runs/`, `.paved/approvals/` |
+| `paved execute` | Run `implementation` through `completion`; validation invokes `test`, verification invokes `verify`, and new gardener proposals are listed | `.paved/generated/runs/`, evidence, `.paved/generated/gardener/reported.json` |
+| `paved test` | Run the adopted module tests or the one declared testing Tool | `.paved/generated/evidence/` |
 | `paved evidence ...` | **Contract-only.** Future evidence validation, show and list commands | not executable yet |
 | `paved tool ...` | **Contract-only.** Future Tool discovery, inspection, validation and diagnosis commands | not executable yet |
 
@@ -53,12 +55,13 @@ Command-specific options are intentionally narrow:
 | `update` | `--dry-run`; no selectors; `--adapter` and remote update selectors are rejected |
 | `generate` | `--dry-run`, optional `[generator-id...]` selectors; `--adapter` and `--force` are rejected |
 | `verify` | `--adapter <id>` repeatable for content-root selection; no selectors, `--profile`, `--check`, shell command, or `--dry-run` |
-| `status` | `--adapter <id>` repeatable; read-only |
-| `doctor` | `--adapter <id>` repeatable; read-only; no `--run-checks` |
+| `status` | `--adapter <id>` repeatable; read-only unless `--answer` answers a repair decision |
+| `doctor` | `--adapter <id>` repeatable; read-only unless `--answer` answers a repair decision; no `--run-checks` |
 | `gardener` | `--dry-run`; read-only; no selectors or adapter selection |
 | `agent` | `list`, `commands [codex\|claude-code]`, `command <name>`, or `<install\|update\|uninstall\|status\|validate> [codex\|claude-code]` |
-| `feature`, `fix`, `refactor`, `plan`, `debug` | Initial request, or `--run <id> --advance` with `--note` and `--evidence` as required |
-| `implement`, `review` | `--run <id>`, optionally `--advance --note <observation>` in the matching phase |
+| `intent` | The request, with `--workflow <feature\|bug\|refactor> --because <evidence>`, or `--recommend <id> --because <evidence>`, or one `--part <request>` per part; `--input <id>=<value>` repeatable |
+| `intent`, `plan`, `execute` | `--run <id>` (required only when several runs are open), `--advance` with `--note` and `--evidence` as required, `--answer` |
+| `plan` | `--approve` records the user's approval of the current plan, given in the conversation |
 
 ## Output and exit codes
 
@@ -107,7 +110,7 @@ when a blocking diagnostic decides the exit code.
   Verification executables receive only `PATH`, temporary-directory variables
   and platform-required process variables; arbitrary caller environment values
   such as credentials are not inherited.
-- `status` and `doctor` are read-only.
+- `status` and `doctor` are read-only unless the user answers a repair decision.
 - Agent command discovery and contract resolution are read-only. Executable
   commands use this same dispatcher. `paved test` requires an approved
   ToolImplementation and records sanitized evidence; it never infers scripts.
