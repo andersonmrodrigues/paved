@@ -59,6 +59,20 @@ describe("intent, plan and execute", () => {
     assert.equal(run.inputs[0]?.id, "report");
   });
 
+  it("a pending classification and a plan awaiting approval carry the review block", async () => {
+    const pending = await invoke("intent", "Make exports work", "--recommend", "bug", "--because", "Report.");
+    assert.equal((pending.data as { review?: { target: string } }).review?.target, `.paved/documents/intents/${runOf(pending)}.md`);
+    const id = runOf(await invoke("intent", "Add CSV export", "--workflow", "feature", "--because", "New behavior."));
+    await invoke("intent", "--run", id, "--advance", "--note", "Scope is clear");
+    await invoke("intent", "--run", id, "--advance", "--note", "Architecture inspected");
+    mkdirSync(join(project, ".paved/documents/plans"), { recursive: true });
+    writeFileSync(join(project, `.paved/documents/plans/${id}.md`), "# Plan\n");
+    const requested = await invoke("plan", "--run", id, "--advance", "--note", "Plan", "--evidence", `.paved/documents/plans/${id}.md`);
+    const review = (requested.data as { review?: { target: string; companions: string[] } }).review;
+    assert.equal(review?.target, `.paved/documents/plans/${id}.md`);
+    assert.deepEqual(review?.companions, [`.paved/documents/intents/${id}.md`]);
+  });
+
   it("a pending classification refuses answers that are not its own", async () => {
     const pending = await invoke("intent", "Make exports work", "--recommend", "bug", "--because", "Report.");
     const stray = await invoke("intent", "--run", runOf(pending), "--answer", "d-0123456789abcdef0123=bug", "--answered-by", "maintainer@example.com");
