@@ -19,7 +19,7 @@ describe("executable workflow state", () => {
       writeFileSync(join(project, "README.md"), readme);
       initializeConsumer(core, project, "consumer");
       const invoke = (...argv: string[]) => dispatchCli({ argv: [...argv, "--project", project, "--json"] });
-      const started = await invoke("feature", "Add a behavior");
+      const started = await invoke("intent", "Add a behavior", "--workflow", "feature", "--because", "Test request for new behavior.");
       const run = (started.data as { run: string }).run;
       const raised = await invoke("decision", "raise", "--decision", JSON.stringify({
         run, question: "Which behavior should be used?", reason: "The repository does not state the intended behavior.",
@@ -36,10 +36,10 @@ describe("executable workflow state", () => {
       const persisted = parse(readFileSync(runPath, "utf8")) as { decisions: { id: string; status: string; run?: string }[]; status: string };
       assert.equal(persisted.status, "awaiting-input");
       assert.deepEqual(persisted.decisions.map((decision) => [decision.id, decision.status, decision.run]), [[id, "ASKED", run]]);
-      const blocked = await invoke("feature", "--run", run, "--advance", "--note", "Observed context");
+      const blocked = await invoke("intent", "--run", run, "--advance", "--note", "Observed context");
       assert.equal(blocked.status, "awaiting_input", JSON.stringify(blocked));
       assert.equal(blocked.decisions?.[0]?.runId, run);
-      const resumed = await invoke("feature", "--run", run, "--advance", "--note", "Observed context",
+      const resumed = await invoke("intent", "--run", run, "--advance", "--note", "Observed context",
         "--answer", `${id}=first`, "--answered-by", "tester@example.com");
       assert.equal(resumed.status, "success", JSON.stringify(resumed));
       assert.equal((resumed.data as { run: string }).run, run);
@@ -55,27 +55,28 @@ describe("executable workflow state", () => {
       writeFileSync(join(project, "README.md"), "# Consumer\n");
       initializeConsumer(core, project, "consumer");
       const invoke = (...argv: string[]) => dispatchCli({ argv: [...argv, "--project", project, "--json"] });
-      const id = ((await invoke("feature", "Enable a behavior")).data as { run: string }).run;
-      assert.equal((await invoke("feature", "--run", id, "--approve")).diagnostics[0]?.code, "PAVED_WORKFLOW_APPROVAL_NOT_REQUESTED");
-      await invoke("feature", "--run", id, "--advance", "--note", "Scope is clear");
-      await invoke("feature", "--run", id, "--advance", "--note", "Architecture inspected");
+      const id = ((await invoke("intent", "Enable a behavior", "--workflow", "feature", "--because", "Test request for new behavior.")).data as { run: string }).run;
+      assert.equal((await invoke("plan", "--run", id, "--approve")).diagnostics[0]?.code, "PAVED_WORKFLOW_STEP_OUT_OF_RANGE");
+      await invoke("intent", "--run", id, "--advance", "--note", "Scope is clear");
+      await invoke("intent", "--run", id, "--advance", "--note", "Architecture inspected");
+      assert.equal((await invoke("plan", "--run", id, "--approve")).diagnostics[0]?.code, "PAVED_WORKFLOW_APPROVAL_NOT_REQUESTED");
       const plan = join(project, ".paved/generated/plan.md");
       writeFileSync(plan, "Implement the behavior with a test.\n");
-      const requested = await invoke("feature", "--run", id, "--advance", "--note", "Plan", "--evidence", ".paved/generated/plan.md");
+      const requested = await invoke("plan", "--run", id, "--advance", "--note", "Plan", "--evidence", ".paved/generated/plan.md");
       assert.match(JSON.stringify(requested), /--approve/);
 
       writeFileSync(plan, "Implement the behavior with a regression test.\n");
-      const stale = await invoke("feature", "--run", id, "--approve");
+      const stale = await invoke("plan", "--run", id, "--approve");
       assert.equal((stale.data as { status: string }).status, "awaiting-approval", JSON.stringify(stale));
       assert.throws(() => readFileSync(join(project, `.paved/approvals/${id}.json`)));
 
-      const approved = await invoke("feature", "--run", id, "--approve");
+      const approved = await invoke("plan", "--run", id, "--approve");
       assert.equal((approved.data as { currentPhase: string }).currentPhase, "implementation", JSON.stringify(approved));
       const record = JSON.parse(readFileSync(join(project, `.paved/approvals/${id}.json`), "utf8")) as { plan_sha256: string; decided_by: string; decision: string };
       assert.equal(record.plan_sha256, createHash("sha256").update(readFileSync(plan)).digest("hex"));
       assert.equal(record.decision, "approved");
       assert.ok(!["agent", "paved", "ci"].includes(record.decided_by));
-      assert.equal((await invoke("feature", "--run", id, "--approve")).diagnostics[0]?.code, "PAVED_WORKFLOW_APPROVAL_NOT_REQUESTED");
+      assert.equal((await invoke("plan", "--run", id, "--approve")).diagnostics[0]?.code, "PAVED_WORKFLOW_STEP_OUT_OF_RANGE");
     } finally { rmSync(project, { recursive: true, force: true }); }
   });
   it("persists feature phases and blocks implementation until a matching plan is approved", async () => {
@@ -85,22 +86,22 @@ describe("executable workflow state", () => {
       writeFileSync(join(project, "feature.ts"), "export const enabled = false;\n");
       initializeConsumer(core, project, "consumer");
       const invoke = (...argv: string[]) => dispatchCli({ argv, cwd: project, executablePath: join(core, "cli", "index.ts") });
-      const started = await invoke("feature", "Enable", "a", "new", "behavior", "--json");
+      const started = await invoke("intent", "Enable", "a", "new", "behavior", "--workflow", "feature", "--because", "Test request for new behavior.");
       assert.equal(started.status, "success", JSON.stringify({ started, inspection: await invoke("status", "--json") }));
       const id = (started.data as { run: string }).run;
       const runPath = join(project, ".paved", "generated", "runs", `${id}.yaml`);
       const before = parse(readFileSync(runPath, "utf8")) as { phases: { phase: string; status: string }[] };
       assert.equal(before.phases[0]?.status, "running");
-      assert.equal((await invoke("implement", "--run", id, "--advance", "--note", "done")).status, "failed");
-      assert.equal((await invoke("feature", "--run", id, "--advance", "--note", "Scope is clear")).status, "success");
-      assert.equal((await invoke("feature", "--run", id, "--advance", "--note", "Architecture inspected")).status, "success");
+      assert.equal((await invoke("execute", "--run", id, "--advance", "--note", "done")).diagnostics[0]?.code, "PAVED_WORKFLOW_PLAN_UNAPPROVED");
+      assert.equal((await invoke("intent", "--run", id, "--advance", "--note", "Scope is clear")).status, "success");
+      assert.equal((await invoke("intent", "--run", id, "--advance", "--note", "Architecture inspected")).status, "success");
       const plan = join(project, ".paved", "generated", "plan.md");
       writeFileSync(plan, "Implement feature.ts with a test.\n");
-      const awaiting = await invoke("feature", "--run", id, "--advance", "--note", "Plan covers the behavior", "--evidence", ".paved/generated/plan.md");
+      const awaiting = await invoke("plan", "--run", id, "--advance", "--note", "Plan covers the behavior", "--evidence", ".paved/generated/plan.md");
       assert.equal((awaiting.data as { status: string }).status, "awaiting-approval", JSON.stringify(awaiting));
-      const withoutApproval = await invoke("feature", "--run", id, "--advance");
+      const withoutApproval = await invoke("plan", "--run", id, "--advance");
       assert.equal((withoutApproval.data as { status: string } | undefined)?.status, "awaiting-approval", JSON.stringify(withoutApproval));
-      const relayedApproval = await invoke("feature", "--run", id, "--advance",
+      const relayedApproval = await invoke("plan", "--run", id, "--advance",
         "--answer", "d-0123456789abcdef0123=approve", "--answered-by", "agent@example.com");
       assert.match(JSON.stringify(relayedApproval), /--approve/);
       const run = parse(readFileSync(runPath, "utf8")) as { phases: { phase: string; status: string; gates?: { reason?: string }[] }[] };
@@ -109,7 +110,7 @@ describe("executable workflow state", () => {
       assert.match(planSha ?? "", /^[a-f0-9]{64}$/);
       mkdirSync(join(project, ".paved", "approvals"));
       writeFileSync(plan, "Implement feature.ts with a regression test and review the result.\n");
-      const revised = await invoke("feature", "--run", id, "--advance");
+      const revised = await invoke("plan", "--run", id, "--advance");
       assert.equal((revised.data as { status: string }).status, "awaiting-approval", JSON.stringify(revised));
       const revisedRun = parse(readFileSync(runPath, "utf8")) as { events: { type: string }[]; phases: { phase: string; gates?: { reason?: string }[] }[] };
       assert.equal(revisedRun.events.filter((event) => event.type === "approval-requested").length, 2);
@@ -118,51 +119,51 @@ describe("executable workflow state", () => {
       writeFileSync(join(project, ".paved", "approvals", `${id}.json`), JSON.stringify({
         run: id, plan_sha256: planSha, decision: "approved", decided_by: "maintainer", decided_at: new Date().toISOString(),
       }));
-      assert.equal((await invoke("feature", "--run", id, "--advance")).status, "warning");
+      assert.equal((await invoke("plan", "--run", id, "--advance")).status, "warning");
       writeFileSync(join(project, ".paved", "approvals", `${id}.json`), JSON.stringify({
         run: id, plan_sha256: revisedSha, decision: "approved", decided_by: "maintainer", decided_at: new Date().toISOString(),
       }));
-      const approved = await invoke("feature", "--run", id, "--advance");
+      const approved = await invoke("plan", "--run", id, "--advance");
       assert.equal((approved.data as { currentPhase: string }).currentPhase, "implementation", JSON.stringify(approved));
-      assert.equal((await invoke("feature", "--run", id, "--advance", "--note", "done")).status, "failed");
+      assert.equal((await invoke("execute", "--run", id, "--advance", "--note", "done")).status, "failed");
       writeFileSync(join(project, "feature.ts"), "export const enabled = true;\n");
-      const implemented = await invoke("implement", "--run", id, "--advance", "--note", "Implemented approved change");
+      const implemented = await invoke("execute", "--run", id, "--advance", "--note", "Implemented approved change");
       assert.equal(implemented.status, "success", JSON.stringify(implemented));
       assert.equal((implemented.data as { currentPhase: string }).currentPhase, "validation");
-      const unavailable = await invoke("feature", "--run", id, "--advance");
+      const unavailable = await invoke("execute", "--run", id, "--advance");
       assert.equal((unavailable.data as { status: string }).status, "failed");
       assert.equal((parse(readFileSync(runPath, "utf8")) as { status: string }).status, "failed");
-      const retry = await invoke("feature", "--run", id, "--advance");
+      const retry = await invoke("execute", "--run", id, "--advance");
       assert.equal((retry.data as { status: string }).status, "failed");
-      const exhausted = await invoke("feature", "--run", id, "--advance");
+      const exhausted = await invoke("execute", "--run", id, "--advance");
       assert.equal(exhausted.diagnostics[0]?.code, "PAVED_WORKFLOW_RETRIES_EXHAUSTED");
 
-      const rejectedStart = await invoke("feature", "A rejected feature", "--json");
+      const rejectedStart = await invoke("intent", "A rejected feature", "--workflow", "feature", "--because", "Test request for new behavior.");
       const rejectedId = (rejectedStart.data as { run: string }).run;
       const rejectedRun = join(project, ".paved", "generated", "runs", `${rejectedId}.yaml`);
-      assert.equal((await invoke("feature", "--run", rejectedId, "--advance", "--note", "Expected behavior is clear")).status, "success");
-      assert.equal((await invoke("feature", "--run", rejectedId, "--advance", "--note", "Architecture inspected")).status, "success");
+      assert.equal((await invoke("intent", "--run", rejectedId, "--advance", "--note", "Expected behavior is clear")).status, "success");
+      assert.equal((await invoke("intent", "--run", rejectedId, "--advance", "--note", "Architecture inspected")).status, "success");
       const rejectedPlan = join(project, ".paved", "generated", "rejected-plan.md");
       writeFileSync(rejectedPlan, "Proposed fix.\n");
-      assert.equal((await invoke("feature", "--run", rejectedId, "--advance", "--note", "Feature plan", "--evidence", ".paved/generated/rejected-plan.md")).status, "warning");
+      assert.equal((await invoke("plan", "--run", rejectedId, "--advance", "--note", "Feature plan", "--evidence", ".paved/generated/rejected-plan.md")).status, "warning");
       const rejectedState = parse(readFileSync(rejectedRun, "utf8")) as { phases: { phase: string; gates?: { reason?: string }[] }[] };
       const rejectedSha = rejectedState.phases.find((phase) => phase.phase === "planning")?.gates?.find((gate) => gate.reason?.startsWith("plan_sha256="))?.reason?.slice(12);
       writeFileSync(join(project, ".paved", "approvals", `${rejectedId}.json`), JSON.stringify({
         run: rejectedId, plan_sha256: rejectedSha, decision: "rejected", decided_by: "maintainer", decided_at: new Date().toISOString(),
       }));
-      const rejection = await invoke("feature", "--run", rejectedId, "--advance");
+      const rejection = await invoke("plan", "--run", rejectedId, "--advance");
       assert.equal((rejection.data as { status: string }).status, "blocked");
       assert.equal((parse(readFileSync(rejectedRun, "utf8")) as { phases: { phase: string; status: string }[] }).phases.find((phase) => phase.phase === "implementation")?.status, "pending");
 
-      const fix = await invoke("fix", "An observed failure", "--json");
+      const fix = await invoke("intent", "An observed failure", "--workflow", "bug", "--because", "Test report of a defect.");
       const fixId = (fix.data as { run: string }).run;
-      assert.equal((await invoke("fix", "--run", fixId, "--advance", "--note", "Expected behavior is clear")).status, "success");
-      const unconfirmed = await invoke("fix", "--run", fixId, "--advance", "--note", "Hypothesized cause", "--evidence", "feature.ts");
+      assert.equal((await invoke("intent", "--run", fixId, "--advance", "--note", "Expected behavior is clear")).status, "success");
+      const unconfirmed = await invoke("intent", "--run", fixId, "--advance", "--note", "Hypothesized cause", "--evidence", "feature.ts");
       assert.equal(unconfirmed.diagnostics[0]?.code, "PAVED_WORKFLOW_CAUSE_UNCONFIRMED");
-      const refactor = await invoke("refactor", "Simplify feature.ts", "--json");
+      const refactor = await invoke("intent", "Simplify feature.ts", "--workflow", "refactor", "--because", "Test structural change.");
       const refactorId = (refactor.data as { run: string }).run;
-      assert.equal((await invoke("refactor", "--run", refactorId, "--advance", "--note", "Behavior must remain stable")).status, "success");
-      const missingBaseline = await invoke("refactor", "--run", refactorId, "--advance", "--note", "Scope inspected", "--evidence", "feature.ts");
+      assert.equal((await invoke("intent", "--run", refactorId, "--advance", "--note", "Behavior must remain stable")).status, "success");
+      const missingBaseline = await invoke("intent", "--run", refactorId, "--advance", "--note", "Scope inspected", "--evidence", "feature.ts");
       assert.equal(missingBaseline.diagnostics[0]?.code, "PAVED_WORKFLOW_BASELINE_FAILED");
     } finally { rmSync(project, { recursive: true, force: true }); }
   });
