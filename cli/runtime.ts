@@ -11,14 +11,14 @@ import { statusHandler } from "./commands/status.ts";
 import { testHandler } from "./commands/test.ts";
 import { updateHandler } from "./commands/update.ts";
 import { verifyHandler } from "./commands/verify.ts";
-import { workflowHandler } from "./commands/workflow.ts";
-import { workflowAliasHandler } from "./commands/workflow-alias.ts";
+import { stepHandler } from "./commands/workflow.ts";
 import { previewHandler } from "./commands/preview.ts";
 import { createDiagnostic, createResult, type CommandResult } from "./result.ts";
 import { CliPathError, resolveCoreRoot, resolveProjectRoot } from "./paths.ts";
 import { assertAnswerIdentity, parseAnswerFlags } from "./lib/decisions/answers.ts";
 
-export const COMMAND_NAMES = ["init", "status", "plan", "implement", "test", "verify", "review", "debug", "refactor", "feature", "fix", "update", "doctor", "gardener", "generate", "agent", "decision", "preview"] as const;
+export const COMMAND_NAMES = ["init", "status", "intent", "plan", "execute", "test", "verify", "update", "doctor", "gardener", "generate", "agent", "decision", "preview"] as const;
+const STEP_COMMANDS: readonly string[] = ["intent", "plan", "execute"];
 export type CommandName = (typeof COMMAND_NAMES)[number];
 
 export interface CliFlags {
@@ -37,6 +37,11 @@ export interface CliFlags {
   readonly answers: readonly string[];
   readonly answeredBy?: string;
   readonly decision?: string;
+  readonly workflow?: string;
+  readonly because?: string;
+  readonly recommend?: string;
+  readonly parts: readonly string[];
+  readonly intentInputs: readonly string[];
 }
 
 export interface CommandPaths {
@@ -98,13 +103,9 @@ const COMMAND_RULES: Record<CommandName, CommandRule> = {
   agent: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   decision: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   preview: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
-  feature: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
-  fix: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
-  refactor: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
-  plan: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
-  implement: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
-  review: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
-  debug: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
+  intent: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
+  plan: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
+  execute: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
 };
 
 function usage(command: string, message: string, remediation = "Run paved --help to see supported commands and flags."): CommandResult {
@@ -176,7 +177,9 @@ function commandUsage(command: CommandName | undefined): string {
     if (command === "test") commandOptions.push("  --inputs <json>  Supply declared Tool inputs as a JSON object.");
     if (command === "decision") commandOptions.push("  --decision <json>  Raise an agent-authored question.", "  --reason <text>   Explain a revision.");
     if (command === "preview") commandOptions.push("  --reply <text>   With resolve, tell the reviewer what changed.");
-    if (["feature", "fix", "refactor", "plan", "implement", "review", "debug"].includes(command)) commandOptions.push("  --run <id> --advance --note <text> --evidence <path>  Resume the durable workflow.", "  --run <id> --approve  Record the user's approval of the current plan, given in the conversation, and resume.");
+    if (command === "intent") commandOptions.push("  --workflow <feature|bug|refactor> --because <evidence>  Classify the request.", "  --recommend <workflow> --because <evidence>  Suggest a workflow and let the user decide.", "  --part <request>  Propose one part of a split; repeat per part.", "  --input <id>=<value>  Supply another declared workflow input; repeatable.");
+    if (STEP_COMMANDS.includes(command)) commandOptions.push("  --run <id> --advance --note <text> --evidence <path>  Advance the run within this step's phases.");
+    if (command === "plan") commandOptions.push("  --approve        Record the user's approval of the current plan, given in the conversation.");
     return [
       `Usage: paved ${command}${selectors} [options]`,
       "",
@@ -258,6 +261,11 @@ function parse(argv: readonly string[]): Parsed {
   const answers: string[] = [];
   let answeredBy: string | undefined;
   let decision: string | undefined;
+  let workflow: string | undefined;
+  let because: string | undefined;
+  let recommend: string | undefined;
+  const parts: string[] = [];
+  const intentInputs: string[] = [];
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -331,8 +339,20 @@ function parse(argv: readonly string[]): Parsed {
       continue;
     }
 
+    if (["--workflow", "--because", "--recommend", "--part", "--input"].includes(token)) {
+      if (command !== "intent") return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by intent.`) };
+      const value = takeValue(argv, index, token, command);
+      if (typeof value !== "string") return { kind: "error", result: value };
+      if (token === "--workflow") workflow = value;
+      if (token === "--because") because = value;
+      if (token === "--recommend") recommend = value;
+      if (token === "--part") parts.push(value);
+      if (token === "--input") intentInputs.push(value);
+      index += 1;
+      continue;
+    }
     if (["--run", "--note", "--evidence"].includes(token)) {
-      if (!command || !["feature", "fix", "refactor", "plan", "implement", "review", "debug"].includes(command)) return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by executable workflows.`) };
+      if (!command || !STEP_COMMANDS.includes(command)) return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by intent, plan and execute.`) };
       const value = takeValue(argv, index, token, command);
       if (typeof value !== "string") return { kind: "error", result: value };
       if (token === "--run") run = value;
@@ -350,12 +370,12 @@ function parse(argv: readonly string[]): Parsed {
       continue;
     }
     if (token === "--approve") {
-      if (!command || !["feature", "fix", "refactor", "plan", "implement", "review", "debug"].includes(command)) return { kind: "error", result: usage(command ?? "cli", "--approve is supported only by executable workflows.") };
+      if (command !== "plan") return { kind: "error", result: usage(command ?? "cli", "--approve is supported only by plan.") };
       approve = true;
       continue;
     }
     if (token === "--advance") {
-      if (!command || !["feature", "fix", "refactor", "plan", "implement", "review", "debug"].includes(command)) return { kind: "error", result: usage(command ?? "cli", "--advance is supported only by executable workflows.") };
+      if (!command || !STEP_COMMANDS.includes(command)) return { kind: "error", result: usage(command ?? "cli", "--advance is supported only by intent, plan and execute.") };
       advance = true;
       continue;
     }
@@ -441,6 +461,11 @@ function parse(argv: readonly string[]): Parsed {
     advance,
     approve,
     answers,
+    parts,
+    intentInputs,
+    ...(workflow === undefined ? {} : { workflow }),
+    ...(because === undefined ? {} : { because }),
+    ...(recommend === undefined ? {} : { recommend }),
     ...(reply === undefined ? {} : { reply }),
     ...(answeredBy === undefined ? {} : { answeredBy }),
     ...(run === undefined ? {} : { run }),
@@ -492,13 +517,9 @@ const DEFAULT_HANDLERS: CommandHandlers = {
   test: testHandler,
   update: updateHandler,
   verify: verifyHandler,
-  feature: workflowHandler,
-  fix: workflowHandler,
-  refactor: workflowHandler,
-  plan: workflowAliasHandler,
-  implement: workflowAliasHandler,
-  review: workflowAliasHandler,
-  debug: workflowAliasHandler,
+  intent: stepHandler,
+  plan: stepHandler,
+  execute: stepHandler,
 };
 
 export async function dispatchCli(options: DispatchOptions = {}): Promise<CommandResult> {
