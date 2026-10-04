@@ -1,0 +1,15 @@
+# expect-error: must have required property 'classification'
+apiVersion: paved/v1
+kind: WorkflowRun
+id: intent-0123456789abcdef0124
+revision: 3f2a9c1
+started_at: 2026-10-04T10:00:00Z
+status: running
+inputs:
+  - id: request
+    value: Add CSV export.
+    source: human
+phases: []
+events:
+  - at: 2026-10-04T10:00:00Z
+    type: run-started
