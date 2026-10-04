@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-04
+
 ### Breaking
 
 - Every repository change now goes through three steps over one run: `intent`, `plan`
