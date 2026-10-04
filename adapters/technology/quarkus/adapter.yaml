@@ -5,7 +5,7 @@ title: Quarkus
 version: 0.1.0
 summary: Static evidence about Quarkus runtime dependencies and REST endpoints.
 requires:
-  core: ^1.0.0
+  core: ^1.0.0 || ^2.0.0
   adapters:
     - id: technology/java
       version: ^0.1.0
