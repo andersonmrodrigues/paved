@@ -47,6 +47,7 @@ describe("prompt submit hook", () => {
     assert.match(output.hookSpecificOutput.additionalContext, /unrelated/i);
     assert.match(output.hookSpecificOutput.additionalContext, /paved:task-specification/);
     assert.match(output.hookSpecificOutput.additionalContext, /paved:task-review/);
+    assert.ok(output.hookSpecificOutput.additionalContext.includes("Paved `intent` command"));
     assert.doesNotMatch(result.stdout, /private user prompt/);
   });
 
