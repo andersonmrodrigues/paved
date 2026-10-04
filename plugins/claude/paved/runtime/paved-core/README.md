@@ -126,8 +126,9 @@ development setup and guidelines.
 
 ## Project status
 
-The current Core release is **1.8.0**. The Cursor, Codex and Claude Code plugins are available
-through this repository's GitHub-backed marketplaces. Paved is not listed in public
+The current Core release is the latest entry in the [changelog](CHANGELOG.md). The Cursor,
+Codex and Claude Code plugins are available through this repository's GitHub-backed
+marketplaces. Paved is not listed in public
 agent plugin directories, and `paved-core` is not published to npm; the plugin bundles
 the runtime it needs.
 

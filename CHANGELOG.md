@@ -5,6 +5,54 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Breaking
+
+- Every repository change now goes through three steps over one run: `intent`, `plan`
+  and `execute` ([ADR 0036](docs/decisions/0036-intent-plan-execute.md)). Agent commands
+  go from fifteen to seven:
+
+  | Before | Now |
+  |---|---|
+  | `feature`, `fix`, `refactor`, `debug` | `intent` |
+  | `plan` (alias of `feature`) | `intent`, then `plan` |
+  | `implement`, `review` | `execute` |
+  | `test`, `verify` | run inside the steps; CLI subcommands only |
+  | `doctor` | `status`; CLI subcommand kept |
+  | `gardener` | listed by `execute`; CLI subcommand kept |
+  | `init`, `status`, `preview`, `update` | unchanged |
+
+  The `paved feature`, `paved fix`, `paved refactor`, `paved debug`, `paved implement` and
+  `paved review` CLI subcommands are removed too.
+- The `performance`, `incident` and `release` workflows are removed. Overrides that target
+  them fail with `PAVED_OVERRIDE_TARGET_MISSING`. Run performance work as a `refactor` or a
+  `feature`.
+- `status` shows the diagnostics and repair decisions that `doctor` showed, lists open runs,
+  and changes state only when the user answers a repair decision.
+- `--approve` is accepted only by `plan`.
+- These removals skip the usual deprecation release. See
+  [migrating to 2.0](docs/getting-started/migrating-to-2.md).
+
+### Added
+
+- `intent` classifies a request as `feature`, `bug` or `refactor` with evidence
+  (`--workflow --because`), asks the user when it is uncertain (`--recommend`), and proposes
+  a split of a mixed request (`--part`). A step outside its phases names the step to run,
+  and with several open runs Paved asks which one.
+- Runs record how their workflow was chosen in a `classification` field.
+- Each step's result names the documents to review in the preview. `execute` writes a
+  review record to `.paved/generated/reviews/<run>.md`, including evidence gaps.
+- `execute` lists gardener proposals not reported before when a run completes; they never
+  block completion.
+- `paved agent update` deletes Paved-generated command and skill files of removed commands.
+  Files without the Paved header are left alone.
+- `update` rewrites the managed Paved block in `AGENTS.md`, and `status` reports an outdated
+  block (`PAVED_AGENTS_BLOCK_OUTDATED`).
+
+### Changed
+
+- Each workflow's gate logic lives in its own handler module, and a test requires every
+  gate of every Core workflow to have one.
+
 ## [1.16.1] - 2026-10-02
 
 ### Changed
