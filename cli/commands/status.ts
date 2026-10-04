@@ -4,6 +4,7 @@ import { inspectConsumer, type ConsumerInspection } from "../lib/consumer-state.
 import { discoverAgentCommands } from "../lib/agent-commands.ts";
 import { agentsBlockState } from "../lib/agents-block.ts";
 import { runDecisionGate } from "../lib/decisions/gate.ts";
+import { DecisionStoreError } from "../lib/decisions/store.ts";
 import { repairProvider } from "../lib/decisions/providers/repair.ts";
 import { repairHandler } from "../lib/decisions/handlers/repair.ts";
 import { isOpen, listRuns } from "../lib/workflow-runs.ts";
@@ -84,6 +85,24 @@ function openRuns(inspection: ConsumerInspection): { runs: Record<string, unknow
   }
 }
 
+/** An unreadable decision store is already reported by the inspection; repairs then wait for it to be fixed. */
+function repairs(invocation: CommandInvocation): { projections: ReturnType<typeof runDecisionGate>["projections"]; problems: readonly string[] } {
+  try {
+    return runDecisionGate({
+      context: {
+        projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot,
+        command: "doctor", answers: invocation.flags.answers,
+        ...(invocation.flags.answeredBy === undefined ? {} : { answeredBy: invocation.flags.answeredBy }),
+      },
+      providers: [repairProvider], handlers: new Map([["repair.apply", repairHandler]]),
+      persist: invocation.flags.answers.length > 0,
+    });
+  } catch (error) {
+    if (!(error instanceof DecisionStoreError)) throw error;
+    return { projections: [], problems: [] };
+  }
+}
+
 /** `status` and the `doctor` CLI subcommand share this; repairs keep the `doctor` decision ids. */
 export function diagnose(invocation: CommandInvocation, command: "status" | "doctor"): CommandResult {
   const inspection = inspectConsumer({
@@ -92,15 +111,7 @@ export function diagnose(invocation: CommandInvocation, command: "status" | "doc
     adapterSelections: invocation.flags.adapters,
     ...(invocation.paths.manifestPath === undefined ? {} : { manifestPath: invocation.paths.manifestPath }),
   });
-  const outcome = runDecisionGate({
-    context: {
-      projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot,
-      command: "doctor", answers: invocation.flags.answers,
-      ...(invocation.flags.answeredBy === undefined ? {} : { answeredBy: invocation.flags.answeredBy }),
-    },
-    providers: [repairProvider], handlers: new Map([["repair.apply", repairHandler]]),
-    persist: invocation.flags.answers.length > 0,
-  });
+  const outcome = repairs(invocation);
   const decisionDiagnostics = outcome.problems.map((message) => createDiagnostic({
     severity: "error", category: "usage", code: "PAVED_DECISION_ANSWER_INVALID",
     component: `cli.${command}`, message,

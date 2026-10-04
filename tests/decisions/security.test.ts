@@ -200,7 +200,7 @@ describe("security invariants an answer cannot override", () => {
 
   it("stores free text as decision data without executing it", async () => {
     const root = project("free-text-data");
-    const runStart = await dispatchCli({ argv: ["feature", "Describe", "the", "change", "--project", root, "--json"], cwd: root, executablePath: join(coreRoot, "cli/index.ts") });
+    const runStart = await dispatchCli({ argv: ["intent", "Describe", "the", "change", "--workflow", "feature", "--because", "The request asks for new behavior.", "--project", root, "--json"], cwd: root, executablePath: join(coreRoot, "cli/index.ts") });
     const run = (runStart.data as { run: string }).run;
     const readme = readFileSync(join(root, "README.md"));
     const marker = join(root, "should-not-be-created-by-free-text");
@@ -216,7 +216,7 @@ describe("security invariants an answer cannot override", () => {
     const id = (raised.data as { id: string }).id;
     const payload = `touch ${marker}`;
     const resumed = await dispatchCli({ argv: [
-      "feature", "--run", run, "--advance", "--note", "Retain the user note.",
+      "intent", "--run", run, "--advance", "--note", "Retain the user note.",
       "--answer", `${id}=${payload}`, "--answered-by", "tester@example.com", "--project", root, "--json",
     ], cwd: root, executablePath: join(coreRoot, "cli/index.ts") });
     assert.notEqual(resumed.status, "failed", JSON.stringify(resumed));
