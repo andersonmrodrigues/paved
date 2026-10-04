@@ -217,8 +217,17 @@ function startIntent(invocation) {
         ...(flags.recommend === undefined ? {} : { recommend: flags.recommend }),
         ...(flags.because === undefined ? {} : { because: flags.because }),
     }, revision(projectRoot));
-    if (existsSync(runPath(projectRoot, run.id))) {
+    const baseId = run.id;
+    for (let attempt = 2; existsSync(runPath(projectRoot, run.id)); attempt += 1) {
         const existing = load(invocation, run.id);
+        if (!isOpen(existing)) {
+            run.id = `${baseId}-${attempt}`;
+            continue;
+        }
+        if (contradicts(existing, run)) {
+            const decision = existing.workflow === undefined ? existing.decisions?.[0]?.id : undefined;
+            return blocked("intent", "PAVED_INTENT_RUN_EXISTS", `Run ${existing.id} is already open for this request and its classification differs from the one passed.`, decision === undefined ? `Continue run ${existing.id}: ${nextStepAction(existing)}` : `Answer its classification decision instead: paved intent --run ${existing.id} --answer ${decision}=<value> --answered-by <you> --json.`, { run: existing.id });
+        }
         return result(projectRoot, "intent", existing, nextStepAction(existing));
     }
     writeIntentDocument(projectRoot, run);
@@ -230,6 +239,13 @@ function startIntent(invocation) {
     resolveRunDecisions(invocation, run, [], [classificationCandidate(projectRoot, coreRoot, run, recommend, flags.because)]);
     writeRun(projectRoot, coreRoot, run);
     return result(projectRoot, "intent", run, `Present the classification decision to the user, then resume with paved intent --run ${run.id} --answer <id>=<value> --answered-by <you> --json.`);
+}
+/** Whether a repeated intent asks for a classification the open run does not have. */
+function contradicts(existing, requested) {
+    if (requested.workflow !== undefined && requested.workflow.id !== existing.workflow?.id)
+        return true;
+    const parts = requested.classification?.parts;
+    return parts !== undefined && JSON.stringify(parts) !== JSON.stringify(existing.classification?.parts);
 }
 function finishClassification(invocation, run) {
     const { projectRoot, coreRoot } = invocation.paths;

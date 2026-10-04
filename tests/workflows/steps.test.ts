@@ -91,6 +91,27 @@ describe("intent, plan and execute", () => {
     assert.match(next, /paved intent "Fix the archived-items crash"/);
   });
 
+  it("the same request after a finished run starts a new run", async () => {
+    const pending = await invoke("intent", "Add CSV export and fix the crash", "--part", "Add CSV export", "--part", "Fix the crash");
+    await invoke("intent", "--run", runOf(pending), "--answer", `${pending.decisions![0]!.id}=split`, "--answered-by", "maintainer@example.com");
+    const again = await invoke("intent", "Add CSV export and fix the crash", "--workflow", "feature", "--because", "The user chose one run.");
+    assert.equal(again.status, "success", JSON.stringify(again));
+    assert.notEqual(runOf(again), runOf(pending));
+    assert.equal(readRunFile(runOf(again)).workflow?.id, "core.feature");
+    assert.equal(readRunFile(runOf(pending)).status, "cancelled");
+  });
+
+  it("a classification that contradicts the open run for the same request is refused", async () => {
+    const pending = await invoke("intent", "Speed up export");
+    const id = runOf(pending);
+    const conflicting = await invoke("intent", "Speed up export", "--workflow", "refactor", "--because", "Behavior stays the same.");
+    assert.equal(conflicting.diagnostics[0]?.code, "PAVED_INTENT_RUN_EXISTS", JSON.stringify(conflicting));
+    assert.match(conflicting.diagnostics[0]?.remediation ?? "", new RegExp(`paved intent --run ${id} --answer`));
+    assert.equal(readRunFile(id).workflow, undefined);
+    const repeated = await invoke("intent", "Speed up export");
+    assert.equal(runOf(repeated), id);
+  });
+
   it("each step refuses phases it does not own and names the owner", async () => {
     const id = runOf(await invoke("intent", "Add CSV export", "--workflow", "feature", "--because", "New behavior."));
     const plan = await invoke("plan", "--run", id, "--advance", "--note", "x");
