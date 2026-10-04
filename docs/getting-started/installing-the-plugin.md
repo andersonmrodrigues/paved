@@ -61,9 +61,9 @@ invoke them manually by skill name, such as `/status` or `/feature`.
 Open the repository you want Paved to manage and invoke a command:
 
 ```text
-Claude Code: /paved:init   /paved:status   /paved:plan   /paved:feature
-Codex:       paved:init    paved:status    paved:plan    paved:feature   (as skills)
-Cursor:      /init        /status         /plan         /feature
+Claude Code: /paved:init   /paved:status   /paved:intent   /paved:plan   /paved:execute
+Codex:       paved:init    paved:status    paved:intent    paved:plan    paved:execute   (as skills)
+Cursor:      /init        /status         /intent         /plan         /execute
 ```
 
 The first command activates the runtime. The plugin's launcher (`scripts/paved.mjs`):

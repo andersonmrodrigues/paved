@@ -28,8 +28,9 @@ checks and remaining gaps easier to inspect.
    explains choices that need a person, and creates a project-local `.paved/` state.
 2. **Understand the project.** Generated context describes the repository. People
    review it and can add project rules where needed.
-3. **Choose a workflow.** The agent uses a Paved skill such as `feature`, `fix` or
-   `refactor` to plan and carry out the change in phases.
+3. **Describe the change.** Start with `intent` and your request. Paved classifies it
+   as a feature, a bug fix or a refactor (or asks you), then `plan` and `execute` carry
+   it out in phases.
 4. **Review and verify.** Required approvals stay with the person. Paved runs the
    configured tests and verification checks and records evidence before a workflow
    can be completed.
@@ -66,12 +67,12 @@ Codex:       paved:init
 Cursor:      /init
 ```
 
-Then inspect its setup and choose a workflow. For example:
+Then inspect its setup and start a change. For example:
 
 ```text
-Cursor:      /status, /feature, /test, /verify
-Claude Code: /paved:status, /paved:feature, /paved:test, /paved:verify
-Codex:       paved:status, paved:feature, paved:test, paved:verify
+Cursor:      /status, /intent, /plan, /execute
+Claude Code: /paved:status, /paved:intent, /paved:plan, /paved:execute
+Codex:       paved:status, paved:intent, paved:plan, paved:execute
 ```
 
 The launcher verifies and installs the plugin's bundled runtime under
@@ -84,27 +85,23 @@ verification, see [Integrating a repository](docs/getting-started/integrating-a-
 
 ![How to use Paved commands in development](docs/assets/paved-command-flow.svg)
 
-Use the workflow that matches the change. Paved keeps runs in the repository so an
-agent can resume them and people can inspect plans, approvals and results.
+Every change goes through three steps over one run. Paved keeps runs in the repository so
+an agent can resume them and people can inspect plans, approvals and results.
 
-| Flow | Use it when… |
+| Command | Use it when… |
 | --- | --- |
-| `feature` | You want to add or intentionally change behavior. It guides context gathering, planning, implementation, testing, verification and review. |
-| `fix` | Existing behavior is wrong. It guides reproduction, root-cause investigation, a regression test, the fix and review. |
-| `refactor` | You want to change structure while preserving behavior. It emphasizes recording existing behavior and checking for regressions. |
-| `plan` | You need a plan and acceptance criteria before implementation. Plans can be reviewed in the Markdown preview. |
-| `debug` | You need to investigate a failure and separate observations from hypotheses before changing code. |
-| `implement` | You have an approved plan and want to carry it out. |
-| `review` | You want findings about a change, including risks and evidence gaps. Review does not replace verification. |
-| `test` | You want Paved to run the test commands explicitly mapped to detected modules. For local Maven dependencies, Paved orders modules and installs dependencies before testing dependents. |
-| `verify` | You want to run the repository's configured verification profile. |
+| `intent` | You want to change the repository. Pass your request as you would say it. Paved classifies it as a `feature`, a `bug` fix or a `refactor` from evidence, or asks you; a mixed request is split. It gathers context, and for a bug writes a failing regression test first, for a refactor records a passing baseline. |
+| `plan` | The change is understood. The plan is written to `.paved/documents/plans/`, reviewed in the Markdown preview, and approved by you in the conversation. |
+| `execute` | The plan is approved. Paved implements it, runs the tests and the verification profile, records evidence, opens the review in the preview and completes the run. New gardener proposals are listed as advice. |
 | `preview` | You want to review a Markdown plan, spec or a folder of them (an epic and its tasks), commenting on selected text and following each comment until the agent resolves it. |
 
-You can also use `status` to inspect readiness, `doctor` to diagnose setup, `generate`
-to refresh project context, and `update` to apply a compatible local Core update.
-Some operations depend on project configuration or approvals; Paved reports when
-they are unavailable. See the [agent command reference](docs/concepts/agent-commands.md)
-for inputs, behavior and availability conditions.
+You can also use `status` to inspect readiness, open runs and diagnostics (and answer its
+repair decisions), `init` to set up a repository, and `update` to apply a compatible local
+Core update. `test`, `verify`, `doctor`, `gardener` and `generate` remain CLI subcommands for
+CI and scripted use. Some operations depend on project configuration or approvals; Paved
+reports when they are unavailable. See the [agent command reference](docs/concepts/agent-commands.md)
+for inputs, behavior and availability conditions, and [migrating to 2.0](docs/getting-started/migrating-to-2.md)
+if you used the 1.x commands.
 
 ## What Paved provides
 

@@ -10,7 +10,7 @@ Paved reports a result level rather than a universal ladder of check types:
 
 The plan's required checks determine rigor explicitly. A documentation workflow can
 require configuration or reference validation; a feature workflow can require tests and
-runtime observations; a release workflow can require stronger checks and approval.
+runtime observations; a project workflow can require stronger checks and approval.
 No single level implies that every mechanism has run. An optional formal or performance
 check does not become mandatory simply because it exists. Required gaps remain visible
 and prevent completion. Recommended omissions produce warnings; optional omissions are
