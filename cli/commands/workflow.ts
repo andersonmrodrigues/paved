@@ -7,6 +7,8 @@ import {
   applyClassificationAnswer, classificationCandidate, createIntentRun, IntentError, missingInputs, normalizeWorkflow, parseInputs, writeIntentDocument,
 } from "../lib/intent.ts";
 import { resolveSafePath } from "../lib/safe-path.ts";
+import { reportNewProposals } from "../lib/gardener-report.ts";
+import { reviewFor } from "../lib/review-block.ts";
 import { relaysAnswers, runPhase } from "../lib/workflow-gates/index.ts";
 import { now, readApproval, sha } from "../lib/workflow-gates/shared.ts";
 import {
@@ -66,16 +68,18 @@ export function runSummary(run: Run): Record<string, unknown> {
 
 interface ResultExtras { readonly data?: Record<string, unknown>; readonly decisions?: readonly DecisionProjection[] }
 
-function result(step: Step, run: Run, nextAction: string, diagnostics: readonly Diagnostic[] = [], extras: ResultExtras = {}): CommandResult {
+function result(projectRoot: string, step: Step, run: Run, nextAction: string, diagnostics: readonly Diagnostic[] = [], extras: ResultExtras = {}): CommandResult {
   const failed = run.status === "failed" || run.status === "blocked" || diagnostics.some((item) => item.category !== "findings");
   const retained = failed && diagnostics.length === 0
     ? [diagnostic(run.status === "blocked" ? "PAVED_WORKFLOW_BLOCKED" : "PAVED_WORKFLOW_FAILED", run.failure?.reason ?? "Workflow cannot continue.", nextAction)]
     : [...diagnostics];
   const open = extras.decisions ?? (run.decisions ?? []).filter((item) => item.status === "ASKED").map(toProjection);
   const status = failed ? "failed" : run.status === "awaiting-input" ? "awaiting_input" : run.status === "awaiting-approval" ? "warning" : "success";
+  const review = failed ? undefined : reviewFor(projectRoot, run);
+  const reviewText = review === undefined ? "" : ` Open ${review.target} in the preview (${review.preview})${review.companions.length ? ` together with ${review.companions.join(", ")}` : ""} and keep paved preview wait running until the user says the review is finished; the preview approves nothing.`;
   return createResult({
     command: step, status, ...(open.length ? { decisions: open } : {}),
-    data: { ...runSummary(run), ...extras.data, nextAction }, diagnostics: retained,
+    data: { ...runSummary(run), ...extras.data, ...(review === undefined ? {} : { review }), nextAction: `${nextAction}${reviewText}` }, diagnostics: retained,
   });
 }
 
@@ -219,29 +223,29 @@ function startIntent(invocation: CommandInvocation): CommandResult {
   }, revision(projectRoot));
   if (existsSync(runPath(projectRoot, run.id))) {
     const existing = load(invocation, run.id);
-    return result("intent", existing, nextStepAction(existing));
+    return result(projectRoot, "intent", existing, nextStepAction(existing));
   }
   writeIntentDocument(projectRoot, run);
   if (run.workflow) {
     writeRun(projectRoot, coreRoot, run);
-    return result("intent", run, nextStepAction(run));
+    return result(projectRoot, "intent", run, nextStepAction(run));
   }
   const recommend = flags.recommend === undefined ? undefined : normalizeWorkflow(projectRoot, coreRoot, flags.recommend);
   resolveRunDecisions(invocation, run, [], [classificationCandidate(projectRoot, coreRoot, run, recommend, flags.because)]);
   writeRun(projectRoot, coreRoot, run);
-  return result("intent", run, `Present the classification decision to the user with the Intent document (paved preview start .paved/documents/intents/${run.id}.md --json), then resume with paved intent --run ${run.id} --answer <id>=<value> --answered-by <you> --json.`);
+  return result(projectRoot, "intent", run, `Present the classification decision to the user, then resume with paved intent --run ${run.id} --answer <id>=<value> --answered-by <you> --json.`);
 }
 
 function finishClassification(invocation: CommandInvocation, run: Run): CommandResult {
   const { projectRoot, coreRoot } = invocation.paths;
   const decision = run.decisions?.[0];
-  if (decision?.status !== "APPLIED") return result("intent", run, nextStepAction(run));
+  if (decision?.status !== "APPLIED") return result(projectRoot, "intent", run, nextStepAction(run));
   const outcome = applyClassificationAnswer(projectRoot, coreRoot, run, decision);
   if (outcome.split) {
     writeRun(projectRoot, coreRoot, run);
     writeIntentDocument(projectRoot, run);
     const commands = outcome.split.map((part) => `paved intent ${JSON.stringify(part)} --json`).join("; ");
-    return result("intent", run, `The request was split. Start each part on its own: ${commands}.`);
+    return result(projectRoot, "intent", run, `The request was split. Start each part on its own: ${commands}.`);
   }
   run.inputs.push(...parseInputs(coreRoot, run.workflow!.id, invocation.flags.intentInputs));
   const missing = missingInputs(coreRoot, run.workflow!.id, run.inputs);
@@ -250,7 +254,7 @@ function finishClassification(invocation: CommandInvocation, run: Run): CommandR
   }
   writeRun(projectRoot, coreRoot, run);
   writeIntentDocument(projectRoot, run);
-  return result("intent", run, `Classified as ${run.workflow!.id}. ${nextStepAction(run)}`);
+  return result(projectRoot, "intent", run, `Classified as ${run.workflow!.id}. ${nextStepAction(run)}`);
 }
 
 function evidencePath(invocation: CommandInvocation): string | undefined {
@@ -286,7 +290,7 @@ function planApproved(run: Run): boolean {
 
 async function resume(invocation: CommandInvocation, step: Step, run: Run, answers: readonly string[]): Promise<CommandResult> {
   const { projectRoot, coreRoot } = invocation.paths;
-  if (TERMINAL_STATUSES.has(run.status)) return result(step, run, nextStepAction(run));
+  if (TERMINAL_STATUSES.has(run.status)) return result(projectRoot, step, run, nextStepAction(run));
   const current = run.workflow ? activePhase(run) : undefined;
   const owner: Step | undefined = run.workflow ? (current ? ownerOf(current.phase) : undefined) : "intent";
   if (step === "execute" && run.workflow && !planApproved(run)) {
@@ -306,13 +310,13 @@ async function resume(invocation: CommandInvocation, step: Step, run: Run, answe
     return blocked(step, "PAVED_DECISION_ANSWER_INVALID", decisions.problems.join("; "), "Answer an open run decision with one of its offered options.", { run: run.id });
   }
   if (!run.workflow) {
-    if (decisions.status === "awaiting-input") { writeRun(projectRoot, coreRoot, run); return result(step, run, nextStepAction(run)); }
+    if (decisions.status === "awaiting-input") { writeRun(projectRoot, coreRoot, run); return result(projectRoot, step, run, nextStepAction(run)); }
     return finishClassification(invocation, run);
   }
   if (decisions.status === "awaiting-input") {
     run.status = "awaiting-input";
     writeRun(projectRoot, coreRoot, run);
-    return result(step, run, `Answer the run decision, then resume with paved ${step} --run ${run.id} --advance --answer <id>=<value> --answered-by <you> --json.`);
+    return result(projectRoot, step, run, `Answer the run decision, then resume with paved ${step} --run ${run.id} --advance --answer <id>=<value> --answered-by <you> --json.`);
   }
   if (run.status === "awaiting-input") run.status = "running";
   if (decisions.applied.length > 0) writeRun(projectRoot, coreRoot, run);
@@ -323,7 +327,7 @@ async function resume(invocation: CommandInvocation, step: Step, run: Run, answe
   if (toolAnswers.length > 0 && !relays && !approvalPending) {
     return blocked(step, "PAVED_DECISION_ANSWER_INVALID", `No open decision of run ${run.id} has id ${answerId(toolAnswers[0]!)}.`, "Answer an open decision with one of its offered options.", { run: run.id });
   }
-  if (!invocation.flags.advance && !invocation.flags.approve) return result(step, run, nextStepAction(run));
+  if (!invocation.flags.advance && !invocation.flags.approve) return result(projectRoot, step, run, nextStepAction(run));
 
   const workflow = loadContract(coreRoot, run.workflow.id);
   if (phase.status === "failed") {
@@ -358,14 +362,18 @@ async function resume(invocation: CommandInvocation, step: Step, run: Run, answe
     case "fail":
       failRun(run, phase, outcome.reason, outcome.nextAction);
       writeRun(projectRoot, coreRoot, run);
-      return result(step, run, outcome.nextAction, outcome.diagnostics);
+      return result(projectRoot, step, run, outcome.nextAction, outcome.diagnostics);
     case "wait":
       writeRun(projectRoot, coreRoot, run);
-      return result(step, run, outcome.nextAction);
-    case "pass":
+      return result(projectRoot, step, run, outcome.nextAction);
+    case "pass": {
       completeAndStartNext(run, phase);
       writeRun(projectRoot, coreRoot, run);
-      return result(step, run, run.status === "completed" ? "Workflow complete with authoritative verification evidence." : nextStepAction(run));
+      if (run.status !== "completed") return result(projectRoot, step, run, nextStepAction(run));
+      // Advisory only: a gardener failure or proposal never changes the outcome.
+      const gardener = reportNewProposals(projectRoot, coreRoot);
+      return result(projectRoot, step, run, "Workflow complete with authoritative verification evidence.", [], Object.keys(gardener).length > 0 ? { data: { gardener } } : {});
+    }
   }
 }
 
