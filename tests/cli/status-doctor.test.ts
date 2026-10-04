@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,6 +46,22 @@ describe("status absorbs doctor", () => {
     await withConsumer((project) => writeFileSync(join(project, "AGENTS.md"), `# Team notes\n\n${LEGACY_BLOCK}`), async (project) => {
       const status = await run(project, "status");
       assert.ok(status.diagnostics.some((item) => item.code === "PAVED_AGENTS_BLOCK_OUTDATED"), JSON.stringify(status.diagnostics));
+    });
+  });
+
+  it("reports a symlinked AGENTS.md as a finding instead of failing", async () => {
+    await withConsumer((project) => {
+      writeFileSync(join(project, "CLAUDE.md"), `# Ours\n\n${LEGACY_BLOCK}`);
+      rmSync(join(project, "AGENTS.md"), { force: true });
+      symlinkSync("CLAUDE.md", join(project, "AGENTS.md"));
+    }, async (project) => {
+      const claude = readFileSync(join(project, "CLAUDE.md"), "utf8");
+      for (const command of ["status", "doctor", "update"]) {
+        const result = await run(project, command);
+        assert.ok(!result.diagnostics.some((item) => item.code === "PAVED_CLI_INTERNAL" || item.code === "PAVED_UPDATE_TRANSACTION_FAILED"), `${command}: ${JSON.stringify(result.diagnostics)}`);
+        assert.ok(result.diagnostics.some((item) => item.code === "PAVED_AGENTS_BLOCK_INVALID" && item.severity === "warning"), `${command}: ${JSON.stringify(result.diagnostics)}`);
+      }
+      assert.equal(readFileSync(join(project, "CLAUDE.md"), "utf8"), claude, "the symlink target was written");
     });
   });
 });
