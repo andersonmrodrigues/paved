@@ -2,6 +2,7 @@ import { cpSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { stringify } from "yaml";
 import { atomicWriteFileSync } from "../lib/atomic-write.js";
+import { refreshAgentsBlock } from "../lib/agents-block.js";
 import { generateData, diagnosticsForRun } from "./generate.js";
 import { inspectConsumer, planConsumerUpdate } from "../lib/consumer-state.js";
 import { runGenerators } from "../lib/generator-runtime.js";
@@ -82,10 +83,12 @@ export function updateHandler(invocation) {
     }
     if (!plan.changed) {
         const lifecycleState = inspectConsumer({ projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot }).lifecycleState;
+        const status = statusFor(plan.diagnostics);
+        const agentsBlock = invocation.flags.dryRun || status === "failed" ? undefined : refreshAgentsBlock(invocation.paths.coreRoot, invocation.paths.projectRoot).status;
         return createResult({
             command: "update",
-            status: statusFor(plan.diagnostics),
-            data: updateData(plan, invocation.flags.dryRun, undefined, lifecycleState),
+            status,
+            data: { ...updateData(plan, invocation.flags.dryRun, undefined, lifecycleState), ...(agentsBlock === undefined ? {} : { agentsBlock }) },
             diagnostics: plan.diagnostics,
         });
     }
@@ -129,7 +132,13 @@ export function updateHandler(invocation) {
             },
         });
         const lifecycleState = inspectConsumer({ projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot }).lifecycleState;
-        return createResult({ command: "update", status: statusFor(staged.diagnostics), data: updateData(plan, false, staged.generation, lifecycleState), diagnostics: staged.diagnostics });
+        const status = statusFor(staged.diagnostics);
+        const agentsBlock = status === "failed" ? undefined : refreshAgentsBlock(invocation.paths.coreRoot, invocation.paths.projectRoot).status;
+        return createResult({
+            command: "update", status,
+            data: { ...updateData(plan, false, staged.generation, lifecycleState), ...(agentsBlock === undefined ? {} : { agentsBlock }) },
+            diagnostics: staged.diagnostics,
+        });
     }
     catch (error) {
         if (error instanceof ConsumerOperationLockedError) {
