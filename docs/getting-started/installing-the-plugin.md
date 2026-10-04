@@ -66,6 +66,8 @@ Codex:       paved:init    paved:status    paved:intent    paved:plan    paved:e
 Cursor:      /init        /status         /intent         /plan         /execute
 ```
 
+Coming from Paved 1.x? See [migrating to 2.0](migrating-to-2.md) for the old-to-new command table.
+
 The first command activates the runtime. The plugin's launcher (`scripts/paved.mjs`):
 
 1. finds the consumer repository: `--project` if given, otherwise the nearest
