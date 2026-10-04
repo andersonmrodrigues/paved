@@ -85,8 +85,7 @@ describe("representative stacks through the plugin launcher", () => {
       assert.ok(["GENERATED", "VALIDATED", "READY"].includes(discovery.lifecycleState), discovery.lifecycleState);
       // init asks for the governed test command whenever the repository declares one.
       const testable = detectTestingCandidates(project).length > 0;
-      assert.equal(discovery.commands.find((command) => command.name === "test")?.available, testable);
-      assert.equal(discovery.commands.find((command) => command.name === "feature")?.available, testable);
+      assert.equal(discovery.commands.find((command) => command.name === "execute")?.available, testable);
       assert.equal(applicationDigest(project, [".git"]), before, "initialization leaves application files untouched");
     });
   }

@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 import { parse, stringify } from "yaml";
 import { loadYaml } from "../../cli/lib/documents.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
+import { resolveTestingTool } from "../../cli/lib/test-runner.ts";
 import type { CommandResult } from "../../cli/result.ts";
 import { at, formatErrors, schemas } from "../helpers.ts";
 import type { ToolContract, ToolImplementation } from "../../cli/lib/tools.ts";
@@ -79,9 +80,7 @@ describe("testing tool ambiguity", () => {
       secondProjectTool(project);
       writeFileSync(join(project, ".paved/tools/test-runner.mjs"),
         'process.stdout.write(JSON.stringify({status:"passed"}));');
-      const discovery = await dispatchCli({ argv: ["agent", "commands", "--project", project, "--json"] });
-      assert.equal((discovery.data as { commands: { name: string; available: boolean }[] })
-        .commands.find((command) => command.name === "test")?.available, true);
+      assert.equal(resolveTestingTool(project, ROOT).status, "ambiguous");
       const asked = await runTest(project);
       assert.equal(asked.status, "awaiting_input", JSON.stringify(asked));
       assert.equal(asked.decisions?.[0]?.options.length, 2);
@@ -147,14 +146,8 @@ describe("governed test command", () => {
         assert.ok(validation.valid, formatErrors(document.id, validation.errors));
       }
 
-      const discovery = await dispatchCli({
-        argv: ["agent", "commands", "--project", project, "--json"],
-        cwd: project,
-        executablePath: join(ROOT, "cli/index.ts"),
-      });
-      const discoveredTest = (discovery.data as { commands: { name: string; available: boolean }[] })
-        .commands.find((command) => command.name === "test");
-      assert.equal(discoveredTest?.available, true, JSON.stringify(discoveredTest));
+      const resolution = resolveTestingTool(project, ROOT);
+      assert.notEqual(resolution.status, "unavailable", JSON.stringify(resolution));
 
       const result = await runTest(project);
       assert.equal(result.status, "success", JSON.stringify(result));
