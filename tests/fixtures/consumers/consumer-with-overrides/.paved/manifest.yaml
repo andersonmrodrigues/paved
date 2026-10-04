@@ -3,4 +3,4 @@ kind: Project
 project:
   name: consumer-with-overrides
 paved:
-  core: ^1.0.0
+  core: ">=1.0.0 <3.0.0"
