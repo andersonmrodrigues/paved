@@ -366,8 +366,12 @@ test("update applies a known document migration transactionally and preserves Ma
       toApiVersion: "paved/v1",
     });
 
+    const template = readFileSync(join(core, "core/templates/AGENTS.md"), "utf8").trimEnd();
+    writeFileSync(join(a, "AGENTS.md"), `# Team notes\n\n${template.replace("`/paved:intent`", "`/paved:feature`")}\n`);
     const result = await dispatchCli({ argv: ["update", "--project", a, "--json"], cwd: core, executablePath: join(core, "cli/index.ts") });
     assert.notEqual(result.status, "failed", JSON.stringify(result.diagnostics));
+    assert.equal((result.data as { agentsBlock?: string }).agentsBlock, "updated");
+    assert.equal(readFileSync(join(a, "AGENTS.md"), "utf8"), `# Team notes\n\n${template}\n`);
     const migrated = readFileSync(path, "utf8");
     assert.ok(migrated.startsWith("---\napiVersion: paved/v1\nkind: ContextDocument\n"));
     assert.ok(migrated.endsWith(`---\n${body}`));

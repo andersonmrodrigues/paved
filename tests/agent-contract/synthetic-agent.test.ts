@@ -60,7 +60,6 @@ describe("synthetic agent black-box contract", () => {
         required_capabilities: command.requiredCapabilities,
         allowed_side_effects: command.allowedSideEffects,
         lifecycle: command.lifecycle,
-        ...(command.workflow === undefined ? {} : { workflow: command.workflow }),
         ...(command.tool === undefined ? {} : { tool: command.tool }),
         cli_command: command.cliCommand,
         failure_semantics: command.failureSemantics,
@@ -94,11 +93,11 @@ describe("synthetic agent black-box contract", () => {
       assert.equal(commandsBefore.result.status, "success");
       const beforeData = commandsBefore.result.data as { lifecycleState: string; commands: { name: string; available: boolean; interaction: string; decisionSources: string[]; answerChannels: string[] }[] };
       assert.equal(beforeData.lifecycleState, "UNINITIALIZED");
-      assert.equal(beforeData.commands.length, 15);
+      assert.deepEqual(beforeData.commands.map((command) => command.name), ["init", "status", "intent", "plan", "execute", "preview", "update"]);
       assert.equal(beforeData.commands.find((command) => command.name === "init")?.available, true);
       assert.equal(beforeData.commands.find((command) => command.name === "plan")?.available, false);
       assert.equal(beforeData.commands.find((command) => command.name === "init")?.interaction, "conversational");
-      assert.deepEqual(beforeData.commands.find((command) => command.name === "status")?.decisionSources, []);
+      assert.deepEqual(beforeData.commands.find((command) => command.name === "status")?.decisionSources, ["runtime"]);
 
       const unavailablePlan = invoke(project, "agent", "command", "plan");
       assert.equal(unavailablePlan.exitCode, 4);
@@ -128,10 +127,11 @@ describe("synthetic agent black-box contract", () => {
       const commandsAfter = invoke(project, "agent", "commands", "codex");
       const afterData = commandsAfter.result.data as { lifecycleState: string; integration: string; commands: { name: string; available: boolean; reason?: string }[] };
       assert.equal(afterData.integration, "codex");
-      assert.equal(afterData.commands.find((command) => command.name === "plan")?.available, true);
-      assert.equal(afterData.commands.find((command) => command.name === "test")?.available, false);
-      assert.match(afterData.commands.find((command) => command.name === "test")?.reason ?? "", /cannot be executed/);
-      assert.equal(afterData.commands.find((command) => command.name === "verify")?.available, false);
+      assert.equal(afterData.commands.find((command) => command.name === "preview")?.available, true);
+      for (const name of ["intent", "plan", "execute"]) {
+        assert.equal(afterData.commands.find((command) => command.name === name)?.available, false, name);
+        assert.match(afterData.commands.find((command) => command.name === name)?.reason ?? "", /cannot be executed|verification profile/, name);
+      }
     } finally {
       rmSync(project, { recursive: true, force: true });
     }

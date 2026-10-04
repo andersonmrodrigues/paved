@@ -1,7 +1,10 @@
 # Workflows
 
-A workflow carries one class of change (a feature, a bug fix, a refactor, a performance
-change, an incident, a release) from request to verified completion. It is an
+A workflow carries one class of change from request to verified completion. The Core
+ships three: `feature`, `bug` and `refactor`. A performance improvement runs as `refactor`
+(behavior unchanged) or `feature` (a new budget); the `performance`, `incident` and
+`release` workflows were removed in Core 2.0 because nothing executed them
+([ADR 0036](../decisions/0036-intent-plan-execute.md)). It is an
 orchestration layer: it decides **which** phases run, **which** skills each phase
 activates, **which** checks prove the result and **where** a human must decide. It never
 says **how** to do the work; skills do. It never says what must hold; rules do. It
@@ -64,11 +67,17 @@ skill fails reference resolution; an inapplicable skill is recorded as not appli
 in the run. Cycles are impossible because the skill graph is acyclic and phases only
 move forward. At most three skills per phase: more means the phase is doing two things.
 
-**No workflow composition.** Workflows do not invoke other workflows. When an incident
-needs a permanent fix, the incident run ends with a `follow-up` output and the fix runs
-as a separate `bug` workflow. Nested runs would need shared state, nested failures and
-nested approvals; the evidence of two separate runs is easier to review
+**No workflow composition.** Workflows do not invoke other workflows. A request that
+mixes kinds of change is split by `intent` into separate runs, each with its own
+classification. Nested runs would need shared state, nested failures and nested
+approvals; the evidence of two separate runs is easier to review
 ([ADR 0015](../decisions/0015-workflow-contract.md)).
+
+**Every Core workflow must be executable.** Every gate in a Core workflow contract has a
+handler in `cli/lib/workflow-gates/`, and `tests/workflows/gates.test.ts` walks the Core
+workflows to enforce it. A gate or workflow added to the Core fails that test until it
+has handlers, so the Core never ships a contract nothing executes. Project workflows in
+`.paved/workflows/` are guidance and are not executed.
 
 ## Rule resolution
 
@@ -122,10 +131,11 @@ approvals are in [workflow failure](workflow-failure.md) and
 | Required fields, phase shape, unskippable phases, retry shape, lifecycle status | Schema |
 | Canonical order, unique gates, "Use when", no technology names, size, contract mentioned in `WORKFLOW.md` | `assessWorkflowQuality` |
 | Verification required for code changes; required checks can prove something | `assessWorkflowQuality` |
-| Destructive tools gated and not auto-retried; release and incident carry their approval | `assessWorkflowQuality` |
+| Destructive tools gated and not auto-retried; a `release` or `incident` change type carries its approval | `assessWorkflowQuality` |
 | No duplicate activation; no deprecated skills; no sentences copied from skills | `assessWorkflowQuality` |
 | Skills, tools and rules resolve | `resolveReferences` |
 | Run records match their workflow | `assessRun` |
+| Every Core gate has a handler | `tests/workflows/gates.test.ts` |
 | Evidence satisfies the workflow | `assessWorkflowEvidence` |
 
 ## Influences

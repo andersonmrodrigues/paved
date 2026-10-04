@@ -155,6 +155,10 @@ problem is reported as one message instead of a list of unrelated field errors.
 Deprecated content stays for at least one minor release with a note in the changelog
 and, for rules and skills, a pointer to the replacement. Removal happens in a major.
 
+Exception (2.0.0): the 1.x agent commands and the `performance`, `incident` and `release`
+workflows were removed without a deprecation release. See
+[ADR 0036](../decisions/0036-intent-plan-execute.md).
+
 ## Skill versions
 
 Each skill carries its own `version` and `status` in `skill.yaml`. A skill's major bump

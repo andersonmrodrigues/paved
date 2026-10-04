@@ -100,7 +100,7 @@ describe("project-local agent bootstrap", () => {
       assert.equal(result.data?.coreRoot, realpathSync(activePackage));
       const commands = invoke("agent", "commands", "--json");
       assert.equal(commands.status, 0, commands.stdout + commands.stderr);
-      assert.equal((JSON.parse(commands.stdout) as { data?: { commands: unknown[] } }).data?.commands.length, 15);
+      assert.equal((JSON.parse(commands.stdout) as { data?: { commands: unknown[] } }).data?.commands.length, 7);
 
       mkdirSync(join(consumer, ".paved", "tools"), { recursive: true });
       mkdirSync(join(consumer, ".paved", "tool-implementations"), { recursive: true });
@@ -139,12 +139,16 @@ describe("project-local agent bootstrap", () => {
       const readyCommands = invoke("agent", "commands", "--json");
       assert.equal(readyCommands.status, 0, readyCommands.stdout + readyCommands.stderr);
       const ready = (JSON.parse(readyCommands.stdout) as { data: { commands: { name: string; available: boolean }[] } }).data.commands;
-      assert.equal(ready.find((command) => command.name === "test")?.available, true);
-      assert.equal(ready.find((command) => command.name === "feature")?.available, true);
-      const started = invoke("feature", "Enable the sample feature", "--json");
+      assert.equal(ready.find((command) => command.name === "execute")?.available, true);
+      const stepFor = (id: string) => {
+        const state = parse(readFileSync(join(consumer, ".paved", "generated", "runs", `${id}.yaml`), "utf8")) as { phases: { phase: string; status: string }[] };
+        const phase = state.phases.find((item) => item.status !== "completed")?.phase ?? "";
+        return ["context", "discovery"].includes(phase) ? "intent" : phase === "planning" ? "plan" : "execute";
+      };
+      const started = invoke("intent", "Enable the sample feature", "--workflow", "feature", "--because", "The request enables new behavior.", "--json");
       assert.equal(started.status, 0, started.stdout + started.stderr);
       const runId = (JSON.parse(started.stdout) as { data: { run: string } }).data.run;
-      const advance = (...args: string[]) => invoke("feature", "--run", runId, "--advance", ...args, "--json");
+      const advance = (...args: string[]) => invoke(stepFor(runId), "--run", runId, "--advance", ...args, "--json");
       assert.equal(advance("--note", "Scope understood").status, 0);
       assert.equal(advance("--note", "Architecture inspected").status, 0);
       const planPath = join(consumer, ".paved", "generated", "plan.md");
@@ -197,10 +201,10 @@ describe("project-local agent bootstrap", () => {
       assert.equal(completed.status, 0, completed.stdout + completed.stderr);
       assert.equal((JSON.parse(completed.stdout) as { data: { status: string } }).data.status, "completed");
 
-      const approvePlan = (command: "fix" | "refactor", runId: string, label: string) => {
+      const approvePlan = (runId: string, label: string) => {
         const path = join(consumer, ".paved", "generated", `${label}-plan.md`);
         writeFileSync(path, `${label} plan for src/feature.js with a governed regression test.\n`);
-        const pending = invoke(command, "--run", runId, "--advance", "--note", `${label} plan`, "--evidence", `.paved/generated/${label}-plan.md`, "--json");
+        const pending = invoke("plan", "--run", runId, "--advance", "--note", `${label} plan`, "--evidence", `.paved/generated/${label}-plan.md`, "--json");
         assert.equal((JSON.parse(pending.stdout) as { data: { status: string } }).data.status, "awaiting-approval", pending.stdout + pending.stderr);
         const workflowPath = join(consumer, ".paved", "generated", "runs", `${runId}.yaml`);
         const workflow = parse(readFileSync(workflowPath, "utf8")) as { phases: { phase: string; gates?: { reason?: string }[] }[] };
@@ -249,17 +253,17 @@ describe("project-local agent bootstrap", () => {
       };
 
       writeFileSync(join(consumer, "src", "feature.js"), "export const enabled = false;\n");
-      const fixStarted = invoke("fix", "Correct the disabled feature behavior", "--json");
+      const fixStarted = invoke("intent", "Correct the disabled feature behavior", "--workflow", "bug", "--because", "The feature flag is disabled while it should be enabled.", "--json");
       assert.equal(fixStarted.status, 0, fixStarted.stdout + fixStarted.stderr);
       const fixId = (JSON.parse(fixStarted.stdout) as { data: { run: string } }).data.run;
       const reproduced = invoke("test", "--json");
       assert.notEqual(reproduced.status, 0, reproduced.stdout + reproduced.stderr);
       const reproducedEvidence = (JSON.parse(reproduced.stdout) as { data: { evidence: string } }).data.evidence;
-      const advanceFix = (...args: string[]) => invoke("fix", "--run", fixId, "--advance", ...args, "--json");
+      const advanceFix = (...args: string[]) => invoke(stepFor(fixId), "--run", fixId, "--advance", ...args, "--json");
       assert.equal(advanceFix("--note", "Expected behavior is enabled").status, 0);
       const confirmedCause = advanceFix("--note", "The source flag is false while the regression check expects true", "--evidence", reproducedEvidence);
       assert.equal(confirmedCause.status, 0, confirmedCause.stdout + confirmedCause.stderr);
-      approvePlan("fix", fixId, "fix");
+      approvePlan(fixId, "fix");
       assert.equal(advanceFix().status, 0);
       writeFileSync(join(consumer, "src", "feature.js"), "export const enabled = true;\n");
       assert.equal(advanceFix("--note", "Changed the faulty flag").status, 0);
@@ -275,13 +279,13 @@ describe("project-local agent bootstrap", () => {
       const baseline = invoke("test", "--json");
       assert.equal(baseline.status, 0, baseline.stdout + baseline.stderr);
       const baselineEvidence = (JSON.parse(baseline.stdout) as { data: { evidence: string } }).data.evidence;
-      const refactorStarted = invoke("refactor", "Extract the enabled default without changing behavior", "--json");
+      const refactorStarted = invoke("intent", "Extract the enabled default without changing behavior", "--workflow", "refactor", "--because", "The structure changes while the behavior stays the same.", "--json");
       assert.equal(refactorStarted.status, 0, refactorStarted.stdout + refactorStarted.stderr);
       const refactorId = (JSON.parse(refactorStarted.stdout) as { data: { run: string } }).data.run;
-      const advanceRefactor = (...args: string[]) => invoke("refactor", "--run", refactorId, "--advance", ...args, "--json");
+      const advanceRefactor = (...args: string[]) => invoke(stepFor(refactorId), "--run", refactorId, "--advance", ...args, "--json");
       assert.equal(advanceRefactor("--note", "Only the implementation structure should change").status, 0);
       assert.equal(advanceRefactor("--note", "Baseline governed test passes", "--evidence", baselineEvidence).status, 0);
-      approvePlan("refactor", refactorId, "refactor");
+      approvePlan(refactorId, "refactor");
       assert.equal(advanceRefactor().status, 0);
       writeFileSync(join(consumer, "src", "feature.js"), "const enabledByDefault = true;\nexport const enabled = enabledByDefault;\n");
       assert.equal(advanceRefactor("--note", "Extracted the default while preserving the exported value").status, 0);

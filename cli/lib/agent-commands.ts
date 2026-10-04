@@ -1,4 +1,4 @@
-import { existsSync, lstatSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
   AGENT_COMMANDS,
@@ -15,37 +15,6 @@ export interface AgentCommandDiscovery {
   readonly commands: readonly DiscoveredAgentCommand[];
 }
 
-function safeFile(root: string, segments: readonly string[], problems: string[]): boolean {
-  let current = root;
-  for (const [index, segment] of segments.entries()) {
-    if (segment === "" || segment === "." || segment === "..") {
-      problems.push(`Refusing unsafe Paved discovery path segment: ${segment}.`);
-      return false;
-    }
-    current = join(current, segment);
-    try {
-      const entry = lstatSync(current);
-      if (entry.isSymbolicLink()) {
-        problems.push(`Refusing to follow symbolic link during Paved discovery: ${current}`);
-        return false;
-      }
-      if (index < segments.length - 1 && !entry.isDirectory()) return false;
-      if (index === segments.length - 1) return entry.isFile();
-    } catch (error) {
-      if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
-      throw error;
-    }
-  }
-  return false;
-}
-
-function workflowExists(workflowId: string, projectRoot: string, coreRoot: string, problems: string[]): boolean {
-  const [scope, ...segments] = workflowId.split(".");
-  if (scope === "core") return safeFile(coreRoot, ["core", "workflows", segments.join("."), "workflow.yaml"], problems);
-  if (scope === "project") return safeFile(projectRoot, [".paved", "workflows", ...segments, "workflow.yaml"], problems);
-  return false;
-}
-
 function availability(
   command: AgentCommandContract,
   inspection: ConsumerInspection,
@@ -59,30 +28,10 @@ function availability(
     return {
       available: false,
       reason: `Command requires lifecycle state ${command.lifecycle.join(" or ")}; current state is ${inspection.lifecycleState}.`,
-      recommendedNextAction: inspection.initialized ? "/paved:doctor" : "/paved:init",
+      recommendedNextAction: inspection.initialized ? "/paved:status" : "/paved:init",
     };
   }
-  if (command.workflow !== undefined) {
-    const pathProblems: string[] = [];
-    if (!workflowExists(command.workflow, projectRoot, coreRoot, pathProblems)) {
-      return {
-        available: false,
-        reason: pathProblems[0] ?? `Required workflow "${command.workflow}" is unavailable.`,
-        recommendedNextAction: "/paved:doctor",
-      };
-    }
-  }
-  if (command.name === "test") {
-    const resolution = resolveTestingTool(projectRoot, coreRoot);
-    if (resolution.status === "unavailable") {
-      return {
-        available: false,
-        reason: resolution.message,
-        recommendedNextAction: resolution.remediation,
-      };
-    }
-  }
-  if (["feature", "fix", "refactor", "implement"].includes(command.name)) {
+  if (["intent", "plan", "execute"].includes(command.name)) {
     if (inspection.verificationProfile !== "present") {
       if (detectCheckCandidates(projectRoot).length === 0) {
         return { available: false, reason: "An executable workflow needs a verification profile, and no repository check was detected.", recommendedNextAction: "Add a build or test command to the repository, then run /paved:init." };
@@ -91,11 +40,6 @@ function availability(
     const resolution = resolveTestingTool(projectRoot, coreRoot);
     if (resolution.status === "unavailable") {
       return { available: false, reason: resolution.message, recommendedNextAction: resolution.remediation };
-    }
-  }
-  if (command.name === "verify" && inspection.verificationProfile !== "present") {
-    if (detectCheckCandidates(projectRoot).length === 0) {
-      return { available: false, reason: "No repository check was detected for a verification profile.", recommendedNextAction: "Add a build or test command to the repository, then run /paved:verify." };
     }
   }
   if (command.group === "development" && !inspection.initialized) {
@@ -114,7 +58,7 @@ export function discoverAgentCommands(projectRoot: string, coreRoot: string): Ag
         reason: inspection.initialized
           ? "Paved is already initialized; init never resets existing state."
           : "Partial Paved state exists; init will not overwrite or complete it automatically.",
-        recommendedNextAction: inspection.initialized ? "/paved:status or /paved:update" : "/paved:doctor",
+        recommendedNextAction: inspection.initialized ? "/paved:status or /paved:update" : "/paved:status",
       };
     }
     return { ...command, ...availability(command, inspection, projectRoot, coreRoot) };

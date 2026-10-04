@@ -12,7 +12,7 @@ skills:
   - { target: core.debugging.root-cause-analysis, action: disable, owner: sample-team, reason: Replaced by a project skill. }
   - { target: adapter-sample.development.sample, action: extend, addendum: skills/sample.md, owner: sample-team, reason: Local conventions. }
 workflows:
-  - target: core.release
+  - target: core.feature
     action: extend
     add_gates:
       - { phase: completion, id: sign-off, condition: Release owner signed off., approval: release }

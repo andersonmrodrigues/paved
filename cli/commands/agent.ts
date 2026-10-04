@@ -116,7 +116,6 @@ export function agentHandler(invocation: CommandInvocation): CommandResult {
         command: discovered,
         lifecycleState: discovery.lifecycleState,
         sourceOfTruth: ".paved/",
-        workflow: discovered.workflow,
         tool: discovered.tool,
       },
     });

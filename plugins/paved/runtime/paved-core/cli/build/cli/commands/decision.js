@@ -5,6 +5,7 @@ import { toProjection } from "../lib/decisions/gate.js";
 import { decisionId, transition } from "../lib/decisions/record.js";
 import { listDecisions, readDecision, writeDecision } from "../lib/decisions/store.js";
 import { acquireConsumerOperationLock } from "../lib/operation-lock.js";
+import { runCommand } from "../lib/workflow-runs.js";
 import { readDecisionRun, writeDecisionRun, listRunDecisions, readRunDecision } from "../lib/decisions/run-store.js";
 function fail(code, message, remediation) {
     return createResult({
@@ -55,9 +56,9 @@ function raise(invocation, raw) {
     if (runRecord !== undefined && !["running", "awaiting-input"].includes(runRecord.status)) {
         return fail("PAVED_DECISION_RUN_TERMINAL", `Workflow run ${run} cannot accept a decision in state ${runRecord.status}.`, "Raise decisions only for an active run.");
     }
-    const decisionCommand = run === undefined ? invocation.command : run.split("-")[0];
-    if (run !== undefined && !["feature", "fix", "refactor"].includes(decisionCommand)) {
-        return fail("PAVED_DECISION_RUN_INVALID", "The WorkflowRun command is invalid.", "Use a run created by feature, fix or refactor.");
+    const decisionCommand = runRecord === undefined ? invocation.command : runCommand(runRecord);
+    if (run !== undefined && !["intent", "feature", "fix", "refactor"].includes(decisionCommand)) {
+        return fail("PAVED_DECISION_RUN_INVALID", "The WorkflowRun command is invalid.", "Use a run created by intent, or a 1.x feature, fix or refactor run.");
     }
     const scope = run === undefined ? "project" : "run";
     const scopeKey = run === undefined ? `project:${invocation.command}` : `run:${run}:${decisionCommand}`;

@@ -2,7 +2,7 @@
 apiVersion: paved/v1
 kind: Overrides
 workflows:
-  - target: core.release
+  - target: core.feature
     action: extend
     owner: sample-team
     reason: Sample.

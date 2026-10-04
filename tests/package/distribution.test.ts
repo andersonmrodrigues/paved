@@ -139,10 +139,10 @@ describe("runtime package artifact", () => {
       };
       assert.equal(commandResult.status, "success");
       assert.ok(["GENERATED", "VALIDATED", "READY"].includes(commandResult.data?.lifecycleState ?? ""));
-      assert.equal(commandResult.data?.commands.length, 15);
+      assert.equal(commandResult.data?.commands.length, 7);
       assert.equal(commandResult.data?.commands.every((command) => typeof command.available === "boolean"), true);
       assert.equal(commandResult.data?.commands.find((command) => command.name === "init")?.available, false);
-      assert.equal(commandResult.data?.commands.find((command) => command.name === "test")?.available, false);
+      assert.equal(commandResult.data?.commands.find((command) => command.name === "execute")?.available, false);
 
       const status = invoke("status", "--project", consumerRoot, "--json");
       assert.equal(status.error, undefined, status.stderr);
@@ -192,14 +192,6 @@ describe("runtime package artifact", () => {
         'process.stdout.write(JSON.stringify({status: result.status === 0 ? "passed" : "failed", exit_code: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? ""}));',
         "process.exitCode = result.status ?? 1;",
       ].join("\n"));
-      const commandsWithTesting = invoke("agent", "commands", "--project", consumerRoot, "--json");
-      assert.equal(commandsWithTesting.error, undefined, commandsWithTesting.stderr);
-      assert.equal(commandsWithTesting.status, 0, commandsWithTesting.stderr);
-      const testingCommand = (JSON.parse(commandsWithTesting.stdout) as {
-        data?: { commands: { name: string; available: boolean }[] };
-      }).data?.commands.find((command) => command.name === "test");
-      assert.equal(testingCommand?.available, true, JSON.stringify(testingCommand));
-
       const tested = invoke("test", "--project", consumerRoot, "--json");
       assert.equal(tested.error, undefined, tested.stderr);
       assert.equal(tested.status, 0, tested.stderr || tested.stdout);

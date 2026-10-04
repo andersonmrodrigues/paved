@@ -12,7 +12,7 @@ description: >-
 
 ## When to use
 
-In the `discovery` and `planning` phases of the performance workflow, and whenever a
+In the `discovery` and `planning` phases of a `refactor` or `feature` run that targets performance, and whenever a
 performance claim needs a number. The layer-specific skills (`backend-performance`,
 `frontend-performance`) depend on this one for measurement.
 

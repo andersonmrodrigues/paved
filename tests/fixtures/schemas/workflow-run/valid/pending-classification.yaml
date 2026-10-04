@@ -1,0 +1,44 @@
+apiVersion: paved/v1
+kind: WorkflowRun
+id: intent-0123456789abcdef0123
+revision: 3f2a9c1
+started_at: 2026-10-04T10:00:00Z
+status: awaiting-input
+classification:
+  parts: [Add CSV export, Fix the archived-items crash]
+inputs:
+  - id: request
+    value: Add CSV export and fix the archived-items crash.
+    source: human
+phases: []
+decisions:
+  - apiVersion: paved/v1
+    kind: Decision
+    id: d-0123456789abcdef0123
+    scope: run
+    command: intent
+    run: intent-0123456789abcdef0123
+    category: material
+    authored_by: runtime
+    question: How should this request be handled?
+    reason: The request mixes changes of different kinds.
+    options:
+      - { id: split, label: Split, description: One intent per part., consequence: Each part is classified on its own. }
+      - { id: core-feature, label: Feature, description: Treat as one feature., consequence: One run. }
+    recommended_option: split
+    evidence:
+      - { type: file, location: .paved/documents/intents/intent-0123456789abcdef0123.md, sha256: "0000000000000000000000000000000000000000000000000000000000000000" }
+    required: true
+    required_answer: { type: single-choice }
+    risk: low
+    reversibility: reversible
+    answer_channel: relayed
+    effect: record-only
+    handler: run.record
+    status: ASKED
+    asked_at: 2026-10-04T10:00:00Z
+    fingerprint: { inputs: ["candidate:split"], sha256: "0000000000000000000000000000000000000000000000000000000000000000" }
+    created_at: 2026-10-04T10:00:00Z
+events:
+  - at: 2026-10-04T10:00:00Z
+    type: run-started

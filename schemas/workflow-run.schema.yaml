@@ -8,10 +8,12 @@ description: >
   .paved/generated/runs/<id>.yaml. It is the durable state of the existing
   workflow engine.
   Rules that span fields (phase order, retries, approvals, failure codes) are checked by
-  cli/lib/workflows.ts. See docs/concepts/workflow-state.md.
+  cli/lib/workflows.ts. See docs/concepts/workflow-state.md. `workflow` and `phases`
+  may be empty only while classification is pending or after a pending run was
+  cancelled.
 type: object
 additionalProperties: false
-required: [apiVersion, kind, id, workflow, revision, started_at, status, inputs, phases]
+required: [apiVersion, kind, id, revision, started_at, status, inputs, phases]
 properties:
   apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
   kind: { const: WorkflowRun }
@@ -25,6 +27,24 @@ properties:
     properties:
       id: { $ref: "urn:paved:schema:common:v1#/$defs/workflowRef" }
       version: { $ref: "urn:paved:schema:common:v1#/$defs/semver" }
+  classification:
+    description: >
+      How the run's workflow was chosen. `workflow` is absent while the choice is
+      pending; `parts` holds the proposed split of a mixed request.
+    type: object
+    additionalProperties: false
+    properties:
+      workflow: { $ref: "urn:paved:schema:common:v1#/$defs/workflowRef" }
+      because: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      decided_by: { enum: [agent, human] }
+      decision: { type: string, pattern: "^d-[a-f0-9]{20}$" }
+      parts:
+        type: array
+        minItems: 2
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+    allOf:
+      - if: { required: [workflow] }
+        then: { required: [because, decided_by] }
   revision:
     description: Source revision the run started from.
     $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
@@ -56,7 +76,6 @@ properties:
   phases:
     description: One entry per phase of the workflow, in the workflow's order.
     type: array
-    minItems: 1
     items: { $ref: "#/$defs/phaseRun" }
   decisions:
     description: Decisions raised inside this run, in the order they were raised.
@@ -121,6 +140,17 @@ properties:
           type: string
         detail: { type: string }
 allOf:
+  - if:
+      not: { required: [workflow] }
+    then:
+      required: [classification]
+      properties:
+        status: { enum: [awaiting-input, cancelled] }
+        phases: { type: array, maxItems: 0 }
+        classification: { type: object, not: { type: object, required: [workflow] } }
+    else:
+      properties:
+        phases: { type: array, minItems: 1 }
   - if:
       properties: { status: { const: awaiting-input } }
       required: [status]
