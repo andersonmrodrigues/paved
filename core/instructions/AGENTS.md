@@ -4,14 +4,21 @@ Paved gives you a predictable path for changing this repository: **context** tel
 how the project works, **constraints** tell you what must hold, and **verification**
 tells you how to prove your change is correct. Follow the path; improve it when it is wrong.
 
-When the supported project-local command projection is installed, start management
-tasks with the agent-native `/paved:init`, `/paved:status`, `/paved:update`,
-`/paved:doctor`, or `/paved:gardener` command. For engineering work use the
-project-development commands (`plan`, `implement`, `test`, `verify`, `review`,
-`debug`, `refactor`, `feature`, `fix`) and follow their shared contracts in
-`paved agent commands --json`. If the local Paved runtime is unavailable, report
-that blocker; do not install an unpinned runtime or substitute arbitrary shell
-commands.
+When the supported project-local command projection is installed, start every repository
+change with the agent-native `/paved:intent` command and the user's request verbatim, then
+follow its next action through `/paved:plan` and `/paved:execute`. Manage Paved with
+`/paved:init`, `/paved:status` and `/paved:update`, and review documents with
+`/paved:preview`. Their shared contracts are in `paved agent commands --json`. If the local
+Paved runtime is unavailable, report that blocker; do not install an unpinned runtime or
+substitute arbitrary shell commands.
+
+The three steps share one run, and each owns a fixed range of its workflow's phases:
+`intent` classifies the request and runs `context` and `discovery`, `plan` runs `planning`,
+and `execute` runs `implementation` through `completion`. Tests and verification run inside
+the steps. Classify a request only with evidence (`--workflow <id> --because "<evidence>"`);
+when the evidence does not settle the kind of change, let the user decide. Documents a
+person must review (the Intent, the plan, the review record) open in `paved preview`, which
+never approves: approvals happen in the conversation.
 
 Load only what the current task needs. This file is the map, not the territory:
 
@@ -29,11 +36,11 @@ Paths starting with `.paved/` are in the repository you are working on. Other pa
 ## 1. Discover context
 
 1. Read `.paved/manifest.yaml` to learn the project, its adapters and its Core version.
-2. Pick the workflow that matches the task (`feature`, `bug`, `refactor`, `performance`,
-   `incident`, `release`) from `workflows/`, or a project workflow from
-   `.paved/workflows/`. It tells you which inputs, phases, skills, checks, gates and
-   approvals apply; `workflows.md` tells you how to run it. A workflow disabled in
-   `.paved/overrides/overrides.yaml` does not apply to this repository.
+2. Identify the workflow that matches the task (`feature`, `bug` or `refactor`) in
+   `workflows/`; `intent` records it on the run. It tells you which inputs, phases, skills,
+   checks, gates and approvals apply; `workflows.md` tells you how to run it. A workflow
+   disabled in `.paved/overrides/overrides.yaml` does not apply to this repository.
+   Project workflows in `.paved/workflows/` are guidance; Paved does not execute them.
 3. Find the affected feature in `.paved/project/feature-map/` and read only the context
    documents it links to. Use the `context-discovery` skill when the map does not help.
 4. Read the source code you will touch, and code that already solves a similar problem.
@@ -135,7 +142,9 @@ what it believes happened is not a substitute for an observed result.
 When you or a human correct the same kind of mistake twice, the path is missing
 something. Use the `gardener` skill to propose a fix at the strongest layer possible
 (architecture, static analysis, CI, rule, skill, documentation, in that order).
-Propose; do not apply structural changes to Core or project rules on your own.
+`execute` lists new gardener proposals when a run completes; they are advisory, and
+adopting one is a human decision taken with `paved gardener`. Propose; do not apply
+structural changes to Core or project rules on your own.
 
 ## Further reading (load on demand)
 
