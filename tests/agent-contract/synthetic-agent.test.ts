@@ -60,7 +60,6 @@ describe("synthetic agent black-box contract", () => {
         required_capabilities: command.requiredCapabilities,
         allowed_side_effects: command.allowedSideEffects,
         lifecycle: command.lifecycle,
-        ...(command.workflow === undefined ? {} : { workflow: command.workflow }),
         ...(command.tool === undefined ? {} : { tool: command.tool }),
         cli_command: command.cliCommand,
         failure_semantics: command.failureSemantics,
