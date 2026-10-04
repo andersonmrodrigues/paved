@@ -112,7 +112,6 @@ export function agentHandler(invocation) {
                 command: discovered,
                 lifecycleState: discovery.lifecycleState,
                 sourceOfTruth: ".paved/",
-                workflow: discovered.workflow,
                 tool: discovered.tool,
             },
         });
