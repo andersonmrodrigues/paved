@@ -43,6 +43,17 @@ const assertSquarePng = (icon: Buffer) => {
 };
 
 describe("generated plugins", () => {
+  it("projects Claude eval fixtures only into the Claude plugin", () => {
+    const plans = planPlugins(ROOT, packRuntime(ROOT, { build: false }));
+    const claudePlan = plans.find((plan) => plan.target === PLUGIN_TARGETS.claude)!;
+    const portablePlan = plans.find((plan) => plan.target === PLUGIN_TARGETS.portable)!;
+
+    assert.ok(claudePlan.files.has("evals/README.md"));
+    assert.ok(claudePlan.files.has("evals/cases/skill-routing/prompt.md"));
+    assert.ok(!portablePlan.files.has("evals/README.md"));
+    assert.ok(!portablePlan.files.has("evals/cases/skill-routing/prompt.md"));
+  });
+
   it("are exactly what the build produces from the current Core", () => {
     const runtime = packRuntime(ROOT, { build: false });
     for (const plan of planPlugins(ROOT, runtime)) {
@@ -235,7 +246,7 @@ describe("generated plugins", () => {
   it("refuses to overwrite a hand-edited generated file and replaces untouched ones", () => {
     const root = workspace("plugin-edit");
     temporary.push(root);
-    for (const path of ["plugins/plugin-source.json", "plugins/icon.png", "plugins/provenance", "package-lock.json", "core/skills", "integrations/shared", PLUGIN_DIRECTORY, CLAUDE_PLUGIN_DIRECTORY]) {
+    for (const path of ["plugins/plugin-source.json", "plugins/icon.png", "plugins/provenance", "plugins/claude/evals", "package-lock.json", "core/skills", "integrations/shared", PLUGIN_DIRECTORY, CLAUDE_PLUGIN_DIRECTORY]) {
       cpSync(join(ROOT, path), join(root, path), { recursive: true });
     }
     const runtime = packRuntime(ROOT, { build: false });
