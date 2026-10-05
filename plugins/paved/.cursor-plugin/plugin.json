@@ -1,6 +1,6 @@
 {
   "name": "paved",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Paved engineering commands for AI coding agents: repository context, governed workflows, explicit Tools, verification and evidence, executed by a pinned project-local Paved runtime.",
   "author": {
     "name": "Anderson Rodrigues",
