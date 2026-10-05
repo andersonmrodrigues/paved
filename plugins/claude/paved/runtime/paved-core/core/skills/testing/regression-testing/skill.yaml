@@ -1,7 +1,7 @@
 apiVersion: paved/v1
 kind: Skill
 id: core.testing.regression-testing
-version: 0.2.0
+version: 0.2.1
 status: experimental
 category: testing
 context:

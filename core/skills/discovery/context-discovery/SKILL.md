@@ -1,11 +1,7 @@
 ---
 name: context-discovery
 description: >-
-  Builds an understanding of a repository, or of the part a task touches, before anything
-  is modified: structure, build and runtime, dependencies, tests, CI, configuration,
-  documentation, entry points and architecture clues, plus the Project Context, rules and
-  existing patterns relevant to the task. Use when starting a task, when working in an
-  unfamiliar repository, or when unsure what a change affects.
+  Map a repository or task area, its entry points, dependencies, tests and relevant project context before making changes. Use when onboarding to an unfamiliar repository, starting discovery for a change, or locating what an existing task may affect.
 ---
 
 # Context discovery

@@ -1,10 +1,7 @@
 ---
 name: backend-performance
 description: >-
-  Improves the performance of server-side code paths: latency percentiles, throughput,
-  data access patterns, remote calls, caching, concurrency and resource use. Use when a
-  profile points at request handling, background processing or data access, or when a
-  server-side budget fails.
+  Measure and improve latency, throughput or resource use in server-side request handling, background processing or data access. Use when profiling or a server-side budget identifies a backend bottleneck.
 ---
 
 # Backend performance

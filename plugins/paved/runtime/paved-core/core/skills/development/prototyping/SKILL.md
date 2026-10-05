@@ -1,10 +1,7 @@
 ---
 name: prototyping
 description: >-
-  Builds a small, deliberately temporary implementation to answer a question (is this
-  feasible, which approach works, what does a dependency really return) and reports the
-  answer. Use when a human asks for a spike, proof of concept or experiment, not for code
-  meant to ship.
+  Build a small disposable implementation to answer a feasibility or approach question. Use when the user asks for a spike, proof of concept or experiment; do not use for production code meant to ship.
 ---
 
 # Prototyping

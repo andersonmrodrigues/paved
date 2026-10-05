@@ -1,10 +1,7 @@
 ---
 name: frontend-design
 description: >-
-  Plans, builds and critiques user-facing frontend interfaces with visual choices grounded
-  in the product, audience and project. Use when creating or materially changing a page,
-  component, layout, visual hierarchy, typography, color or motion; skip for backend-only
-  work and fixes that do not alter the interface.
+  Design or critique a user-facing interface using the product, audience and project context. Use when creating or materially changing a page, component, layout, visual hierarchy, typography, color or motion; skip backend-only changes and fixes with no interface impact.
 ---
 
 # Frontend design
