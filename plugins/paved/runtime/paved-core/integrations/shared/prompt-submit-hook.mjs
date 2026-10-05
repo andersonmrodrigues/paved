@@ -1,4 +1,6 @@
-import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 const context = [
@@ -22,6 +24,28 @@ function nearestRepository(cwd) {
   }
 }
 
+/**
+ * Records that this session already received the guidance for this repository and
+ * reports whether it is the first time. The marker holds no prompt text. When it cannot
+ * be recorded, the guidance is repeated rather than lost.
+ */
+function firstInSession(sessionId, repository) {
+  if (typeof sessionId !== "string" || sessionId === "") return true;
+  const key = createHash("sha256").update(`${sessionId}\0${repository}`).digest("hex");
+  try {
+    const directory = join(tmpdir(), "paved-hook-sessions");
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(join(directory, key), "", { flag: "wx" });
+    return true;
+  } catch (error) {
+    return error?.code !== "EEXIST";
+  }
+}
+
+function emit(hookEventName) {
+  process.stdout.write(`${JSON.stringify({ hookSpecificOutput: { hookEventName, additionalContext: context } })}\n`);
+}
+
 try {
   process.stdin.setEncoding("utf8");
   let input = "";
@@ -30,20 +54,21 @@ try {
   if (event === null || typeof event !== "object" || Array.isArray(event) || typeof event.cwd !== "string") {
     process.exit(0);
   }
-
   const repository = nearestRepository(event.cwd);
   if (repository === undefined ||
       !existsSync(join(repository, ".paved", "manifest.yaml")) ||
       !existsSync(join(repository, ".paved", "paved.lock"))) {
     process.exit(0);
   }
-
-  process.stdout.write(`${JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: "UserPromptSubmit",
-      additionalContext: context,
-    },
-  })}\n`);
+  if (event.hook_event_name === "SessionStart") {
+    // Compaction and clear drop earlier context, so the guidance is restored there.
+    if (event.source === "compact" || event.source === "clear") {
+      firstInSession(event.session_id, repository);
+      emit("SessionStart");
+    }
+  } else if (firstInSession(event.session_id, repository)) {
+    emit("UserPromptSubmit");
+  }
 } catch {
   // This hook only adds guidance; any input or filesystem failure must leave the prompt unaffected.
   process.exit(0);

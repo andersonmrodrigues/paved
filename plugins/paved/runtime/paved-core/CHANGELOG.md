@@ -5,6 +5,27 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Changed
+
+- The plugin's prompt hook adds the Paved routing guidance once per session in each
+  repository, instead of on every prompt, and again after the context is compacted or
+  cleared ([ADR 0037](docs/decisions/0037-session-scoped-prompt-guidance.md)).
+- The `plan` step starts from the run's Intent document and links to it.
+- A Core release bumps the plugin version by the same kind of bump, and the plugin's
+  major version follows the major version of the runtime it bundles. The next release
+  ships the plugin as 2.0.0, matching the 2.0.0 runtime it carries since that release.
+
+### Fixed
+
+- `intent` refuses flags it used to ignore: `--because` without `--workflow` or
+  `--recommend`, `--input` before the request is classified, an `--input` that would
+  replace the request, and `--workflow`, `--recommend`, `--because` or `--part` on an
+  existing run.
+- Bug discovery reports why the testing Tool could not run instead of asking for a
+  regression test.
+- An unreadable run document no longer hides the open runs from `status` or breaks run
+  selection; it is named with `PAVED_WORKFLOW_RUN_INVALID`.
+
 ## [2.0.0] - 2026-10-04
 
 ### Breaking

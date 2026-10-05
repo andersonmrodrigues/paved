@@ -11,16 +11,22 @@ function calculate(core: string, plugin: string, bump: string) {
   return spawnSync(process.execPath, [helper, core, plugin, bump], { encoding: "utf8" });
 }
 
-test("Core release bumps Core and independently patch-bumps the plugin", () => {
-  const result = calculate("1.8.0", "1.9.0", "minor");
-  assert.equal(result.status, 0, result.stderr);
-  assert.equal(result.stdout.trim(), "1.9.0 1.9.1");
+test("the plugin moves by the same kind of bump as the Core", () => {
+  for (const [bump, expected] of [["patch", "2.1.1 3.4.6"], ["minor", "2.2.0 3.5.0"], ["major", "3.0.0 4.0.0"]]) {
+    const result = calculate("2.1.0", "3.4.5", bump!);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), expected, bump);
+  }
 });
 
-test("Core patch release also patch-bumps the plugin", () => {
-  const result = calculate("1.8.0", "2.3.4", "patch");
-  assert.equal(result.status, 0, result.stderr);
-  assert.equal(result.stdout.trim(), "1.8.1 2.3.5");
+test("the plugin major never stays below the major of the runtime it bundles", () => {
+  for (const bump of ["patch", "minor"]) {
+    const result = calculate("2.0.0", "1.9.13", bump);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim().split(" ")[1], "2.0.0", bump);
+  }
+  const major = calculate("1.16.1", "1.9.12", "major");
+  assert.equal(major.stdout.trim(), "2.0.0 2.0.0");
 });
 
 test("release version helper rejects malformed versions", () => {

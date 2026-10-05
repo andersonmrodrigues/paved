@@ -48,12 +48,16 @@ export function normalizeWorkflow(projectRoot, coreRoot, value) {
 }
 export function parseInputs(coreRoot, workflowId, values) {
     const declared = new Set(loadContract(coreRoot, workflowId).inputs.map((input) => input.id));
+    const fromRequest = firstRequiredInput(coreRoot, workflowId);
     return values.map((value) => {
         const index = value.indexOf("=");
         const id = index > 0 ? value.slice(0, index) : "";
         const text = index > 0 ? value.slice(index + 1).trim() : "";
         if (!declared.has(id) || !text) {
             throw new IntentError("PAVED_WORKFLOW_INPUT_INVALID", `Input ${value} is not <id>=<value> for an input ${workflowId} declares.`, `Declared inputs: ${[...declared].join(", ")}.`);
+        }
+        if (id === fromRequest) {
+            throw new IntentError("PAVED_WORKFLOW_INPUT_INVALID", `The request is the ${id} input of ${workflowId}; --input ${id} would replace it.`, "Put that text in the request instead.");
         }
         return { id, value: text, source: "human" };
     });
@@ -90,6 +94,12 @@ export function createIntentRun(projectRoot, coreRoot, input, revision) {
         throw new IntentError("PAVED_WORKFLOW_INPUT_REQUIRED", "intent requires the user's request.", "Run paved intent \"<request>\" --json.");
     if ((input.workflow !== undefined || input.recommend !== undefined) && !input.because?.trim()) {
         throw new IntentError("PAVED_INTENT_RATIONALE_REQUIRED", "A workflow choice or recommendation needs the evidence behind it.", "Add --because \"<what in the request or repository shows it>\".");
+    }
+    if (input.because !== undefined && input.workflow === undefined && input.recommend === undefined) {
+        throw new IntentError("PAVED_INTENT_FLAGS_INVALID", "--because explains a --workflow choice or a --recommend recommendation, and neither was given.", "Add --workflow or --recommend, or drop --because.");
+    }
+    if (input.inputs.length > 0 && input.workflow === undefined) {
+        throw new IntentError("PAVED_INTENT_FLAGS_INVALID", "--input needs a workflow, and this intent is not classified yet.", "Drop --input now and pass it when you resume with the classification answer: paved intent --run <id> --answer <id>=<workflow> --input <id>=<value>.");
     }
     if (input.parts.length === 1)
         throw new IntentError("PAVED_INTENT_PARTS_INVALID", "A split needs at least two parts.", "Pass --part once per independent change, or none.");

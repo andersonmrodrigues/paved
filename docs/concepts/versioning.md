@@ -40,7 +40,9 @@ not affect resolution, compatibility or staleness.
 The plugin version identifies the installable package; the runtime version is the
 Core version it bundles. They move independently: a launcher or skill fix bumps
 only the plugin version, and a Core release bumps the runtime and, because the
-bundled artifact changes, the plugin as well. A repository's `paved.lock` pins its
+bundled artifact changes, the plugin as well. A Core release moves the plugin by the same
+kind of bump (major, minor or patch), and the plugin's major version is never lower than
+the major version of the runtime it bundles. A repository's `paved.lock` pins its
 runtime by version, SHA-512 integrity and installed content digest, and that pin
 wins over any plugin. A plugin carrying another runtime only reports
 `PAVED_RUNTIME_UPDATE_AVAILABLE`; `update` adopts a newer one (and `runtime upgrade`

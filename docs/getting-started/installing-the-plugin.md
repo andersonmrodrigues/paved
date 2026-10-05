@@ -91,9 +91,11 @@ offline from the verified local copy. See the
 ## Keep Paved in context
 
 The plugin includes a `UserPromptSubmit` hook for Codex and Claude Code. On each
-submitted prompt it checks the nearest repository boundary and adds short Paved routing
-guidance only when both `.paved/manifest.yaml` and `.paved/paved.lock` exist. This also
-covers the next prompt in the same session after `paved init` completes.
+submitted prompt it checks the nearest repository boundary and, when both
+`.paved/manifest.yaml` and `.paved/paved.lock` exist, adds short Paved routing guidance
+the first time in each session. This also covers the next prompt in the same session after
+`paved init` completes. Because the guidance stays in the conversation, later prompts do
+not repeat it; a `SessionStart` hook restores it after the context is compacted or cleared.
 
 Review and trust the plugin's hook when Codex or Claude Code asks. Codex skips plugin
 hooks until you review and trust their current definition; Claude Code applies its
@@ -194,7 +196,9 @@ next action:
 - A different runtime is activated only by `update` (newer runtimes only) or `runtime upgrade`, never by other commands.
 - The prompt hook reads the event's `cwd` and checks Paved state marker paths. It never
   stores, transmits, or logs the prompt; it emits routing guidance only for initialized
-  repositories and exits successfully without output otherwise.
+  repositories and exits successfully without output otherwise. To add the guidance once
+  per session it records an empty file named by a SHA-256 of the session id and repository
+  path under the system temporary directory; when that fails, it adds the guidance again.
 
 ## Local development
 
