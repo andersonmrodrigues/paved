@@ -1,7 +1,7 @@
 apiVersion: paved/v1
 kind: Skill
 id: core.development.frontend-design
-version: 0.1.0
+version: 0.1.1
 status: experimental
 category: development
 context:

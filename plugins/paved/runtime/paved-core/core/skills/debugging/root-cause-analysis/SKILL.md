@@ -1,9 +1,7 @@
 ---
 name: root-cause-analysis
 description: >-
-  Finds the actual cause of a defect from observed evidence (errors, logs, failing
-  tests, reproduction steps) and confirms it before any fix is attempted. Use when the
-  cause of a bug, failing test, incident or unexpected behavior is not yet proven.
+  Identify and confirm the cause of a defect from errors, logs, failing checks or reproduction evidence without implementing a fix. Use when the user asks why a failure happens or the cause is still uncertain; use bug-investigation when a verified fix is expected.
 ---
 
 # Root cause analysis

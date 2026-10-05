@@ -1,10 +1,7 @@
 ---
 name: frontend-performance
 description: >-
-  Improves the performance users perceive in a client application: time until content is
-  visible and usable, responsiveness to input, visual stability, and the amount of data
-  and code sent to the client. Use when a profile points at client-side loading,
-  rendering or interaction, or when a user-facing performance budget fails.
+  Improve perceived load time, interaction responsiveness, visual stability or client payload size. Use when profiling or a user-facing performance budget points to client loading, rendering or interaction.
 ---
 
 # Frontend performance

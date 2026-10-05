@@ -1,10 +1,7 @@
 ---
 name: gardener
 description: >-
-  Turns recurring agent mistakes and human corrections into structural improvements of
-  the paved path, choosing the strongest enforcement layer available (architecture,
-  static analysis, CI, rule, skill, documentation). Use when the same correction happens
-  twice, when a rule keeps being violated, or when asked to improve Paved.
+  Turn repeated agent mistakes or user corrections into an enforceable improvement to the engineering workflow. Use when the same correction recurs, a rule keeps being missed, or the user asks to improve Paved.
 ---
 
 # Gardener

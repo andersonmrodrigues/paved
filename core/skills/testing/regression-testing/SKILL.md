@@ -1,9 +1,7 @@
 ---
 name: regression-testing
 description: >-
-  Writes an automated test that reproduces a defect, fails before the fix and passes
-  after it, at the lowest level that still captures the bug. Use for every bug fix and
-  when turning an incident or reproduction into a permanent guard.
+  Write a test that reproduces a defect, fails before its fix and passes after it at the lowest useful level. Use when fixing a bug or turning a confirmed incident or reproduction into a permanent regression guard.
 ---
 
 # Regression testing

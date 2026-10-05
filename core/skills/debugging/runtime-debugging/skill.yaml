@@ -1,7 +1,7 @@
 apiVersion: paved/v1
 kind: Skill
 id: core.debugging.runtime-debugging
-version: 0.1.0
+version: 0.1.1
 status: experimental
 category: debugging
 context:
