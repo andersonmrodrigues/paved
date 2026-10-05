@@ -18,6 +18,9 @@ export const bugGates: WorkflowGates = {
         if (tested.status === "awaiting_input") return { kind: "relay", result: tested };
         const produced = (tested.data as { evidence?: string } | undefined)?.evidence;
         if (produced) path = resolveSafePath(context.projectRoot, produced);
+        // No evidence means the testing Tool did not run, so its own diagnostic says why.
+        const problem = produced ? undefined : tested.diagnostics.find((diagnostic) => diagnostic.severity === "error");
+        if (problem) return blocked(problem.code, problem.message, problem.remediation ?? "Configure the governed testing Tool, then advance discovery again.");
       }
       if (!path || !failedTestingEvidence(context, path, context.run)) {
         return blocked("PAVED_WORKFLOW_CAUSE_UNCONFIRMED",

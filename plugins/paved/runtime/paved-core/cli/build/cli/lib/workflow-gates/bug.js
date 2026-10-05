@@ -18,6 +18,10 @@ export const bugGates = {
                 const produced = tested.data?.evidence;
                 if (produced)
                     path = resolveSafePath(context.projectRoot, produced);
+                // No evidence means the testing Tool did not run, so its own diagnostic says why.
+                const problem = produced ? undefined : tested.diagnostics.find((diagnostic) => diagnostic.severity === "error");
+                if (problem)
+                    return blocked(problem.code, problem.message, problem.remediation ?? "Configure the governed testing Tool, then advance discovery again.");
             }
             if (!path || !failedTestingEvidence(context, path, context.run)) {
                 return blocked("PAVED_WORKFLOW_CAUSE_UNCONFIRMED", "A confirmed cause needs a current failed regression result from the governed testing Tool.", "Write a regression test that reproduces the report on the unfixed code, then advance discovery again with --note <observed cause>.");

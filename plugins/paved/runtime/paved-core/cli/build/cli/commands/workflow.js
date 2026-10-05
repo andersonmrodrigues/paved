@@ -9,7 +9,7 @@ import { reportNewProposals } from "../lib/gardener-report.js";
 import { reviewFor } from "../lib/review-block.js";
 import { relaysAnswers, runPhase } from "../lib/workflow-gates/index.js";
 import { now, readApproval, sha } from "../lib/workflow-gates/shared.js";
-import { isOpen, listRuns, loadContract, readRun, runCommand, runPath, TERMINAL_STATUSES, writeRun, } from "../lib/workflow-runs.js";
+import { isOpen, loadContract, readRun, scanRuns, runCommand, runPath, TERMINAL_STATUSES, writeRun, } from "../lib/workflow-runs.js";
 import { createDiagnostic, createResult } from "../result.js";
 import { testHandler } from "./test.js";
 import { verifyHandler } from "./verify.js";
@@ -157,7 +157,12 @@ function selectRun(invocation, step) {
     const { projectRoot, coreRoot } = invocation.paths;
     if (invocation.flags.run)
         return { run: load(invocation, invocation.flags.run), answers: invocation.flags.answers };
-    const open = listRuns(projectRoot, coreRoot).filter(isOpen);
+    const scanned = scanRuns(projectRoot, coreRoot);
+    // An unreadable run may be the open one, so Paved does not choose among the rest.
+    if (scanned.unreadable.length > 0) {
+        return { result: blocked(step, "PAVED_WORKFLOW_RUN_INVALID", `Run ${scanned.unreadable.map((run) => run.id).join(", ")} could not be read: ${scanned.unreadable[0].reason}`, "Pass --run <id> for the run to continue, or restore or remove the unreadable document in .paved/generated/runs/.", { unreadable: scanned.unreadable.map((run) => run.id) }) };
+    }
+    const open = scanned.runs.filter(isOpen);
     if (open.length === 0)
         return { result: blocked(step, "PAVED_WORKFLOW_RUN_REQUIRED", "No open run exists.", 'Start with paved intent "<request>" --json.') };
     if (open.length === 1)
@@ -409,6 +414,10 @@ export async function stepHandler(invocation) {
     try {
         if (step === "intent" && !invocation.flags.run && invocation.selectors.length > 0)
             return startIntent(invocation);
+        const flags = invocation.flags;
+        if (step === "intent" && (flags.workflow !== undefined || flags.recommend !== undefined || flags.because !== undefined || flags.parts.length > 0)) {
+            return blocked(step, "PAVED_INTENT_FLAGS_INVALID", "--workflow, --recommend, --because and --part start a new intent; they do not change an existing run.", "Answer the run's classification decision instead: paved intent --run <id> --answer <id>=<value> --answered-by <you> --json.");
+        }
         const selected = selectRun(invocation, step);
         if ("result" in selected)
             return selected.result;

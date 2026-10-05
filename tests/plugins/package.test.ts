@@ -109,7 +109,7 @@ describe("generated plugins", () => {
     assert.match(String(codex.websiteURL), /^https:\/\//);
   });
 
-  it("bundle one prompt hook discoverable by Codex and Claude Code", () => {
+  it("bundle one prompt hook, restored after compaction, discoverable by Codex and Claude Code", () => {
     const codex = readJson<Record<string, unknown>>(join(portable, ".codex-plugin", "plugin.json"));
     const claudeManifest = readJson<Record<string, unknown>>(join(claude, ".claude-plugin", "plugin.json"));
     assert.equal(codex.hooks, undefined, "Codex discovers the default hooks/hooks.json path");
@@ -121,6 +121,8 @@ describe("generated plugins", () => {
       assert.equal(command!.type, "command");
       assert.equal(command!.command, 'node "${CLAUDE_PLUGIN_ROOT}/hooks/paved-prompt-submit.mjs"');
       assert.equal(command!.timeout, 5);
+      const restored = (hooks.hooks as unknown as { SessionStart: { matcher: string; hooks: { command: string }[] }[] }).SessionStart;
+      assert.deepEqual(restored.map((item) => [item.matcher, item.hooks[0]!.command]), [["compact|clear", command!.command]], "guidance is restored after compaction or clear");
       assert.deepEqual(readFileSync(join(plugin, "hooks", "paved-prompt-submit.mjs")), readFileSync(join(ROOT, "integrations", "shared", "prompt-submit-hook.mjs")));
       for (const path of ["hooks/hooks.json", "hooks/paved-prompt-submit.mjs"]) assert.ok(provenanceOf(target).files[path] !== undefined, `${path} must be covered by generated provenance`);
     }

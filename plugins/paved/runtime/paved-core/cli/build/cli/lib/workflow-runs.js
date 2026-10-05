@@ -63,15 +63,33 @@ export function writeRun(projectRoot, coreRoot, run) {
     mkdirSync(dirname(path), { recursive: true });
     atomicWriteFileSync(path, stringify(run));
 }
-export function listRuns(projectRoot, coreRoot) {
+function runIds(projectRoot) {
     const dir = join(projectRoot, ".paved/generated/runs");
     if (!existsSync(dir))
         return [];
     return readdirSync(dir, { withFileTypes: true })
         .filter((entry) => entry.isFile() && entry.name.endsWith(".yaml"))
         .map((entry) => entry.name.slice(0, -".yaml".length))
-        .sort()
-        .flatMap((id) => readRun(projectRoot, coreRoot, id) ?? []);
+        .sort();
+}
+export function listRuns(projectRoot, coreRoot) {
+    return runIds(projectRoot).flatMap((id) => readRun(projectRoot, coreRoot, id) ?? []);
+}
+/** Like listRuns, but keeps reading past a run document that cannot be read and reports it. */
+export function scanRuns(projectRoot, coreRoot) {
+    const runs = [];
+    const unreadable = [];
+    for (const id of runIds(projectRoot)) {
+        try {
+            const run = readRun(projectRoot, coreRoot, id);
+            if (run)
+                runs.push(run);
+        }
+        catch (error) {
+            unreadable.push({ id, reason: error instanceof Error ? error.message : String(error) });
+        }
+    }
+    return { runs, unreadable };
 }
 export const isOpen = (run) => !TERMINAL_STATUSES.has(run.status);
 /** The command that created the run, from its id prefix: `intent`, or `feature` / `fix` / `refactor` for 1.x runs. */

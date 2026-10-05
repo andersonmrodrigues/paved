@@ -6,7 +6,7 @@ import { runDecisionGate } from "../lib/decisions/gate.js";
 import { DecisionStoreError } from "../lib/decisions/store.js";
 import { repairProvider } from "../lib/decisions/providers/repair.js";
 import { repairHandler } from "../lib/decisions/handlers/repair.js";
-import { isOpen, listRuns } from "../lib/workflow-runs.js";
+import { isOpen, scanRuns } from "../lib/workflow-runs.js";
 function statusFor(diagnostics) {
     if (diagnostics.some((diagnostic) => diagnostic.category !== "findings"))
         return "failed";
@@ -73,20 +73,16 @@ function agentsBlockFindings(inspection) {
 function openRuns(inspection) {
     if (!inspection.initialized)
         return { runs: [], diagnostics: [] };
-    try {
-        const runs = listRuns(inspection.projectRoot, inspection.coreRoot).filter(isOpen).map((run) => ({
-            run: run.id, status: run.status, ...(run.workflow === undefined ? {} : { workflow: run.workflow.id }),
-            currentPhase: run.phases.find((phase) => phase.status === "running")?.phase,
-        }));
-        return { runs, diagnostics: [] };
-    }
-    catch (error) {
-        return { runs: [], diagnostics: [createDiagnostic({
-                    severity: "warning", category: "findings", code: "PAVED_WORKFLOW_RUN_INVALID", component: "consumer.runs",
-                    message: `A workflow run could not be read: ${error instanceof Error ? error.message : String(error)}`,
-                    remediation: "Inspect .paved/generated/runs/ and restore or remove the invalid run document.",
-                })] };
-    }
+    const scanned = scanRuns(inspection.projectRoot, inspection.coreRoot);
+    const runs = scanned.runs.filter(isOpen).map((run) => ({
+        run: run.id, status: run.status, ...(run.workflow === undefined ? {} : { workflow: run.workflow.id }),
+        currentPhase: run.phases.find((phase) => phase.status === "running")?.phase,
+    }));
+    return { runs, diagnostics: scanned.unreadable.map((run) => createDiagnostic({
+            severity: "warning", category: "findings", code: "PAVED_WORKFLOW_RUN_INVALID", component: "consumer.runs",
+            message: `Workflow run ${run.id} could not be read: ${run.reason}`,
+            remediation: "Inspect .paved/generated/runs/ and restore or remove the invalid run document.",
+        })) };
 }
 /** An unreadable decision store is already reported by the inspection; repairs then wait for it to be fixed. */
 function repairs(invocation) {

@@ -203,7 +203,7 @@ function readme(source: PluginSource, runtime: RuntimeArtifact, hosts: string, d
     `- Runtime: \`paved-core@${runtime.version}\` unpacked at \`${RUNTIME_DIRECTORY}/\`; ${dependencies}`,
     `- Runtime integrity: \`${runtime.integrity}\`, checked over the runtime and its dependencies before activation`,
     `- Launcher: \`${LAUNCHER_DIRECTORY}/paved.mjs\``,
-    "- Prompt routing: `hooks/hooks.json` adds advisory Paved context on each prompt in repositories initialized with Paved.",
+    "- Prompt routing: `hooks/hooks.json` adds advisory Paved context once per session in repositories initialized with Paved, and again after compaction.",
     `- Skills: ${skills}`,
     "",
     "Installation and usage: https://github.com/andersonmrodrigues/paved/blob/main/docs/getting-started/installing-the-plugin.md",
