@@ -35,12 +35,13 @@ writing a new record that supersedes it, not by editing the old one.
 | [0028](0028-conversational-decision-resolution.md) | Conversational decision resolution | Accepted |
 | [0029](0029-module-testing-suites.md) | Module testing suites | Accepted |
 | [0030](0030-local-markdown-review.md) | Local Markdown review for plans and specs | Accepted |
-| [0031](0031-prompt-aware-plugin-hooks.md) | Prompt-aware plugin hooks | Accepted |
+| [0031](0031-prompt-aware-plugin-hooks.md) | Prompt-aware plugin hooks | Accepted; amended by 0037 |
 | [0032](0032-update-adopts-newer-plugin-runtime.md) | Update adopts a newer plugin runtime | Accepted |
 | [0033](0033-comment-only-folder-preview.md) | Comment-only preview of files and folders | Accepted |
 | [0034](0034-unpacked-plugin-runtime.md) | Unpacked plugin runtime | Accepted; amended by 0035 |
 | [0035](0035-host-specific-plugin-directories.md) | Host-specific plugin directories | Accepted |
 | [0036](0036-intent-plan-execute.md) | Intent, plan and execute | Accepted |
+| [0037](0037-session-scoped-prompt-guidance.md) | Session-scoped prompt guidance | Accepted |
 
 ## Format
 
