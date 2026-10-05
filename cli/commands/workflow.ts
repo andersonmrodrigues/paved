@@ -396,6 +396,10 @@ export async function stepHandler(invocation: CommandInvocation): Promise<Comman
   const step = invocation.command as Step;
   try {
     if (step === "intent" && !invocation.flags.run && invocation.selectors.length > 0) return startIntent(invocation);
+    const flags = invocation.flags;
+    if (step === "intent" && (flags.workflow !== undefined || flags.recommend !== undefined || flags.because !== undefined || flags.parts.length > 0)) {
+      return blocked(step, "PAVED_INTENT_FLAGS_INVALID", "--workflow, --recommend, --because and --part start a new intent; they do not change an existing run.", "Answer the run's classification decision instead: paved intent --run <id> --answer <id>=<value> --answered-by <you> --json.");
+    }
     const selected = selectRun(invocation, step);
     if ("result" in selected) return selected.result;
     return await resume(invocation, step, selected.run, selected.answers);

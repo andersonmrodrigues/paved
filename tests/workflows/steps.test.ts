@@ -112,6 +112,26 @@ describe("intent, plan and execute", () => {
     assert.equal(runOf(repeated), id);
   });
 
+  it("intent refuses flags it would otherwise ignore", async () => {
+    const cases: [string[], string][] = [
+      [["intent", "Add CSV export", "--because", "New format."], "PAVED_INTENT_FLAGS_INVALID"],
+      [["intent", "Add CSV export", "--input", "acceptance-criteria=CSV downloads"], "PAVED_INTENT_FLAGS_INVALID"],
+      [["intent", "Export fails", "--workflow", "bug", "--because", "It fails.", "--input", "report=Other text"], "PAVED_WORKFLOW_INPUT_INVALID"],
+      [["intent", "Add CSV export", "--workflow", "feature", "--because", "New.", "--input", "request=Other text"], "PAVED_WORKFLOW_INPUT_INVALID"],
+    ];
+    for (const [argv, code] of cases) {
+      const result = await invoke(...argv);
+      assert.equal(result.diagnostics[0]?.code, code, `${argv.join(" ")}: ${JSON.stringify(result.diagnostics)}`);
+    }
+    const pending = await invoke("intent", "Speed up export");
+    for (const flags of [["--workflow", "refactor", "--because", "x"], ["--recommend", "refactor", "--because", "x"], ["--part", "a", "--part", "b"], ["--because", "x"]]) {
+      const result = await invoke("intent", "--run", runOf(pending), ...flags);
+      assert.equal(result.diagnostics[0]?.code, "PAVED_INTENT_FLAGS_INVALID", `${flags.join(" ")}: ${JSON.stringify(result.diagnostics)}`);
+      assert.match(result.diagnostics[0]?.remediation ?? "", /--answer/);
+    }
+    assert.equal(readRunFile(runOf(pending)).workflow, undefined);
+  });
+
   it("each step refuses phases it does not own and names the owner", async () => {
     const id = runOf(await invoke("intent", "Add CSV export", "--workflow", "feature", "--because", "New behavior."));
     const plan = await invoke("plan", "--run", id, "--advance", "--note", "x");
