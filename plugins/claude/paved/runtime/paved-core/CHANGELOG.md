@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-10-05
+
 ### Changed
 
 - The plugin's prompt hook adds the Paved routing guidance once per session in each
