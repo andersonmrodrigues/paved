@@ -50,6 +50,7 @@ describe("agent projections", () => {
       const command = AGENT_COMMANDS.find((item) => item.name === "plan")!;
       const text = renderCommand(command, { headerLine: "<!-- h -->", title: "/paved:plan", launcher: { command: "node b.mjs" } });
       assert.ok(text.includes(".paved/documents/plans/<run-id>.md"));
+    assert.ok(text.includes(".paved/documents/intents/<run-id>.md"), "the plan starts from the run's Intent document");
       assert.ok(text.includes("paved plan --run <run-id> --approve --json"));
     });
   });
