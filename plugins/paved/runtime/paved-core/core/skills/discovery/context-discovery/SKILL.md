@@ -1,7 +1,7 @@
 ---
 name: context-discovery
 description: >-
-  Map a repository or task area, its entry points, dependencies, tests and relevant project context before making changes. Use when onboarding to an unfamiliar repository, starting discovery for a change, or locating what an existing task may affect.
+  Use when a user asks for repository orientation or onboarding: map an unfamiliar codebase's structure, entry points, key modules, tests or verification flow, even when no change is requested. Also use when starting discovery for a change or locating what an existing task may affect.
 ---
 
 # Context discovery

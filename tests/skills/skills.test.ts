@@ -72,6 +72,14 @@ describe("core skills", () => {
     }
   });
 
+  it("routes repository orientation to context discovery even without a change request", () => {
+    const description = skills.find((skill) => skill.name === "context-discovery")?.files.description;
+    assert.ok(description);
+    assert.match(description, /repository orientation/i);
+    assert.match(description, /onboarding/i);
+    assert.match(description, /even when no change is requested/i);
+  });
+
   it("form an acyclic dependency graph", () => {
     assert.deepEqual(dependencyCycles(skills.map((s) => s.files.contract)), []);
   });

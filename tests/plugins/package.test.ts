@@ -51,8 +51,11 @@ describe("generated plugins", () => {
 
     assert.ok(claudePlan.files.has("evals/README.md"));
     assert.ok(claudePlan.files.has("evals/cases/skill-routing/prompt.md"));
+    assert.ok(claudePlan.files.has("evals/cases/repository-onboarding/prompt.md"));
+    assert.ok(claudePlan.files.has("evals/cases/repository-onboarding/graders/skill-fired.md"));
     assert.ok(!portablePlan.files.has("evals/README.md"));
     assert.ok(!portablePlan.files.has("evals/cases/skill-routing/prompt.md"));
+    assert.ok(!portablePlan.files.has("evals/cases/repository-onboarding/prompt.md"));
   });
 
   it("are exactly what the build produces from the current Core", () => {
