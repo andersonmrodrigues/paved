@@ -24,20 +24,18 @@ function formatVersion(parts) {
 const core = parseVersion(coreVersion, "Core version");
 const plugin = parseVersion(pluginVersion, "Plugin version");
 
-if (bump === "major") {
-  core[0] += 1;
-  core[1] = 0;
-  core[2] = 0;
-} else if (bump === "minor") {
-  core[1] += 1;
-  core[2] = 0;
-} else {
-  core[2] += 1;
+function bumped(parts, kind) {
+  if (kind === "major") return [parts[0] + 1, 0, 0];
+  if (kind === "minor") return [parts[0], parts[1] + 1, 0];
+  return [parts[0], parts[1], parts[2] + 1];
 }
 
-plugin[2] += 1;
-if (!Number.isSafeInteger(plugin[2])) {
-  throw new Error("Plugin patch version exceeds the safe integer range.");
+const nextCore = bumped(core, bump);
+// The plugin moves by the same kind of bump, and its major never trails the runtime it bundles.
+let nextPlugin = bumped(plugin, bump);
+if (nextPlugin[0] < nextCore[0]) nextPlugin = [nextCore[0], 0, 0];
+if ([...nextCore, ...nextPlugin].some((part) => !Number.isSafeInteger(part))) {
+  throw new Error("A version component exceeds the safe integer range.");
 }
 
-process.stdout.write(`${formatVersion(core)} ${formatVersion(plugin)}\n`);
+process.stdout.write(`${formatVersion(nextCore)} ${formatVersion(nextPlugin)}\n`);

@@ -11,6 +11,9 @@ releases, not the development sequence used to build them.
   repository, instead of on every prompt, and again after the context is compacted or
   cleared ([ADR 0037](docs/decisions/0037-session-scoped-prompt-guidance.md)).
 - The `plan` step starts from the run's Intent document and links to it.
+- A Core release bumps the plugin version by the same kind of bump, and the plugin's
+  major version follows the major version of the runtime it bundles. The next release
+  ships the plugin as 2.0.0, matching the 2.0.0 runtime it carries since that release.
 
 ### Fixed
 
