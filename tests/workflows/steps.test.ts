@@ -132,6 +132,15 @@ describe("intent, plan and execute", () => {
     assert.equal(readRunFile(runOf(pending)).workflow, undefined);
   });
 
+  it("bug discovery reports why the testing Tool could not run", async () => {
+    const id = runOf(await invoke("intent", "Export fails for archived items", "--workflow", "bug", "--because", "A failure is reported."));
+    assert.equal((await invoke("intent", "--run", id, "--advance", "--note", "Expected behavior is clear")).status, "success");
+    const discovery = await invoke("intent", "--run", id, "--advance", "--note", "Suspected cause");
+    const code = discovery.diagnostics[0]?.code ?? "";
+    assert.match(code, /^PAVED_TEST_/, JSON.stringify(discovery.diagnostics));
+    assert.doesNotMatch(discovery.diagnostics[0]?.remediation ?? "", /Write a regression test/);
+  });
+
   it("each step refuses phases it does not own and names the owner", async () => {
     const id = runOf(await invoke("intent", "Add CSV export", "--workflow", "feature", "--because", "New behavior."));
     const plan = await invoke("plan", "--run", id, "--advance", "--note", "x");
