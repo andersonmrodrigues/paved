@@ -141,6 +141,22 @@ describe("intent, plan and execute", () => {
     assert.doesNotMatch(discovery.diagnostics[0]?.remediation ?? "", /Write a regression test/);
   });
 
+  it("an unreadable run is named instead of breaking status and run selection", async () => {
+    const id = runOf(await invoke("intent", "Add CSV export", "--workflow", "feature", "--because", "New format."));
+    writeFileSync(join(project, ".paved/generated/runs", "intent-broken.yaml"), "id: [unclosed\n");
+
+    const status = await invoke("status");
+    assert.deepEqual((status.data as { openRuns: { run: string }[] }).openRuns.map((run) => run.run), [id]);
+    const warning = status.diagnostics.find((diagnostic) => diagnostic.code === "PAVED_WORKFLOW_RUN_INVALID");
+    assert.match(warning?.message ?? "", /intent-broken/);
+
+    const selected = await invoke("plan", "--advance");
+    assert.equal(selected.diagnostics[0]?.code, "PAVED_WORKFLOW_RUN_INVALID", JSON.stringify(selected.diagnostics));
+    assert.match(selected.diagnostics[0]?.message ?? "", /intent-broken/);
+    assert.match(selected.diagnostics[0]?.remediation ?? "", /--run/);
+    assert.equal((await invoke("intent", "--run", id)).status, "success");
+  });
+
   it("each step refuses phases it does not own and names the owner", async () => {
     const id = runOf(await invoke("intent", "Add CSV export", "--workflow", "feature", "--because", "New behavior."));
     const plan = await invoke("plan", "--run", id, "--advance", "--note", "x");

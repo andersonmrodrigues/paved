@@ -81,14 +81,34 @@ export function writeRun(projectRoot: string, coreRoot: string, run: Run): void 
   atomicWriteFileSync(path, stringify(run));
 }
 
-export function listRuns(projectRoot: string, coreRoot: string): Run[] {
+function runIds(projectRoot: string): string[] {
   const dir = join(projectRoot, ".paved/generated/runs");
   if (!existsSync(dir)) return [];
   return readdirSync(dir, { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".yaml"))
     .map((entry) => entry.name.slice(0, -".yaml".length))
-    .sort()
-    .flatMap((id) => readRun(projectRoot, coreRoot, id) ?? []);
+    .sort();
+}
+
+export function listRuns(projectRoot: string, coreRoot: string): Run[] {
+  return runIds(projectRoot).flatMap((id) => readRun(projectRoot, coreRoot, id) ?? []);
+}
+
+export type UnreadableRun = { readonly id: string; readonly reason: string };
+
+/** Like listRuns, but keeps reading past a run document that cannot be read and reports it. */
+export function scanRuns(projectRoot: string, coreRoot: string): { runs: Run[]; unreadable: UnreadableRun[] } {
+  const runs: Run[] = [];
+  const unreadable: UnreadableRun[] = [];
+  for (const id of runIds(projectRoot)) {
+    try {
+      const run = readRun(projectRoot, coreRoot, id);
+      if (run) runs.push(run);
+    } catch (error) {
+      unreadable.push({ id, reason: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  return { runs, unreadable };
 }
 
 export const isOpen = (run: Pick<Run, "status">): boolean => !TERMINAL_STATUSES.has(run.status);
