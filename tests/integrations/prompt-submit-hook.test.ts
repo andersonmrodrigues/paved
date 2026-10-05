@@ -23,8 +23,8 @@ function initialize(path: string): void {
   writeFileSync(join(path, ".paved", "paved.lock"), "version: test\n");
 }
 
-function runHook(input: string): { status: number | null; stdout: string; stderr: string } {
-  const result = spawnSync(process.execPath, [handler], { input, encoding: "utf8", timeout: 5_000 });
+function runHook(input: string, state = repository("state")): { status: number | null; stdout: string; stderr: string } {
+  const result = spawnSync(process.execPath, [handler], { input, encoding: "utf8", timeout: 5_000, env: { ...process.env, TMPDIR: state } });
   return {
     status: result.status,
     stdout: result.stdout,
@@ -138,5 +138,49 @@ describe("prompt submit hook", () => {
     assert.equal(await closed, 0, stderr);
     assert.match(stdout, /hookSpecificOutput/);
     assert.equal(stderr, "");
+  });
+
+  it("adds the guidance once per session and repository", () => {
+    const cwd = repository("once");
+    initialize(cwd);
+    const state = repository("once-state");
+    const prompt = (session: string) => runHook(JSON.stringify({ cwd, session_id: session, hook_event_name: "UserPromptSubmit" }), state);
+
+    assert.match(prompt("s-1").stdout, /hookSpecificOutput/);
+    assert.equal(prompt("s-1").stdout, "");
+    assert.match(prompt("s-2").stdout, /hookSpecificOutput/);
+  });
+
+  it("adds the guidance again after compaction or clear in the same session", () => {
+    const cwd = repository("compact");
+    initialize(cwd);
+    const state = repository("compact-state");
+    runHook(JSON.stringify({ cwd, session_id: "s-1", hook_event_name: "UserPromptSubmit" }), state);
+
+    for (const source of ["compact", "clear"]) {
+      const started = runHook(JSON.stringify({ cwd, session_id: "s-1", hook_event_name: "SessionStart", source }), state);
+      const output = JSON.parse(started.stdout) as { hookSpecificOutput: { hookEventName: string; additionalContext: string } };
+      assert.equal(output.hookSpecificOutput.hookEventName, "SessionStart");
+      assert.ok(output.hookSpecificOutput.additionalContext.includes("Paved `intent` command"));
+    }
+    assert.equal(runHook(JSON.stringify({ cwd, session_id: "s-1", hook_event_name: "UserPromptSubmit" }), state).stdout, "");
+  });
+
+  it("ignores a session start that is not a compaction or clear", () => {
+    const cwd = repository("startup");
+    initialize(cwd);
+    for (const source of ["startup", "resume", undefined]) {
+      assert.equal(runHook(JSON.stringify({ cwd, session_id: "s-1", hook_event_name: "SessionStart", source })).stdout, "", String(source));
+    }
+  });
+
+  it("still adds the guidance when the session state cannot be recorded", () => {
+    const cwd = repository("unwritable");
+    initialize(cwd);
+    const blocked = join(repository("unwritable-state"), "file");
+    writeFileSync(blocked, "not a directory\n");
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      assert.match(runHook(JSON.stringify({ cwd, session_id: "s-1", hook_event_name: "UserPromptSubmit" }), blocked).stdout, /hookSpecificOutput/);
+    }
   });
 });

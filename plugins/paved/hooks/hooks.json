@@ -1,8 +1,20 @@
 {
-  "description": "Adds advisory Paved routing context for initialized repositories.",
+  "description": "Adds advisory Paved routing context for initialized repositories, once per session and again after compaction.",
   "hooks": {
     "UserPromptSubmit": [
       {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/paved-prompt-submit.mjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact|clear",
         "hooks": [
           {
             "type": "command",
