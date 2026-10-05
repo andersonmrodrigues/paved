@@ -9,6 +9,8 @@ releases, not the development sequence used to build them.
 
 - Narrowed all skill and command activation descriptions around the user goal and request
   that should trigger them, with explicit distinctions for nearby skills.
+- Expanded `context-discovery` activation to include repository orientation and onboarding
+  requests that do not ask for a code change.
 
 ## [2.1.0] - 2026-10-05
 

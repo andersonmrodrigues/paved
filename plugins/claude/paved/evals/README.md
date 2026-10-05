@@ -3,6 +3,8 @@
 This suite measures whether the generated Claude plugin selects relevant Paved skills,
 avoids unrelated change workflows, and follows Paved's user-facing workflow boundaries.
 Cases use synthetic prompts and need no Apecatus or other consumer repository.
+The `repository-onboarding` case checks that broad repository-orientation requests activate
+`context-discovery` without starting a change workflow.
 
 ## Run locally
 
