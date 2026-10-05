@@ -65,6 +65,7 @@ describe("core workflows", () => {
     }
     assert.match(instructions, /paved preview start \.paved\/documents\/plans\/<run-id>\.md/);
     assert.ok(instructions.includes("plan path recorded in its existing"));
+    assert.match(instructions, /plan starts from the run's Intent document and\s+links to it/);
   });
 
   it("activates frontend design guidance in user-facing change workflows", () => {

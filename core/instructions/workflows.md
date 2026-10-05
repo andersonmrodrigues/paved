@@ -74,7 +74,9 @@ work; do not put machine state or local evidence here.
 | Research | `.paved/documents/research/<run-id>.md` |
 
 `intent` writes the Intent document. In the `plan` step, write the plan at
-`.paved/documents/plans/<run-id>.md`. Open that exact file with
+`.paved/documents/plans/<run-id>.md`. The plan starts from the run's Intent document and
+links to it, so the reviewer sees the request and classification the plan answers. Open
+that exact file with
 `paved preview start .paved/documents/plans/<run-id>.md --json`, or a folder with
 `paved preview start <folder> --json` when several documents are reviewed together
 (a plan with its specs, an epic with its tasks). A resumed run must continue to use the
