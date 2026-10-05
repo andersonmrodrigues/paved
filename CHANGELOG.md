@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-05
+
 ### Changed
 
 - Narrowed all skill and command activation descriptions around the user goal and request
