@@ -33,7 +33,8 @@ touched. See [migrating to 2.0](../getting-started/migrating-to-2.md).
 
 CLI subcommands kept: `test`, `verify`, `doctor` and `gardener` are not projected to agents
 but remain CLI subcommands for CI, the launcher and the runtime itself; `decision`, `tool`,
-`generate` and `agent` are unchanged.
+`generate`, `agent` and `workbench` are unchanged. `workbench` serves a loopback-only,
+read-only dashboard over existing run records and volatile agent hook activity.
 
 Each command contract also reports its interaction mode, decision source (`runtime` or
 `agent`) and answer channel (`relayed` or `human-authored`). Conversational commands

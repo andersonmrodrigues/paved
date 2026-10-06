@@ -103,6 +103,11 @@ reports when they are unavailable. See the [agent command reference](docs/concep
 for inputs, behavior and availability conditions, and [migrating to 2.0](docs/getting-started/migrating-to-2.md)
 if you used the 1.x commands.
 
+To follow several runs in one browser view, start the local Workbench with
+`paved workbench start`. Claude Code and Codex hooks add recent session activity while
+the dashboard is running; the run records remain authoritative and decisions stay in
+the conversation. See [installing the plugin](docs/getting-started/installing-the-plugin.md#follow-work-in-the-local-dashboard).
+
 ## What Paved provides
 
 - **Project context** generated from repository evidence and reviewed by people.
