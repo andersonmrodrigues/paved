@@ -26,3 +26,9 @@ The installable plugin in `plugins/` reuses this layer: its skills are rendered 
 `shared/projection.ts` from the same catalog, and its `scripts/paved.mjs` is
 `shared/bootstrap.mjs` unchanged. Consumers normally install that plugin through
 native plugin installation instead of committing a project-local projection.
+
+Claude Code and Codex also load plugin-bundled lifecycle hooks from
+`shared/hooks.json`. Host hooks stay advisory and fail open. The prompt hook adds
+session-scoped routing guidance; the Workbench hook sends minimal lifecycle activity
+only to a running loopback dashboard. The dashboard and run inspection live in the
+packaged CLI, not in either host projection.

@@ -20,6 +20,7 @@ npm test         # tests only (node:test, TypeScript run natively by Node >= 22.
 | `atomic-write.test.ts` | Persisted files replace atomically, failed replacement preserves existing destination state, and temporary write artifacts are cleaned up. |
 | `helpers.test.ts` | Temporary repository identities remain valid consumer slugs, fixture copies are independent, and registered temporary directories are removed. |
 | `operation-lock.test.ts` | Mutating consumer operations share an exclusive lock, release it after use, and fail closed on stale lock evidence. |
+| `workbench/` | The local dashboard is token-protected and loopback-only, reads current workflow runs, accepts only minimal hashed hook activity, and starts/stops through the CLI. |
 | `performance/` | Exercises init, update, generate, verify, status, doctor and Gardener in a synthetic consumer and prints an informational duration baseline without machine-specific thresholds. |
 | `fixtures/` | Inputs for the suites above (see its README). |
 
