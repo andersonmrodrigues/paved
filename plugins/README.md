@@ -29,5 +29,10 @@ The repository-backed marketplaces that list the plugin are
 `.agents/plugins/marketplace.json` (Codex), `.claude-plugin/marketplace.json`
 (Claude Code) and `.cursor-plugin/marketplace.json` (Cursor) at the repository root.
 The Cursor-specific manifest disables hook discovery so Cursor installs the skills
-without the Codex prompt hook. Installation is documented in
+without the shared prompt-routing or Workbench activity hooks. Installation is documented in
 `docs/getting-started/installing-the-plugin.md`.
+
+Claude Code and Codex load the plugin-bundled hooks from `hooks/hooks.json`. The
+Workbench activity hook is optional at runtime: it sends small lifecycle events only
+while `paved workbench start` is running. The local dashboard reads validated workflow
+runs from the repository and keeps hook activity in memory.

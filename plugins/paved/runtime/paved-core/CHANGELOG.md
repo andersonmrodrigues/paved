@@ -5,6 +5,12 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- `paved workbench start` serves a local dashboard of workflow runs, phases, pending
+  decisions and recent Claude Code/Codex hook activity. The loopback-only dashboard is
+  read-only; hook activity stays in memory and hooks fail open when it is unavailable.
+
 ## [2.2.0] - 2026-10-05
 
 ### Changed

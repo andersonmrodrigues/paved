@@ -204,6 +204,7 @@ function readme(source: PluginSource, runtime: RuntimeArtifact, hosts: string, d
     `- Runtime integrity: \`${runtime.integrity}\`, checked over the runtime and its dependencies before activation`,
     `- Launcher: \`${LAUNCHER_DIRECTORY}/paved.mjs\``,
     "- Prompt routing: `hooks/hooks.json` adds advisory Paved context once per session in repositories initialized with Paved, and again after compaction.",
+    "- Workbench: `paved workbench start` opens the local run dashboard; optional lifecycle hooks show recent agent activity only while it is running.",
     `- Skills: ${skills}`,
     "",
     "Installation and usage: https://github.com/andersonmrodrigues/paved/blob/main/docs/getting-started/installing-the-plugin.md",
@@ -287,6 +288,7 @@ function commonFiles(root: string, source: PluginSource, launcher: LauncherRefer
   files.set(`${LAUNCHER_DIRECTORY}/paved.mjs`, readFileSync(join(root, "integrations", "shared", "bootstrap.mjs")));
   files.set("hooks/hooks.json", readFileSync(join(root, "integrations", "shared", "hooks.json")));
   files.set("hooks/paved-prompt-submit.mjs", readFileSync(join(root, "integrations", "shared", "prompt-submit-hook.mjs")));
+  files.set("hooks/paved-workbench.mjs", readFileSync(join(root, "integrations", "shared", "workbench-hook.mjs")));
   files.set("VERSION", Buffer.from(`${source.version}\n`));
   return files;
 }
