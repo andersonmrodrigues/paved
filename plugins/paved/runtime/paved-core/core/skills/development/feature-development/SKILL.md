@@ -1,10 +1,7 @@
 ---
 name: feature-development
 description: >-
-  Implements new behavior or a change to existing behavior: understands the requirement,
-  finds the code it affects, plans the change and its proof, implements it in the
-  repository's existing style, adds tests and verifies. Use when a task adds or changes
-  what the software does and the requirement is clear enough to state as claims.
+  Implement and verify a requested change to software behavior, including its tests and evidence. Use when the requirement is clear and the user asks to build or change behavior; use refactoring when behavior must stay the same and prototyping for throwaway experiments.
 ---
 
 # Feature development

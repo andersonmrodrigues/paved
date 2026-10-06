@@ -1,9 +1,7 @@
 ---
 name: refactoring
 description: >-
-  Changes the structure of code without changing its behavior, in small steps that each
-  keep the tests passing. Use when code must be reorganized, renamed, split, merged or
-  simplified, or moved to respect a boundary, and no behavior should change.
+  Restructure, rename, split, merge or simplify code while preserving its behavior. Use when improving code structure or enforcing a boundary without changing what users observe; use feature-development when behavior changes.
 ---
 
 # Refactoring

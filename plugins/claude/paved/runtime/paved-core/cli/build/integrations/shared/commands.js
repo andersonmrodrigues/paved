@@ -5,7 +5,7 @@ const DEVELOPMENT_STATES = ["RESOLVED", "GENERATED", "VALIDATED", "READY"];
 const COMMAND_DEFINITIONS = [
     {
         id: "paved.init", name: "init", group: "management",
-        description: "Bootstrap the pinned project-local Paved runtime and initialize this repository.",
+        description: "Initialize Paved and prepare repository context and verification. Use when setting up Paved in a repository that is not initialized.",
         input: { required: false, description: "No arguments." },
         output: "Initialization result, detected adapters, lifecycle state, and diagnostics.",
         requiredContext: [".paved/manifest.yaml", "repository evidence"],
@@ -16,7 +16,7 @@ const COMMAND_DEFINITIONS = [
     },
     {
         id: "paved.status", name: "status", group: "management",
-        description: "Inspect Paved lifecycle, lock, adapters, context, verification profile and open runs, diagnose inconsistent state, and offer repairs.",
+        description: "Inspect Paved setup, diagnostics and open runs, then offer safe repairs. Use when checking readiness or deciding whether a reported Paved problem needs repair.",
         input: { required: false, description: "No arguments; answer a repair decision with --answer." },
         output: "Consumer inspection, actionable diagnostics, open runs, and repair decisions.",
         requiredContext: [".paved/manifest.yaml", ".paved/paved.lock"],
@@ -27,7 +27,7 @@ const COMMAND_DEFINITIONS = [
     },
     {
         id: "paved.intent", name: "intent", group: "development",
-        description: "Start any repository change: classify the request into the feature, bug or refactor workflow, write the Intent, and run context and discovery.",
+        description: "Start a repository change by classifying its type and recording the request before planning. Use when the user asks to begin a feature, bug fix or refactor.",
         input: { required: true, description: "The user's request, verbatim; classify with --workflow <id> --because <evidence>, or let the user decide." },
         output: "The run, its Intent document, its classification or the decision that settles it, and context and discovery results.",
         requiredContext: [".paved/manifest.yaml", ".paved/project/", ".paved/rules/", "core workflows"],
@@ -38,7 +38,7 @@ const COMMAND_DEFINITIONS = [
     },
     {
         id: "paved.plan", name: "plan", group: "development",
-        description: "Write the plan for the open run, review it in the preview, and record the user's approval given in the conversation.",
+        description: "Draft and preview a plan for an open Intent, then record the user's explicit approval. Use when an Intent is ready for planning.",
         input: { required: false, description: "The run, when several are open (--run <id>)." },
         output: "The plan awaiting approval, its review block, and the approval outcome.",
         requiredContext: [".paved/project/", ".paved/rules/", "the run's workflow", "verification profile"],
@@ -49,7 +49,7 @@ const COMMAND_DEFINITIONS = [
     },
     {
         id: "paved.execute", name: "execute", group: "development",
-        description: "Implement the approved plan, then test, verify, record evidence, review in the preview and complete the run.",
+        description: "Carry out the approved plan, run required checks and record review evidence. Use when the user-approved plan is ready to implement.",
         input: { required: false, description: "The run, when several are open (--run <id>)." },
         output: "Change, test and verification evidence, review document, completion, and new gardener proposals.",
         requiredContext: [".paved/project/", ".paved/rules/", "the run's workflow", "verification profile", "tool bindings"],
@@ -61,7 +61,7 @@ const COMMAND_DEFINITIONS = [
     },
     {
         id: "paved.preview", name: "preview", group: "development",
-        description: "Open a local review of a Markdown file or folder where a person comments on selected text across its documents.",
+        description: "Open a local review of Markdown documents and collect comments on selected text. Use when the user wants to review or comment on documents before approving them.",
         input: { required: true, description: "A Markdown file or a folder of Markdown files, and a preview operation." },
         output: "Loopback preview URL, the reviewed documents, and comments with their document, status and revision.",
         requiredContext: ["Markdown file or folder in the project"],
@@ -72,7 +72,7 @@ const COMMAND_DEFINITIONS = [
     },
     {
         id: "paved.update", name: "update", group: "management",
-        description: "Plan and apply a safe local Core, adapter, or input update.",
+        description: "Plan and apply a compatible local Paved Core, adapter or input update. Use when the user asks to update initialized Paved state.",
         input: { required: false, description: "No arguments." },
         output: "Compatibility result, planned changes, lock result, and diagnostics.",
         requiredContext: [".paved/manifest.yaml", ".paved/paved.lock"],

@@ -1,10 +1,7 @@
 ---
 name: bug-investigation
 description: >-
-  Takes a bug report from symptom to verified fix: clarifies the expected behavior,
-  reproduces the defect, isolates it, finds the root cause, writes a regression test,
-  fixes it and verifies. Use when something that used to work, or should work, does not,
-  and a fix is expected.
+  Reproduce a reported defect, find its cause, implement a fix and verify the behavior. Use when the user reports something that should work but does not and expects a fix; use root-cause-analysis when they only want the cause.
 ---
 
 # Bug investigation

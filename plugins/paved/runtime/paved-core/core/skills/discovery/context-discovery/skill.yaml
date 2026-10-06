@@ -1,7 +1,7 @@
 apiVersion: paved/v1
 kind: Skill
 id: core.discovery.context-discovery
-version: 0.3.0
+version: 0.3.2
 status: experimental
 category: discovery
 context:

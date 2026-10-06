@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { after, describe, it } from "node:test";
+import { loadMarkdown } from "../../cli/lib/documents.ts";
 import { AGENT_COMMANDS } from "../../integrations/shared/commands.ts";
 import { loadCanonicalSkills } from "../../integrations/shared/catalog.ts";
 import {
@@ -43,6 +44,20 @@ const assertSquarePng = (icon: Buffer) => {
 };
 
 describe("generated plugins", () => {
+  it("projects Claude eval fixtures only into the Claude plugin", () => {
+    const plans = planPlugins(ROOT, packRuntime(ROOT, { build: false }));
+    const claudePlan = plans.find((plan) => plan.target === PLUGIN_TARGETS.claude)!;
+    const portablePlan = plans.find((plan) => plan.target === PLUGIN_TARGETS.portable)!;
+
+    assert.ok(claudePlan.files.has("evals/README.md"));
+    assert.ok(claudePlan.files.has("evals/cases/skill-routing/prompt.md"));
+    assert.ok(claudePlan.files.has("evals/cases/repository-onboarding/prompt.md"));
+    assert.ok(claudePlan.files.has("evals/cases/repository-onboarding/graders/skill-fired.md"));
+    assert.ok(!portablePlan.files.has("evals/README.md"));
+    assert.ok(!portablePlan.files.has("evals/cases/skill-routing/prompt.md"));
+    assert.ok(!portablePlan.files.has("evals/cases/repository-onboarding/prompt.md"));
+  });
+
   it("are exactly what the build produces from the current Core", () => {
     const runtime = packRuntime(ROOT, { build: false });
     for (const plan of planPlugins(ROOT, runtime)) {
@@ -213,10 +228,23 @@ describe("generated plugins", () => {
 
   it("expose every canonical skill and command exactly once", () => {
     const launchers: [string, string][] = [[portable, 'node "<plugin root>/scripts/paved.mjs"'], [claude, 'node "${CLAUDE_PLUGIN_ROOT}/scripts/paved.mjs"']];
+    const canonicalDescriptions = new Map(loadCanonicalSkills(ROOT).map((skill) => [
+      skill.name,
+      String(loadMarkdown(join(skill.directory, "SKILL.md")).frontmatter.description),
+    ]));
     for (const [plugin, launcher] of launchers) {
       const skills = filesRecursive(join(plugin, "skills"), (path) => path.endsWith("SKILL.md"));
       const names = skills.map((file) => /^---\s*\nname:\s*(\S+)/.exec(readFileSync(file, "utf8"))?.[1]).sort();
       assert.deepEqual(names, expectedSkills());
+      for (const file of skills) {
+        const frontmatter = loadMarkdown(file).frontmatter;
+        const name = String(frontmatter.name);
+        const command = AGENT_COMMANDS.find((entry) => entry.name === name);
+        const expected = command === undefined
+          ? canonicalDescriptions.get(name)
+          : `Paved command ${command.id}. ${command.description}`;
+        assert.equal(frontmatter.description, expected, `${plugin} ${name} description matches its canonical source`);
+      }
       for (const command of AGENT_COMMANDS) {
         const body = readFileSync(join(plugin, "skills", command.name, "SKILL.md"), "utf8");
         assert.match(body, /^---\nname: [a-z-]+\ndescription: "Paved command paved\.[a-z-]+\. /);
@@ -235,7 +263,7 @@ describe("generated plugins", () => {
   it("refuses to overwrite a hand-edited generated file and replaces untouched ones", () => {
     const root = workspace("plugin-edit");
     temporary.push(root);
-    for (const path of ["plugins/plugin-source.json", "plugins/icon.png", "plugins/provenance", "package-lock.json", "core/skills", "integrations/shared", PLUGIN_DIRECTORY, CLAUDE_PLUGIN_DIRECTORY]) {
+    for (const path of ["plugins/plugin-source.json", "plugins/icon.png", "plugins/provenance", "plugins/claude/evals", "package-lock.json", "core/skills", "integrations/shared", PLUGIN_DIRECTORY, CLAUDE_PLUGIN_DIRECTORY]) {
       cpSync(join(ROOT, path), join(root, path), { recursive: true });
     }
     const runtime = packRuntime(ROOT, { build: false });

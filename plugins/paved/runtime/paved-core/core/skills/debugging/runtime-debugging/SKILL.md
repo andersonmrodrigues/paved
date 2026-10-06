@@ -1,10 +1,7 @@
 ---
 name: runtime-debugging
 description: >-
-  Observes a running system to explain its behavior: logs, metrics, traces, health
-  endpoints and configuration, read-only first and never destructive in shared or
-  production environments. Use when a defect or incident shows up only in a running
-  environment, or when code reading alone cannot explain what the system does.
+  Diagnose behavior that appears only while a system is running using logs, metrics, traces and health signals, starting with read-only inspection. Use when code inspection cannot explain a live defect or incident.
 ---
 
 # Runtime debugging

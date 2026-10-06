@@ -1,9 +1,7 @@
 ---
 name: change-review
 description: >-
-  Reviews a finished change before completion across correctness, scope, architecture,
-  consistency, maintainability, tests, security, performance and evidence. Use when a
-  change reaches the review phase of a workflow, or when a human asks for a review.
+  Review a completed code change for correctness, scope, architecture, tests, security, performance and evidence. Use when the user asks for a code review or a verified change reaches its review gate; use task-review for issue text and threat-modeling for a design not yet built.
 ---
 
 # Change review

@@ -1,10 +1,7 @@
 ---
 name: unit-testing
 description: >-
-  Writes or updates fast, isolated tests for one unit of logic, following the
-  repository's existing test conventions: location, naming, structure, test doubles and
-  assertions. Use when code with its own logic is added or changed, or when a claim can
-  be proven without real external collaborators.
+  Write fast, isolated tests for one unit of logic using the repository's test conventions. Use when new or changed logic can be proven without real external collaborators; use integration-testing when behavior depends on a boundary.
 ---
 
 # Unit testing

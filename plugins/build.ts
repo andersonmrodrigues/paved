@@ -291,6 +291,25 @@ function commonFiles(root: string, source: PluginSource, launcher: LauncherRefer
   return files;
 }
 
+/** Authored behavior-eval fixtures ship with Claude only, never in the portable runtime. */
+function claudeEvalFiles(root: string): Map<string, Buffer> {
+  const source = join(root, "plugins", "claude", "evals");
+  const files = new Map<string, Buffer>();
+  const walk = (directory: string) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isSymbolicLink()) throw new Error(`Refusing symbolic link in Claude eval sources: ${relative(source, path)}`);
+      if (entry.isDirectory()) walk(path);
+      else if (entry.isFile()) {
+        const name = relative(source, path).split(sep).join("/");
+        files.set(`evals/${name}`, readFileSync(path));
+      } else throw new Error(`Unexpected entry in Claude eval sources: ${relative(source, path)}`);
+    }
+  };
+  walk(source);
+  return files;
+}
+
 function bootstrapConfig(runtime: RuntimeArtifact, fields: Record<string, string> = {}): Buffer {
   return json({ package: "paved-core", version: runtime.version, integrity: runtime.integrity, runtime: `../${RUNTIME_DIRECTORY}`, ...fields, _paved_generated: true });
 }
@@ -313,6 +332,7 @@ function planPortable(root: string, source: PluginSource, runtime: RuntimeArtifa
  */
 function planClaude(root: string, source: PluginSource, runtime: RuntimeArtifact): PluginPlan {
   const files = commonFiles(root, source, CLAUDE_LAUNCHER);
+  for (const [path, bytes] of claudeEvalFiles(root)) files.set(path, bytes);
   files.set(".claude-plugin/plugin.json", json({ ...identity(source), displayName: source.displayName }));
   // Claude's plugin directory reads the listing icon from this default path.
   files.set(".claude-plugin/icon.png", readFileSync(join(root, "plugins", "icon.png")));
