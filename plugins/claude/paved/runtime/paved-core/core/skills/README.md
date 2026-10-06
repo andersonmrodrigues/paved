@@ -28,29 +28,29 @@ All Core skills are `experimental`.
 
 | Category | Skill | Version | Purpose |
 |---|---|---|---|
-| `bootstrap` | `repository-onboarding` | 0.2.0 | Set up or repair Paved in a repository |
-| `discovery` | `context-discovery` | 0.2.0 | Understand a repository or the part a task touches |
-| `development` | `feature-development` | 0.4.0 | Add or change behavior |
-| | `frontend-design` | 0.1.0 | Plan and critique user-facing frontend interfaces |
-| | `refactoring` | 0.2.0 | Change structure without changing behavior |
-| | `prototyping` | 0.1.0 | Answer a feasibility question with throwaway code |
-| `debugging` | `bug-investigation` | 0.3.0 | From symptom to verified fix |
-| | `root-cause-analysis` | 0.2.0 | Find and confirm the cause of a defect |
-| | `runtime-debugging` | 0.1.0 | Observe a running system safely |
-| `testing` | `unit-testing` | 0.1.0 | Isolated tests for local logic |
-| | `integration-testing` | 0.1.0 | Tests across real boundaries |
-| | `e2e-testing` | 0.1.0 | Tests of critical user-visible flows |
-| | `regression-testing` | 0.2.0 | A test that fails before a fix and passes after |
-| `performance` | `profiling` | 0.2.0 | Measure, locate the bottleneck, change one thing |
-| | `backend-performance` | 0.1.0 | Server-side latency, data access, caching, concurrency |
-| | `frontend-performance` | 0.1.0 | Perceived load time, responsiveness, payload size |
-| `security` | `security-review` | 0.2.0 | Review a change for security impact |
-| | `threat-modeling` | 0.1.0 | Find threats in a design before it is built |
-| `code-review` | `change-review` | 0.2.0 | Review a finished change across all dimensions |
-| `gardener` | `gardener` | 0.2.0 | Turn recurring corrections into structural improvements |
-| `decisions` | `decisions` | 0.1.0 | Relay Paved decisions without taking authorship from the user |
-| `product` | `task-specification` | 0.4.0 | Write new tracker items or fill in existing ones, grounded in the repository |
-| | `task-review` | 0.4.0 | Review an existing task or issue against the project's template and the repository |
+| `bootstrap` | `repository-onboarding` | 0.3.1 | Set up or repair Paved in a repository |
+| `discovery` | `context-discovery` | 0.3.2 | Understand a repository or the part a task touches |
+| `development` | `feature-development` | 0.4.1 | Add or change behavior |
+| | `frontend-design` | 0.1.1 | Plan and critique user-facing frontend interfaces |
+| | `refactoring` | 0.2.1 | Change structure without changing behavior |
+| | `prototyping` | 0.1.1 | Answer a feasibility question with throwaway code |
+| `debugging` | `bug-investigation` | 0.3.1 | From symptom to verified fix |
+| | `root-cause-analysis` | 0.3.1 | Find and confirm the cause of a defect |
+| | `runtime-debugging` | 0.1.1 | Observe a running system safely |
+| `testing` | `unit-testing` | 0.1.1 | Isolated tests for local logic |
+| | `integration-testing` | 0.1.1 | Tests across real boundaries |
+| | `e2e-testing` | 0.1.1 | Tests of critical user-visible flows |
+| | `regression-testing` | 0.2.1 | A test that fails before a fix and passes after |
+| `performance` | `profiling` | 0.2.1 | Measure, locate the bottleneck, change one thing |
+| | `backend-performance` | 0.1.1 | Server-side latency, data access, caching, concurrency |
+| | `frontend-performance` | 0.1.1 | Perceived load time, responsiveness, payload size |
+| `security` | `security-review` | 0.4.1 | Review a change for security impact |
+| | `threat-modeling` | 0.1.1 | Find threats in a design before it is built |
+| `code-review` | `change-review` | 0.4.1 | Review a finished change across all dimensions |
+| `gardener` | `gardener` | 0.3.1 | Turn recurring corrections into structural improvements |
+| `decisions` | `decisions` | 0.1.1 | Relay Paved decisions without taking authorship from the user |
+| `product` | `task-specification` | 0.4.1 | Write new tracker items or fill in existing ones, grounded in the repository |
+| | `task-review` | 0.4.1 | Review an existing task or issue against the project's template and the repository |
 
 A skill is identified by `<namespace>.<category>.<name>` (for example
 `core.debugging.root-cause-analysis`); `SKILL.md` keeps the short `name` that agents

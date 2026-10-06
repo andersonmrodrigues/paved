@@ -1,10 +1,7 @@
 ---
 name: threat-modeling
 description: >-
-  Identifies what can go wrong, security-wise, in a design before or while it is built:
-  what is being protected, where the trust boundaries are, which threats apply at each
-  and what mitigates them. Use when a change adds a component, interface, data flow,
-  integration or new kind of sensitive data, or when asked for a threat model.
+  Identify assets, trust boundaries, likely threats and mitigations in a proposed design. Use when designing a new component, interface, data flow, integration or handling of sensitive data, or when the user asks for a threat model; use security-review for a completed code change.
 ---
 
 # Threat modeling

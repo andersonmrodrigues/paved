@@ -1,7 +1,7 @@
 apiVersion: paved/v1
 kind: Skill
 id: core.development.feature-development
-version: 0.4.0
+version: 0.4.1
 status: experimental
 category: development
 context:

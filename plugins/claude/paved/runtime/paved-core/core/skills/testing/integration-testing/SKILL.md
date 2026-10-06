@@ -1,10 +1,7 @@
 ---
 name: integration-testing
 description: >-
-  Writes or updates tests that exercise a component together with its real collaborators
-  (storage, messaging, other services or their local stand-ins) through the repository's
-  existing integration test setup. Use when a claim depends on how components interact
-  across a boundary, which unit tests with doubles cannot prove.
+  Test a component with its real collaborators or local stand-ins through the repository's integration setup. Use when behavior across a component boundary cannot be proven with isolated unit tests.
 ---
 
 # Integration testing

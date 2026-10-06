@@ -15,6 +15,7 @@ import {
 } from "../../cli/lib/skills.ts";
 import { at, filesRecursive, formatErrors, rel, schemas, subdirectories } from "../helpers.ts";
 import { coreRules, coreSkills } from "../core/registries.ts";
+import { AGENT_COMMANDS } from "../../integrations/shared/commands.ts";
 
 // Frontmatter fields defined by https://agentskills.io/specification
 const AGENT_SKILLS_FIELDS = new Set(["name", "description", "license", "compatibility", "metadata", "allowed-tools"]);
@@ -56,6 +57,27 @@ describe("core skills", () => {
   it("have unique names", () => {
     const names = skills.map((s) => s.name);
     assert.equal(new Set(names).size, names.length);
+  });
+
+  it("expose 30 goal-and-trigger descriptions to Claude", () => {
+    const catalog = [
+      ...skills.map((skill) => ({ name: skill.name, description: skill.files.description })),
+      ...AGENT_COMMANDS.map((command) => ({ name: command.name, description: command.description })),
+    ];
+    assert.equal(catalog.length, 30);
+    assert.equal(new Set(catalog.map((entry) => entry.name)).size, 30);
+    for (const { name, description } of catalog) {
+      assert.ok(description.length > 0 && description.length <= 1024, `${name}: description length`);
+      assert.match(description, /\buse when\b/i, `${name}: name the activation condition with “Use when …”`);
+    }
+  });
+
+  it("routes repository orientation to context discovery even without a change request", () => {
+    const description = skills.find((skill) => skill.name === "context-discovery")?.files.description;
+    assert.ok(description);
+    assert.match(description, /repository orientation/i);
+    assert.match(description, /onboarding/i);
+    assert.match(description, /even when no change is requested/i);
   });
 
   it("form an acyclic dependency graph", () => {

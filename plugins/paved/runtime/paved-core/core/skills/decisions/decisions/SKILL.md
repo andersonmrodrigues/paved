@@ -1,8 +1,7 @@
 ---
 name: decisions
 description: >-
-  Use when Paved surfaces a decision, blocks a command on user input, or an agent is
-  asked to answer, relay, or raise a decision.
+  Relay a pending decision and collect the user's answer without deciding on their behalf. Use when Paved blocks on a decision or the user asks you to present or resume one.
 ---
 
 # Conversational decisions
