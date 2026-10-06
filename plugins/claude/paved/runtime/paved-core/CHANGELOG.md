@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-10-06
+
 ### Added
 
 - `paved workbench start` serves a local dashboard of workflow runs, phases, pending
