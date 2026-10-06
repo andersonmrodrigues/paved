@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Paved Workbench</title>
+  <link rel="stylesheet" href="/workbench.css">
+  <script src="/workbench.js" defer></script>
+</head>
+<body>
+  <header><a class="brand" href="/">Paved<span>Workbench</span></a><div><span id="updated">Atualizando…</span><span class="live"><i></i> Local</span></div></header>
+  <main>
+    <section class="intro"><div><p class="eyebrow">ACOMPANHAMENTO DO REPOSITÓRIO</p><h1>Trabalho em andamento</h1><p class="sub">Runs, etapas, decisões e atividade recente dos agentes neste projeto.</p></div><button id="refresh">Atualizar</button></section>
+    <section class="metrics" aria-label="Resumo"><article><span>Runs abertas</span><strong id="open-count">—</strong></article><article><span>Aguardando você</span><strong id="waiting-count">—</strong></article><article><span>Concluídas</span><strong id="done-count">—</strong></article><article><span>Sessões recentes</span><strong id="session-count">—</strong></article></section>
+    <div class="columns">
+      <section class="panel"><div class="panel-title"><div><p class="eyebrow">FLUXO PAVED</p><h2>Runs</h2></div><span id="run-total"></span></div><div id="runs" class="run-list"></div><div id="empty-runs" class="empty" hidden><strong>Nenhuma run ainda</strong><p>Comece uma mudança com <code>paved intent</code>. As etapas aparecerão aqui conforme o trabalho avança.</p></div></section>
+      <section class="panel activity-panel"><div class="panel-title"><div><p class="eyebrow">HOOKS DE AGENTE</p><h2>Atividade recente</h2></div><span class="subtle">últimas 100 sessões</span></div><div id="activity"></div><div id="empty-activity" class="empty" hidden><strong>Sem atividade recente</strong><p>Hooks de Claude Code e Codex aparecem enquanto o Workbench estiver ativo.</p></div><p class="privacy">Os hooks enviam apenas agente, tipo de evento, ferramenta e um identificador de sessão resumido. Prompts e conteúdo de ferramentas não são guardados.</p></section>
+    </div>
+    <p id="error" role="status"></p>
+  </main>
+</body>
+</html>

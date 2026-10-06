@@ -17,6 +17,7 @@ this CLI yet.
 | [`paved generate`](commands/generate/README.md) | Run all generators or selected generator ids and their dependencies | `.paved/project/`, `.paved/generated/`, `.paved/generated/state/last-run.json` |
 | [`paved verify`](commands/verify/README.md) | Run the explicit verification profile through approved Tool bindings and record sanitized evidence | `.paved/generated/evidence/` |
 | [`paved status`](commands/status/README.md) | Report initialized state, lock health, adapters, generator state, proposals, verification profile state, open runs, diagnostics and repair decisions | nothing, unless a repair decision is answered |
+| `paved workbench` | Start a local dashboard for runs and recent Codex/Claude Code hook activity, or inspect/stop it | disposable `.paved/generated/workbench/server.json`; activity stays in memory |
 | [`paved doctor`](commands/doctor/README.md) | The diagnostics and repair decisions of `status`, kept as a CLI subcommand for the launcher and CI | nothing, unless a repair decision is answered |
 | `paved gardener` | Analyze existing consumer evidence and report review proposals | nothing |
 | `paved agent` | List, discover/resolve shared agent command contracts, validate, install, update or uninstall project-local agent projections | `.agents/`, `.claude/` or `.claude-plugin/` projection files |
@@ -62,6 +63,7 @@ Command-specific options are intentionally narrow:
 | `intent` | The request, with `--workflow <feature\|bug\|refactor> --because <evidence>`, or `--recommend <id> --because <evidence>`, or one `--part <request>` per part; `--input <id>=<value>` repeatable |
 | `intent`, `plan`, `execute` | `--run <id>` (required only when several runs are open), `--advance` with `--note` and `--evidence` as required, `--answer` |
 | `plan` | `--approve` records the user's approval of the current plan, given in the conversation |
+| `workbench` | `start`, `status` or `stop`; binds only to loopback, requires a random bearer token, reads existing run records and never makes workflow decisions |
 
 ## Output and exit codes
 

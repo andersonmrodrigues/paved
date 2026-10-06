@@ -58,7 +58,7 @@ describe("clean-room plugin installation", { skip }, () => {
 
     for (const [installed, source] of [[codexPlugin, PLUGIN_DIRECTORY], [claudePlugin, CLAUDE_PLUGIN_DIRECTORY]] as const) {
       assert.ok(!realpathSync(installed).startsWith(realpathSync(ROOT)), `${installed} must not be the development checkout`);
-      for (const file of [`${LAUNCHER_DIRECTORY}/paved.mjs`, `${LAUNCHER_DIRECTORY}/bootstrap.json`, "skills/init/SKILL.md", "hooks/hooks.json", "hooks/paved-prompt-submit.mjs"]) {
+      for (const file of [`${LAUNCHER_DIRECTORY}/paved.mjs`, `${LAUNCHER_DIRECTORY}/bootstrap.json`, "skills/init/SKILL.md", "hooks/hooks.json", "hooks/paved-prompt-submit.mjs", "hooks/paved-workbench.mjs"]) {
         assert.deepEqual(readFileSync(join(installed, file)), readFileSync(join(ROOT, source, file)), `${installed}: ${file}`);
       }
       assert.equal(treeIntegrity(join(installed, RUNTIME_DIRECTORY)), treeIntegrity(join(ROOT, source, RUNTIME_DIRECTORY)), `${installed}: the host installs the whole unpacked runtime`);

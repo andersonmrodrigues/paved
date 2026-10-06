@@ -4,7 +4,7 @@
   "displayName": "Paved",
   "description": "Paved engineering commands for AI coding agents: repository context, governed workflows, explicit Tools, verification and evidence, executed by a pinned project-local Paved runtime.",
   "shortDescription": "Governed workflows for agents",
-  "longDescription": "Paved gives a repository a durable operating model for agent work. Invoke Paved commands (init, status, plan, feature, fix, refactor, test, verify, review and more) and the bundled launcher activates the version-pinned, integrity-checked Paved runtime under the repository's .paved/runtime/ directory. Workflows, Tool execution, verification and evidence are decided by that runtime; the plugin only distributes and invokes it.",
+  "longDescription": "Paved gives coding agents repository context and a governed workflow for changes. Start with intent, review and approve a plan, then execute with tests, verification and evidence. The plugin activates a version-pinned runtime in the repository. Use the local Workbench to follow runs and recent Claude Code or Codex activity.",
   "author": {
     "name": "Anderson Rodrigues",
     "url": "https://github.com/andersonmrodrigues"
@@ -17,6 +17,7 @@
   "defaultPrompts": [
     "Initialize Paved in this repository",
     "Show the Paved status of this repository",
-    "Plan this change with Paved"
+    "Plan this change with Paved",
+    "Follow Paved work in the local dashboard"
   ]
 }

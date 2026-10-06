@@ -50,4 +50,11 @@ describe("Agent Integration Contract", () => {
     assert.doesNotMatch(installation, /create (?:a )?CLAUDE\.md/i);
     assert.doesNotMatch(installation, /\.claude\/settings\.json/);
   });
+
+  it("documents the local Workbench and its privacy boundary", () => {
+    assert.match(installation, /paved workbench start/);
+    assert.match(installation, /hashed session id/i);
+    assert.match(installation, /never send prompt text/i);
+    assert.match(installation, /read-only/);
+  });
 });

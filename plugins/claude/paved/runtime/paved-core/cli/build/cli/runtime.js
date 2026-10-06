@@ -13,10 +13,11 @@ import { updateHandler } from "./commands/update.js";
 import { verifyHandler } from "./commands/verify.js";
 import { stepHandler } from "./commands/workflow.js";
 import { previewHandler } from "./commands/preview.js";
+import { workbenchHandler } from "./commands/workbench.js";
 import { createDiagnostic, createResult } from "./result.js";
 import { CliPathError, resolveCoreRoot, resolveProjectRoot } from "./paths.js";
 import { assertAnswerIdentity, parseAnswerFlags } from "./lib/decisions/answers.js";
-export const COMMAND_NAMES = ["init", "status", "intent", "plan", "execute", "test", "verify", "update", "doctor", "gardener", "generate", "agent", "decision", "preview"];
+export const COMMAND_NAMES = ["init", "status", "intent", "plan", "execute", "test", "verify", "update", "doctor", "gardener", "generate", "agent", "decision", "preview", "workbench"];
 const STEP_COMMANDS = ["intent", "plan", "execute"];
 const COMMANDS = new Set(COMMAND_NAMES);
 const COMMON_VALUE_FLAGS = new Set(["--project"]);
@@ -33,6 +34,7 @@ const COMMAND_RULES = {
     agent: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
     decision: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
     preview: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
+    workbench: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
     intent: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
     plan: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
     execute: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
@@ -93,7 +95,7 @@ function takeValue(argv, index, flag, command) {
 function commandUsage(command) {
     if (command !== undefined) {
         const selectors = command === "generate" ? " [generator-id...]" : command === "agent"
-            ? " <operation> [integration|command-name]" : command === "preview" ? " <start|serve|status|wait|working|resolve|stop> <file.md|folder> [cursor|comment-id]" : "";
+            ? " <operation> [integration|command-name]" : command === "preview" ? " <start|serve|status|wait|working|resolve|stop> <file.md|folder> [cursor|comment-id]" : command === "workbench" ? " <start|serve|status|stop>" : "";
         const commandOptions = [];
         const rule = COMMAND_RULES[command];
         if (rule.adapters)
@@ -435,6 +437,7 @@ const DEFAULT_HANDLERS = {
     agent: agentHandler,
     decision: decisionHandler,
     preview: previewHandler,
+    workbench: workbenchHandler,
     doctor: doctorHandler,
     generate: generateHandler,
     gardener: gardenerHandler,

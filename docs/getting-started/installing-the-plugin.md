@@ -105,6 +105,19 @@ open and leave the prompt unaffected. If the hook is disabled, untrusted, or uns
 by the host, the existing Paved skills and the `AGENTS.md` guidance remain available
 where that host loads them.
 
+## Follow work in the local dashboard
+
+From an initialized repository, run `paved workbench start` and open the returned local
+URL. The dashboard refreshes run phases, pending decisions and recent agent activity;
+the **Copiar próximo comando** button copies the next relevant Paved command. Close the
+server with `paved workbench stop`.
+
+Claude Code and Codex lifecycle hooks report activity only while the dashboard server
+is running. They send the agent, event, optional tool name and a hashed session id to a
+loopback endpoint. They never send prompt text or tool input/output. Hook failures are
+ignored, so the dashboard is optional and cannot block agent work. The dashboard is
+read-only: approvals and workflow decisions remain in the conversation and Paved CLI.
+
 ## Update the plugin
 
 - Codex: `codex plugin marketplace upgrade paved`, then `codex plugin add paved@paved`.

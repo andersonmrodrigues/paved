@@ -11,7 +11,11 @@ describe("markdown links", () => {
     const broken: string[] = [];
     // The plugin's bundled runtime is the npm package as packed; its docs links point at
     // files the package does not ship.
-    const markdown = filesRecursive(ROOT, (f) => f.endsWith(".md")).filter((f) => !/^plugins\/(?:claude\/)?paved\/runtime\//.test(rel(f)));
+    const markdown = filesRecursive(ROOT, (f) => f.endsWith(".md")).filter((f) => {
+      const path = rel(f);
+      // Local isolated checkouts are independent repositories, not Core documentation.
+      return !path.startsWith(".worktrees/") && !/^plugins\/(?:claude\/)?paved\/runtime\//.test(path);
+    });
     for (const file of markdown) {
       for (const match of readFileSync(file, "utf8").matchAll(LINK)) {
         const target = match[1]!;

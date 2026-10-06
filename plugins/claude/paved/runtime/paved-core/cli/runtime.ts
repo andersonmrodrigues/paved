@@ -13,11 +13,12 @@ import { updateHandler } from "./commands/update.ts";
 import { verifyHandler } from "./commands/verify.ts";
 import { stepHandler } from "./commands/workflow.ts";
 import { previewHandler } from "./commands/preview.ts";
+import { workbenchHandler } from "./commands/workbench.ts";
 import { createDiagnostic, createResult, type CommandResult } from "./result.ts";
 import { CliPathError, resolveCoreRoot, resolveProjectRoot } from "./paths.ts";
 import { assertAnswerIdentity, parseAnswerFlags } from "./lib/decisions/answers.ts";
 
-export const COMMAND_NAMES = ["init", "status", "intent", "plan", "execute", "test", "verify", "update", "doctor", "gardener", "generate", "agent", "decision", "preview"] as const;
+export const COMMAND_NAMES = ["init", "status", "intent", "plan", "execute", "test", "verify", "update", "doctor", "gardener", "generate", "agent", "decision", "preview", "workbench"] as const;
 const STEP_COMMANDS: readonly string[] = ["intent", "plan", "execute"];
 export type CommandName = (typeof COMMAND_NAMES)[number];
 
@@ -103,6 +104,7 @@ const COMMAND_RULES: Record<CommandName, CommandRule> = {
   agent: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   decision: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   preview: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
+  workbench: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   intent: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   plan: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
   execute: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
@@ -168,7 +170,7 @@ function takeValue(argv: readonly string[], index: number, flag: string, command
 function commandUsage(command: CommandName | undefined): string {
   if (command !== undefined) {
     const selectors = command === "generate" ? " [generator-id...]" : command === "agent"
-      ? " <operation> [integration|command-name]" : command === "preview" ? " <start|serve|status|wait|working|resolve|stop> <file.md|folder> [cursor|comment-id]" : "";
+      ? " <operation> [integration|command-name]" : command === "preview" ? " <start|serve|status|wait|working|resolve|stop> <file.md|folder> [cursor|comment-id]" : command === "workbench" ? " <start|serve|status|stop>" : "";
     const commandOptions: string[] = [];
     const rule = COMMAND_RULES[command];
     if (rule.adapters) commandOptions.push("  --adapter <id>   Select an adapter for status, doctor, or verification content resolution; repeatable.");
@@ -509,6 +511,7 @@ const DEFAULT_HANDLERS: CommandHandlers = {
   agent: agentHandler,
   decision: decisionHandler,
   preview: previewHandler,
+  workbench: workbenchHandler,
   doctor: doctorHandler,
   generate: generateHandler,
   gardener: gardenerHandler,
