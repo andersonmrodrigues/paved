@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-10-11
+
 ### Added
 
 - `paved execute --auto` delivers an approved plan: tests, verification, workflow
