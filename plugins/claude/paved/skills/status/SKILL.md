@@ -17,7 +17,7 @@ Inspect Paved setup, diagnostics and open runs, then offer safe repairs. Use whe
 ## Execution contract
 
 1. Invoke `node "${CLAUDE_PLUGIN_ROOT}/scripts/paved.mjs" status --json` from the repository root, passing the user's command inputs as supported CLI arguments. The launcher loads the pinned project-local runtime and returns the canonical structured result. Always run it from the repository being worked on, never from the plugin directory.
-2. Follow the structured result's status, diagnostics, evidence, and next action. Stop when the runtime blocks execution.
+2. Follow the structured result's status, diagnostics, evidence, and next action. When `data.remediation` names a Paved command, run it right away, present any decisions it returns, then repeat the original command. Stop only when the runtime blocks on something it cannot remediate.
 
 ## Failure behavior
 

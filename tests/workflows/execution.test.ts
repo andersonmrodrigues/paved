@@ -125,18 +125,21 @@ describe("executable workflow state", () => {
       }));
       const approved = await invoke("plan", "--run", id, "--advance");
       assert.equal((approved.data as { currentPhase: string }).currentPhase, "implementation", JSON.stringify(approved));
-      assert.equal((await invoke("execute", "--run", id, "--advance", "--note", "done")).status, "failed");
+      const unchanged = await invoke("execute", "--run", id, "--advance", "--note", "done");
+      assert.equal(unchanged.status, "awaiting_input", JSON.stringify(unchanged));
+      assert.deepEqual(unchanged.decisions?.[0]?.options.map((option) => option.id), ["already-done", "keep-working"]);
       writeFileSync(join(project, "feature.ts"), "export const enabled = true;\n");
       const implemented = await invoke("execute", "--run", id, "--advance", "--note", "Implemented approved change");
       assert.equal(implemented.status, "success", JSON.stringify(implemented));
       assert.equal((implemented.data as { currentPhase: string }).currentPhase, "validation");
-      const unavailable = await invoke("execute", "--run", id, "--advance");
-      assert.equal((unavailable.data as { status: string }).status, "failed");
-      assert.equal((parse(readFileSync(runPath, "utf8")) as { status: string }).status, "failed");
-      const retry = await invoke("execute", "--run", id, "--advance");
-      assert.equal((retry.data as { status: string }).status, "failed");
-      const exhausted = await invoke("execute", "--run", id, "--advance");
-      assert.equal(exhausted.diagnostics[0]?.code, "PAVED_WORKFLOW_RETRIES_EXHAUSTED");
+      // A testing Tool that cannot run is setup to fix, not a failed attempt.
+      for (let call = 0; call < 3; call += 1) {
+        const unavailable = await invoke("execute", "--run", id, "--advance");
+        assert.equal(unavailable.diagnostics[0]?.code, "PAVED_WORKFLOW_SETUP_INVALID", JSON.stringify(unavailable));
+      }
+      const persisted = parse(readFileSync(runPath, "utf8")) as { status: string; phases: { phase: string; attempts?: number }[] };
+      assert.equal(persisted.status, "running");
+      assert.equal(persisted.phases.find((phase) => phase.phase === "validation")?.attempts, 1);
 
       const rejectedStart = await invoke("intent", "A rejected feature", "--workflow", "feature", "--because", "Test request for new behavior.");
       const rejectedId = (rejectedStart.data as { run: string }).run;

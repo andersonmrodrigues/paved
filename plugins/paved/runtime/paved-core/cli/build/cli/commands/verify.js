@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { relative, sep } from "node:path";
 import { runVerification } from "../lib/verification-runner.js";
 import { ConsumerOperationLockedError } from "../lib/operation-lock.js";
@@ -10,8 +11,9 @@ function statusFor(diagnostics) {
         return "failed";
     return diagnostics.length > 0 ? "warning" : "success";
 }
+// The runner reports real paths; a symlinked project root (macOS /var -> /private/var) must not turn them into ../ paths.
 function rel(projectRoot, path) {
-    return relative(projectRoot, path).split(sep).join("/");
+    return relative(realpathSync(projectRoot), realpathSync(path)).split(sep).join("/");
 }
 export async function verifyHandler(invocation) {
     let result;

@@ -61,6 +61,27 @@ order and plan approval, calls the testing Tool, runs authoritative Paved verifi
 and requires matching workflow evidence before completion. When those return decisions
 of their own, the step returns them and passes the user's answers through when it resumes.
 
+### Delivering, amending and abandoning
+
+- `execute --auto` advances through every phase the runtime runs itself (validation,
+  verification, evidence, completion) and stops at the first phase that needs the agent
+  or the user, such as review, or at a decision. Paved writes the workflow evidence
+  itself: it diffs the change against the run's revision (excluding `.paved/`), copies
+  the authoritative verification record and records each recommended check type that
+  did not run as a gap, using the profile's `unavailable` reason when there is one.
+- When no source or test file changed since the run started, `implementation` asks
+  whether the approved work is already in the repository instead of failing.
+- A setup problem (an unresolved Tool, an invalid Check or binding) blocks with
+  `PAVED_WORKFLOW_SETUP_INVALID` and does not consume a phase attempt.
+- When a phase runs out of attempts, the step asks whether to `retry` (a new round of
+  attempts), `amend` the plan or `abandon` the run.
+- `plan --amend --note <what changed>` re-submits an edited plan for approval mid-run.
+  `execute` is refused until `plan --approve`; approval restarts the failed phase.
+- `--abandon --note <why>` cancels the run. A cancelled run no longer holds its request,
+  so the same request starts a new run.
+- A lifecycle block that `paved init` or `paved update` resolves carries
+  `data.remediation.command`; agents run it and repeat the original command.
+
 A run created by Paved 1.x (`feature-…`, `fix-…`, `refactor-…`) is resumed by the step that
 owns its current phase.
 
