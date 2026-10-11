@@ -5,6 +5,18 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- `paved tool add <check-type> [label] [--scope <dir>] -- <command...>` writes a Tool,
+  its binding and a Check for one explicit command, adds the Check to the verification
+  profile and validates the result in the same call.
+
+### Changed
+
+- `core.testing.run` 0.1.1 declares `text` output: the exit code decides, so an
+  ordinary test runner can bind to it without emitting JSON. Implementations that emit
+  JSON keep working.
+
 ## [2.4.0] - 2026-10-11
 
 ### Added

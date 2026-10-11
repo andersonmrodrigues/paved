@@ -10,7 +10,7 @@ import { resolveSafePath } from "../safe-path.js";
 import { createRegistry } from "../schemas.js";
 import { sanitizeToolOutput } from "../tools.js";
 import { writeWorkflowEvidence } from "../workflow-evidence.js";
-import { assessWorkflowEvidence } from "../workflows.js";
+import { assessWorkflowEvidence, UNCHANGED_HANDLER } from "../workflows.js";
 import { createDiagnostic } from "../../result.js";
 export const SHARED_GATES = ["plan-approved", "criteria-met"];
 export const sha = (value) => createHash("sha256").update(value).digest("hex");
@@ -33,13 +33,16 @@ export function recordObservation(context, ref) {
         detail: String(sanitizeToolOutput(context.note ?? "")).slice(0, 4000),
     });
 }
-export const UNCHANGED_HANDLER = "run.unchanged";
 const UNCHANGED_QUESTION = "No source or test file changed since the run started. Is the approved work already in the repository?";
+/** True while the source and test files match the fingerprint recorded when the run started. */
+export function sourceUnchanged(projectRoot, run) {
+    const started = run.events.find((event) => event.type === "run-started")?.detail?.replace(/^source_sha256=/, "");
+    return started !== undefined && fingerprint(projectRoot) === started;
+}
 /** Implementation needs a change, unless the user confirms the approved work already exists; verification still has to prove it. */
 export function implementationChanged(context) {
     const { run, projectRoot } = context;
-    const original = run.events[0]?.detail?.replace(/^source_sha256=/, "");
-    if (fingerprint(projectRoot) !== original)
+    if (!sourceUnchanged(projectRoot, run))
         return undefined;
     const answered = run.decisions?.find((decision) => decision.handler === UNCHANGED_HANDLER && decision.status === "APPLIED");
     if (answered?.answer === "already-done")

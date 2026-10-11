@@ -18,7 +18,8 @@ export interface CheckCandidate {
   readonly scriptArgs?: readonly string[];
   /** The exact argv, for checks that are not a Maven phase or an npm script. */
   readonly argv?: Argv;
-  readonly type?: "unit" | "build" | "static-analysis";
+  /** A Check type from the schema's checkType enum; defaults by id suffix when absent. */
+  readonly type?: string;
 }
 
 type Detected = Omit<CheckCandidate, "scope" | "source">;

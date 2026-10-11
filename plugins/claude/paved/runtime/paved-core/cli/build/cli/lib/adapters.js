@@ -1,10 +1,8 @@
-import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { parse } from 'yaml';
 import { createRegistry } from './schemas.js';
 import { compatible } from './tools.js';
-const hash = (value) => createHash('sha256').update(value).digest('hex');
 const ignored = /^(?:\.|node_modules$|target$|dist$|build$)/;
 function globRegex(glob) {
     const escaped = glob
@@ -303,4 +301,3 @@ export function capabilityProviders(resolutions) {
 export function capabilityLockEntries(resolutions) {
     return capabilityProviders(resolutions).filter(entry => entry.candidates.length > 1 || entry.providers.some(p => p.source !== 'inferred'));
 }
-export function evidenceDigest(evidence) { return hash(`${evidence.adapter}:${evidence.adapterVersion}:${evidence.capability}:${evidence.source.path}:${evidence.source.sha256}:${evidence.statement}:${evidence.value ?? ''}`); }
