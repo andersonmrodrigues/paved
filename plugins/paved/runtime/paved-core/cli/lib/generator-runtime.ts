@@ -28,7 +28,7 @@ interface Contract { apiVersion: string; kind: 'Generator'; id: string; version:
 interface Output { path: string; content: string; schema: string }
 type WriteOutputStatus = 'written' | 'unchanged' | 'conflict' | 'proposed';
 interface WriteOutputResult { status: WriteOutputStatus; finalContent: string; sha256: string }
-export const IGNORED_SOURCE_ENTRY_NAMES = ['.git', '.paved', '.paved-operation-lock', '.claude', '.agents', '.superpowers', 'node_modules', 'target', 'dist', 'build', '.angular', '.next', '.venv', 'venv', '.worktrees', 'coverage'] as const;
+export const IGNORED_SOURCE_ENTRY_NAMES = ['.git', '.paved', '.paved-operation-lock', '.claude', '.agents', '.superpowers', 'node_modules', 'target', 'dist', 'build', '.angular', '.next', '.venv', 'venv', '.worktrees', 'coverage', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache', '.tox', '.gradle'] as const;
 const ignoredSourceEntryNames = new Set<string>(IGNORED_SOURCE_ENTRY_NAMES);
 export function isIgnoredSourceEntry(name: string): boolean { return name.startsWith('.env') || ignoredSourceEntryNames.has(name); }
 const sha = (content: string | Buffer) => createHash('sha256').update(content).digest('hex');

@@ -1,4 +1,5 @@
 import type { CommandResult, Diagnostic } from "../../result.ts";
+import type { DecisionCandidate } from "../decisions/gate.ts";
 import type { WorkflowContract } from "../workflows.ts";
 import type { Gate, Phase, Run } from "../workflow-runs.ts";
 import { bugGates } from "./bug.ts";
@@ -32,7 +33,9 @@ export type PhaseOutcome =
   | { readonly kind: "blocked"; readonly code: string; readonly message: string; readonly remediation: string }
   | { readonly kind: "fail"; readonly reason: string; readonly nextAction: string; readonly diagnostics: readonly Diagnostic[] }
   | { readonly kind: "wait"; readonly nextAction: string }
-  | { readonly kind: "relay"; readonly result: CommandResult };
+  | { readonly kind: "relay"; readonly result: CommandResult }
+  /** The phase needs a run decision from the user before it can continue. */
+  | { readonly kind: "ask"; readonly candidate: DecisionCandidate; readonly nextAction: string };
 
 export type PhaseHook = (context: PhaseContext) => PhaseOutcome | Promise<PhaseOutcome>;
 

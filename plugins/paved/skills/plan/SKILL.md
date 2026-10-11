@@ -17,7 +17,7 @@ Draft and preview a plan for an open Intent, then record the user's explicit app
 ## Execution contract
 
 1. Invoke `node "<plugin root>/scripts/paved.mjs" plan --json` from the repository root, passing the user's command inputs as supported CLI arguments. The launcher loads the pinned project-local runtime and returns the canonical structured result. `<plugin root>` is the installed Paved plugin directory, two directories above this SKILL.md. Always run the launcher from the repository being worked on, never from the plugin directory.
-2. Follow the structured result's status, diagnostics, evidence, and next action. Stop when the runtime blocks execution.
+2. Follow the structured result's status, diagnostics, evidence, and next action. When `data.remediation` names a Paved command, run it right away, present any decisions it returns, then repeat the original command. Stop only when the runtime blocks on something it cannot remediate.
 3. Read the run's Intent document at `.paved/documents/intents/<run-id>.md`, then write a plan that answers it and links to it. Save the plan at `.paved/documents/plans/<run-id>.md` and run this command with `--advance --evidence <plan> --note <summary>`. When the result carries a `review` block, start the preview on its target (with its companions) and follow the `paved.preview` review loop without ending your turn: resolve each comment after editing and advance once after edits so the approval request covers the current plan. When the user approves the plan in the conversation with an explicit yes, run `paved plan --run <run-id> --approve --json`; never approve on your own or on an ambiguous reply.
 
 ## Failure behavior

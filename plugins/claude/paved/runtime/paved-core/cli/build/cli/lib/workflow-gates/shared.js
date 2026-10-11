@@ -9,6 +9,7 @@ import { localApprover } from "../local-identity.js";
 import { resolveSafePath } from "../safe-path.js";
 import { createRegistry } from "../schemas.js";
 import { sanitizeToolOutput } from "../tools.js";
+import { writeWorkflowEvidence } from "../workflow-evidence.js";
 import { assessWorkflowEvidence } from "../workflows.js";
 import { createDiagnostic } from "../../result.js";
 export const SHARED_GATES = ["plan-approved", "criteria-met"];
@@ -32,11 +33,35 @@ export function recordObservation(context, ref) {
         detail: String(sanitizeToolOutput(context.note ?? "")).slice(0, 4000),
     });
 }
+export const UNCHANGED_HANDLER = "run.unchanged";
+const UNCHANGED_QUESTION = "No source or test file changed since the run started. Is the approved work already in the repository?";
+/** Implementation needs a change, unless the user confirms the approved work already exists; verification still has to prove it. */
 export function implementationChanged(context) {
-    const original = context.run.events[0]?.detail?.replace(/^source_sha256=/, "");
-    return fingerprint(context.projectRoot) === original
-        ? blocked("PAVED_WORKFLOW_CHANGE_MISSING", "No source or test change was observed after approval.", "Implement the approved change before advancing.")
-        : undefined;
+    const { run, projectRoot } = context;
+    const original = run.events[0]?.detail?.replace(/^source_sha256=/, "");
+    if (fingerprint(projectRoot) !== original)
+        return undefined;
+    const answered = run.decisions?.find((decision) => decision.handler === UNCHANGED_HANDLER && decision.status === "APPLIED");
+    if (answered?.answer === "already-done")
+        return undefined;
+    if (answered)
+        return blocked("PAVED_WORKFLOW_CHANGE_MISSING", "No source or test change was observed after approval.", "Implement the approved change before advancing.");
+    const planRef = run.events.findLast((event) => event.type === "approval-requested" && event.phase === "planning")?.ref;
+    return {
+        kind: "ask",
+        nextAction: `Ask the user, then resume with paved execute --run ${run.id} --advance --note <observation> --answer <id>=<value> --answered-by <you> --json.`,
+        candidate: {
+            scope: "run", question: UNCHANGED_QUESTION,
+            reason: "Paved proves a change by observing it. Work done before the run started can still be accepted, and validation and verification must then pass on it.",
+            options: [
+                { id: "already-done", label: "Already done", description: "The approved change is already in the repository.", consequence: "Implementation passes and validation and verification check the existing code." },
+                { id: "keep-working", label: "Not yet", description: "The change still has to be made.", consequence: "Implementation stays open until a source or test file changes." },
+            ],
+            evidence: planRef ? [{ type: "file", location: planRef, sha256: sha(readFileSync(resolveSafePath(projectRoot, planRef))) }] : [],
+            required: true, requiredAnswer: { type: "single-choice" }, effect: "record-only", handler: UNCHANGED_HANDLER,
+            candidates: ["already-done", "keep-working"],
+        },
+    };
 }
 export function failedTestingEvidence(roots, path, run) {
     const rel = projectRelative(roots.projectRoot, path);
@@ -147,6 +172,19 @@ const planning = (context) => {
     run.status = "running";
     return { kind: "pass" };
 };
+// Only these mean the project's code failed. Anything else (a malformed Tool, a missing
+// profile, an unresolvable implementation) is setup the agent fixes without spending an attempt.
+const TEST_FAILURE_CODES = new Set(["PAVED_TEST_TOOL_FAILED"]);
+const VERIFY_FAILURE_CODES = new Set(["PAVED_VERIFY_INCOMPLETE"]);
+function codeFailed(diagnostics, failureCodes) {
+    const errors = diagnostics.filter((item) => item.category !== "findings");
+    return errors.length > 0 && errors.every((item) => failureCodes.has(item.code));
+}
+function setupBlocked(what, diagnostics) {
+    const problems = diagnostics.filter((item) => item.category !== "findings");
+    const detail = problems.map((item) => `${item.code}: ${item.message}${item.remediation ? ` (${item.remediation})` : ""}`).join("; ");
+    return blocked("PAVED_WORKFLOW_SETUP_INVALID", `The ${what} setup could not run${detail ? `: ${detail}` : "."}`, `Fix the ${what} configuration and advance again; a setup problem does not consume a phase attempt.`);
+}
 const validation = async (context) => {
     const tested = await context.tools.test();
     if (tested.status === "awaiting_input")
@@ -154,6 +192,8 @@ const validation = async (context) => {
     const ref = tested.data?.evidence;
     context.run.events.push({ at: now(), type: "tool-invoked", phase: "validation", ref: ref ?? "testing-run" });
     if (tested.status !== "success") {
+        if (!codeFailed(tested.diagnostics, TEST_FAILURE_CODES))
+            return setupBlocked("testing", tested.diagnostics);
         return { kind: "fail", reason: "The governed regression test did not pass.", nextAction: "Fix the failure and resume this run with paved execute --advance.", diagnostics: tested.diagnostics };
     }
     return { kind: "pass" };
@@ -164,6 +204,9 @@ const verification = async (context) => {
         return { kind: "relay", result: verified };
     const data = verified.data;
     if (verified.status !== "success" || data?.completion?.verification !== "verified" || !data.evidence?.length) {
+        const checkFailed = (data?.checks ?? []).some((check) => check.status === "failed" || check.status === "error");
+        if (!checkFailed || !codeFailed(verified.diagnostics, VERIFY_FAILURE_CODES))
+            return setupBlocked("verification", verified.diagnostics);
         for (const path of data?.evidence ?? [])
             context.run.events.push({ at: now(), type: "verification-executed", phase: "verification", ref: path });
         return {
@@ -183,10 +226,16 @@ const evidence = (context) => {
     const { run } = context;
     if (!run.evidence)
         return blocked("PAVED_WORKFLOW_EVIDENCE_MISSING", "Verified evidence is missing.", "Run the verification phase successfully first.");
-    if (!context.evidence)
-        return blocked("PAVED_WORKFLOW_EVIDENCE_MISSING", "Workflow evidence with a diff and check results is required.", `Provide --evidence <workflow-evidence.yaml> for run ${run.id}.`);
+    let path = context.evidence;
+    if (!path) {
+        const summary = context.note ?? run.inputs[0]?.value ?? `Change for run ${run.id}.`;
+        const built = writeWorkflowEvidence({ projectRoot: context.projectRoot, run, workflow: context.workflow, summary });
+        if ("problem" in built)
+            return blocked("PAVED_WORKFLOW_EVIDENCE_MISSING", built.problem, `Provide --evidence <workflow-evidence.yaml> for run ${run.id}.`);
+        path = built.path;
+    }
     const authoritative = loadYaml(resolveSafePath(context.projectRoot, run.evidence));
-    const record = loadYaml(context.evidence);
+    const record = loadYaml(path);
     const schema = createRegistry(join(context.coreRoot, "schemas"), ["paved/v1"]).validate(record);
     if (!schema.valid)
         return blocked("PAVED_WORKFLOW_EVIDENCE_INVALID", schema.errors.join("; "), "Fix the workflow evidence record and retry.");
@@ -198,8 +247,8 @@ const evidence = (context) => {
         problems.push(...evaluated.blocking, "Workflow evidence is not complete and verified.");
     if (problems.length)
         return blocked("PAVED_WORKFLOW_EVIDENCE_INVALID", problems.join("; "), "Record real diff and check evidence matching the Paved verification result.");
-    run.evidence = projectRelative(context.projectRoot, context.evidence);
-    run.events.push({ at: now(), type: "evidence-recorded", phase: "evidence", ref: run.evidence, detail: `sha256=${sha(readFileSync(context.evidence))}` });
+    run.evidence = projectRelative(context.projectRoot, path);
+    run.events.push({ at: now(), type: "evidence-recorded", phase: "evidence", ref: run.evidence, detail: `sha256=${sha(readFileSync(path))}` });
     return { kind: "pass" };
 };
 const completion = (context) => {

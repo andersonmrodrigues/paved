@@ -5,6 +5,39 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- `paved execute --auto` delivers an approved plan: tests, verification, workflow
+  evidence and completion run on their own until a phase needs the user.
+- Paved writes the workflow evidence itself, with the change diff, the authoritative
+  checks and a gap for each recommended check type that did not run.
+- `paved plan --amend` re-submits an edited plan for approval mid-run; approval restarts
+  the failed phase.
+- `--abandon` cancels a run on `intent`, `plan` and `execute`; the same request can then
+  start a new run.
+- Verification detection offers pytest, ruff and mypy (through uv, Poetry or the Python
+  module), `go test`/`go vet`, `cargo build`/`cargo test` and Gradle `test`.
+- `paved status` reports an unresolved Check, Tool or binding before `execute` reaches
+  verification.
+- Lifecycle blocks that `paved init` or `paved update` resolve name the command in
+  `data.remediation`, and agent commands run it before repeating the original command.
+
+### Changed
+
+- A phase that runs out of attempts asks whether to retry, amend the plan or abandon the
+  run instead of failing the run for good.
+- A setup problem in testing or verification no longer consumes a phase attempt.
+- `implementation` asks whether the approved work already exists instead of failing when
+  nothing changed since the run started.
+- Review asks for approval in the conversation; the preview is optional.
+- A passing testing Tool's stderr is a warning, not an error.
+
+### Fixed
+
+- An override may select a project ToolImplementation of an inherited Tool.
+- Verification evidence paths resolve through symlinks, so a project under a symlinked
+  directory (macOS `/var`) records valid relative paths.
+
 ## [2.3.0] - 2026-10-06
 
 ### Added

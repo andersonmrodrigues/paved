@@ -17,8 +17,8 @@ Carry out the approved plan, run required checks and record review evidence. Use
 ## Execution contract
 
 1. Invoke `node "${CLAUDE_PLUGIN_ROOT}/scripts/paved.mjs" execute --json` from the repository root, passing the user's command inputs as supported CLI arguments. The launcher loads the pinned project-local runtime and returns the canonical structured result. Always run it from the repository being worked on, never from the plugin directory.
-2. Follow the structured result's status, diagnostics, evidence, and next action. Stop when the runtime blocks execution.
-3. Advance one phase at a time. Tests and verification run inside this command; when it returns their decisions, present them and repeat the same call with the answers. In the review phase, open the returned `review` block in the preview. When the result lists `gardener` proposals, show them to the user as advisory and name `paved gardener`.
+2. Follow the structured result's status, diagnostics, evidence, and next action. When `data.remediation` names a Paved command, run it right away, present any decisions it returns, then repeat the original command. Stop only when the runtime blocks on something it cannot remediate.
+3. Once the change is implemented, run `paved execute --run <run-id> --auto --note <what was implemented> --json`: tests, verification and the workflow evidence then run on their own until a phase needs the user. Present every returned decision with its options (in Claude Code, as a multiple-choice question) and repeat the same call with the answers. A setup diagnostic (`PAVED_WORKFLOW_SETUP_INVALID`) costs no attempt: fix the Tool, Check or profile and repeat. In the review phase, summarize the `review` block in the conversation and ask the user; the preview is optional. Finish with `paved execute --run <run-id> --auto --note <review summary> --json`. When the approved plan must change, edit it and run `paved plan --run <run-id> --amend --note <what changed> --json`. When the result lists `gardener` proposals, show them to the user as advisory and name `paved gardener`.
 
 ## Failure behavior
 
