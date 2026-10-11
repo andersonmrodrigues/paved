@@ -26,8 +26,9 @@ export function slug(candidate: CheckCandidate): string {
   return `${prefix}-${createHash("sha256").update(key).digest("hex").slice(0, 8)}`;
 }
 
-/** The exact argv a detected check runs: a Maven phase or a declared npm script. */
+/** The exact argv a detected check runs: its own argv, a Maven phase or a declared npm script. */
 export function commandFor(candidate: CheckCandidate): { executable: string; args: string[] } {
+  if (candidate.argv) return { executable: candidate.argv.executable, args: [...candidate.argv.args] };
   if (candidate.id.startsWith("mvn-")) return { executable: "mvn", args: [candidate.command] };
   return {
     executable: "npm",
@@ -69,7 +70,7 @@ function documents(candidate: CheckCandidate) {
   const check = {
     apiVersion: "paved/v1", kind: "Check", id: checkId,
     title: `${candidate.label} passes`, purpose: `Confirm ${candidate.label} succeeds in ${candidate.scope}.`,
-    type: candidate.id.endsWith("-test") ? "unit" : "build", tool: toolId,
+    type: candidate.type ?? (candidate.id.endsWith("-test") ? "unit" : "build"), tool: toolId,
     expected: { description: "The command exits successfully.", exit_code: 0 },
     failure: `The ${candidate.label} command failed; inspect its captured output.`,
     determinism: {

@@ -451,9 +451,13 @@ async function runOneTestingTool(input, selected) {
             : outputMalformed || outputInvalid ? { error_code: "malformed-output" } : {}),
         output,
         inputs: validation.values,
-        ...(processResult.truncated ? { warnings: ["Testing Tool output was truncated."] } : {}),
+        // Many runners (uv, gradle, cargo) report progress on stderr; it is an error only when the run failed.
+        warnings: [
+            ...(processResult.truncated ? ["Testing Tool output was truncated."] : []),
+            ...(status === "succeeded" && processResult.stderr.trim() ? [processResult.stderr] : []),
+        ],
         errors: [
-            ...(processResult.stderr.trim() ? [processResult.stderr] : []),
+            ...(status !== "succeeded" && processResult.stderr.trim() ? [processResult.stderr] : []),
             ...(outputMalformed ? [`The testing Tool did not emit valid ${tool.outputs.format.toUpperCase()} output.`] : []),
             ...outputProblems,
         ],

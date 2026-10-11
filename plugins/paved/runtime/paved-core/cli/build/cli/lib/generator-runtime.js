@@ -14,7 +14,7 @@ import { atomicWriteFileSync } from './atomic-write.js';
 import { acquireConsumerOperationLock } from './operation-lock.js';
 import { resolveSafePath } from './safe-path.js';
 import { readRuntimeSelection } from './runtime-lock.js';
-export const IGNORED_SOURCE_ENTRY_NAMES = ['.git', '.paved', '.paved-operation-lock', '.claude', '.agents', '.superpowers', 'node_modules', 'target', 'dist', 'build', '.angular', '.next', '.venv', 'venv', '.worktrees', 'coverage'];
+export const IGNORED_SOURCE_ENTRY_NAMES = ['.git', '.paved', '.paved-operation-lock', '.claude', '.agents', '.superpowers', 'node_modules', 'target', 'dist', 'build', '.angular', '.next', '.venv', 'venv', '.worktrees', 'coverage', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache', '.tox', '.gradle'];
 const ignoredSourceEntryNames = new Set(IGNORED_SOURCE_ENTRY_NAMES);
 export function isIgnoredSourceEntry(name) { return name.startsWith('.env') || ignoredSourceEntryNames.has(name); }
 const sha = (content) => createHash('sha256').update(content).digest('hex');

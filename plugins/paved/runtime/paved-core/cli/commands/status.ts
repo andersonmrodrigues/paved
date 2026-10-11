@@ -8,6 +8,7 @@ import { DecisionStoreError } from "../lib/decisions/store.ts";
 import { repairProvider } from "../lib/decisions/providers/repair.ts";
 import { repairHandler } from "../lib/decisions/handlers/repair.ts";
 import { isOpen, scanRuns } from "../lib/workflow-runs.ts";
+import { inspectVerificationConfig } from "../lib/verification-runner.ts";
 
 function statusFor(diagnostics: readonly Diagnostic[]): ResultStatus {
   if (diagnostics.some((diagnostic) => diagnostic.category !== "findings")) return "failed";
@@ -103,6 +104,19 @@ function repairs(invocation: CommandInvocation): { projections: ReturnType<typeo
   }
 }
 
+/** A broken Check, Tool or binding surfaces here, not only when `execute` reaches verification. */
+function verificationFindings(invocation: CommandInvocation, inspection: ConsumerInspection): Diagnostic[] {
+  if (!inspection.initialized || inspection.verificationProfile !== "present") return [];
+  return inspectVerificationConfig({
+    projectRoot: invocation.paths.projectRoot,
+    coreRoot: invocation.paths.coreRoot,
+    adapterSelections: inspection.selectedAdapters,
+  }).map((item) => createDiagnostic({
+    severity: "warning", category: "findings", code: item.code, component: item.component,
+    message: item.message, remediation: item.remediation ?? "Fix the verification profile, Check or Tool binding it names.",
+  }));
+}
+
 /** `status` and the `doctor` CLI subcommand share this; repairs keep the `doctor` decision ids. */
 export function diagnose(invocation: CommandInvocation, command: "status" | "doctor"): CommandResult {
   const inspection = inspectConsumer({
@@ -118,7 +132,8 @@ export function diagnose(invocation: CommandInvocation, command: "status" | "doc
     remediation: "Use the offered option id and provide the required human-authored approval.",
   }));
   const runs = openRuns(inspection);
-  const diagnostics = [...inspection.diagnostics, ...agentsBlockFindings(inspection), ...runs.diagnostics, ...decisionDiagnostics];
+  const diagnostics = [...inspection.diagnostics, ...agentsBlockFindings(inspection), ...runs.diagnostics,
+    ...verificationFindings(invocation, inspection), ...decisionDiagnostics];
   return createResult({
     command,
     status: statusFor(diagnostics),

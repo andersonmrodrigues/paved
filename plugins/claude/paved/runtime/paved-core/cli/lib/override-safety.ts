@@ -9,18 +9,16 @@ type Target = { kind: string; id: string; path: string; overridable?: boolean };
 type Override = { target: string; target_sha256?: string; action: string; implementation?: string };
 type OverrideDocument = Record<string, Override[]>;
 
-function targetIndex(coreRoot: string, selectedAdapters: readonly string[]): Map<string, Target> {
-  const roots = ["core/rules", "core/skills", "core/workflows", "core/tools", "core/tool-implementations",
-    ...selectedAdapters.map((id) => `adapters/${id}`)];
+function indexDocuments(base: string, roots: readonly string[]): Map<string, Target> {
   const targets = new Map<string, Target>();
   function walk(path: string): void {
-    const full = join(coreRoot, path);
+    const full = join(base, path);
     if (!existsSync(full)) return;
     for (const entry of readdirSync(full, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name, "en"))) {
       const child = `${path}/${entry.name}`;
       if (entry.isDirectory()) walk(child);
       else if (entry.isFile() && entry.name.endsWith(".yaml")) {
-        const doc = loadYaml(join(coreRoot, child)) as { kind?: unknown; id?: unknown; overridable?: boolean };
+        const doc = loadYaml(join(base, child)) as { kind?: unknown; id?: unknown; overridable?: boolean };
         if (typeof doc?.id === "string" && typeof doc.kind === "string") {
           targets.set(`${doc.kind}:${doc.id}`, { kind: doc.kind, id: doc.id, path: child,
             ...(doc.overridable === undefined ? {} : { overridable: doc.overridable }) });
@@ -30,6 +28,11 @@ function targetIndex(coreRoot: string, selectedAdapters: readonly string[]): Map
   }
   for (const root of roots) walk(root);
   return targets;
+}
+
+function targetIndex(coreRoot: string, selectedAdapters: readonly string[]): Map<string, Target> {
+  return indexDocuments(coreRoot, ["core/rules", "core/skills", "core/workflows", "core/tools", "core/tool-implementations",
+    ...selectedAdapters.map((id) => `adapters/${id}`)]);
 }
 
 export function inspectOverrides(projectRoot: string, coreRoot: string, selectedAdapters: readonly string[]): Diagnostic[] {
@@ -46,6 +49,9 @@ export function inspectOverrides(projectRoot: string, coreRoot: string, selected
       message: "Overrides cannot be parsed or do not match the Overrides schema.", remediation: "Fix .paved/overrides/overrides.yaml before updating." })];
   }
   const targets = targetIndex(coreRoot, selectedAdapters);
+  // Overrides target inherited content only, but select-implementation exists to pick a project binding.
+  const implementations = new Set([...targets.values(), ...indexDocuments(projectRoot, [".paved/tool-implementations"]).values()]
+    .filter((target) => target.kind === "ToolImplementation").map((target) => target.id));
   const kinds: Record<string, string> = { rules: "Rule", skills: "Skill", workflows: "Workflow", tools: "Tool" };
   const seen = new Set<string>();
   for (const [list, kind] of Object.entries(kinds)) {
@@ -67,7 +73,7 @@ export function inspectOverrides(projectRoot: string, coreRoot: string, selected
         code: "PAVED_OVERRIDE_DIGEST_MISSING", component: "consumer.overrides",
         message: `Override ${override.target} has no target digest, so drift cannot be checked.`,
         remediation: "Record the current target SHA-256 after reviewing the override." }));
-      if (override.implementation && !targets.has(`ToolImplementation:${override.implementation}`)) {
+      if (override.implementation && !implementations.has(override.implementation)) {
         problem("PAVED_OVERRIDE_IMPLEMENTATION_MISSING", `Selected implementation ${override.implementation} is unavailable.`);
       }
     }

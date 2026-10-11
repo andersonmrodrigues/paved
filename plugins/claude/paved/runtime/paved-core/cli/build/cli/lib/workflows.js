@@ -135,6 +135,24 @@ export function assessWorkflowQuality(files, context) {
     problems.push(...duplicatedSentences([{ id: contract.id, text: body }, ...skillTexts]).filter((p) => p.includes(contract.id)));
     return problems;
 }
+export const RECOVER_HANDLER = "run.recover";
+export const AMENDED_RETRY = "plan amended";
+export function recoveryQuestion(phase, attempts) {
+    return `The ${phase} phase failed ${attempts} times. How should Paved continue?`;
+}
+/** Applied "how should Paved continue?" answers for a phase, oldest first. */
+export function recoveriesFor(decisions, phase) {
+    return (decisions ?? []).filter((decision) => decision.handler === RECOVER_HANDLER && decision.status === "APPLIED"
+        && decision.question?.startsWith(`The ${phase} phase failed `) === true);
+}
+/**
+ * Each recovery the user chose and each approved plan amendment gives a phase a fresh
+ * set of attempts on top of the workflow's limit.
+ */
+export function attemptRounds(run, phase) {
+    const amended = (run.events ?? []).filter((event) => event.type === "retry-started" && event.phase === phase && event.detail === AMENDED_RETRY).length;
+    return 1 + recoveriesFor(run.decisions, phase).length + amended;
+}
 const DONE = new Set(["completed", "skipped"]);
 /** Problems with a run record measured against the workflow it claims to run. */
 export function assessRun(run, workflow) {
@@ -172,7 +190,7 @@ export function assessRun(run, workflow) {
             problems.push(`phase ${record.phase} was skipped but the workflow does not allow skipping it`);
         }
         const retry = phase.retry ?? DEFAULT_RETRY;
-        const limit = retry.class === "retryable" ? (retry.max_attempts ?? DEFAULT_RETRY.max_attempts) : 1;
+        const limit = (retry.class === "retryable" ? (retry.max_attempts ?? DEFAULT_RETRY.max_attempts) : 1) * attemptRounds(run, record.phase);
         if ((record.attempts ?? 0) > limit && record.failure?.code !== "retries-exhausted") {
             problems.push(`phase ${record.phase} has ${record.attempts} attempts; its limit is ${limit}`);
         }
@@ -190,7 +208,9 @@ export function assessRun(run, workflow) {
                 problems.push(`gate ${gate.id} is unconditional and cannot be not-applicable`);
             }
             if (record.status === "completed") {
-                const satisfied = status === "not-applicable" || status === (gate.approval === undefined ? "passed" : "approved");
+                // An amended plan reopens its approval while the run pauses for it.
+                const amending = gate.approval !== undefined && status === "awaiting-approval" && run.status === "awaiting-approval";
+                const satisfied = amending || status === "not-applicable" || status === (gate.approval === undefined ? "passed" : "approved");
                 if (!satisfied)
                     problems.push(`phase ${record.phase} is completed but gate ${gate.id} is ${status ?? "not recorded"}`);
             }
