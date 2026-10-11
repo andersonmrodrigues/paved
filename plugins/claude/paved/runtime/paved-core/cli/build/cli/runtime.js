@@ -14,10 +14,11 @@ import { verifyHandler } from "./commands/verify.js";
 import { stepHandler } from "./commands/workflow.js";
 import { previewHandler } from "./commands/preview.js";
 import { workbenchHandler } from "./commands/workbench.js";
+import { toolHandler } from "./commands/tool.js";
 import { createDiagnostic, createResult } from "./result.js";
 import { CliPathError, resolveCoreRoot, resolveProjectRoot } from "./paths.js";
 import { assertAnswerIdentity, parseAnswerFlags } from "./lib/decisions/answers.js";
-export const COMMAND_NAMES = ["init", "status", "intent", "plan", "execute", "test", "verify", "update", "doctor", "gardener", "generate", "agent", "decision", "preview", "workbench"];
+export const COMMAND_NAMES = ["init", "status", "intent", "plan", "execute", "test", "verify", "update", "doctor", "gardener", "generate", "agent", "decision", "preview", "workbench", "tool"];
 const STEP_COMMANDS = ["intent", "plan", "execute"];
 const COMMANDS = new Set(COMMAND_NAMES);
 const COMMON_VALUE_FLAGS = new Set(["--project"]);
@@ -35,6 +36,7 @@ const COMMAND_RULES = {
     decision: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
     preview: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
     workbench: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
+    tool: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
     intent: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
     plan: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
     execute: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
@@ -95,7 +97,8 @@ function takeValue(argv, index, flag, command) {
 function commandUsage(command) {
     if (command !== undefined) {
         const selectors = command === "generate" ? " [generator-id...]" : command === "agent"
-            ? " <operation> [integration|command-name]" : command === "preview" ? " <start|serve|status|wait|working|resolve|stop> <file.md|folder> [cursor|comment-id]" : command === "workbench" ? " <start|serve|status|stop>" : "";
+            ? " <operation> [integration|command-name]" : command === "preview" ? " <start|serve|status|wait|working|resolve|stop> <file.md|folder> [cursor|comment-id]" : command === "workbench" ? " <start|serve|status|stop>"
+            : command === "tool" ? " add <check-type> [label] [--scope <dir>] -- <executable> [args...]" : "";
         const commandOptions = [];
         const rule = COMMAND_RULES[command];
         if (rule.adapters)
@@ -120,6 +123,8 @@ function commandUsage(command) {
             commandOptions.push("  --approve        Record the user's approval of the current plan, given in the conversation.", "  --run <id> --amend --note <change> [--evidence <plan>]  Ask approval for a revised plan mid-run.");
         if (command === "execute")
             commandOptions.push("  --auto           Advance through every phase that needs no human input.");
+        if (command === "tool")
+            commandOptions.push("  --scope <dir>    Run the command from this project directory.", "  -- <executable> [args...]  The exact command; everything after -- is passed as argv.");
         return [
             `Usage: paved ${command}${selectors} [options]`,
             "",
@@ -203,6 +208,8 @@ function parse(argv) {
     let recommend;
     const parts = [];
     const intentInputs = [];
+    let scope;
+    let toolCommand;
     for (let index = 0; index < argv.length; index += 1) {
         const token = argv[index];
         if (token === undefined) {
@@ -216,6 +223,20 @@ function parse(argv) {
         }
         if (COMMON_BOOLEAN_FLAGS.has(token)) {
             json = true;
+            continue;
+        }
+        if (token === "--" && command === "tool") {
+            toolCommand = argv.slice(index + 1);
+            break;
+        }
+        if (token === "--scope") {
+            if (command !== "tool")
+                return { kind: "error", result: usage(command ?? "cli", "--scope is supported only by tool add.") };
+            const value = takeValue(argv, index, token, command);
+            if (typeof value !== "string")
+                return { kind: "error", result: value };
+            scope = value;
+            index += 1;
             continue;
         }
         if (COMMON_VALUE_FLAGS.has(token)) {
@@ -435,6 +456,8 @@ function parse(argv) {
         ...(project === undefined ? {} : { project }),
         ...(inputs === undefined ? {} : { inputs }),
         ...(decision === undefined ? {} : { decision }),
+        ...(scope === undefined ? {} : { scope }),
+        ...(toolCommand === undefined ? {} : { toolCommand }),
     };
     return {
         kind: "command",
@@ -466,6 +489,7 @@ const DEFAULT_HANDLERS = {
     decision: decisionHandler,
     preview: previewHandler,
     workbench: workbenchHandler,
+    tool: toolHandler,
     doctor: doctorHandler,
     generate: generateHandler,
     gardener: gardenerHandler,

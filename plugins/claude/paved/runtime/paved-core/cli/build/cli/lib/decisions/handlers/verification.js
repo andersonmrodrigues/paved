@@ -76,6 +76,32 @@ function documents(candidate) {
     };
     return { name, checkId, check, tool, implementation };
 }
+function checkFiles(candidate) {
+    const item = documents(candidate);
+    return [
+        { path: `.paved/verification/checks/${item.name}.yaml`, document: item.check },
+        { path: `.paved/tools/${item.name}.yaml`, document: item.tool },
+        { path: `.paved/tool-implementations/${item.name}.yaml`, document: item.implementation },
+    ];
+}
+/** Validates every document before writing any; an existing document is never overwritten unless `replaceable`. */
+function writeFiles(projectRoot, coreRoot, files, replaceable = new Set()) {
+    const registry = createRegistry(join(coreRoot, "schemas"), ["paved/v1"]);
+    for (const file of files) {
+        const result = registry.validate(file.document);
+        if (!result.valid)
+            throw new Error(`${file.path} is invalid: ${result.errors.join("; ")}`);
+        const path = resolveSafePath(projectRoot, file.path);
+        if (!replaceable.has(file.path) && existsSync(path) && JSON.stringify(parse(readFileSync(path, "utf8"))) !== JSON.stringify(file.document)) {
+            throw new Error(`Refusing to overwrite an existing Paved document: ${file.path}`);
+        }
+    }
+    for (const file of files) {
+        const path = resolveSafePath(projectRoot, file.path);
+        mkdirSync(join(path, ".."), { recursive: true });
+        atomicWriteFileSync(path, stringify(file.document));
+    }
+}
 /** Writes the complete runnable contract set, with the profile last as its commit marker. */
 function apply(answer, context) {
     const candidates = detectCheckCandidates(context.projectRoot);
@@ -85,35 +111,25 @@ function apply(answer, context) {
     }
     if (chosen.length === 0)
         return [];
-    const registry = createRegistry(join(context.coreRoot, "schemas"), ["paved/v1"]);
-    const files = chosen.flatMap((candidate) => {
-        const item = documents(candidate);
-        return [
-            { path: `.paved/verification/checks/${item.name}.yaml`, document: item.check },
-            { path: `.paved/tools/${item.name}.yaml`, document: item.tool },
-            { path: `.paved/tool-implementations/${item.name}.yaml`, document: item.implementation },
-        ];
-    });
-    const profile = {
-        apiVersion: "paved/v1", kind: "VerificationProfile",
-        checks: chosen.map((candidate) => documents(candidate).checkId),
-    };
-    files.push({ path: PROFILE_PATH, document: profile });
-    for (const file of files) {
-        const result = registry.validate(file.document);
-        if (!result.valid)
-            throw new Error(`${file.path} is invalid: ${result.errors.join("; ")}`);
-        const path = resolveSafePath(context.projectRoot, file.path);
-        if (existsSync(path) && JSON.stringify(parse(readFileSync(path, "utf8"))) !== JSON.stringify(file.document)) {
-            throw new Error(`Refusing to overwrite an existing Paved document: ${file.path}`);
-        }
-    }
-    for (const file of files) {
-        const path = resolveSafePath(context.projectRoot, file.path);
-        mkdirSync(join(path, ".."), { recursive: true });
-        atomicWriteFileSync(path, stringify(file.document));
-    }
+    const files = chosen.flatMap(checkFiles);
+    files.push({ path: PROFILE_PATH, document: {
+            apiVersion: "paved/v1", kind: "VerificationProfile",
+            checks: chosen.map((candidate) => documents(candidate).checkId),
+        } });
+    writeFiles(context.projectRoot, context.coreRoot, files);
     return files.map((file) => file.path);
+}
+/** Adds one explicitly given command as a Check, keeping the profile's other checks and settings. */
+export function addProjectCheck(projectRoot, coreRoot, candidate) {
+    const files = checkFiles(candidate);
+    const { checkId } = documents(candidate);
+    const profilePath = resolveSafePath(projectRoot, PROFILE_PATH);
+    const current = existsSync(profilePath)
+        ? parse(readFileSync(profilePath, "utf8"))
+        : { apiVersion: "paved/v1", kind: "VerificationProfile", checks: [] };
+    files.push({ path: PROFILE_PATH, document: { ...current, checks: [...new Set([...(current.checks ?? []), checkId])] } });
+    writeFiles(projectRoot, coreRoot, files, new Set([PROFILE_PATH]));
+    return { checkId, files: files.map((file) => file.path) };
 }
 export const verificationHandler = {
     effect: "config-additive", apply, reject: (answer) => answer === "none",

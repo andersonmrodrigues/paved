@@ -20,14 +20,14 @@ function selected(answer: AnswerValue, candidates: readonly CheckCandidate[]): C
   throw new Error(`Unknown verification option: ${String(answer)}.`);
 }
 
-export function slug(candidate: CheckCandidate): string {
+export function slug(candidate: CheckSource): string {
   const key = `${candidate.scope}:${candidate.id}`;
   const prefix = key.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40).replace(/-$/, "");
   return `${prefix}-${createHash("sha256").update(key).digest("hex").slice(0, 8)}`;
 }
 
 /** The exact argv a detected check runs: its own argv, a Maven phase or a declared npm script. */
-export function commandFor(candidate: CheckCandidate): { executable: string; args: string[] } {
+export function commandFor(candidate: CheckSource): { executable: string; args: string[] } {
   if (candidate.argv) return { executable: candidate.argv.executable, args: [...candidate.argv.args] };
   if (candidate.id.startsWith("mvn-")) return { executable: "mvn", args: [candidate.command] };
   return {
@@ -39,7 +39,9 @@ export function commandFor(candidate: CheckCandidate): { executable: string; arg
 // Builds and test suites of real modules routinely exceed five minutes.
 export const CHECK_TIMEOUT_SECONDS = 900;
 
-function documents(candidate: CheckCandidate) {
+type CheckSource = Omit<CheckCandidate, "source">;
+
+function documents(candidate: CheckSource) {
   const name = slug(candidate);
   const checkId = `project.detected.${name}`;
   const toolId = `project.verification.${name}`;
@@ -81,6 +83,35 @@ function documents(candidate: CheckCandidate) {
   return { name, checkId, check, tool, implementation };
 }
 
+type PavedFile = { path: string; document: unknown };
+
+function checkFiles(candidate: CheckSource): PavedFile[] {
+  const item = documents(candidate);
+  return [
+    { path: `.paved/verification/checks/${item.name}.yaml`, document: item.check },
+    { path: `.paved/tools/${item.name}.yaml`, document: item.tool },
+    { path: `.paved/tool-implementations/${item.name}.yaml`, document: item.implementation },
+  ];
+}
+
+/** Validates every document before writing any; an existing document is never overwritten unless `replaceable`. */
+function writeFiles(projectRoot: string, coreRoot: string, files: readonly PavedFile[], replaceable: ReadonlySet<string> = new Set()): void {
+  const registry = createRegistry(join(coreRoot, "schemas"), ["paved/v1"]);
+  for (const file of files) {
+    const result = registry.validate(file.document);
+    if (!result.valid) throw new Error(`${file.path} is invalid: ${result.errors.join("; ")}`);
+    const path = resolveSafePath(projectRoot, file.path);
+    if (!replaceable.has(file.path) && existsSync(path) && JSON.stringify(parse(readFileSync(path, "utf8"))) !== JSON.stringify(file.document)) {
+      throw new Error(`Refusing to overwrite an existing Paved document: ${file.path}`);
+    }
+  }
+  for (const file of files) {
+    const path = resolveSafePath(projectRoot, file.path);
+    mkdirSync(join(path, ".."), { recursive: true });
+    atomicWriteFileSync(path, stringify(file.document));
+  }
+}
+
 /** Writes the complete runnable contract set, with the profile last as its commit marker. */
 function apply(answer: AnswerValue, context: DecisionContext): readonly string[] {
   const candidates = detectCheckCandidates(context.projectRoot);
@@ -90,35 +121,26 @@ function apply(answer: AnswerValue, context: DecisionContext): readonly string[]
   }
   if (chosen.length === 0) return [];
 
-  const registry = createRegistry(join(context.coreRoot, "schemas"), ["paved/v1"]);
-  const files: { path: string; document: unknown }[] = chosen.flatMap((candidate) => {
-    const item = documents(candidate);
-    return [
-      { path: `.paved/verification/checks/${item.name}.yaml`, document: item.check },
-      { path: `.paved/tools/${item.name}.yaml`, document: item.tool },
-      { path: `.paved/tool-implementations/${item.name}.yaml`, document: item.implementation },
-    ];
-  });
-  const profile = {
+  const files = chosen.flatMap(checkFiles);
+  files.push({ path: PROFILE_PATH, document: {
     apiVersion: "paved/v1", kind: "VerificationProfile",
     checks: chosen.map((candidate) => documents(candidate).checkId),
-  };
-  files.push({ path: PROFILE_PATH, document: profile });
-
-  for (const file of files) {
-    const result = registry.validate(file.document);
-    if (!result.valid) throw new Error(`${file.path} is invalid: ${result.errors.join("; ")}`);
-    const path = resolveSafePath(context.projectRoot, file.path);
-    if (existsSync(path) && JSON.stringify(parse(readFileSync(path, "utf8"))) !== JSON.stringify(file.document)) {
-      throw new Error(`Refusing to overwrite an existing Paved document: ${file.path}`);
-    }
-  }
-  for (const file of files) {
-    const path = resolveSafePath(context.projectRoot, file.path);
-    mkdirSync(join(path, ".."), { recursive: true });
-    atomicWriteFileSync(path, stringify(file.document));
-  }
+  } });
+  writeFiles(context.projectRoot, context.coreRoot, files);
   return files.map((file) => file.path);
+}
+
+/** Adds one explicitly given command as a Check, keeping the profile's other checks and settings. */
+export function addProjectCheck(projectRoot: string, coreRoot: string, candidate: CheckSource): { checkId: string; files: string[] } {
+  const files = checkFiles(candidate);
+  const { checkId } = documents(candidate);
+  const profilePath = resolveSafePath(projectRoot, PROFILE_PATH);
+  const current = existsSync(profilePath)
+    ? parse(readFileSync(profilePath, "utf8")) as { checks?: string[] } & Record<string, unknown>
+    : { apiVersion: "paved/v1", kind: "VerificationProfile", checks: [] };
+  files.push({ path: PROFILE_PATH, document: { ...current, checks: [...new Set([...(current.checks ?? []), checkId])] } });
+  writeFiles(projectRoot, coreRoot, files, new Set([PROFILE_PATH]));
+  return { checkId, files: files.map((file) => file.path) };
 }
 
 export const verificationHandler: HandlerRegistration = {
