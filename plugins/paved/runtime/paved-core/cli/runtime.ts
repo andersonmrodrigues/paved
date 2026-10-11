@@ -31,6 +31,9 @@ export interface CliFlags {
   readonly run?: string;
   readonly advance?: boolean;
   readonly approve?: boolean;
+  readonly amend?: boolean;
+  readonly abandon?: boolean;
+  readonly auto?: boolean;
   readonly reply?: string;
   readonly note?: string;
   readonly evidence?: string;
@@ -181,7 +184,9 @@ function commandUsage(command: CommandName | undefined): string {
     if (command === "preview") commandOptions.push("  --reply <text>   With resolve, tell the reviewer what changed.");
     if (command === "intent") commandOptions.push("  --workflow <feature|bug|refactor> --because <evidence>  Classify the request.", "  --recommend <workflow> --because <evidence>  Suggest a workflow and let the user decide.", "  --part <request>  Propose one part of a split; repeat per part.", "  --input <id>=<value>  Supply another declared workflow input; repeatable.");
     if (STEP_COMMANDS.includes(command)) commandOptions.push("  --run <id> --advance --note <text> --evidence <path>  Advance the run within this step's phases.");
-    if (command === "plan") commandOptions.push("  --approve        Record the user's approval of the current plan, given in the conversation.");
+    if (STEP_COMMANDS.includes(command)) commandOptions.push("  --run <id> --abandon [--note <reason>]  Cancel the run so the same request can start again.");
+    if (command === "plan") commandOptions.push("  --approve        Record the user's approval of the current plan, given in the conversation.", "  --run <id> --amend --note <change> [--evidence <plan>]  Ask approval for a revised plan mid-run.");
+    if (command === "execute") commandOptions.push("  --auto           Advance through every phase that needs no human input.");
     return [
       `Usage: paved ${command}${selectors} [options]`,
       "",
@@ -255,6 +260,9 @@ function parse(argv: readonly string[]): Parsed {
   let run: string | undefined;
   let advance = false;
   let approve = false;
+  let amend = false;
+  let abandon = false;
+  let auto = false;
   let reply: string | undefined;
   let note: string | undefined;
   let evidence: string | undefined;
@@ -376,6 +384,21 @@ function parse(argv: readonly string[]): Parsed {
       approve = true;
       continue;
     }
+    if (token === "--amend") {
+      if (command !== "plan") return { kind: "error", result: usage(command ?? "cli", "--amend is supported only by plan.") };
+      amend = true;
+      continue;
+    }
+    if (token === "--auto") {
+      if (command !== "execute") return { kind: "error", result: usage(command ?? "cli", "--auto is supported only by execute.") };
+      auto = true;
+      continue;
+    }
+    if (token === "--abandon") {
+      if (!command || !STEP_COMMANDS.includes(command)) return { kind: "error", result: usage(command ?? "cli", "--abandon is supported only by intent, plan and execute.") };
+      abandon = true;
+      continue;
+    }
     if (token === "--advance") {
       if (!command || !STEP_COMMANDS.includes(command)) return { kind: "error", result: usage(command ?? "cli", "--advance is supported only by intent, plan and execute.") };
       advance = true;
@@ -462,6 +485,9 @@ function parse(argv: readonly string[]): Parsed {
     noGenerate,
     advance,
     approve,
+    amend,
+    abandon,
+    auto,
     answers,
     parts,
     intentInputs,

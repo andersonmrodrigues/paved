@@ -17,7 +17,7 @@ Start a repository change by classifying its type and recording the request befo
 ## Execution contract
 
 1. Invoke `node "${CLAUDE_PLUGIN_ROOT}/scripts/paved.mjs" intent --json` from the repository root, passing the user's command inputs as supported CLI arguments. The launcher loads the pinned project-local runtime and returns the canonical structured result. Always run it from the repository being worked on, never from the plugin directory.
-2. Follow the structured result's status, diagnostics, evidence, and next action. Stop when the runtime blocks execution.
+2. Follow the structured result's status, diagnostics, evidence, and next action. When `data.remediation` names a Paved command, run it right away, present any decisions it returns, then repeat the original command. Stop only when the runtime blocks on something it cannot remediate.
 3. Pass the user's request verbatim. When the evidence shows the kind of change, add `--workflow <feature|bug|refactor> --because "<evidence>"`. When it does not, omit `--workflow` (optionally `--recommend <id> --because …`) and present the returned decision. When the request mixes kinds of change, pass each part with `--part` and present the split decision. Never classify on a guess.
 4. When the result has a `review` block, start `paved preview start <target> --json` and follow the `paved.preview` review loop.
 

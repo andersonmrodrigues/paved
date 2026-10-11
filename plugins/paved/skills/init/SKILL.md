@@ -17,7 +17,7 @@ Initialize Paved and prepare repository context and verification. Use when setti
 ## Execution contract
 
 1. Invoke `node "<plugin root>/scripts/paved.mjs" init --json` from the repository root, passing the user's command inputs as supported CLI arguments. The launcher loads the pinned project-local runtime and returns the canonical structured result. `<plugin root>` is the installed Paved plugin directory, two directories above this SKILL.md. Always run the launcher from the repository being worked on, never from the plugin directory.
-2. Follow the structured result's status, diagnostics, evidence, and next action. Stop when the runtime blocks execution.
+2. Follow the structured result's status, diagnostics, evidence, and next action. When `data.remediation` names a Paved command, run it right away, present any decisions it returns, then repeat the original command. Stop only when the runtime blocks on something it cannot remediate.
 
 ## Failure behavior
 

@@ -1,3 +1,4 @@
+import { remediationFor } from "../lib/lifecycle-remediation.ts";
 import { createDiagnostic, createResult, type CommandResult, type Diagnostic } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
 import { inspectConsumer } from "../lib/consumer-state.ts";
@@ -40,16 +41,18 @@ export async function testHandler(invocation: CommandInvocation): Promise<Comman
     coreRoot: invocation.paths.coreRoot,
   }).lifecycleState;
   if (!["RESOLVED", "GENERATED", "VALIDATED", "READY"].includes(lifecycle)) {
+    const remediation = remediationFor(lifecycle);
     return createResult({
       command: "test",
       status: "failed",
+      ...(remediation ? { data: { remediation } } : {}),
       diagnostics: [createDiagnostic({
         severity: "error",
         category: "config",
         code: "PAVED_TEST_LIFECYCLE_BLOCKED",
         component: "cli.commands.test",
         message: `Testing requires an initialized and resolved Paved consumer; current lifecycle is ${lifecycle}.`,
-        remediation: "Run paved init and resolve the project before executing a testing Tool.",
+        remediation: remediation ? `Run ${remediation.command}, then repeat this command.` : "Run paved status and resolve the reported state before executing a testing Tool.",
       })],
     });
   }

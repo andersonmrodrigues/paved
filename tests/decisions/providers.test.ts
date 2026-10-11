@@ -148,6 +148,34 @@ describe("verification candidate detection", () => {
     assert.ok(ids.includes("mvn-test"));
   });
 
+  it("detects the Python tools a uv project declares and runs them through uv", () => {
+    const project = workspace({
+      "pyproject.toml": '[dependency-groups]\ndev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10"]\n',
+      "uv.lock": "version = 1\n",
+      "tests/test_app.py": "def test_ok():\n    pass\n",
+    });
+    const byId = new Map(detectCheckCandidates(project).map((item) => [item.id, item]));
+    assert.deepEqual(byId.get("py-test")?.argv, { executable: "uv", args: ["run", "--frozen", "pytest", "-q"] });
+    assert.equal(byId.get("py-lint")?.type, "static-analysis");
+    assert.equal(byId.get("py-typecheck")?.type, "static-analysis");
+    assert.deepEqual(detectTestingCandidates(project).map((item) => item.id), ["py-test"]);
+  });
+
+  it("offers no Python tool the project does not declare", () => {
+    const project = workspace({ "pyproject.toml": '[project]\nname = "app"\n', "app/main.py": "print(1)\n" });
+    assert.deepEqual(detectCheckCandidates(project), []);
+  });
+
+  it("detects Go, Cargo and Gradle builds", () => {
+    const project = workspace({
+      "go.mod": "module example.com/app\n",
+      "engine/Cargo.toml": '[package]\nname = "engine"\n',
+      "android/build.gradle.kts": "plugins {}\n",
+    });
+    const ids = detectCheckCandidates(project).map((item) => `${item.scope}:${item.id}`);
+    for (const id of [".:go-vet", ".:go-test", "engine:cargo-build", "engine:cargo-test", "android:gradle-test"]) assert.ok(ids.includes(id), ids.join(", "));
+  });
+
   it("detects npm scripts that are actually declared", () => {
     const project = workspace({
       "package.json": JSON.stringify({ scripts: { build: "ng build", test: "ng test" } }),
@@ -286,6 +314,18 @@ describe("verification apply handler", () => {
       const document = parse(readFileSync(join(project, path), "utf8"));
       assert.equal(registry.validate(document).valid, true, path);
     }
+  });
+
+  it("adopts Python checks with their declared check types", () => {
+    const project = workspace({ "pyproject.toml": '[tool.ruff]\n[tool.pytest.ini_options]\n', "poetry.lock": "" });
+    const outcome = adopt(project, "all");
+    assert.equal(outcome.status, "continue", JSON.stringify(outcome.problems));
+    const checks = (outcome.applied[0]?.applied_changes ?? []).filter((path) => path.startsWith(".paved/verification/checks/"))
+      .map((path) => parse(readFileSync(join(project, path), "utf8")) as { type: string; tool: string });
+    assert.deepEqual(checks.map((check) => check.type).sort(), ["static-analysis", "unit"]);
+    const bindings = (outcome.applied[0]?.applied_changes ?? []).filter((path) => path.startsWith(".paved/tool-implementations/"))
+      .map((path) => (parse(readFileSync(join(project, path), "utf8")) as { invocation: { executable: string } }).invocation.executable);
+    assert.deepEqual([...new Set(bindings)], ["poetry"]);
   });
 
   it("records the written path as the decision's applied change", () => {

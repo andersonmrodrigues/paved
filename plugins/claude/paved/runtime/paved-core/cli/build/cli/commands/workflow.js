@@ -1,15 +1,17 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { inspectConsumer } from "../lib/consumer-state.js";
+import { remediationFor } from "../lib/lifecycle-remediation.js";
 import { runDecisionGate, toProjection } from "../lib/decisions/gate.js";
-import { decisionId } from "../lib/decisions/record.js";
-import { applyClassificationAnswer, classificationCandidate, createIntentRun, IntentError, missingInputs, normalizeWorkflow, parseInputs, writeIntentDocument, } from "../lib/intent.js";
+import { decisionId, transition } from "../lib/decisions/record.js";
+import { applyClassificationAnswer, classificationCandidate, createIntentRun, intentDocumentPath, IntentError, missingInputs, normalizeWorkflow, parseInputs, writeIntentDocument, } from "../lib/intent.js";
 import { resolveSafePath } from "../lib/safe-path.js";
 import { reportNewProposals } from "../lib/gardener-report.js";
 import { reviewFor } from "../lib/review-block.js";
 import { relaysAnswers, runPhase } from "../lib/workflow-gates/index.js";
-import { now, readApproval, sha } from "../lib/workflow-gates/shared.js";
+import { fingerprint, now, projectRelative, readApproval, sha, sharedPhase, UNCHANGED_HANDLER } from "../lib/workflow-gates/shared.js";
 import { isOpen, loadContract, readRun, scanRuns, runCommand, runPath, TERMINAL_STATUSES, writeRun, } from "../lib/workflow-runs.js";
+import { AMENDED_RETRY, attemptRounds, RECOVER_HANDLER, recoveriesFor, recoveryQuestion } from "../lib/workflows.js";
 import { createDiagnostic, createResult } from "../result.js";
 import { testHandler } from "./test.js";
 import { verifyHandler } from "./verify.js";
@@ -21,7 +23,8 @@ export const STEP_PHASES = {
 const STEPS = Object.keys(STEP_PHASES);
 export const ownerOf = (phase) => STEPS.find((step) => STEP_PHASES[step].includes(phase));
 const answerId = (answer) => answer.slice(0, answer.indexOf("="));
-const RUN_HANDLERS = new Map([["run.record", { effect: "record-only", apply: () => [] }]]);
+const RUN_HANDLERS = new Map(["run.record", UNCHANGED_HANDLER, RECOVER_HANDLER]
+    .map((id) => [id, { effect: "record-only", apply: () => [] }]));
 function diagnostic(code, message, remediation) {
     return createDiagnostic({ severity: "error", category: "config", code, component: "workflow.runtime", message, remediation });
 }
@@ -40,6 +43,8 @@ function nextStepAction(run) {
         return `This run is ${run.status}. Start new work with paved intent "<request>" --json.`;
     if (!run.workflow)
         return `Present the classification decision, then resume with paved intent --run ${run.id} --answer <id>=<value> --answered-by <you> --json.`;
+    if (amendmentPending(run))
+        return `Show the amended plan to the user and ask for approval in the conversation. Only after an explicit yes, run paved plan --run ${run.id} --approve --json.`;
     const phase = activePhase(run);
     const owner = phase === undefined ? undefined : ownerOf(phase.phase);
     if (phase === undefined || owner === undefined)
@@ -62,7 +67,7 @@ function result(projectRoot, step, run, nextAction, diagnostics = [], extras = {
     const open = extras.decisions ?? (run.decisions ?? []).filter((item) => item.status === "ASKED").map(toProjection);
     const status = failed ? "failed" : run.status === "awaiting-input" ? "awaiting_input" : run.status === "awaiting-approval" ? "warning" : "success";
     const review = failed ? undefined : reviewFor(projectRoot, run);
-    const reviewText = review === undefined ? "" : ` Open ${review.target} in the preview (${review.preview})${review.companions.length ? ` together with ${review.companions.join(", ")}` : ""} and keep paved preview wait running until the user says the review is finished; the preview approves nothing.`;
+    const reviewText = review === undefined ? "" : ` Summarize ${review.target}${review.companions.length ? ` and ${review.companions.join(", ")}` : ""} for the user and ask in the conversation. If the user wants to comment inline, open it in the preview (${review.preview}) and keep paved preview wait running until they say the review is finished; the preview approves nothing.`;
     return createResult({
         command: step, status, ...(open.length ? { decisions: open } : {}),
         data: { ...runSummary(run), ...extras.data, ...(review === undefined ? {} : { review }), nextAction: `${nextAction}${reviewText}` }, diagnostics: retained,
@@ -74,7 +79,8 @@ function load(invocation, id) {
     if (!run)
         throw new Error(`Workflow run ${id} does not exist.`);
     const gate = run.phases.find((phase) => phase.phase === "planning")?.gates?.find((item) => item.id === "plan-approved");
-    if (gate?.status === "approved" || gate?.status === "rejected") {
+    // An amendment is exactly the case where the approved plan file has changed; it asks for a new approval.
+    if ((gate?.status === "approved" || gate?.status === "rejected") && !(invocation.command === "plan" && invocation.flags.amend)) {
         const digest = gate.reason?.replace(/^plan_sha256=/, "");
         const planRef = run.events.findLast((event) => event.type === "approval-requested" && event.phase === "planning")?.ref;
         if (!digest || !planRef || !/^[a-f0-9]{64}$/.test(digest))
@@ -133,12 +139,20 @@ function runDecisionCandidate(decision) {
         scope: "run", question: decision.question, reason: decision.reason, options: decision.options,
         ...(decision.recommended_option === undefined ? {} : { recommended: decision.recommended_option }),
         evidence: decision.evidence, required: decision.required, requiredAnswer: decision.required_answer,
-        effect: decision.effect ?? "record-only", handler: "run.record", candidates,
+        effect: decision.effect ?? "record-only", handler: decision.handler ?? "run.record", candidates,
         ...(decision.depends_on === undefined ? {} : { dependsOn: decision.depends_on }),
     };
 }
+/** An unanswered "is the work already done?" question stops mattering once the code changes. */
+function moot(projectRoot, run, decision) {
+    return decision.handler === UNCHANGED_HANDLER && decision.status === "ASKED"
+        && fingerprint(projectRoot) !== run.events[0]?.detail?.replace(/^source_sha256=/, "");
+}
 function resolveRunDecisions(invocation, run, answers, fresh = []) {
     const before = new Map((run.decisions ?? []).map((decision) => [decision.id, decision.status]));
+    if (run.decisions?.some((decision) => moot(invocation.paths.projectRoot, run, decision))) {
+        run.decisions = run.decisions.map((decision) => moot(invocation.paths.projectRoot, run, decision) ? transition(decision, "CANCELLED") : decision);
+    }
     const outcome = runDecisionGate({
         context: {
             projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot,
@@ -146,7 +160,7 @@ function resolveRunDecisions(invocation, run, answers, fresh = []) {
             command: runCommand(run), run: run.id, answers,
             ...(invocation.flags.answeredBy === undefined ? {} : { answeredBy: invocation.flags.answeredBy }),
         },
-        providers: [() => [...(run.decisions ?? []).map(runDecisionCandidate), ...fresh]],
+        providers: [() => [...(run.decisions ?? []).filter((decision) => decision.status !== "CANCELLED").map(runDecisionCandidate), ...fresh]],
         handlers: RUN_HANDLERS, persist: true, storage: runStorage(run),
     });
     recordDecisionEvents(run, before);
@@ -214,7 +228,8 @@ function startIntent(invocation) {
     const flags = invocation.flags;
     const lifecycle = inspectConsumer({ projectRoot, coreRoot }).lifecycleState;
     if (!["RESOLVED", "GENERATED", "VALIDATED", "READY"].includes(lifecycle)) {
-        return blocked("intent", "PAVED_WORKFLOW_LIFECYCLE_BLOCKED", `Cannot start work in lifecycle state ${lifecycle}.`, "Run paved status and resolve the reported state first.");
+        const remediation = remediationFor(lifecycle);
+        return blocked("intent", "PAVED_WORKFLOW_LIFECYCLE_BLOCKED", `Cannot start work in lifecycle state ${lifecycle}.`, remediation ? `Run ${remediation.command}, then repeat this command.` : "Run paved status and resolve the reported state first.", remediation ? { remediation } : undefined);
     }
     const run = createIntentRun(projectRoot, coreRoot, {
         request: invocation.selectors.join(" "), parts: flags.parts, inputs: flags.intentInputs,
@@ -305,13 +320,121 @@ function failRun(run, phase, reason, nextAction) {
     run.ended_at = now();
     run.events.push({ at: now(), type: "phase-failed", phase: phase.phase, detail: reason }, { at: now(), type: "run-failed", phase: phase.phase });
 }
+function planGate(run) {
+    return run.phases.find((phase) => phase.phase === "planning")?.gates?.find((gate) => gate.id === "plan-approved");
+}
 function planApproved(run) {
-    return run.phases.find((phase) => phase.phase === "planning")?.gates?.find((gate) => gate.id === "plan-approved")?.status === "approved";
+    return planGate(run)?.status === "approved";
+}
+/** A revised plan awaits approval after planning already completed. */
+function amendmentPending(run) {
+    return run.phases.find((phase) => phase.phase === "planning")?.status === "completed" && planGate(run)?.status === "awaiting-approval";
+}
+function cancelRun(run, detail) {
+    for (const phase of run.phases)
+        if (phase.status === "running")
+            phase.status = "pending";
+    run.status = "cancelled";
+    run.ended_at = now();
+    run.events.push({ at: now(), type: "run-cancelled", detail });
+}
+function abandon(invocation, step, run) {
+    const { projectRoot, coreRoot } = invocation.paths;
+    if (TERMINAL_STATUSES.has(run.status))
+        return result(projectRoot, step, run, nextStepAction(run));
+    cancelRun(run, invocation.flags.note?.trim() || "abandoned");
+    writeRun(projectRoot, coreRoot, run);
+    return result(projectRoot, step, run, `Run ${run.id} was cancelled. Start new work with paved intent "<request>" --json; the same request opens a new run.`);
+}
+const RECOVERY_OPTIONS = [
+    { id: "retry", label: "Retry", description: "Fix the failure and try the phase again.", consequence: "The phase gets a fresh set of attempts." },
+    { id: "amend", label: "Amend the plan", description: "The approved plan needs to change before this phase can pass.", consequence: "Revise the plan and ask approval with paved plan --amend; the phase restarts once it is approved." },
+    { id: "abandon", label: "Abandon", description: "Stop this run.", consequence: "The run is cancelled and the same request can start a new run." },
+];
+function recoveryCandidate(projectRoot, run, phase) {
+    const intent = intentDocumentPath(run.id);
+    return {
+        scope: "run",
+        question: recoveryQuestion(phase.phase, phase.attempts ?? 0),
+        reason: run.failure?.reason ?? "The phase used all of its attempts.",
+        options: RECOVERY_OPTIONS, recommended: "retry",
+        evidence: [{ type: "file", location: intent, sha256: sha(readFileSync(resolveSafePath(projectRoot, intent))) }],
+        required: true, requiredAnswer: { type: "single-choice" }, effect: "record-only", handler: RECOVER_HANDLER,
+        candidates: RECOVERY_OPTIONS.map((option) => option.id),
+    };
+}
+function ask(invocation, step, run, candidate, nextAction) {
+    const { projectRoot, coreRoot } = invocation.paths;
+    resolveRunDecisions(invocation, run, [], [candidate]);
+    run.status = "awaiting-input";
+    delete run.ended_at;
+    writeRun(projectRoot, coreRoot, run);
+    return result(projectRoot, step, run, nextAction);
+}
+/** Records a revised plan for approval without leaving the phase the run is in. */
+function amend(invocation, run) {
+    const { projectRoot, coreRoot } = invocation.paths;
+    const gate = planGate(run);
+    if (!gate || run.phases.find((phase) => phase.phase === "planning")?.status !== "completed") {
+        return blocked("plan", "PAVED_WORKFLOW_AMEND_UNAVAILABLE", `Run ${run.id} has no approved plan to amend.`, nextStepAction(run), { run: run.id });
+    }
+    const note = invocation.flags.note?.trim();
+    if (!note)
+        return blocked("plan", "PAVED_WORKFLOW_AMEND_NOTE_REQUIRED", "An amendment needs a summary of what changed in the plan.", `Run paved plan --run ${run.id} --amend --note <what changed> --json.`, { run: run.id });
+    const planRef = invocation.flags.evidence ?? run.events.findLast((event) => event.type === "approval-requested" && event.phase === "planning")?.ref;
+    const planPath = planRef === undefined ? undefined : resolveSafePath(projectRoot, planRef);
+    if (!planPath || !existsSync(planPath))
+        return blocked("plan", "PAVED_WORKFLOW_PLAN_MISSING", "The plan file is missing.", "Restore the plan file, or pass --evidence <plan>.", { run: run.id });
+    const planSha = sha(readFileSync(planPath));
+    if (gate.reason === `plan_sha256=${planSha}`) {
+        return blocked("plan", "PAVED_WORKFLOW_AMEND_UNCHANGED", "The plan is unchanged, so there is nothing to amend.", "Edit the plan file, then run paved plan --amend again.", { run: run.id });
+    }
+    gate.status = "awaiting-approval";
+    gate.reason = `plan_sha256=${planSha}`;
+    gate.requested_at = now();
+    delete gate.decided_by;
+    delete gate.decided_at;
+    run.status = "awaiting-approval";
+    delete run.ended_at;
+    run.events.push({ at: now(), type: "approval-requested", phase: "planning", ref: projectRelative(projectRoot, planPath), detail: `plan_sha256=${planSha}; amendment: ${note.slice(0, 2000)}` });
+    writeRun(projectRoot, coreRoot, run);
+    return result(projectRoot, "plan", run, nextStepAction(run));
+}
+async function approveAmendment(invocation, run, workflow) {
+    const { projectRoot, coreRoot } = invocation.paths;
+    const planning = run.phases.find((phase) => phase.phase === "planning");
+    const outcome = await runPhase({
+        projectRoot, coreRoot, run, phase: planning, workflow, approve: true,
+        tools: { test: async () => createResult({ command: "test", status: "success" }), verify: async () => createResult({ command: "verify", status: "success" }) },
+    });
+    if (outcome.kind === "blocked")
+        return blocked("plan", outcome.code, outcome.message, outcome.remediation, { run: run.id });
+    if (outcome.kind !== "pass") {
+        writeRun(projectRoot, coreRoot, run);
+        return result(projectRoot, "plan", run, outcome.kind === "wait" ? outcome.nextAction : nextStepAction(run));
+    }
+    // An approved amendment earns the failed phase a fresh start.
+    const failed = run.phases.find((phase) => phase.status === "failed");
+    if (failed) {
+        failed.status = "running";
+        failed.attempts = (failed.attempts ?? 0) + 1;
+        delete failed.failure;
+        delete run.failure;
+        run.events.push({ at: now(), type: "retry-started", phase: failed.phase, detail: AMENDED_RETRY });
+    }
+    run.status = "running";
+    writeRun(projectRoot, coreRoot, run);
+    return result(projectRoot, "plan", run, `The amended plan is approved. ${nextStepAction(run)}`);
 }
 async function resume(invocation, step, run, answers) {
     const { projectRoot, coreRoot } = invocation.paths;
     if (TERMINAL_STATUSES.has(run.status))
         return result(projectRoot, step, run, nextStepAction(run));
+    if (step === "plan" && invocation.flags.amend)
+        return amend(invocation, run);
+    if (step === "plan" && amendmentPending(run)) {
+        return invocation.flags.approve ? approveAmendment(invocation, run, loadContract(coreRoot, run.workflow.id)) : result(projectRoot, step, run, nextStepAction(run));
+    }
     const current = run.workflow ? activePhase(run) : undefined;
     const owner = run.workflow ? (current ? ownerOf(current.phase) : undefined) : "intent";
     if (step === "execute" && run.workflow && !planApproved(run)) {
@@ -359,8 +482,17 @@ async function resume(invocation, step, run, answers) {
     if (phase.status === "failed") {
         const contractPhase = workflow.phases.find((item) => item.phase === phase.phase);
         const retryLimit = contractPhase?.retry?.class === "non-retryable" ? 1 : (contractPhase?.retry?.max_attempts ?? 2);
-        if ((phase.attempts ?? 0) >= retryLimit)
-            return blocked(step, "PAVED_WORKFLOW_RETRIES_EXHAUSTED", `${phase.phase} exhausted its ${retryLimit} attempts.`, "A human must inspect the failure and start a new run or change the approved plan.");
+        const recovered = recoveriesFor(run.decisions, phase.phase);
+        if ((phase.attempts ?? 0) >= retryLimit * attemptRounds(run, phase.phase)) {
+            return ask(invocation, step, run, recoveryCandidate(projectRoot, run, phase), `${phase.phase} used all its attempts. Present the decision, then resume with paved ${step} --run ${run.id} --advance --answer <id>=<value> --answered-by <you> --json.`);
+        }
+        const latest = recovered.at(-1);
+        if (latest?.answer === "abandon")
+            return abandon(invocation, step, run);
+        const amendedSince = (planGate(run)?.decided_at ?? "") > (latest?.applied_at ?? "");
+        if (latest?.answer === "amend" && !amendedSince) {
+            return result(projectRoot, step, run, `Revise the plan, then run paved plan --run ${run.id} --amend --note <what changed> --json and ask the user to approve it.`);
+        }
         phase.status = "running";
         delete phase.failure;
         delete run.failure;
@@ -391,6 +523,8 @@ async function resume(invocation, step, run, answers) {
                 data: { ...runSummary(run), relayedFrom: outcome.result.command, nextAction: `Present the ${outcome.result.command} decision, then repeat paved ${step} --run ${run.id} --advance with the same flags plus --answer <id>=<value> --answered-by <you> --json.` },
                 diagnostics: outcome.result.diagnostics,
             });
+        case "ask":
+            return ask(invocation, step, run, outcome.candidate, outcome.nextAction);
         case "fail":
             failRun(run, phase, outcome.reason, outcome.nextAction);
             writeRun(projectRoot, coreRoot, run);
@@ -405,8 +539,35 @@ async function resume(invocation, step, run, answers) {
                 return result(projectRoot, step, run, nextStepAction(run));
             // Advisory only: a gardener failure or proposal never changes the outcome.
             const gardener = reportNewProposals(projectRoot, coreRoot);
-            return result(projectRoot, step, run, "Workflow complete with authoritative verification evidence.", [], Object.keys(gardener).length > 0 ? { data: { gardener } } : {});
+            // The change may have made generated project context stale, e.g. when the repository was empty at init.
+            const remediation = remediationFor(inspectConsumer({ projectRoot, coreRoot }).lifecycleState);
+            return result(projectRoot, step, run, `Workflow complete with authoritative verification evidence.${remediation ? ` Then run ${remediation.command} to refresh project context.` : ""}`, [], { data: { ...(Object.keys(gardener).length > 0 ? { gardener } : {}), ...(remediation ? { remediation } : {}) } });
         }
+    }
+}
+/**
+ * Advances every execute phase that needs no human input: the first call takes the
+ * implementation note, then tests, verification, evidence and completion run on their own.
+ * It stops at a decision, a failure, or a phase that needs a new observation (review).
+ */
+async function deliver(invocation, run, answers) {
+    const { projectRoot, coreRoot } = invocation.paths;
+    let current = { ...invocation, flags: { ...invocation.flags, advance: true } };
+    let currentRun = run;
+    let pending = answers;
+    for (;;) {
+        const before = activePhase(currentRun)?.phase;
+        const outcome = await resume(current, "execute", currentRun, pending);
+        const next = readRun(projectRoot, coreRoot, currentRun.id);
+        const phase = next === undefined ? undefined : activePhase(next);
+        if (outcome.status !== "success" || !next || next.status !== "running" || !phase || phase.phase === before
+            || ownerOf(phase.phase) !== "execute" || sharedPhase(phase.phase) === undefined)
+            return outcome;
+        // An observation and evidence describe the phase they were given for, not the next one.
+        const { note: _note, evidence: _evidence, ...rest } = current.flags;
+        current = { ...current, flags: { ...rest, answers: [] } };
+        currentRun = next;
+        pending = [];
     }
 }
 export async function stepHandler(invocation) {
@@ -421,6 +582,10 @@ export async function stepHandler(invocation) {
         const selected = selectRun(invocation, step);
         if ("result" in selected)
             return selected.result;
+        if (flags.abandon)
+            return abandon(invocation, step, selected.run);
+        if (step === "execute" && flags.auto)
+            return await deliver(invocation, selected.run, selected.answers);
         return await resume(invocation, step, selected.run, selected.answers);
     }
     catch (error) {

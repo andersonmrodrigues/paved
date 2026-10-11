@@ -679,7 +679,8 @@ function writeValidatedEvidence(args) {
     atomicWriteFileSync(evidenceFile, stringify(args.record));
     return [evidenceFile];
 }
-async function runVerificationUnlocked(input) {
+/** Loads and validates the profile and everything it references, without running anything. */
+function resolveVerification(input) {
     const diagnostics = [];
     const schemaRegistry = registry(input.coreRoot);
     const profilePath = safe(input.projectRoot, ".paved/verification/profile.yaml");
@@ -785,6 +786,20 @@ async function runVerificationUnlocked(input) {
     if (diagnostics.some((item) => item.code === "PAVED_VERIFY_TOOL_UNRESOLVED")) {
         return { status: "failed", checks: [], evidenceFiles: [], diagnostics };
     }
+    return { profile, profilePath, checks, tools, implementations, diagnostics };
+}
+/** Configuration problems `paved verify` would hit, reported before anything runs. */
+export function inspectVerificationConfig(input) {
+    if (!existsSync(safe(input.projectRoot, ".paved/verification/profile.yaml")))
+        return [];
+    const resolved = resolveVerification(input);
+    return resolved.diagnostics.filter((item) => item.code !== "PAVED_VERIFY_NO_CHECKS");
+}
+async function runVerificationUnlocked(input) {
+    const resolved = resolveVerification(input);
+    if (!("profilePath" in resolved))
+        return resolved;
+    const { profile, profilePath, checks, tools, implementations, diagnostics } = resolved;
     const revision = currentRevision(input.projectRoot).revision;
     const evidenceChecks = [];
     const logs = [];

@@ -214,8 +214,31 @@ export interface WorkflowRunRecord {
     gates?: { id: string; status: string }[];
     failure?: RunFailure;
   }[];
-  decisions?: { id: string; status: string; required: boolean }[];
+  decisions?: { id: string; status: string; required: boolean; handler?: string; question?: string; answer?: unknown }[];
+  events?: { type: string; phase?: string; detail?: string }[];
   failure?: RunFailure;
+}
+
+export const RECOVER_HANDLER = "run.recover";
+export const AMENDED_RETRY = "plan amended";
+
+export function recoveryQuestion(phase: string, attempts: number): string {
+  return `The ${phase} phase failed ${attempts} times. How should Paved continue?`;
+}
+
+/** Applied "how should Paved continue?" answers for a phase, oldest first. */
+export function recoveriesFor<T extends NonNullable<WorkflowRunRecord["decisions"]>[number]>(decisions: readonly T[] | undefined, phase: string): T[] {
+  return (decisions ?? []).filter((decision) => decision.handler === RECOVER_HANDLER && decision.status === "APPLIED"
+    && decision.question?.startsWith(`The ${phase} phase failed `) === true);
+}
+
+/**
+ * Each recovery the user chose and each approved plan amendment gives a phase a fresh
+ * set of attempts on top of the workflow's limit.
+ */
+export function attemptRounds(run: Pick<WorkflowRunRecord, "decisions" | "events">, phase: string): number {
+  const amended = (run.events ?? []).filter((event) => event.type === "retry-started" && event.phase === phase && event.detail === AMENDED_RETRY).length;
+  return 1 + recoveriesFor(run.decisions, phase).length + amended;
 }
 
 interface RunFailure {
@@ -263,7 +286,7 @@ export function assessRun(run: WorkflowRunRecord, workflow: WorkflowContract): s
     }
 
     const retry = phase.retry ?? DEFAULT_RETRY;
-    const limit = retry.class === "retryable" ? (retry.max_attempts ?? DEFAULT_RETRY.max_attempts) : 1;
+    const limit = (retry.class === "retryable" ? (retry.max_attempts ?? DEFAULT_RETRY.max_attempts) : 1) * attemptRounds(run, record.phase);
     if ((record.attempts ?? 0) > limit && record.failure?.code !== "retries-exhausted") {
       problems.push(`phase ${record.phase} has ${record.attempts} attempts; its limit is ${limit}`);
     }
@@ -281,7 +304,9 @@ export function assessRun(run: WorkflowRunRecord, workflow: WorkflowContract): s
         problems.push(`gate ${gate.id} is unconditional and cannot be not-applicable`);
       }
       if (record.status === "completed") {
-        const satisfied = status === "not-applicable" || status === (gate.approval === undefined ? "passed" : "approved");
+        // An amended plan reopens its approval while the run pauses for it.
+        const amending = gate.approval !== undefined && status === "awaiting-approval" && run.status === "awaiting-approval";
+        const satisfied = amending || status === "not-applicable" || status === (gate.approval === undefined ? "passed" : "approved");
         if (!satisfied) problems.push(`phase ${record.phase} is completed but gate ${gate.id} is ${status ?? "not recorded"}`);
       }
     }

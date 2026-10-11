@@ -6,6 +6,8 @@ import { discoverSources } from "../../generator-runtime.ts";
 import type { DecisionCandidate, DecisionProvider } from "../gate.ts";
 import type { DecisionEvidence } from "../record.ts";
 
+interface Argv { readonly executable: string; readonly args: readonly string[] }
+
 export interface CheckCandidate {
   readonly id: string;
   readonly label: string;
@@ -14,6 +16,62 @@ export interface CheckCandidate {
   readonly source: DecisionEvidence;
   /** Extra argv for the declared script, so it runs once and exits instead of watching. */
   readonly scriptArgs?: readonly string[];
+  /** The exact argv, for checks that are not a Maven phase or an npm script. */
+  readonly argv?: Argv;
+  readonly type?: "unit" | "build" | "static-analysis";
+}
+
+type Detected = Omit<CheckCandidate, "scope" | "source">;
+
+/** How a Python project runs its tools: through its lock file's manager, or the interpreter's environment. */
+function pythonRunner(projectRoot: string, scope: string): (tool: string, args: readonly string[]) => Argv {
+  const has = (file: string) => existsSync(join(projectRoot, scope, file)) || existsSync(join(projectRoot, file));
+  if (has("uv.lock")) return (tool, args) => ({ executable: "uv", args: ["run", "--frozen", tool, ...args] });
+  if (has("poetry.lock")) return (tool, args) => ({ executable: "poetry", args: ["run", tool, ...args] });
+  return (tool, args) => ({ executable: "python", args: ["-m", tool, ...args] });
+}
+
+/**
+ * Python, Go, Rust and Gradle checks, offered only when the project declares the tool:
+ * pytest, ruff and mypy must appear in pyproject.toml; Go, Cargo and Gradle builds always test.
+ */
+function ecosystemChecks(projectRoot: string, path: string, paths: readonly string[]): Detected[] {
+  const scope = scopeOf(path);
+  const name = basename(path);
+  const inScope = (file: string) => paths.some((item) => (scope === "." || item.startsWith(`${scope}/`)) && file === basename(item));
+  if (name === "pyproject.toml") {
+    const declared = readFileSync(join(projectRoot, path), "utf8");
+    const mentions = (tool: string) => new RegExp(`(^|[^a-z0-9_-])${tool}([^a-z0-9_-]|$)`, "m").test(declared);
+    const run = pythonRunner(projectRoot, scope);
+    const hasTests = mentions("pytest") || inScope("conftest.py") || paths.some((item) => /(^|\/)tests?\/test_[^/]+\.py$/.test(item));
+    return [
+      ...(hasTests ? [{ id: "py-test", label: "pytest", command: "pytest", type: "unit" as const, argv: run("pytest", ["-q"]) }] : []),
+      ...(mentions("ruff") ? [{ id: "py-lint", label: "ruff check", command: "ruff", type: "static-analysis" as const, argv: run("ruff", ["check", "."]) }] : []),
+      ...(mentions("mypy") ? [{ id: "py-typecheck", label: "mypy", command: "mypy", type: "static-analysis" as const, argv: run("mypy", ["."]) }] : []),
+    ];
+  }
+  if (name === "Cargo.toml") {
+    return [
+      { id: "cargo-build", label: "cargo build", command: "build", type: "build", argv: { executable: "cargo", args: ["build", "--all-targets"] } },
+      { id: "cargo-test", label: "cargo test", command: "test", type: "unit", argv: { executable: "cargo", args: ["test"] } },
+    ];
+  }
+  if (name === "build.gradle" || name === "build.gradle.kts") {
+    const wrapper = existsSync(join(projectRoot, scope, "gradlew"));
+    const gradle = wrapper ? "./gradlew" : "gradle";
+    return [{ id: "gradle-test", label: `${gradle} test`, command: "test", type: "unit", argv: { executable: gradle, args: ["test"] } }];
+  }
+  return [];
+}
+
+function goChecks(projectRoot: string): CheckCandidate[] {
+  const path = join(projectRoot, "go.mod");
+  if (!existsSync(path)) return [];
+  const source: DecisionEvidence = { type: "file", location: "go.mod", sha256: createHash("sha256").update(readFileSync(path)).digest("hex") };
+  return [
+    { id: "go-vet", label: "go vet", command: "vet", scope: ".", source, type: "static-analysis", argv: { executable: "go", args: ["vet", "./..."] } },
+    { id: "go-test", label: "go test", command: "test", scope: ".", source, type: "unit", argv: { executable: "go", args: ["test", "./..."] } },
+  ];
 }
 
 // Only lifecycle phases that every Maven build defines. Nothing is inferred from a
@@ -65,9 +123,11 @@ export function detectCheckCandidates(projectRoot: string): CheckCandidate[] {
   const mavenScopes = sources.filter((source) => basename(source.path) === "pom.xml").map((source) => scopeOf(source.path));
   const mavenPlan = planMavenDependencies(projectRoot, mavenScopes);
   const mavenRank = new Map(mavenPlan.scopes.map((scope, index) => [scope, index]));
+  candidates.push(...goChecks(projectRoot));
   for (const source of sources) {
     const evidence: DecisionEvidence = { type: "file", location: source.path, sha256: source.sha256 };
     const scope = scopeOf(source.path);
+    candidates.push(...ecosystemChecks(projectRoot, source.path, paths).map((check) => ({ ...check, scope, source: evidence })));
 
     if (basename(source.path) === "pom.xml") {
       for (const check of MAVEN_CHECKS) {
