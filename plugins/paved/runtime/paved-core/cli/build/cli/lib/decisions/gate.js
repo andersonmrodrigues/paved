@@ -1,5 +1,5 @@
 import { acquireConsumerOperationLock } from "../operation-lock.js";
-import { validateAnswer } from "./answers.js";
+import { recordedIdentity, validateAnswer } from "./answers.js";
 import { readDecisionApproval } from "./approval.js";
 import { tierFor } from "./effects.js";
 import { fingerprintOf, supersede } from "./fingerprint.js";
@@ -220,7 +220,7 @@ function runDecisionGateUnlocked(input) {
                     continue;
                 }
                 source = "human-authored";
-                identity = approval.decided_by;
+                identity = recordedIdentity(approval.decided_by);
             }
             if (identity === undefined) {
                 problems.push(`Decision ${id} has no answering identity.`);

@@ -254,6 +254,12 @@ $defs:
         description: The check definition that was run.
         $ref: "urn:paved:schema:common:v1#/$defs/checkRef"
       type: { $ref: "urn:paved:schema:common:v1#/$defs/checkType" }
+      covers:
+        description: Further check types the check definition declares a pass proves.
+        type: array
+        uniqueItems: true
+        minItems: 1
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/checkType" }
       tool:
         description: The tool that executed the check and the version of the program it ran.
         type: object

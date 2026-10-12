@@ -5,6 +5,34 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- A Check can declare `covers`: further check types a pass also proves, for one suite
+  that runs several kinds of test. Evidence records the covered types, completion and
+  workflow gaps count them, and a result claiming a type its definition does not
+  declare is rejected.
+
+### Changed
+
+- `core.testing.run` 0.1.2, `core.testing.results`, `core.testing.smoke` and
+  `core.testing.targeted` 0.1.1 allow up to 3600 seconds, so a project binding can run a
+  long suite. Set `timeout_seconds` on the binding to keep a shorter limit.
+- An email given to `--answered-by` is stored as a stable pseudonym
+  (`person-<digest>`), so versioned decision records do not publish the address.
+
+### Fixed
+
+- A run started before the repository's first commit counts every file as changed,
+  instead of finding no changed file once the work is committed.
+- Approving an amended plan for a run that is past implementation reopens
+  implementation, validation, verification, evidence and review, so the amended plan is
+  delivered and reviewed again.
+- Each evidence recording writes its own files (`<run>-workflow-2.yaml`, ...), and only
+  the evidence in force is checked for integrity. Changed evidence names its file and
+  how to recover, and `paved plan --amend` is no longer blocked by it.
+- `paved gardener` skips an evidence record that contradicts its own observations,
+  naming the file and its problems, instead of stopping the whole analysis.
+
 ## [2.5.1] - 2026-10-12
 
 ### Fixed

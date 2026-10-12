@@ -13,6 +13,8 @@ export function loadEvidenceRegistry(file) {
     return { checkTypes: Object.fromEntries(checkTypes), artifactKinds: Object.fromEntries(artifactKinds) };
 }
 /** Whether a measurement is within its threshold, computed from the numbers alone. */
+/** The check types a result speaks for: its own and any further ones its definition covers. */
+export const coveredTypes = (check) => [check.type, ...(check.covers ?? [])];
 export function withinThreshold(m) {
     const worsening = m.direction === "lower-is-better" ? m.current.value - m.baseline.value : m.baseline.value - m.current.value;
     const limit = m.threshold.relative ? m.threshold.max_regression * Math.abs(m.baseline.value) : m.threshold.max_regression;
@@ -102,6 +104,9 @@ function integrityProblems(record, definitions) {
         }
         if (definition.type !== check.type)
             problems.push(`check "${check.id}" is recorded as ${check.type}, but ${definition.id} is ${definition.type}`);
+        const undeclared = (check.covers ?? []).filter((type) => !(definition.covers ?? []).includes(type));
+        if (undeclared.length > 0)
+            problems.push(`check "${check.id}" claims to cover ${undeclared.join(", ")}, which ${definition.id} does not declare`);
         if (definition.tool !== check.tool.id)
             problems.push(`check "${check.id}" ran ${check.tool.id}, but ${definition.id} runs ${definition.tool}`);
         const expectedCode = definition.expected?.exit_code;
@@ -146,7 +151,7 @@ export function evaluateCompletion(record, registry, policy = {}, definitions = 
     const strengthOf = (ref, claimType) => {
         const check = checks.get(ref);
         if (check !== undefined) {
-            if (!counts(check) || !(registry.checkTypes[check.type]?.supports.includes(claimType) ?? false))
+            if (!counts(check) || !coveredTypes(check).some((type) => registry.checkTypes[type]?.supports.includes(claimType) ?? false))
                 return undefined;
             return check.execution.recorded_by === "agent" ? "self-observed" : "independent";
         }
@@ -199,7 +204,7 @@ export function evaluateCompletion(record, registry, policy = {}, definitions = 
         else
             informational.push(message);
     }
-    const passedTypes = new Set(record.checks.filter(counts).map((c) => c.type));
+    const passedTypes = new Set(record.checks.filter(counts).flatMap(coveredTypes));
     const gaps = record.gaps ?? [];
     let passedRequired = 0;
     let gapRequired = 0;
@@ -209,7 +214,7 @@ export function evaluateCompletion(record, registry, policy = {}, definitions = 
             continue;
         }
         const gap = gaps.find((g) => g.check_type === type);
-        const blocked = record.checks.find((c) => c.type === type && c.status === "blocked");
+        const blocked = record.checks.find((c) => coveredTypes(c).includes(type) && c.status === "blocked");
         if (gap !== undefined && !(gap.risk === "high" && gap.accepted_by === undefined)) {
             gapRequired++;
             blocking.push(`required ${type} verification was not performed (gap)`);

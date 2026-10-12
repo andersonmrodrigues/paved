@@ -119,6 +119,29 @@ describe("verification completion", () => {
     });
   }
 
+  it("lets one passed check satisfy the further types its definition covers", () => {
+    const record = copy();
+    record.plan.required.push("integration");
+    assert.equal(evaluateCompletion(record, registry).status, "incomplete");
+    record.checks[0]!.covers = ["integration"];
+    const definitions = new Map([["project.test.unit", {
+      id: "project.test.unit", type: "unit", covers: ["integration"], tool: "project.test.run-unit", expected: { exit_code: 0 },
+    }]]);
+    assert.equal(evaluateCompletion(record, registry, {}, definitions).status, "complete");
+    assert.deepEqual(assessEvidence(record, registry, {}, definitions), []);
+    const validity = schemas().validate(record);
+    assert.ok(validity.valid, formatErrors("covering check", validity.errors));
+  });
+
+  it("rejects a covered type the Check definition does not declare", () => {
+    const record = copy();
+    record.checks[0]!.covers = ["integration"];
+    const definitions = new Map([["project.test.unit", {
+      id: "project.test.unit", type: "unit", tool: "project.test.run-unit", expected: { exit_code: 0 },
+    }]]);
+    assert.match(assessEvidence(record, registry, {}, definitions).join("\n"), /claims to cover integration/);
+  });
+
   it("keeps a failed attempt visible when a retry passes", () => {
     const record = copy();
     const check = record.checks[0]!;

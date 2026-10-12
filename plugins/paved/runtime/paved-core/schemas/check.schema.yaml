@@ -22,6 +22,15 @@ properties:
     description: Why the check exists and which claims a pass can support.
     $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
   type: { $ref: "urn:paved:schema:common:v1#/$defs/checkType" }
+  covers:
+    description: >
+      Further check types a pass also proves, for a check whose tool runs more than one
+      kind of test (one suite with unit and integration tests, say). A failure fails
+      every type it covers.
+    type: array
+    uniqueItems: true
+    minItems: 1
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/checkType" }
   tool:
     description: >
       Tool that executes the check. Its safety class applies; a check's tool is never

@@ -152,7 +152,7 @@ export function recoveriesFor(decisions, phase) {
  * the amendment is approved, so it is counted there and not twice.
  */
 export function attemptRounds(run, phase) {
-    const amended = (run.events ?? []).filter((event) => event.type === "retry-started" && event.phase === phase && event.detail === AMENDED_RETRY).length;
+    const amended = (run.events ?? []).filter((event) => (event.type === "retry-started" || event.type === "phase-reopened") && event.phase === phase && event.detail === AMENDED_RETRY).length;
     return 1 + recoveriesFor(run.decisions, phase).filter((decision) => decision.answer === "retry").length + amended;
 }
 const DONE = new Set(["completed", "skipped"]);

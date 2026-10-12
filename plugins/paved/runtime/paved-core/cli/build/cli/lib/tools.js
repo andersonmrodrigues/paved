@@ -352,6 +352,7 @@ export function toEvidenceCheck(result, check, id) {
     const observation = { name: "tool-status", value: result.status };
     return {
         id, check: check.id, type: check.type,
+        ...(check.covers?.length ? { covers: [...check.covers] } : {}),
         tool: { id: result.tool.id, version: result.tool.version },
         status,
         ...(status === "passed" || status === "failed" ? ("exit_code" in result ? { exit_code: result.exit_code } : {}) : {}),

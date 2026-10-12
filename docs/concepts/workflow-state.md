@@ -66,6 +66,7 @@ class.
 | `approval-requested`, `approval-decided` | A human decision was asked for or made |
 | `decision-raised`, `decision-asked`, `decision-answered`, `decision-applied`, `decision-superseded` | A run-scoped decision changes state |
 | `retry-started` | A new attempt of a phase began |
+| `phase-reopened` | An approved plan amendment returned a phase to `pending`; the run goes back to implementation |
 
 ## Plan approval
 
