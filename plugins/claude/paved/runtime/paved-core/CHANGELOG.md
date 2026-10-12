@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-10-12
+
 ### Added
 
 - `paved execute "<request>"` starts work from a single command. It initializes Paved
