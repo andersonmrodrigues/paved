@@ -5,6 +5,13 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-10-12
+
+### Changed
+
+- The README now explains why Paved exists and how it is built, and ships in the
+  plugins.
+
 ## [2.6.0] - 2026-10-12
 
 ### Added
