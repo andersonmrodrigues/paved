@@ -61,13 +61,13 @@ function project(): string {
   return root;
 }
 
-async function approvedRun(root: string): Promise<{ id: string; invoke: (...argv: string[]) => Promise<CommandResult> }> {
+async function approvedRun(root: string, plan = "docs/plan.md"): Promise<{ id: string; invoke: (...argv: string[]) => Promise<CommandResult> }> {
   const invoke = (...argv: string[]) => dispatchCli({ argv: [...argv, "--project", root, "--json"] });
   const id = ((await invoke("intent", "Enable the behavior", "--workflow", "feature", "--because", "New behavior.")).data as { run: string }).run;
   await invoke("intent", "--run", id, "--advance", "--note", "Scope is clear");
   await invoke("intent", "--run", id, "--advance", "--note", "Architecture inspected");
-  write(root, "docs/plan.md", "Enable the behavior in feature.js.\n");
-  await invoke("plan", "--run", id, "--advance", "--note", "Plan", "--evidence", "docs/plan.md");
+  write(root, plan, "Enable the behavior in feature.js.\n");
+  await invoke("plan", "--run", id, "--advance", "--note", "Plan", "--evidence", plan);
   const approved = await invoke("plan", "--run", id, "--approve");
   assert.equal((approved.data as { currentPhase: string }).currentPhase, "implementation", JSON.stringify(approved));
   return { id, invoke };
@@ -115,7 +115,8 @@ describe("delivering an approved plan", () => {
     const root = project();
     write(root, "feature.js", "export const enabled = true;\n");
     git(root, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qam", "done earlier");
-    const { id, invoke } = await approvedRun(root);
+    // Plans normally live under .paved/, which the change diff excludes, so nothing changes during the run.
+    const { id, invoke } = await approvedRun(root, ".paved/documents/plans/plan.md");
 
     const asked = await invoke("execute", "--run", id, "--advance", "--note", "Already implemented");
     const decision = asked.decisions?.[0];
@@ -124,6 +125,13 @@ describe("delivering an approved plan", () => {
       "--answer", `${decision!.id}=already-done`, "--answered-by", "owner@example.com");
 
     assert.equal((answered.data as { currentPhase: string }).currentPhase, "validation", JSON.stringify(answered));
+    const delivered = await invoke("execute", "--run", id, "--auto");
+    assert.equal((delivered.data as { currentPhase: string }).currentPhase, "review", JSON.stringify(delivered));
+    const evidence = parse(readFileSync(join(root, `.paved/generated/evidence/${id}-workflow.yaml`), "utf8")) as { change: { files: string[]; summary: string } };
+    assert.deepEqual(evidence.change.files, []);
+    assert.match(evidence.change.summary, /already in the repository/);
+    await invoke("execute", "--run", id, "--auto", "--note", "Reviewed the existing implementation");
+    assert.equal(runState(root, id).status, "completed");
   });
 
   it("offers recovery options when a phase runs out of attempts, and abandoning frees the request", async () => {
@@ -146,6 +154,32 @@ describe("delivering an approved plan", () => {
     assert.equal(runState(root, id).status, "cancelled", JSON.stringify(abandoned));
     const restarted = await invoke("intent", "Enable the behavior", "--workflow", "feature", "--because", "New behavior.");
     assert.notEqual((restarted.data as { run: string }).run, id);
+  });
+
+  it("cancels the run when the user answers abandon, and waits for an amendment when they answer amend", async () => {
+    const exhaust = async () => {
+      const root = project();
+      const { id, invoke } = await approvedRun(root);
+      write(root, "feature.js", "export const enabled = 'no';\n");
+      await invoke("execute", "--run", id, "--advance", "--note", "Tried something");
+      await invoke("execute", "--run", id, "--advance");
+      await invoke("execute", "--run", id, "--advance");
+      const exhausted = await invoke("execute", "--run", id, "--advance");
+      const answer = (value: string) => invoke("execute", "--run", id, "--advance",
+        "--answer", `${exhausted.decisions![0]!.id}=${value}`, "--answered-by", "owner@example.com");
+      return { root, id, answer, invoke };
+    };
+
+    const abandoning = await exhaust();
+    await abandoning.answer("abandon");
+    assert.equal(runState(abandoning.root, abandoning.id).status, "cancelled");
+
+    const amending = await exhaust();
+    const waiting = await amending.answer("amend");
+    assert.match((waiting.data as { nextAction: string }).nextAction, /paved plan --run .* --amend/, JSON.stringify(waiting));
+    const again = await amending.invoke("execute", "--run", amending.id, "--advance");
+    assert.match((again.data as { nextAction: string }).nextAction, /--amend/);
+    assert.equal(runState(amending.root, amending.id).phases.find((phase) => phase.phase === "validation")?.attempts, 2);
   });
 
   it("amends the approved plan mid-run and restarts the failed phase after approval", async () => {

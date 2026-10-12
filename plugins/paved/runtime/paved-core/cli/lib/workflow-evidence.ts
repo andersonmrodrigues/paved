@@ -8,7 +8,7 @@ import { loadYaml } from "./documents.ts";
 import type { EvidenceRecord } from "./evidence.ts";
 import { resolveSafePath } from "./safe-path.ts";
 import type { Run } from "./workflow-runs.ts";
-import type { WorkflowContract } from "./workflows.ts";
+import { UNCHANGED_HANDLER, type WorkflowContract } from "./workflows.ts";
 
 interface ChangeDiff { readonly files: string[]; readonly patch: string }
 
@@ -59,10 +59,13 @@ export function writeWorkflowEvidence(input: {
   readonly summary: string;
 }): { path: string } | { problem: string } {
   const { projectRoot, run, workflow } = input;
-  const authoritative = loadYaml(resolveSafePath(projectRoot, run.evidence!)) as EvidenceRecord & { verification: unknown };
+  if (!run.evidence) return { problem: "The run has no authoritative verification evidence to build on." };
+  const authoritative = loadYaml(resolveSafePath(projectRoot, run.evidence)) as EvidenceRecord & { verification: unknown };
   const change = collectChange(projectRoot, run.revision);
   if (!change) return { problem: "The project is not a Git working tree, so Paved cannot derive the change diff." };
-  if (change.files.length === 0) return { problem: "No changed file was found since the run started." };
+  // Work the user confirmed was already done before the run legitimately has an empty diff.
+  const preExisting = run.decisions?.some((decision) => decision.handler === UNCHANGED_HANDLER && decision.answer === "already-done") === true;
+  if (change.files.length === 0 && !preExisting) return { problem: "No changed file was found since the run started." };
 
   const createdAt = new Date().toISOString();
   const diffRef = `.paved/generated/evidence/${run.id}.diff`;
@@ -82,7 +85,7 @@ export function writeWorkflowEvidence(input: {
     producer: { agent: "paved-cli", workflow: workflow.id, run: run.id },
     verification: authoritative.verification,
     retention: "local",
-    change: { ...authoritative.change, summary: input.summary, files: change.files },
+    change: { ...authoritative.change, summary: preExisting && change.files.length === 0 ? `${input.summary} (already in the repository before the run started)` : input.summary, files: change.files },
     plan,
     claims: authoritative.claims,
     checks: authoritative.checks,

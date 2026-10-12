@@ -10,7 +10,7 @@ import { resolveSafePath } from "../safe-path.ts";
 import { createRegistry } from "../schemas.ts";
 import { sanitizeToolOutput } from "../tools.ts";
 import { writeWorkflowEvidence } from "../workflow-evidence.ts";
-import { assessWorkflowEvidence } from "../workflows.ts";
+import { assessWorkflowEvidence, UNCHANGED_HANDLER } from "../workflows.ts";
 import type { Run } from "../workflow-runs.ts";
 import { createDiagnostic, type Diagnostic } from "../../result.ts";
 import type { PhaseContext, PhaseHook, PhaseOutcome } from "./index.ts";
@@ -41,14 +41,18 @@ export function recordObservation(context: PhaseContext, ref?: string): void {
   });
 }
 
-export const UNCHANGED_HANDLER = "run.unchanged";
 const UNCHANGED_QUESTION = "No source or test file changed since the run started. Is the approved work already in the repository?";
+
+/** True while the source and test files match the fingerprint recorded when the run started. */
+export function sourceUnchanged(projectRoot: string, run: Run): boolean {
+  const started = run.events.find((event) => event.type === "run-started")?.detail?.replace(/^source_sha256=/, "");
+  return started !== undefined && fingerprint(projectRoot) === started;
+}
 
 /** Implementation needs a change, unless the user confirms the approved work already exists; verification still has to prove it. */
 export function implementationChanged(context: PhaseContext): PhaseOutcome | undefined {
   const { run, projectRoot } = context;
-  const original = run.events[0]?.detail?.replace(/^source_sha256=/, "");
-  if (fingerprint(projectRoot) !== original) return undefined;
+  if (!sourceUnchanged(projectRoot, run)) return undefined;
   const answered = run.decisions?.find((decision) => decision.handler === UNCHANGED_HANDLER && decision.status === "APPLIED");
   if (answered?.answer === "already-done") return undefined;
   if (answered) return blocked("PAVED_WORKFLOW_CHANGE_MISSING", "No source or test change was observed after approval.", "Implement the approved change before advancing.");

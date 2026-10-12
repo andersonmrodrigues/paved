@@ -14,11 +14,12 @@ import { verifyHandler } from "./commands/verify.ts";
 import { stepHandler } from "./commands/workflow.ts";
 import { previewHandler } from "./commands/preview.ts";
 import { workbenchHandler } from "./commands/workbench.ts";
+import { toolHandler } from "./commands/tool.ts";
 import { createDiagnostic, createResult, type CommandResult } from "./result.ts";
 import { CliPathError, resolveCoreRoot, resolveProjectRoot } from "./paths.ts";
 import { assertAnswerIdentity, parseAnswerFlags } from "./lib/decisions/answers.ts";
 
-export const COMMAND_NAMES = ["init", "status", "intent", "plan", "execute", "test", "verify", "update", "doctor", "gardener", "generate", "agent", "decision", "preview", "workbench"] as const;
+export const COMMAND_NAMES = ["init", "status", "intent", "plan", "execute", "test", "verify", "update", "doctor", "gardener", "generate", "agent", "decision", "preview", "workbench", "tool"] as const;
 const STEP_COMMANDS: readonly string[] = ["intent", "plan", "execute"];
 export type CommandName = (typeof COMMAND_NAMES)[number];
 
@@ -46,6 +47,8 @@ export interface CliFlags {
   readonly recommend?: string;
   readonly parts: readonly string[];
   readonly intentInputs: readonly string[];
+  readonly scope?: string;
+  readonly toolCommand?: readonly string[];
 }
 
 export interface CommandPaths {
@@ -108,6 +111,7 @@ const COMMAND_RULES: Record<CommandName, CommandRule> = {
   decision: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   preview: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   workbench: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
+  tool: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   intent: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   plan: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
   execute: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
@@ -173,7 +177,8 @@ function takeValue(argv: readonly string[], index: number, flag: string, command
 function commandUsage(command: CommandName | undefined): string {
   if (command !== undefined) {
     const selectors = command === "generate" ? " [generator-id...]" : command === "agent"
-      ? " <operation> [integration|command-name]" : command === "preview" ? " <start|serve|status|wait|working|resolve|stop> <file.md|folder> [cursor|comment-id]" : command === "workbench" ? " <start|serve|status|stop>" : "";
+      ? " <operation> [integration|command-name]" : command === "preview" ? " <start|serve|status|wait|working|resolve|stop> <file.md|folder> [cursor|comment-id]" : command === "workbench" ? " <start|serve|status|stop>"
+        : command === "tool" ? " add <check-type> [label] [--scope <dir>] -- <executable> [args...]" : "";
     const commandOptions: string[] = [];
     const rule = COMMAND_RULES[command];
     if (rule.adapters) commandOptions.push("  --adapter <id>   Select an adapter for status, doctor, or verification content resolution; repeatable.");
@@ -187,6 +192,7 @@ function commandUsage(command: CommandName | undefined): string {
     if (STEP_COMMANDS.includes(command)) commandOptions.push("  --run <id> --abandon [--note <reason>]  Cancel the run so the same request can start again.");
     if (command === "plan") commandOptions.push("  --approve        Record the user's approval of the current plan, given in the conversation.", "  --run <id> --amend --note <change> [--evidence <plan>]  Ask approval for a revised plan mid-run.");
     if (command === "execute") commandOptions.push("  --auto           Advance through every phase that needs no human input.");
+    if (command === "tool") commandOptions.push("  --scope <dir>    Run the command from this project directory.", "  -- <executable> [args...]  The exact command; everything after -- is passed as argv.");
     return [
       `Usage: paved ${command}${selectors} [options]`,
       "",
@@ -276,6 +282,8 @@ function parse(argv: readonly string[]): Parsed {
   let recommend: string | undefined;
   const parts: string[] = [];
   const intentInputs: string[] = [];
+  let scope: string | undefined;
+  let toolCommand: string[] | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -293,6 +301,19 @@ function parse(argv: readonly string[]): Parsed {
 
     if (COMMON_BOOLEAN_FLAGS.has(token)) {
       json = true;
+      continue;
+    }
+
+    if (token === "--" && command === "tool") {
+      toolCommand = argv.slice(index + 1);
+      break;
+    }
+    if (token === "--scope") {
+      if (command !== "tool") return { kind: "error", result: usage(command ?? "cli", "--scope is supported only by tool add.") };
+      const value = takeValue(argv, index, token, command);
+      if (typeof value !== "string") return { kind: "error", result: value };
+      scope = value;
+      index += 1;
       continue;
     }
 
@@ -502,6 +523,8 @@ function parse(argv: readonly string[]): Parsed {
     ...(project === undefined ? {} : { project }),
     ...(inputs === undefined ? {} : { inputs }),
     ...(decision === undefined ? {} : { decision }),
+    ...(scope === undefined ? {} : { scope }),
+    ...(toolCommand === undefined ? {} : { toolCommand }),
   };
 
   return {
@@ -538,6 +561,7 @@ const DEFAULT_HANDLERS: CommandHandlers = {
   decision: decisionHandler,
   preview: previewHandler,
   workbench: workbenchHandler,
+  tool: toolHandler,
   doctor: doctorHandler,
   generate: generateHandler,
   gardener: gardenerHandler,
