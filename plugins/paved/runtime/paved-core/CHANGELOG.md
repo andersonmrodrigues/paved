@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-10-12
+
 ### Added
 
 - A Check can declare `covers`: further check types a pass also proves, for one suite
