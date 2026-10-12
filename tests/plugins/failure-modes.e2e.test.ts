@@ -63,7 +63,9 @@ describe("plugin launcher failure modes", () => {
   const project = (files: Record<string, string> = {}) => consumer(root, `consumer-${++counter}`, files);
   const variant = (config: Record<string, unknown> | string, extra: (dir: string) => void = () => {}) => {
     const dir = join(root, `plugin-${++counter}`, "paved");
-    cpSync(plugin, dir, { recursive: true });
+    mkdirSync(dir, { recursive: true });
+    cpSync(join(plugin, LAUNCHER_DIRECTORY), join(dir, LAUNCHER_DIRECTORY), { recursive: true });
+    cpSync(join(plugin, RUNTIME_DIRECTORY), join(dir, RUNTIME_DIRECTORY), { recursive: true });
     writeFileSync(join(dir, LAUNCHER_DIRECTORY, "bootstrap.json"), typeof config === "string" ? config : JSON.stringify(config));
     extra(dir);
     return launcher(dir, npmCache);

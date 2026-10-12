@@ -57,7 +57,7 @@ const APECATUS_SHAPED = {
   "README.md": "# Apecatus-shaped fixture\n",
 };
 
-describe("no manual configuration is ever required", () => {
+describe("no manual configuration is ever required", { concurrency: true }, () => {
   it("completes init through a conversation alone", async () => {
     const project = cleanRepository(APECATUS_SHAPED);
     const result = await answerEverything(project, "init", []);

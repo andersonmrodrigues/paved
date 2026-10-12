@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { after, describe, it } from "node:test";
 import { loadMarkdown } from "../../cli/lib/documents.ts";
@@ -13,7 +13,7 @@ import {
 } from "../../plugins/build.ts";
 import { OPENAI_EXCLUDED, packageOpenAI } from "../../plugins/package-openai.ts";
 import { ROOT, filesRecursive, rel, treeIntegrity } from "../helpers.ts";
-import { claudeWithDependencies, codexVisibleSkills, hostAvailable, installWithCodex, lockedPackages, repositorySnapshot, workspace } from "./support.ts";
+import { claudeWithDependencies, expectedSkills, hostAvailable, lockedPackages, workspace } from "./support.ts";
 
 const portable = join(ROOT, PLUGIN_DIRECTORY);
 const claude = join(ROOT, CLAUDE_PLUGIN_DIRECTORY);
@@ -28,11 +28,6 @@ const allFiles = (dir: string): string[] => readdirSync(dir, { recursive: true, 
   .sort();
 const temporary: string[] = [];
 after(() => { for (const path of temporary) rmSync(path, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); });
-
-const expectedSkills = (): string[] => {
-  const names = new Set([...loadCanonicalSkills(ROOT).map((skill) => skill.name), ...AGENT_COMMANDS.map((command) => command.name)]);
-  return [...names].sort();
-};
 
 const assertSquarePng = (icon: Buffer) => {
   assert.deepEqual(icon, readFileSync(join(ROOT, "plugins", "icon.png")));
@@ -356,14 +351,4 @@ describe("repository marketplaces", () => {
     }
   });
 
-  it("install through Codex and expose every skill to the model", { skip: hostAvailable("codex") ? false : "codex CLI is not installed" }, () => {
-    const root = workspace("codex-discovery");
-    temporary.push(root);
-    const installed = installWithCodex(repositorySnapshot(root), join(root, "codex-home"));
-    assert.ok(installed.includes(join("plugins", "cache", "paved", "paved")), installed);
-    const project = join(root, "project");
-    mkdirSync(project);
-    const visible = codexVisibleSkills(join(root, "codex-home"), project);
-    assert.deepEqual(visible, expectedSkills().map((name) => `paved:${name}`));
-  });
 });

@@ -4,7 +4,9 @@ How to change this repository without breaking consumers.
 
 ## Before any change
 
-- Run `npm ci` once, then `npm run check` (strict type check and all tests).
+- Run `npm ci` once. Use `npm run check:fast` for quick strict type checking and
+  contract/unit tests; use `npm run check:e2e` for strict type checking and marked
+  end-to-end tests. `npm run check` still runs the complete suite.
 - Ask: is this true for **every** repository, regardless of domain and technology? If
   not, it belongs in an adapter or in a consumer's `.paved/`, not here (Principle 2).
 

@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, sep } from "node:path";
+import { AGENT_COMMANDS } from "../../integrations/shared/commands.ts";
+import { loadCanonicalSkills } from "../../integrations/shared/catalog.ts";
 import { LAUNCHER_DIRECTORY, RUNTIME_DIRECTORY } from "../../plugins/build.ts";
 import { ROOT, treeIntegrity } from "../helpers.ts";
 
@@ -14,6 +16,11 @@ export interface Invocation {
     command?: string; status?: string; data?: any; diagnostics?: { code: string; severity: string }[];
     decisions?: { id: string; question: string; required: boolean; answerChannel: string; recommended?: string; options: { id: string }[] }[];
   };
+}
+
+export function expectedSkills(): string[] {
+  const names = new Set([...loadCanonicalSkills(ROOT).map((skill) => skill.name), ...AGENT_COMMANDS.map((command) => command.name)]);
+  return [...names].sort();
 }
 
 export function hostAvailable(executable: "codex" | "claude"): boolean {
