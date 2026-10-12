@@ -1,17 +1,17 @@
 # Contributing to Paved
 
-Thanks for helping improve Paved.
+Paved is a personal project, but issues and pull requests are welcome.
 
 ## Repository layout
 
-- `core/` — canonical agent behavior, skills, workflows, rules, tools and verification
-- `schemas/` — machine-readable contracts for every Paved document type
-- `adapters/` — technology-specific knowledge and bindings
-- `generators/` — project-context and proposal generation contracts
-- `integrations/` — thin agent projection wrappers
-- `cli/` — public CLI runtime and command implementations
-- `docs/` — user, contributor and architecture documentation
-- `tests/` — contract and integration coverage
+- `core/`: canonical agent behavior, skills, workflows, rules, tools and verification
+- `schemas/`: machine-readable contracts for every Paved document type
+- `adapters/`: technology-specific knowledge and bindings
+- `generators/`: project-context and proposal generation contracts
+- `integrations/`: thin agent projection wrappers
+- `cli/`: public CLI runtime and command implementations
+- `docs/`: user, contributor and architecture documentation
+- `tests/`: contract and integration coverage
 
 ## Development setup
 
