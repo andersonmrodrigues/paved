@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-10-12
+
 ### Changed
 
 - The review phase needs findings from a reviewer that did not write the change. Paved
