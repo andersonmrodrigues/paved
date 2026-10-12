@@ -121,6 +121,28 @@ it("CLI reports broken input without changing consumer state", async () => {
   assert.equal(readFileSync(path, "utf8"), before);
 });
 
+it("skips a self-contradicting evidence record, names it, and still analyzes the rest", async () => {
+  const dir = consumer("fixture-contradiction");
+  evidence(dir, "run-one", "2026-01-01T00:00:00Z");
+  evidence(dir, "run-two", "2026-01-02T00:00:00Z");
+  const path = join(dir, ".paved/generated/evidence/run-bad.yaml");
+  const record = parse(readFileSync(join(CORE, "tests/fixtures/evidence/synthetic/failed.yaml"), "utf8")) as { id: string; change: { revision: string } };
+  record.id = "run-bad";
+  record.change.revision = "another-revision";
+  writeFileSync(path, stringify(record));
+
+  const result = analyzeGardener({ projectRoot: dir, coreRoot: CORE });
+  assert.equal(result.skipped.length, 1);
+  assert.equal(result.skipped[0]!.record, ".paved/generated/evidence/run-bad.yaml");
+  assert.match(result.skipped[0]!.problems.join("\n"), /not the change revision another-revision/);
+  assert.ok(result.proposals.some((entry) => entry.problem.includes("project.synthetic.integration")));
+  assert.ok(result.observations.every((entry) => entry.evidence.every((item) => !item.record.endsWith("run-bad.yaml"))));
+
+  const cli = await dispatchCli({ argv: ["gardener", "--project", dir, "--json"], cwd: dir, executablePath: join(CORE, "cli/index.ts") });
+  const skipped = cli.diagnostics.find((diagnostic) => diagnostic.code === "PAVED_GARDENER_EVIDENCE_SKIPPED");
+  assert.match(skipped?.message ?? "", /run-bad\.yaml/, JSON.stringify(cli.diagnostics));
+});
+
 it("proposes a workflow review for recurring missing required verification", () => {
   const dir = consumer("fixture-process");
   const source = join(CORE, "tests/fixtures/evidence/synthetic/blocked.yaml");

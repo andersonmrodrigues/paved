@@ -93,13 +93,20 @@ function load(invocation, id) {
             throw new Error("Workflow approval state does not match the human-owned approval record.");
         }
     }
-    const recorded = run.events.find((event) => event.type === "evidence-recorded" && event.phase === "evidence" && event.detail?.startsWith("sha256="));
-    if (recorded) {
-        if (!run.evidence)
+    // Only the evidence in force must stay intact: a reopened evidence phase records new files,
+    // and amending the plan is how a run whose evidence changed recovers.
+    const amending = invocation.command === "plan" && (invocation.flags.amend || amendmentPending(run));
+    const recorded = run.phases.find((phase) => phase.phase === "evidence")?.status === "completed"
+        ? run.events.findLast((event) => event.type === "evidence-recorded" && event.phase === "evidence" && event.detail?.startsWith("sha256="))
+        : undefined;
+    if (recorded && !amending) {
+        const ref = recorded.ref ?? run.evidence;
+        if (!ref)
             throw new Error("Workflow evidence path is missing.");
-        const path = resolveSafePath(projectRoot, run.evidence);
-        if (!existsSync(path) || sha(readFileSync(path)) !== recorded.detail?.slice(7))
-            throw new Error("Workflow evidence changed after recording.");
+        const path = resolveSafePath(projectRoot, ref);
+        if (!existsSync(path) || sha(readFileSync(path)) !== recorded.detail?.slice(7)) {
+            throw new Error(`Workflow evidence ${ref} ${existsSync(path) ? "changed" : "was removed"} after it was recorded. Restore it, or amend the plan with paved plan --run ${run.id} --amend --note <what changed> to implement and record the evidence again.`);
+        }
     }
     return run;
 }
@@ -399,6 +406,23 @@ function amend(invocation, run) {
     writeRun(projectRoot, coreRoot, run);
     return result(projectRoot, "plan", run, nextStepAction(run));
 }
+function reopenImplementation(run) {
+    const start = run.phases.findIndex((phase) => phase.phase === "implementation");
+    if (start < 0 || run.phases.slice(start + 1).every((phase) => phase.status === "pending"))
+        return;
+    for (const phase of run.phases.slice(start)) {
+        if (phase.status === "pending")
+            continue;
+        phase.status = "pending";
+        delete phase.gates;
+        delete phase.failure;
+        run.events.push({ at: now(), type: "phase-reopened", phase: phase.phase, detail: AMENDED_RETRY });
+    }
+    const implementation = run.phases[start];
+    implementation.status = "running";
+    implementation.attempts = (implementation.attempts ?? 0) + 1;
+    run.events.push({ at: now(), type: "phase-started", phase: implementation.phase });
+}
 async function approveAmendment(invocation, run, workflow) {
     const { projectRoot, coreRoot } = invocation.paths;
     const planning = run.phases.find((phase) => phase.phase === "planning");
@@ -412,7 +436,8 @@ async function approveAmendment(invocation, run, workflow) {
         writeRun(projectRoot, coreRoot, run);
         return result(projectRoot, "plan", run, outcome.kind === "wait" ? outcome.nextAction : nextStepAction(run));
     }
-    // An approved amendment earns the failed phase a fresh start.
+    // An approved amendment earns the failed phase a fresh start; a run already past
+    // implementation goes back to it, so the amended plan is implemented, verified and reviewed.
     const failed = run.phases.find((phase) => phase.status === "failed");
     if (failed) {
         failed.status = "running";
@@ -420,6 +445,9 @@ async function approveAmendment(invocation, run, workflow) {
         delete failed.failure;
         delete run.failure;
         run.events.push({ at: now(), type: "retry-started", phase: failed.phase, detail: AMENDED_RETRY });
+    }
+    else {
+        reopenImplementation(run);
     }
     run.status = "running";
     writeRun(projectRoot, coreRoot, run);

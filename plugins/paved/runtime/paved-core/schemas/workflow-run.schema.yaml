@@ -130,6 +130,7 @@ properties:
             - decision-applied
             - decision-superseded
             - retry-started
+            - phase-reopened
             - run-completed
             - run-failed
             - run-blocked

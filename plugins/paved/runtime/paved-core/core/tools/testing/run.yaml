@@ -1,7 +1,7 @@
 apiVersion: paved/v1
 kind: Tool
 id: core.testing.run
-version: 0.1.1
+version: 0.1.2
 title: Run testing state
 purpose: Run the project's tests through an environment-specific implementation;
   the exit code decides the outcome.
@@ -22,7 +22,7 @@ side_effects:
   - filesystem
 preconditions: []
 idempotency: unknown
-timeout_seconds: 300
+timeout_seconds: 3600
 retry:
   max_attempts: 1
   backoff_seconds: 0

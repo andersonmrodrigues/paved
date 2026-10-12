@@ -225,12 +225,28 @@ describe("answer flags", () => {
       handlers: {
         verify: (invocation) => {
           seen = invocation.flags.answers;
-          assert.equal(invocation.flags.answeredBy, "anderson@example.com");
+          assert.match(invocation.flags.answeredBy ?? "", /^person-[0-9a-f]{12}$/);
           return createResult({ command: "verify", status: "success" });
         },
       },
     });
     assert.deepEqual(seen, ["d-0123456789abcdef0123=all"]);
+  });
+
+  it("records an email identity as a stable pseudonym and keeps plain names", async () => {
+    const identity = async (value: string) => {
+      let seen: string | undefined;
+      await dispatchCli({
+        argv: ["verify", "--answer", "d-0123456789abcdef0123=all", "--answered-by", value],
+        handlers: { verify: (invocation) => { seen = invocation.flags.answeredBy; return createResult({ command: "verify", status: "success" }); } },
+      });
+      return seen;
+    };
+    const pseudonym = await identity("Anderson@Example.com");
+    assert.equal(await identity(" anderson@example.com "), pseudonym);
+    assert.doesNotMatch(pseudonym ?? "", /example/);
+    assert.notEqual(await identity("someone@example.com"), pseudonym);
+    assert.equal(await identity("anderson"), "anderson");
   });
 });
 

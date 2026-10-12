@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { parse } from "yaml";
-import { assessEvidence, loadEvidenceRegistry, type EvidenceRecord } from "./evidence.ts";
+import { assessEvidence, coveredTypes, loadEvidenceRegistry, type EvidenceRecord } from "./evidence.ts";
 import { createRegistry } from "./schemas.ts";
 
 export type KnowledgeState = "observed" | "documented" | "enforced" | "inferred" | "unknown";
@@ -25,7 +25,9 @@ export interface GardenerProposal {
   provenance: GardenerObservation["provenance"];
   review?: { by: string; at: string; reason: string; superseded_by?: string };
 }
-export interface GardenerResult { consumer: string; observations: GardenerObservation[]; proposals: GardenerProposal[] }
+/** An evidence record left out of the analysis because it contradicts its own observations. */
+export interface SkippedEvidence { record: string; problems: string[] }
+export interface GardenerResult { consumer: string; observations: GardenerObservation[]; proposals: GardenerProposal[]; skipped: SkippedEvidence[] }
 export interface CoreImprovementCandidate {
   apiVersion: "paved/v1"; kind: "CoreImprovementCandidate"; id: string; status: "CANDIDATE";
   pattern: string; consumers: string[];
@@ -78,7 +80,7 @@ function reviews(projectRoot: string, coreRoot: string): Map<string, ReviewRecor
   return latest;
 }
 
-function evidenceIncidents(projectRoot: string, coreRoot: string): Incident[] {
+function evidenceIncidents(projectRoot: string, coreRoot: string, skipped: SkippedEvidence[]): Incident[] {
   const found: Incident[] = [];
   const paths = [
     ...files(join(projectRoot, ".paved/generated/evidence"), ".yaml"),
@@ -88,17 +90,18 @@ function evidenceIncidents(projectRoot: string, coreRoot: string): Incident[] {
   for (const path of paths) {
     const { raw, value } = readValidated(path, coreRoot);
     const record = value as EvidenceRecord & { id: string; created_at: string };
+    const rel = posix(relative(projectRoot, path));
+    // One self-contradicting record must not hide what every other record shows.
     const problems = assessEvidence(record, loadEvidenceRegistry(join(coreRoot, "core/verification/registry.yaml")));
-    if (problems.length > 0) throw new GardenerInputError("Evidence record contradicts its recorded observations.");
+    if (problems.length > 0) { skipped.push({ record: rel, problems }); continue; }
     // A retained copy and its disposable original represent one run.
     const recordHash = hash(JSON.stringify(record));
     const previous = seen.get(record.id);
     if (previous !== undefined) {
-      if (previous !== recordHash) throw new GardenerInputError("Evidence id has conflicting record contents.");
+      if (previous !== recordHash) throw new GardenerInputError(`Evidence id ${record.id} has conflicting record contents in ${rel}.`);
       continue;
     }
     seen.set(record.id, recordHash);
-    const rel = posix(relative(projectRoot, path));
     const base = { at: record.created_at, record: rel, revision: record.change.revision, sourceHash: hash(raw) };
     for (const check of record.checks) {
       for (const fact of check.observations ?? []) {
@@ -115,8 +118,8 @@ function evidenceIncidents(projectRoot: string, coreRoot: string): Incident[] {
       found.push({ ...base, category: "rule-violation", subject: rule.id, pattern: `rule:${rule.id}`, state: "documented", item: rule.id });
     }
     for (const type of record.plan.required) {
-      if (record.checks.some((check) => check.type === type && check.status === "passed")) continue;
-      if (record.checks.some((check) => check.type === type && (check.status === "failed" || check.status === "error"))) continue;
+      const covering = record.checks.filter((check) => coveredTypes(check).includes(type));
+      if (covering.some((check) => ["passed", "failed", "error"].includes(check.status))) continue;
       found.push({ ...base, category: "missing-verification", subject: type, pattern: `missing:${type}`, state: "documented", item: type });
     }
   }
@@ -182,7 +185,8 @@ export function analyzeGardener(input: { projectRoot: string; coreRoot: string }
   if (!name) throw new GardenerInputError("Consumer manifest has no project name.");
   const decisions = reviews(input.projectRoot, input.coreRoot);
   const groups = new Map<string, Incident[]>();
-  for (const incident of [...evidenceIncidents(input.projectRoot, input.coreRoot), ...generatorIncidents(input.projectRoot)]) {
+  const skipped: SkippedEvidence[] = [];
+  for (const incident of [...evidenceIncidents(input.projectRoot, input.coreRoot, skipped), ...generatorIncidents(input.projectRoot)]) {
     const key = `${name}\u0000${incident.pattern}`;
     groups.set(key, [...(groups.get(key) ?? []), incident]);
   }
@@ -216,7 +220,7 @@ export function analyzeGardener(input: { projectRoot: string; coreRoot: string }
       ...(currentReview === undefined ? {} : { review: { by: currentReview.by, at: currentReview.at, reason: currentReview.reason, ...(currentReview.superseded_by === undefined ? {} : { superseded_by: currentReview.superseded_by }) } }),
     });
   }
-  return { consumer: name, observations, proposals };
+  return { consumer: name, observations, proposals, skipped };
 }
 
 /** Explicit, read-only comparison for human reviewers; never called by the consumer CLI. */

@@ -1,6 +1,6 @@
 import type { DecisionProjection } from "../../result.ts";
 import { acquireConsumerOperationLock } from "../operation-lock.ts";
-import { validateAnswer, type AnswerValue } from "./answers.ts";
+import { recordedIdentity, validateAnswer, type AnswerValue } from "./answers.ts";
 import { readDecisionApproval } from "./approval.ts";
 import { tierFor, type EffectClass } from "./effects.ts";
 import { fingerprintOf, supersede } from "./fingerprint.ts";
@@ -295,7 +295,7 @@ function runDecisionGateUnlocked(input: {
           continue;
         }
         source = "human-authored";
-        identity = approval.decided_by;
+        identity = recordedIdentity(approval.decided_by);
       }
       if (identity === undefined) { problems.push(`Decision ${id} has no answering identity.`); continue; }
 

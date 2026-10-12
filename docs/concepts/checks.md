@@ -10,6 +10,9 @@ The [verification profile](../../schemas/verification.schema.yaml) lists availab
 ids. Workflows and skills request check types; the plan resolves each type to a check id.
 Core checks validate Paved schemas, references, provenance and completion contracts.
 They do not imply that a consumer has a unit suite, browser or production environment.
+A check whose tool runs more than one kind of test, such as a build that runs unit and
+integration tests together, lists the further types in `covers`. A pass then counts for
+each of them, and a failure fails each of them.
 
 Preconditions are evaluated before execution. `blocked` means a relevant check could not
 run; `skipped` means it did not apply. Neither can be reported as passed. The check's

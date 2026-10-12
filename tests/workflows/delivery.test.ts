@@ -34,7 +34,7 @@ function git(root: string, ...args: string[]): void {
 }
 
 /** A git project whose tests pass only once feature.js enables the behavior. */
-function project(): string {
+function project(versioned = true): string {
   const root = temporaryDirectory("paved-delivery");
   write(root, "README.md", "# Consumer\n");
   write(root, "feature.js", "export const enabled = false;\n");
@@ -55,10 +55,14 @@ function project(): string {
     apiVersion: "paved/v1", kind: "VerificationProfile", checks: ["project.testing.unit"],
     unavailable: [{ type: "integration", reason: "No integration environment in this fixture." }],
   }));
-  git(root, "init", "-q");
-  git(root, "-c", "user.email=t@example.com", "-c", "user.name=t", "add", ".");
-  git(root, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm", "base");
+  if (versioned) commitAll(root, "base");
   return root;
+}
+
+function commitAll(root: string, message: string): void {
+  if (!existsSync(join(root, ".git"))) git(root, "init", "-q");
+  git(root, "-c", "user.email=t@example.com", "-c", "user.name=t", "add", ".");
+  git(root, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm", message);
 }
 
 async function approvedRun(root: string, plan = "docs/plan.md"): Promise<{ id: string; invoke: (...argv: string[]) => Promise<CommandResult> }> {
@@ -74,8 +78,25 @@ async function approvedRun(root: string, plan = "docs/plan.md"): Promise<{ id: s
 }
 
 const runState = (root: string, id: string) => parse(readFileSync(join(root, ".paved/generated/runs", `${id}.yaml`), "utf8")) as {
-  status: string; evidence?: string; phases: { phase: string; status: string; attempts?: number }[];
+  status: string; revision: string; evidence?: string; phases: { phase: string; status: string; attempts?: number }[];
 };
+
+/** An approved run whose change is implemented, verified and recorded, waiting for its review. */
+async function inReview(root: string): Promise<{ id: string; invoke: (...argv: string[]) => Promise<CommandResult> }> {
+  const { id, invoke } = await approvedRun(root);
+  write(root, "feature.js", "export const enabled = true;\n");
+  const delivered = await invoke("execute", "--run", id, "--auto", "--note", "Enabled the behavior");
+  assert.equal((delivered.data as { currentPhase: string }).currentPhase, "review", JSON.stringify(delivered));
+  return { id, invoke };
+}
+
+async function amendPlan(root: string, id: string, invoke: (...argv: string[]) => Promise<CommandResult>): Promise<void> {
+  write(root, "docs/plan.md", "Enable the behavior in feature.js with a boolean flag.\n");
+  const amended = await invoke("plan", "--run", id, "--amend", "--note", "Use a boolean flag");
+  assert.equal((amended.data as { status: string }).status, "awaiting-approval", JSON.stringify(amended));
+  const approved = await invoke("plan", "--run", id, "--approve");
+  assert.equal((approved.data as { status: string }).status, "running", JSON.stringify(approved));
+}
 
 describe("lifecycle remediation", () => {
   it("names paved init when work starts in an uninitialized repository", async () => {
@@ -180,6 +201,60 @@ describe("delivering an approved plan", () => {
     const again = await amending.invoke("execute", "--run", amending.id, "--advance");
     assert.match((again.data as { nextAction: string }).nextAction, /--amend/);
     assert.equal(runState(amending.root, amending.id).phases.find((phase) => phase.phase === "validation")?.attempts, 2);
+  });
+
+  it("counts every file as changed when the run started before the repository had a commit", async () => {
+    const root = project(false);
+    const { id, invoke } = await approvedRun(root);
+    assert.equal(runState(root, id).revision, "unversioned");
+    write(root, "feature.js", "export const enabled = true;\n");
+    commitAll(root, "first commit");
+
+    const delivered = await invoke("execute", "--run", id, "--auto", "--note", "Enabled the behavior");
+
+    assert.equal((delivered.data as { currentPhase: string }).currentPhase, "review", JSON.stringify(delivered));
+    const evidence = parse(readFileSync(join(root, `.paved/generated/evidence/${id}-workflow.yaml`), "utf8")) as { change: { files: string[] } };
+    assert.deepEqual(evidence.change.files, ["check.mjs", "docs/plan.md", "feature.js", "README.md"]);
+  });
+
+  it("sends a run in review back to implementation when an amended plan is approved, keeping earlier evidence", async () => {
+    const root = project();
+    const { id, invoke } = await inReview(root);
+    const first = join(root, `.paved/generated/evidence/${id}-workflow.yaml`);
+    const recorded = readFileSync(first, "utf8");
+
+    await amendPlan(root, id, invoke);
+
+    const phases = runState(root, id).phases;
+    assert.equal(phases.find((phase) => phase.phase === "implementation")?.status, "running");
+    for (const later of ["validation", "verification", "evidence", "review"]) {
+      assert.equal(phases.find((phase) => phase.phase === later)?.status, "pending", later);
+    }
+    const delivered = await invoke("execute", "--run", id, "--auto", "--note", "Implemented the amended plan");
+    assert.equal((delivered.data as { currentPhase: string }).currentPhase, "review", JSON.stringify(delivered));
+    assert.equal(runState(root, id).evidence, `.paved/generated/evidence/${id}-workflow-2.yaml`);
+    assert.ok(existsSync(join(root, `.paved/generated/evidence/${id}-2.diff`)));
+    assert.equal(readFileSync(first, "utf8"), recorded);
+    await invoke("execute", "--run", id, "--auto", "--note", "Reviewed the amended change");
+    assert.equal(runState(root, id).status, "completed");
+  });
+
+  it("names changed evidence and lets a plan amendment record it again", async () => {
+    const root = project();
+    const { id, invoke } = await inReview(root);
+    const path = `.paved/generated/evidence/${id}-workflow.yaml`;
+    writeFileSync(join(root, path), `${readFileSync(join(root, path), "utf8")}# edited\n`);
+
+    const refused = await invoke("execute", "--run", id, "--auto", "--note", "Reviewed");
+    const message = refused.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    assert.match(message, new RegExp(`${path.replaceAll(".", "\\.")} changed after it was recorded`), JSON.stringify(refused));
+    assert.match(message, /--amend/);
+
+    await amendPlan(root, id, invoke);
+    const delivered = await invoke("execute", "--run", id, "--auto", "--note", "Recorded the evidence again");
+    assert.equal((delivered.data as { currentPhase: string }).currentPhase, "review", JSON.stringify(delivered));
+    await invoke("execute", "--run", id, "--auto", "--note", "Reviewed the change");
+    assert.equal(runState(root, id).status, "completed");
   });
 
   it("amends the approved plan mid-run and restarts the failed phase after approval", async () => {
