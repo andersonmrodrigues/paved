@@ -39,7 +39,7 @@ const COMMAND_RULES = {
     tool: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
     intent: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
     plan: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
-    execute: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
+    execute: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
 };
 function usage(command, message, remediation = "Run paved --help to see supported commands and flags.") {
     return createResult({
@@ -98,7 +98,7 @@ function commandUsage(command) {
     if (command !== undefined) {
         const selectors = command === "generate" ? " [generator-id...]" : command === "agent"
             ? " <operation> [integration|command-name]" : command === "preview" ? " <start|serve|status|wait|working|resolve|stop> <file.md|folder> [cursor|comment-id]" : command === "workbench" ? " <start|serve|status|stop>"
-            : command === "tool" ? " add <check-type> [label] [--scope <dir>] -- <executable> [args...]" : "";
+            : command === "tool" ? " add <check-type> [label] [--scope <dir>] -- <executable> [args...]" : command === "execute" ? " [request]" : "";
         const commandOptions = [];
         const rule = COMMAND_RULES[command];
         if (rule.adapters)
@@ -113,7 +113,7 @@ function commandUsage(command) {
             commandOptions.push("  --decision <json>  Raise an agent-authored question.", "  --reason <text>   Explain a revision.");
         if (command === "preview")
             commandOptions.push("  --reply <text>   With resolve, tell the reviewer what changed.");
-        if (command === "intent")
+        if (command === "intent" || command === "execute")
             commandOptions.push("  --workflow <feature|bug|refactor> --because <evidence>  Classify the request.", "  --recommend <workflow> --because <evidence>  Suggest a workflow and let the user decide.", "  --part <request>  Propose one part of a split; repeat per part.", "  --input <id>=<value>  Supply another declared workflow input; repeatable.");
         if (STEP_COMMANDS.includes(command))
             commandOptions.push("  --run <id> --advance --note <text> --evidence <path>  Advance the run within this step's phases.");
@@ -122,7 +122,7 @@ function commandUsage(command) {
         if (command === "plan")
             commandOptions.push("  --approve        Record the user's approval of the current plan, given in the conversation.", "  --run <id> --amend --note <change> [--evidence <plan>]  Ask approval for a revised plan mid-run.");
         if (command === "execute")
-            commandOptions.push("  --auto           Advance through every phase that needs no human input.");
+            commandOptions.push("  \"<request>\"      Start new work: initialize Paved if needed and record the request.", "  --approve        Record the user's approval of the current plan, given in the conversation.", "  --auto           Advance through every phase that needs no human input.");
         if (command === "tool")
             commandOptions.push("  --scope <dir>    Run the command from this project directory.", "  -- <executable> [args...]  The exact command; everything after -- is passed as argv.");
         return [
@@ -291,8 +291,8 @@ function parse(argv) {
             continue;
         }
         if (["--workflow", "--because", "--recommend", "--part", "--input"].includes(token)) {
-            if (command !== "intent")
-                return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by intent.`) };
+            if (command !== "intent" && command !== "execute")
+                return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by intent and execute.`) };
             const value = takeValue(argv, index, token, command);
             if (typeof value !== "string")
                 return { kind: "error", result: value };
@@ -335,8 +335,8 @@ function parse(argv) {
             continue;
         }
         if (token === "--approve") {
-            if (command !== "plan")
-                return { kind: "error", result: usage(command ?? "cli", "--approve is supported only by plan.") };
+            if (command !== "plan" && command !== "execute")
+                return { kind: "error", result: usage(command ?? "cli", "--approve is supported only by plan and execute.") };
             approve = true;
             continue;
         }

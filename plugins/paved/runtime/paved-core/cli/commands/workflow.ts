@@ -4,6 +4,7 @@ import { inspectConsumer } from "../lib/consumer-state.ts";
 import { remediationFor } from "../lib/lifecycle-remediation.ts";
 import { runDecisionGate, toProjection, type DecisionCandidate, type DecisionStorage, type HandlerRegistration } from "../lib/decisions/gate.ts";
 import { decisionId, transition, type Decision } from "../lib/decisions/record.ts";
+import { listDecisions } from "../lib/decisions/store.ts";
 import {
   applyClassificationAnswer, classificationCandidate, createIntentRun, intentDocumentPath, IntentError, missingInputs, normalizeWorkflow, parseInputs, writeIntentDocument,
 } from "../lib/intent.ts";
@@ -18,6 +19,7 @@ import {
 import { AMENDED_RETRY, attemptRounds, RECOVER_HANDLER, recoveriesFor, recoveryQuestion, REVIEW_HANDLER, UNCHANGED_HANDLER, type WorkflowContract } from "../lib/workflows.ts";
 import { createDiagnostic, createResult, type CommandResult, type DecisionProjection, type Diagnostic } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
+import { initHandler } from "./init.ts";
 import { testHandler } from "./test.ts";
 import { verifyHandler } from "./verify.ts";
 
@@ -274,6 +276,36 @@ function startIntent(invocation: CommandInvocation): CommandResult {
   resolveRunDecisions(invocation, run, [], [classificationCandidate(projectRoot, coreRoot, run, recommend, flags.because)]);
   writeRun(projectRoot, coreRoot, run);
   return result(projectRoot, "intent", run, `Present the classification decision to the user, then resume with paved intent --run ${run.id} --answer <id>=<value> --answered-by <you> --json.`);
+}
+
+const OPEN_DECISION = new Set(["PENDING", "ASKED", "ANSWERED"]);
+
+/**
+ * `paved execute "<request>"`: initializes Paved when the repository has none, then starts
+ * the request as an intent. Every later step can be driven with paved execute as well.
+ */
+function startWork(invocation: CommandInvocation): CommandResult {
+  const { projectRoot, coreRoot } = invocation.paths;
+  const lifecycle = inspectConsumer({ projectRoot, coreRoot }).lifecycleState;
+  const initPending = lifecycle !== "UNINITIALIZED"
+    && listDecisions(projectRoot, coreRoot).some((decision) => decision.command === "init" && OPEN_DECISION.has(decision.status));
+  if (lifecycle !== "UNINITIALIZED" && !initPending) return startIntent(invocation);
+  const initialized = initHandler({ ...invocation, command: "init", selectors: [] });
+  if (initialized.status === "failed") return initialized;
+  if (initialized.status === "awaiting_input") {
+    const request = JSON.stringify(invocation.selectors.join(" "));
+    return { ...initialized, data: { ...(initialized.data as Record<string, unknown>), nextAction: `Paved was initialized for this request and needs these answers first. Present the decisions, then repeat paved execute ${request} with the same flags plus --answer <id>=<value> --answered-by <you> --json.` } };
+  }
+  const started = startIntent(invocation);
+  return { ...started, data: { ...(started.data as Record<string, unknown>), initialized: true }, diagnostics: [...initialized.diagnostics, ...started.diagnostics] };
+}
+
+/** The step that owns the run's current phase; paved execute hands a run that is not yet planned to it. */
+function owningStep(run: Run): Step | undefined {
+  if (!run.workflow) return "intent";
+  if (amendmentPending(run)) return "plan";
+  const phase = activePhase(run);
+  return phase === undefined ? undefined : ownerOf(phase.phase);
 }
 
 /** Whether a repeated intent asks for a classification the open run does not have. */
@@ -571,13 +603,21 @@ export async function stepHandler(invocation: CommandInvocation): Promise<Comman
   const step = invocation.command as Step;
   try {
     if (step === "intent" && !invocation.flags.run && invocation.selectors.length > 0) return startIntent(invocation);
+    if (step === "execute" && !invocation.flags.run && invocation.selectors.length > 0) return startWork(invocation);
     const flags = invocation.flags;
-    if (step === "intent" && (flags.workflow !== undefined || flags.recommend !== undefined || flags.because !== undefined || flags.parts.length > 0)) {
+    if (step === "execute" && invocation.selectors.length > 0) {
+      return blocked(step, "PAVED_EXECUTE_REQUEST_WITH_RUN", "A request starts new work; it does not change an existing run.", "Drop --run to start the request, or drop the request to continue the run.");
+    }
+    if ((step === "intent" || step === "execute") && (flags.workflow !== undefined || flags.recommend !== undefined || flags.because !== undefined || flags.parts.length > 0)) {
       return blocked(step, "PAVED_INTENT_FLAGS_INVALID", "--workflow, --recommend, --because and --part start a new intent; they do not change an existing run.", "Answer the run's classification decision instead: paved intent --run <id> --answer <id>=<value> --answered-by <you> --json.");
     }
     const selected = selectRun(invocation, step);
     if ("result" in selected) return selected.result;
     if (flags.abandon) return abandon(invocation, step, selected.run);
+    const owner = owningStep(selected.run);
+    if (step === "execute" && owner !== undefined && owner !== "execute" && !TERMINAL_STATUSES.has(selected.run.status)) {
+      return await resume({ ...invocation, command: owner }, owner, selected.run, selected.answers);
+    }
     if (step === "execute" && flags.auto) return await deliver(invocation, selected.run, selected.answers);
     return await resume(invocation, step, selected.run, selected.answers);
   } catch (error) {

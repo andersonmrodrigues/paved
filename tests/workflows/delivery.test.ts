@@ -285,7 +285,8 @@ describe("delivering an approved plan", () => {
 
     const amended = await invoke("plan", "--run", id, "--amend", "--note", "Use a boolean flag");
     assert.equal((amended.data as { status: string }).status, "awaiting-approval", JSON.stringify(amended));
-    assert.equal((await invoke("execute", "--run", id, "--advance")).diagnostics[0]?.code, "PAVED_WORKFLOW_PLAN_UNAPPROVED");
+    assert.equal(((await invoke("execute", "--run", id, "--advance")).data as { status: string }).status, "awaiting-approval");
+    assert.equal(runState(root, id).phases.find((phase) => phase.phase === "validation")?.status, "failed");
     const approved = await invoke("plan", "--run", id, "--approve");
 
     assert.equal((approved.data as { status: string }).status, "running", JSON.stringify(approved));
@@ -372,5 +373,50 @@ describe("independent review", () => {
 
     await reviewClean(root, id, invoke, delivered);
     assert.equal(runState(root, id).status, "completed");
+  });
+});
+
+describe("starting work with execute", () => {
+  it("initializes an uninitialized repository and records the request", async () => {
+    const root = temporaryDirectory("paved-execute-init");
+    write(root, "README.md", "# Consumer\n");
+    write(root, "package.json", JSON.stringify({ name: "consumer", scripts: { test: "node check.mjs" } }));
+    write(root, "check.mjs", "process.exit(0);\n");
+    commitAll(root, "base");
+
+    const started = await dispatchCli({ argv: ["execute", "Enable the behavior", "--workflow", "feature", "--because", "New behavior.", "--project", root, "--json"] });
+
+    assert.ok(existsSync(join(root, ".paved/manifest.yaml")), JSON.stringify(started));
+    const data = started.data as { run?: string; nextAction: string };
+    if (started.status === "awaiting_input") assert.match(data.nextAction, /repeat paved execute "Enable the behavior"/);
+    else assert.ok(data.run, JSON.stringify(started));
+  });
+
+  it("takes a request through intent and planning to implementation with execute alone", async () => {
+    const root = project();
+    const invoke = (...argv: string[]) => dispatchCli({ argv: [...argv, "--project", root, "--json"] });
+
+    const started = await invoke("execute", "Enable the behavior", "--workflow", "feature", "--because", "New behavior.");
+    const id = (started.data as { run: string }).run;
+    assert.equal(started.status, "success", JSON.stringify(started));
+    await invoke("execute", "--run", id, "--advance", "--note", "Scope is clear");
+    await invoke("execute", "--run", id, "--advance", "--note", "Architecture inspected");
+    write(root, "docs/plan.md", "Enable the behavior in feature.js.\n");
+    const awaiting = await invoke("execute", "--run", id, "--advance", "--note", "Plan", "--evidence", "docs/plan.md");
+    assert.equal((awaiting.data as { status: string }).status, "awaiting-approval", JSON.stringify(awaiting));
+    assert.equal(runState(root, id).phases.find((phase) => phase.phase === "implementation")?.status, "pending");
+
+    const approved = await invoke("execute", "--run", id, "--approve");
+
+    assert.equal((approved.data as { currentPhase: string }).currentPhase, "implementation", JSON.stringify(approved));
+  });
+
+  it("refuses a request together with an existing run", async () => {
+    const root = project();
+    const { id, invoke } = await approvedRun(root);
+
+    const refused = await invoke("execute", "Something else", "--run", id);
+
+    assert.equal(refused.diagnostics[0]?.code, "PAVED_EXECUTE_REQUEST_WITH_RUN", JSON.stringify(refused));
   });
 });

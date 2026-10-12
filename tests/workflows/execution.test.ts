@@ -92,7 +92,6 @@ describe("executable workflow state", () => {
       const runPath = join(project, ".paved", "generated", "runs", `${id}.yaml`);
       const before = parse(readFileSync(runPath, "utf8")) as { phases: { phase: string; status: string }[] };
       assert.equal(before.phases[0]?.status, "running");
-      assert.equal((await invoke("execute", "--run", id, "--advance", "--note", "done")).diagnostics[0]?.code, "PAVED_WORKFLOW_PLAN_UNAPPROVED");
       assert.equal((await invoke("intent", "--run", id, "--advance", "--note", "Scope is clear")).status, "success");
       assert.equal((await invoke("intent", "--run", id, "--advance", "--note", "Architecture inspected")).status, "success");
       const plan = join(project, ".paved", "generated", "plan.md");

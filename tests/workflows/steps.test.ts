@@ -164,9 +164,11 @@ describe("intent, plan and execute", () => {
     assert.match(plan.diagnostics[0]?.remediation ?? "", /paved intent --run/);
   });
 
-  it("execute refuses a run whose plan is not approved", async () => {
+  it("execute stands in for the step that owns an unplanned run and implements nothing", async () => {
     const id = runOf(await invoke("intent", "Add CSV export", "--workflow", "feature", "--because", "New behavior."));
-    assert.equal((await invoke("execute", "--run", id, "--advance", "--note", "x")).diagnostics[0]?.code, "PAVED_WORKFLOW_PLAN_UNAPPROVED");
+    const advanced = await invoke("execute", "--run", id, "--advance", "--note", "Scope is clear");
+    assert.equal(advanced.command, "intent", JSON.stringify(advanced));
+    assert.equal((advanced.data as { currentPhase: string }).currentPhase, "discovery");
   });
 
   it("plan and execute act on the only open run, and ask when several are open", async () => {
