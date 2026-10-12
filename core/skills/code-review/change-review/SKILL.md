@@ -27,8 +27,15 @@ Read the stated intent first (the task, its claims and plan), then read the diff
 nothing is left out. Review against that intent: a hunk the intent does not explain is a
 scope finding; code that does something other than the intent is a correctness finding.
 
-Run three passes, each reading the diff afresh. When the agent can run reviewers with
-isolated context, run each pass as one, given only the intent and the diff:
+In the `review` phase of a Paved workflow, the reviewer is a subagent with its own context
+that did not write the change: the agent that implemented it starts one, gives it only the
+brief Paved wrote (`.paved/generated/reviews/<run-id>-brief.md`), and does not review the
+change itself. The brief names the intent, plan, evidence, diff and rules in scope, and the
+digests the findings must carry. Paved refuses a review that was not isolated or that read
+an older plan, source or evidence.
+
+Run three passes, each reading the diff afresh. When the reviewer can start reviewers of its
+own, run each pass as one, given only the intent and the diff:
 
 - **Rules pass**: the rules in scope. A rule applies to a file only when its scope
   covers that file's path; a violation quotes the exact rule text it breaks.
@@ -99,9 +106,13 @@ Any fix made during review is verified like any other change.
 
 ## Evidence
 
-A review artifact with blocking findings, their severity and their resolution, notes
-listed apart, and what was examined. The agent's own
-review supports no claim; it prepares the human review.
+In a Paved workflow, a review record at
+`.paved/generated/reviews/<run-id>-findings.yaml`, in the format the brief shows: the
+reviewer, the digests it read, the passes it ran and each finding as `blocking` or `note`.
+Blocking findings go to the user, who decides to fix them (implementation reopens, and the
+fix is tested, verified and reviewed again) or to accept them on record. Outside a workflow,
+report the same content in the conversation. The review supports no claim; it prepares the
+human review.
 
 ## Completion criteria
 
@@ -114,6 +125,7 @@ review supports no claim; it prepares the human review.
 
 | Failure | Signal | Response |
 |---|---|---|
+| Self-review | The agent that wrote the change reviews it | Start an isolated subagent with only the brief |
 | Rubber stamp | Review finds nothing in a non-trivial diff | Go through steps 2 and 9 explicitly |
 | Evidence theater | Claims backed by checks unrelated to the change | Downgrade the claim or add a real check |
 | Style over substance | Findings are all about formatting | Revisit correctness and tests first |

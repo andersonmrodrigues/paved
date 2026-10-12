@@ -82,12 +82,29 @@ const runState = (root: string, id: string) => parse(readFileSync(join(root, ".p
 };
 
 /** An approved run whose change is implemented, verified and recorded, waiting for its review. */
-async function inReview(root: string): Promise<{ id: string; invoke: (...argv: string[]) => Promise<CommandResult> }> {
+async function inReview(root: string): Promise<{ id: string; invoke: (...argv: string[]) => Promise<CommandResult>; stopped: CommandResult }> {
   const { id, invoke } = await approvedRun(root);
   write(root, "feature.js", "export const enabled = true;\n");
   const delivered = await invoke("execute", "--run", id, "--auto", "--note", "Enabled the behavior");
   assert.equal((delivered.data as { currentPhase: string }).currentPhase, "review", JSON.stringify(delivered));
-  return { id, invoke };
+  return { id, invoke, stopped: delivered };
+}
+
+interface Finding { severity: "blocking" | "note"; file: string; line?: number; summary: string }
+
+/** Writes what an isolated reviewer would for the run's current state, from the review block Paved returned. */
+function writeFindings(root: string, id: string, stopped: CommandResult, findings: Finding[] = [], isolated = true): string {
+  const independent = (stopped.data as { review?: { independent?: { record: string; reviewed: Record<string, string> } } }).review?.independent;
+  assert.ok(independent, JSON.stringify(stopped));
+  write(root, independent.record, stringify({
+    apiVersion: "paved/v1", kind: "ChangeReview", run: id, reviewer: { agent: "test reviewer", isolated },
+    reviewed: independent.reviewed, passes: ["rules", "diff", "change"], findings,
+  }));
+  return independent.record;
+}
+
+async function reviewClean(root: string, id: string, invoke: (...argv: string[]) => Promise<CommandResult>, stopped: CommandResult): Promise<CommandResult> {
+  return invoke("execute", "--run", id, "--auto", "--evidence", writeFindings(root, id, stopped));
 }
 
 async function amendPlan(root: string, id: string, invoke: (...argv: string[]) => Promise<CommandResult>): Promise<void> {
@@ -128,7 +145,7 @@ describe("delivering an approved plan", () => {
     assert.equal(evidence.gaps?.find((gap) => gap.check_type === "integration")?.reason, "No integration environment in this fixture.");
     assert.match(readFileSync(join(root, `.paved/generated/evidence/${id}.diff`), "utf8"), /\+export const enabled = true;/);
 
-    const completed = await invoke("execute", "--run", id, "--auto", "--note", "Reviewed scope and evidence");
+    const completed = await reviewClean(root, id, invoke, delivered);
     assert.equal(runState(root, id).status, "completed", JSON.stringify(completed));
   });
 
@@ -151,7 +168,7 @@ describe("delivering an approved plan", () => {
     const evidence = parse(readFileSync(join(root, `.paved/generated/evidence/${id}-workflow.yaml`), "utf8")) as { change: { files: string[]; summary: string } };
     assert.deepEqual(evidence.change.files, []);
     assert.match(evidence.change.summary, /already in the repository/);
-    await invoke("execute", "--run", id, "--auto", "--note", "Reviewed the existing implementation");
+    await reviewClean(root, id, invoke, delivered);
     assert.equal(runState(root, id).status, "completed");
   });
 
@@ -235,7 +252,7 @@ describe("delivering an approved plan", () => {
     assert.equal(runState(root, id).evidence, `.paved/generated/evidence/${id}-workflow-2.yaml`);
     assert.ok(existsSync(join(root, `.paved/generated/evidence/${id}-2.diff`)));
     assert.equal(readFileSync(first, "utf8"), recorded);
-    await invoke("execute", "--run", id, "--auto", "--note", "Reviewed the amended change");
+    await reviewClean(root, id, invoke, delivered);
     assert.equal(runState(root, id).status, "completed");
   });
 
@@ -253,7 +270,7 @@ describe("delivering an approved plan", () => {
     await amendPlan(root, id, invoke);
     const delivered = await invoke("execute", "--run", id, "--auto", "--note", "Recorded the evidence again");
     assert.equal((delivered.data as { currentPhase: string }).currentPhase, "review", JSON.stringify(delivered));
-    await invoke("execute", "--run", id, "--auto", "--note", "Reviewed the change");
+    await reviewClean(root, id, invoke, delivered);
     assert.equal(runState(root, id).status, "completed");
   });
 
@@ -277,5 +294,83 @@ describe("delivering an approved plan", () => {
     const passed = await invoke("execute", "--run", id, "--advance");
     assert.equal((passed.data as { currentPhase: string }).currentPhase, "verification", JSON.stringify(passed));
     assert.ok(existsSync(join(root, `.paved/approvals/${id}.json`)));
+  });
+});
+
+describe("independent review", () => {
+  const blocking: Finding = { severity: "blocking", file: "feature.js", line: 1, summary: "The flag is exported as a string elsewhere." };
+
+  it("needs findings from a separate reviewer and hands it a brief with the current digests", async () => {
+    const root = project();
+    const { id, invoke, stopped } = await inReview(root);
+    const independent = (stopped.data as { review: { independent: { brief: string; reviewed: Record<string, string> } } }).review.independent;
+    const brief = readFileSync(join(root, independent.brief), "utf8");
+    assert.ok(brief.includes(`.paved/generated/evidence/${id}.diff`) && brief.includes(independent.reviewed.source_sha256!), brief);
+    assert.match((stopped.data as { nextAction: string }).nextAction, /subagent with its own context/);
+
+    const refused = await invoke("execute", "--run", id, "--auto", "--note", "Looked fine to me");
+
+    assert.equal(refused.diagnostics[0]?.code, "PAVED_REVIEW_RECORD_REQUIRED", JSON.stringify(refused));
+    assert.equal(runState(root, id).status, "running");
+
+    write(root, `.paved/generated/reviews/${id}-findings.yaml`, "findings: [unclosed\n");
+    const malformed = await invoke("execute", "--run", id, "--auto", "--evidence", `.paved/generated/reviews/${id}-findings.yaml`);
+    assert.equal(malformed.status, "failed", JSON.stringify(malformed));
+    assert.equal(runState(root, id).phases.find((phase) => phase.phase === "review")?.status, "running");
+  });
+
+  it("refuses a review that was not isolated or that read an older state", async () => {
+    const root = project();
+    const { id, invoke, stopped } = await inReview(root);
+
+    const shared = await invoke("execute", "--run", id, "--auto", "--evidence", writeFindings(root, id, stopped, [], false));
+    assert.equal(shared.diagnostics[0]?.code, "PAVED_REVIEW_NOT_INDEPENDENT", JSON.stringify(shared));
+
+    const record = writeFindings(root, id, stopped);
+    write(root, "feature.js", "export const enabled = true; // changed after the review\n");
+    const stale = await invoke("execute", "--run", id, "--auto", "--evidence", record);
+    assert.equal(stale.diagnostics[0]?.code, "PAVED_REVIEW_STALE", JSON.stringify(stale));
+    assert.match(stale.diagnostics[0]!.message, /different source/);
+  });
+
+  it("completes on accepted blocking findings and keeps them on record", async () => {
+    const root = project();
+    const { id, invoke, stopped } = await inReview(root);
+    const record = writeFindings(root, id, stopped, [blocking, { severity: "note", file: "feature.js", summary: "Name differs from siblings." }]);
+
+    const asked = await invoke("execute", "--run", id, "--auto", "--evidence", record);
+    assert.equal(asked.status, "awaiting_input", JSON.stringify(asked));
+    assert.match(asked.decisions![0]!.question, /1 blocking finding\./);
+    const document = readFileSync(join(root, `.paved/generated/reviews/${id}.md`), "utf8");
+    assert.match(document, /\*\*blocking\*\* `feature\.js:1`/);
+    assert.match(document, /\*\*note\*\* `feature\.js`: Name differs/);
+
+    await invoke("execute", "--run", id, "--auto", "--evidence", record, "--answer", `${asked.decisions![0]!.id}=accept`, "--answered-by", "owner@example.com");
+
+    const state = parse(readFileSync(join(root, ".paved/generated/runs", `${id}.yaml`), "utf8")) as { status: string; events: { type: string; phase?: string; detail?: string }[] };
+    assert.equal(state.status, "completed");
+    assert.match(state.events.findLast((event) => event.phase === "review" && event.type === "evidence-recorded")!.detail!, /blocking=1 \(accepted\); notes=1/);
+  });
+
+  it("sends a fix back through implementation, verification and a new review", async () => {
+    const root = project();
+    const { id, invoke, stopped } = await inReview(root);
+    const record = writeFindings(root, id, stopped, [blocking]);
+    const asked = await invoke("execute", "--run", id, "--auto", "--evidence", record);
+
+    const reopened = await invoke("execute", "--run", id, "--auto", "--evidence", record, "--answer", `${asked.decisions![0]!.id}=fix`, "--answered-by", "owner@example.com");
+
+    assert.equal((reopened.data as { currentPhase: string }).currentPhase, "implementation", JSON.stringify(reopened));
+    for (const later of ["validation", "verification", "evidence", "review"]) {
+      assert.equal(runState(root, id).phases.find((phase) => phase.phase === later)?.status, "pending", later);
+    }
+    write(root, "feature.js", "export const enabled = true; // boolean\n");
+    const delivered = await invoke("execute", "--run", id, "--auto", "--note", "Kept the flag a boolean");
+    assert.equal((delivered.data as { currentPhase: string }).currentPhase, "review", JSON.stringify(delivered));
+    const stale = await invoke("execute", "--run", id, "--auto", "--evidence", record);
+    assert.equal(stale.diagnostics[0]?.code, "PAVED_REVIEW_STALE", JSON.stringify(stale));
+
+    await reviewClean(root, id, invoke, delivered);
+    assert.equal(runState(root, id).status, "completed");
   });
 });

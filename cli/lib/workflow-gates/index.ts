@@ -5,6 +5,7 @@ import type { Gate, Phase, Run } from "../workflow-runs.ts";
 import { bugGates } from "./bug.ts";
 import { featureGates } from "./feature.ts";
 import { refactorGates } from "./refactor.ts";
+import { review } from "./review.ts";
 import { implementationChanged, recordObservation, SHARED_GATES, sharedPhase } from "./shared.ts";
 
 /** The testing Tool and verification, invoked with only the answers meant for them. */
@@ -74,6 +75,8 @@ export async function runPhase(input: Omit<PhaseContext, "gates">): Promise<Phas
   const context: PhaseContext = { ...input, gates: gatesFor(input.workflow.id) };
   const shared = sharedPhase(context.phase.phase);
   if (shared) return shared(context);
+  // Not a shared phase: delivery stops before it, because only a separate reviewer can supply its record.
+  if (context.phase.phase === "review") return review(context);
   if (!context.note) {
     return { kind: "blocked", code: "PAVED_WORKFLOW_OBSERVATION_REQUIRED", message: `${context.phase.phase} requires a concrete observation.`, remediation: "Advance again with --note <observation>." };
   }

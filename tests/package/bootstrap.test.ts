@@ -7,7 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { parse, stringify } from "yaml";
-import { CORE_VERSION, treeIntegrity } from "../helpers.ts";
+import { CORE_VERSION, treeIntegrity, writeIsolatedReview } from "../helpers.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -196,7 +196,8 @@ describe("project-local agent bootstrap", () => {
       writeFileSync(join(consumer, workflowEvidenceRef), stringify(workflowEvidence));
       const recorded = advance("--evidence", workflowEvidenceRef);
       assert.equal(recorded.status, 0, recorded.stdout + recorded.stderr);
-      assert.equal(advance("--note", "Reviewed the implementation and evidence").status, 0);
+      const reviewed = advance("--evidence", writeIsolatedReview(consumer, recorded.stdout));
+      assert.equal(reviewed.status, 0, reviewed.stdout + reviewed.stderr);
       const completed = advance();
       assert.equal(completed.status, 0, completed.stdout + completed.stderr);
       assert.equal((JSON.parse(completed.stdout) as { data: { status: string } }).data.status, "completed");
@@ -270,8 +271,9 @@ describe("project-local agent bootstrap", () => {
       assert.equal(advanceFix().status, 0);
       assert.equal(advanceFix().status, 0);
       const fixEvidence = recordWorkflowEvidence("fix", fixId, "Restored the expected enabled behavior.");
-      assert.equal(advanceFix("--evidence", fixEvidence).status, 0);
-      assert.equal(advanceFix("--note", "Reviewed the regression and its cause").status, 0);
+      const fixRecorded = advanceFix("--evidence", fixEvidence);
+      assert.equal(fixRecorded.status, 0, fixRecorded.stdout + fixRecorded.stderr);
+      assert.equal(advanceFix("--evidence", writeIsolatedReview(consumer, fixRecorded.stdout)).status, 0);
       const fixCompleted = advanceFix();
       assert.equal(fixCompleted.status, 0, fixCompleted.stdout + fixCompleted.stderr);
       assert.equal((JSON.parse(fixCompleted.stdout) as { data: { status: string } }).data.status, "completed");
@@ -294,7 +296,7 @@ describe("project-local agent bootstrap", () => {
       const refactorEvidence = recordWorkflowEvidence("refactor", refactorId, "Extracted a named default with unchanged behavior.");
       const refactorRecorded = advanceRefactor("--evidence", refactorEvidence);
       assert.equal(refactorRecorded.status, 0, refactorRecorded.stdout + refactorRecorded.stderr);
-      assert.equal(advanceRefactor("--note", "Reviewed the diff and confirmed the exported behavior").status, 0);
+      assert.equal(advanceRefactor("--evidence", writeIsolatedReview(consumer, refactorRecorded.stdout)).status, 0);
       const refactorCompleted = advanceRefactor();
       assert.equal(refactorCompleted.status, 0, refactorCompleted.stdout + refactorCompleted.stderr);
       assert.equal((JSON.parse(refactorCompleted.stdout) as { data: { status: string } }).data.status, "completed");

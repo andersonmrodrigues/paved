@@ -95,6 +95,27 @@ Events are append-only reporting and provenance. Approval and evidence events
 are cross-checked against their referenced files when a run resumes. The
 authoritative completion decision still comes from the evidence record.
 
+## Independent review
+
+The `review` phase counts only findings from a reviewer that did not write the change.
+When the run reaches it, Paved writes a brief at
+`.paved/generated/reviews/<run-id>-brief.md` naming the intent, plan, evidence, diff and
+rules in scope, and the SHA-256 digests of the plan, the source and test files, and the
+evidence record. The agent starts a subagent with its own context, gives it only the
+brief, and the subagent writes a `ChangeReview` record at
+`.paved/generated/reviews/<run-id>-findings.yaml`. Every coding agent Paved integrates
+with can start subagents, so this is a precondition, not an option.
+
+The agent passes the record with `paved execute --run <run-id> --auto --evidence
+<record>`. Paved refuses it when `reviewer.isolated` is not `true`
+(`PAVED_REVIEW_NOT_INDEPENDENT`) or when a digest differs from the run's current state
+(`PAVED_REVIEW_STALE`), so a review of an older change cannot close the run. Isolation
+is declared by the agent; like plan approval, it rests on the agent following the
+instruction. Notes are listed in the review document. Blocking findings become a run
+decision: `fix` reopens implementation, and the fix runs through tests, verification,
+evidence and a new review; `accept` completes the run with the findings on record as
+accepted by the user.
+
 ## Lifetime
 
 Run records and local evidence live under `.paved/generated/`, are disposable and are

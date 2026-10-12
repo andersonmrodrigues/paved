@@ -43,6 +43,7 @@ const KIND_TO_SCHEMA = {
     CoreImprovementCandidate: "urn:paved:schema:core-improvement-candidate:v1",
     AgentIntegration: "urn:paved:schema:agent-integration:v1",
     PreviewReview: "urn:paved:schema:preview-review:v1",
+    ChangeReview: "urn:paved:schema:change-review:v1",
 };
 export function schemaIdForKind(kind) {
     return KIND_TO_SCHEMA[kind];

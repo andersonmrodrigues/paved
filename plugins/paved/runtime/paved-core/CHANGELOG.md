@@ -5,6 +5,15 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Changed
+
+- The review phase needs findings from a reviewer that did not write the change. Paved
+  writes a brief for a subagent with its own context, and the subagent records a
+  `ChangeReview` with the digests of the plan, source and evidence it read. A review
+  that was not isolated, or that read an older state, is refused. Blocking findings go
+  to the user: fixing them reopens implementation, so the fix is tested, verified and
+  reviewed again; accepting them keeps them on record.
+
 ## [2.6.1] - 2026-10-12
 
 ### Changed

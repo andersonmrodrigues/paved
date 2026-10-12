@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { parse, stringify } from "yaml";
 import { CLAUDE_PLUGIN_DIRECTORY, LAUNCHER_DIRECTORY, PLUGIN_DIRECTORY, RUNTIME_DIRECTORY } from "../../plugins/build.ts";
-import { NEXT_MAJOR_VERSION, NEXT_PATCH_VERSION, ROOT, treeIntegrity } from "../helpers.ts";
+import { NEXT_MAJOR_VERSION, NEXT_PATCH_VERSION, ROOT, treeIntegrity, writeIsolatedReview } from "../helpers.ts";
 import {
   applicationDigest, claudeDetails, codeOf, consumer, hostAvailable, installWithClaude, installWithCodex,
   launcher, lockedPackages, pluginVariant, remoteCacheEntries, repackRuntime, repositorySnapshot, workspace, type Invocation,
@@ -140,7 +140,8 @@ describe("clean-room plugin installation", { skip }, () => {
     assert.equal(data<{ currentPhase: string }>(verified).currentPhase, "evidence");
     const recorded = advance("--evidence", workflowEvidence(project, run));
     assert.equal(recorded.status, 0, recorded.stdout + recorded.stderr);
-    assert.equal(advance("--note", "Reviewed the implementation and evidence").status, 0);
+    const reviewed = advance("--evidence", writeIsolatedReview(project, recorded.stdout));
+    assert.equal(reviewed.status, 0, reviewed.stdout + reviewed.stderr);
     const completed = advance();
     assert.equal(data<{ status: string }>(completed).status, "completed", completed.stdout);
 

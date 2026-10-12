@@ -33,6 +33,24 @@ export function recordObservation(context, ref) {
         detail: String(sanitizeToolOutput(context.note ?? "")).slice(0, 4000),
     });
 }
+/** Sends a run back to implementation, so everything after it runs again on the new change. */
+export function reopenImplementation(run, reason) {
+    const start = run.phases.findIndex((phase) => phase.phase === "implementation");
+    if (start < 0 || run.phases.slice(start + 1).every((phase) => phase.status === "pending"))
+        return;
+    for (const phase of run.phases.slice(start)) {
+        if (phase.status === "pending")
+            continue;
+        phase.status = "pending";
+        delete phase.gates;
+        delete phase.failure;
+        run.events.push({ at: now(), type: "phase-reopened", phase: phase.phase, detail: reason });
+    }
+    const implementation = run.phases[start];
+    implementation.status = "running";
+    implementation.attempts = (implementation.attempts ?? 0) + 1;
+    run.events.push({ at: now(), type: "phase-started", phase: implementation.phase });
+}
 const UNCHANGED_QUESTION = "No source or test file changed since the run started. Is the approved work already in the repository?";
 /** True while the source and test files match the fingerprint recorded when the run started. */
 export function sourceUnchanged(projectRoot, run) {

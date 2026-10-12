@@ -34,6 +34,7 @@ schemas:
   CoreImprovementCandidate: schemas/core-improvement-candidate.schema.yaml
   AgentIntegration: schemas/agent-integration.schema.yaml
   PreviewReview: schemas/preview-review.schema.yaml
+  ChangeReview: schemas/change-review.schema.yaml
 
 # Schemas that define shared structures, not a document kind.
 schema_definitions:
