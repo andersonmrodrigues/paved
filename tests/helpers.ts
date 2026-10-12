@@ -1,8 +1,9 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { stringify } from "yaml";
 import { loadYaml } from "../cli/lib/documents.ts";
 import { createRegistry, type SchemaRegistry } from "../cli/lib/schemas.ts";
 
@@ -135,4 +136,17 @@ export const ownershipOf = (path: string, layout: LayoutEntry[]): string | undef
 
 export function formatErrors(file: string, errors: string[]): string {
   return `${file}:\n  ${errors.join("\n  ")}`;
+}
+
+/** Writes the findings an isolated reviewer would, from the review block of a CLI result that stopped at review. */
+export function writeIsolatedReview(projectRoot: string, stdout: string): string {
+  const data = (JSON.parse(stdout) as { data: { run: string; review?: { independent?: { record: string; reviewed: Record<string, string> } } } }).data;
+  const independent = data.review?.independent;
+  if (!independent) throw new Error(`The result has no independent review block: ${stdout}`);
+  mkdirSync(dirname(join(projectRoot, independent.record)), { recursive: true });
+  writeFileSync(join(projectRoot, independent.record), stringify({
+    apiVersion: "paved/v1", kind: "ChangeReview", run: data.run, reviewer: { agent: "test reviewer", isolated: true },
+    reviewed: independent.reviewed, passes: ["diff"], findings: [],
+  }));
+  return independent.record;
 }

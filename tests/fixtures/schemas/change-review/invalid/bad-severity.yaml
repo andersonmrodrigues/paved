@@ -1,0 +1,9 @@
+# expect-error: must be equal to one of the allowed values
+apiVersion: paved/v1
+kind: ChangeReview
+run: intent-0123456789abcdef0123
+reviewer: { agent: claude-code subagent, isolated: true }
+reviewed: { plan_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, source_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, evidence_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa }
+passes: [diff]
+findings:
+  - { severity: critical, file: src/export.ts, summary: Wrong. }

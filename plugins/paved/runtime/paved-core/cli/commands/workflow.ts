@@ -11,11 +11,11 @@ import { resolveSafePath } from "../lib/safe-path.ts";
 import { reportNewProposals } from "../lib/gardener-report.ts";
 import { reviewFor } from "../lib/review-block.ts";
 import { relaysAnswers, runPhase } from "../lib/workflow-gates/index.ts";
-import { now, projectRelative, readApproval, sha, sharedPhase, sourceUnchanged } from "../lib/workflow-gates/shared.ts";
+import { now, projectRelative, readApproval, reopenImplementation, sha, sharedPhase, sourceUnchanged } from "../lib/workflow-gates/shared.ts";
 import {
   isOpen, loadContract, readRun, scanRuns, runCommand, runPath, TERMINAL_STATUSES, writeRun, type Failure, type Gate, type Phase, type Run,
 } from "../lib/workflow-runs.ts";
-import { AMENDED_RETRY, attemptRounds, RECOVER_HANDLER, recoveriesFor, recoveryQuestion, UNCHANGED_HANDLER, type WorkflowContract } from "../lib/workflows.ts";
+import { AMENDED_RETRY, attemptRounds, RECOVER_HANDLER, recoveriesFor, recoveryQuestion, REVIEW_HANDLER, UNCHANGED_HANDLER, type WorkflowContract } from "../lib/workflows.ts";
 import { createDiagnostic, createResult, type CommandResult, type DecisionProjection, type Diagnostic } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
 import { testHandler } from "./test.ts";
@@ -31,7 +31,7 @@ const STEPS = Object.keys(STEP_PHASES) as Step[];
 export const ownerOf = (phase: string): Step | undefined => STEPS.find((step) => STEP_PHASES[step].includes(phase));
 
 const answerId = (answer: string): string => answer.slice(0, answer.indexOf("="));
-const RUN_HANDLERS: ReadonlyMap<string, HandlerRegistration> = new Map(["run.record", UNCHANGED_HANDLER, RECOVER_HANDLER]
+const RUN_HANDLERS: ReadonlyMap<string, HandlerRegistration> = new Map(["run.record", UNCHANGED_HANDLER, RECOVER_HANDLER, REVIEW_HANDLER]
   .map((id) => [id, { effect: "record-only" as const, apply: () => [] }]));
 
 function diagnostic(code: string, message: string, remediation: string): Diagnostic {
@@ -58,6 +58,7 @@ function nextStepAction(run: Run): string {
   const phase = activePhase(run);
   const owner = phase === undefined ? undefined : ownerOf(phase.phase);
   if (phase === undefined || owner === undefined) return "Inspect the run; it has no active phase.";
+  if (phase.phase === "review") return "Have the change reviewed by a reviewer that did not write it.";
   return `Continue ${phase.phase}, then run paved ${owner} --run ${run.id} --advance --note <observation> --json.`;
 }
 
@@ -80,7 +81,8 @@ function result(projectRoot: string, step: Step, run: Run, nextAction: string, d
   const open = extras.decisions ?? (run.decisions ?? []).filter((item) => item.status === "ASKED").map(toProjection);
   const status = failed ? "failed" : run.status === "awaiting-input" ? "awaiting_input" : run.status === "awaiting-approval" ? "warning" : "success";
   const review = failed ? undefined : reviewFor(projectRoot, run);
-  const reviewText = review === undefined ? "" : ` Summarize ${review.target}${review.companions.length ? ` and ${review.companions.join(", ")}` : ""} for the user and ask in the conversation. If the user wants to comment inline, open it in the preview (${review.preview}) and keep paved preview wait running until they say the review is finished; the preview approves nothing.`;
+  const independentText = review?.independent === undefined ? "" : ` Start a subagent with its own context, give it only ${review.independent.brief}, and let it write ${review.independent.record}; then run paved execute --run ${run.id} --auto --evidence ${review.independent.record} --json.`;
+  const reviewText = review === undefined ? "" : `${independentText} Summarize ${review.target}${review.companions.length ? ` and ${review.companions.join(", ")}` : ""} for the user and ask in the conversation. If the user wants to comment inline, open it in the preview (${review.preview}) and keep paved preview wait running until they say the review is finished; the preview approves nothing.`;
   return createResult({
     command: step, status, ...(open.length ? { decisions: open } : {}),
     data: { ...runSummary(run), ...extras.data, ...(review === undefined ? {} : { review }), nextAction: `${nextAction}${reviewText}` }, diagnostics: retained,
@@ -409,19 +411,6 @@ function amend(invocation: CommandInvocation, run: Run): CommandResult {
   return result(projectRoot, "plan", run, nextStepAction(run));
 }
 
-function reopenImplementation(run: Run): void {
-  const start = run.phases.findIndex((phase) => phase.phase === "implementation");
-  if (start < 0 || run.phases.slice(start + 1).every((phase) => phase.status === "pending")) return;
-  for (const phase of run.phases.slice(start)) {
-    if (phase.status === "pending") continue;
-    phase.status = "pending"; delete phase.gates; delete phase.failure;
-    run.events.push({ at: now(), type: "phase-reopened", phase: phase.phase, detail: AMENDED_RETRY });
-  }
-  const implementation = run.phases[start]!;
-  implementation.status = "running"; implementation.attempts = (implementation.attempts ?? 0) + 1;
-  run.events.push({ at: now(), type: "phase-started", phase: implementation.phase });
-}
-
 async function approveAmendment(invocation: CommandInvocation, run: Run, workflow: WorkflowContract): Promise<CommandResult> {
   const { projectRoot, coreRoot } = invocation.paths;
   const planning = run.phases.find((phase) => phase.phase === "planning")!;
@@ -438,7 +427,7 @@ async function approveAmendment(invocation: CommandInvocation, run: Run, workflo
     failed.status = "running"; failed.attempts = (failed.attempts ?? 0) + 1; delete failed.failure; delete run.failure;
     run.events.push({ at: now(), type: "retry-started", phase: failed.phase, detail: AMENDED_RETRY });
   } else {
-    reopenImplementation(run);
+    reopenImplementation(run, AMENDED_RETRY);
   }
   run.status = "running";
   writeRun(projectRoot, coreRoot, run);

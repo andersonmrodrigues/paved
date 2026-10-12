@@ -1,0 +1,48 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:change-review:v1
+title: Paved change review
+description: >-
+  Findings of a reviewer that did not write the change, recorded against the exact plan,
+  source and evidence it read, so a review of an older state cannot close the run.
+type: object
+additionalProperties: false
+required: [apiVersion, kind, run, reviewer, reviewed, passes, findings]
+properties:
+  apiVersion: { const: paved/v1 }
+  kind: { const: ChangeReview }
+  run: { type: string, minLength: 1 }
+  reviewer:
+    type: object
+    additionalProperties: false
+    required: [agent, isolated]
+    properties:
+      agent: { type: string, minLength: 1, maxLength: 200 }
+      isolated:
+        type: boolean
+        description: The reviewer ran with its own context and saw only the review brief.
+  reviewed:
+    type: object
+    additionalProperties: false
+    required: [plan_sha256, source_sha256, evidence_sha256]
+    properties:
+      plan_sha256: { $ref: "#/$defs/sha256" }
+      source_sha256: { $ref: "#/$defs/sha256" }
+      evidence_sha256: { $ref: "#/$defs/sha256" }
+  passes:
+    type: array
+    minItems: 1
+    uniqueItems: true
+    items: { enum: [rules, diff, change] }
+  findings:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [severity, file, summary]
+      properties:
+        severity: { enum: [blocking, note] }
+        file: { type: string, minLength: 1 }
+        line: { type: integer, minimum: 1 }
+        summary: { type: string, minLength: 1, maxLength: 2000 }
+$defs:
+  sha256: { type: string, pattern: '^[a-f0-9]{64}$' }

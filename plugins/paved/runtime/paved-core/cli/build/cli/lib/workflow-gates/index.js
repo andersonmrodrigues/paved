@@ -1,6 +1,7 @@
 import { bugGates } from "./bug.js";
 import { featureGates } from "./feature.js";
 import { refactorGates } from "./refactor.js";
+import { review } from "./review.js";
 import { implementationChanged, recordObservation, SHARED_GATES, sharedPhase } from "./shared.js";
 const REGISTRY = new Map([featureGates, bugGates, refactorGates].map((gates) => [gates.workflow, gates]));
 export function gatesFor(workflowId) {
@@ -23,6 +24,9 @@ export async function runPhase(input) {
     const shared = sharedPhase(context.phase.phase);
     if (shared)
         return shared(context);
+    // Not a shared phase: delivery stops before it, because only a separate reviewer can supply its record.
+    if (context.phase.phase === "review")
+        return review(context);
     if (!context.note) {
         return { kind: "blocked", code: "PAVED_WORKFLOW_OBSERVATION_REQUIRED", message: `${context.phase.phase} requires a concrete observation.`, remediation: "Advance again with --note <observation>." };
     }

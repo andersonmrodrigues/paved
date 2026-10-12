@@ -138,6 +138,8 @@ export function assessWorkflowQuality(files, context) {
 export const RECOVER_HANDLER = "run.recover";
 export const UNCHANGED_HANDLER = "run.unchanged";
 export const AMENDED_RETRY = "plan amended";
+export const REVIEW_HANDLER = "run.review";
+export const REVIEW_FIX = "review findings";
 export function recoveryQuestion(phase, attempts) {
     return `The ${phase} phase failed ${attempts} times. How should Paved continue?`;
 }
@@ -147,12 +149,12 @@ export function recoveriesFor(decisions, phase) {
         && decision.question?.startsWith(`The ${phase} phase failed `) === true);
 }
 /**
- * Each "retry" the user chose and each approved plan amendment gives a phase a fresh set
- * of attempts on top of the workflow's limit. An "amend" answer earns its round only once
+ * Each "retry" the user chose, each approved plan amendment and each review finding sent
+ * back to implementation gives a phase a fresh set of attempts on top of the workflow's limit. An "amend" answer earns its round only once
  * the amendment is approved, so it is counted there and not twice.
  */
 export function attemptRounds(run, phase) {
-    const amended = (run.events ?? []).filter((event) => (event.type === "retry-started" || event.type === "phase-reopened") && event.phase === phase && event.detail === AMENDED_RETRY).length;
+    const amended = (run.events ?? []).filter((event) => (event.type === "retry-started" || event.type === "phase-reopened") && event.phase === phase && (event.detail === AMENDED_RETRY || event.detail === REVIEW_FIX)).length;
     return 1 + recoveriesFor(run.decisions, phase).filter((decision) => decision.answer === "retry").length + amended;
 }
 const DONE = new Set(["completed", "skipped"]);

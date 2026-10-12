@@ -1,0 +1,8 @@
+# expect-error: must have required property 'evidence_sha256'
+apiVersion: paved/v1
+kind: ChangeReview
+run: intent-0123456789abcdef0123
+reviewer: { agent: claude-code subagent, isolated: true }
+reviewed: { plan_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, source_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa }
+passes: [diff]
+findings: []
