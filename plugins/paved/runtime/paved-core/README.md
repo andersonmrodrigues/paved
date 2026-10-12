@@ -1,151 +1,106 @@
 # Paved
 
-**A reliable way to work with coding agents in real software repositories.**
+Paved is the tool I use to keep coding agents (Claude Code, Codex, Cursor) honest when
+they work on a real repository.
 
-Paved gives an AI coding agent the project context, constraints and work process it
-needs, then checks that the work followed that process. It works with repositories
-of different sizes and technologies, from a focused bug fix to a feature that spans
-multiple modules.
+I started it after too many sessions that went the same way: the agent picked the wrong
+test command, ignored how the project was organized, changed the plan halfway through
+without saying so, and then wrote "all tests pass" without having run them. None of that
+is a model problem you can prompt away. It's a process problem, so I wrote the process
+down and made the agent go through it.
 
-## Why Paved exists
+In practice Paved is a TypeScript CLI plus a plugin for each agent. The plugin gives the
+agent skills and commands; the CLI decides what is allowed and records what happened.
 
-Coding agents can make useful changes quickly, but they often start without enough
-knowledge of a repository. They may miss local conventions, choose the wrong test
-command, skip a needed approval, or report success without showing what was checked.
+## What it does
 
-Paved makes the expected way of working visible and repeatable. It discovers what it
-can from the repository, asks people to resolve important choices, and keeps project
-state and evidence in the repository. The agent does the engineering work; people
-remain responsible for product decisions and approvals; Paved provides the shared
-process and records its results.
+A change goes through one run with three commands:
 
-Paved does not promise that software is defect-free. It makes the work, decisions,
-checks and remaining gaps easier to inspect.
-
-## How it works
-
-1. **Initialize a repository.** Paved detects project modules and technologies,
-   explains choices that need a person, and creates a project-local `.paved/` state.
-2. **Understand the project.** Generated context describes the repository. People
-   review it and can add project rules where needed.
-3. **Describe the change.** Start with `intent` and your request. Paved classifies it
-   as a feature, a bug fix or a refactor (or asks you), then `plan` and `execute` carry
-   it out in phases.
-4. **Review and verify.** Required approvals stay with the person. Paved runs the
-   configured tests and verification checks and records evidence before a workflow
-   can be completed.
-
-![How Paved Core works](docs/assets/how-paved-core-works.svg)
-
-Paved is agent-neutral at its core. Native plugins for Cursor, Codex and Claude Code expose
-the same skills and activate a version-pinned runtime in the consumer repository.
-The repository's `.paved/` state is the authority for that project's configuration
-and runtime version.
-
-## Get started
-
-Install the plugin for your coding agent:
-
-```bash
-# Codex
-codex plugin marketplace add andersonmrodrigues/paved
-codex plugin add paved@paved
-
-# Claude Code
-claude plugin marketplace add andersonmrodrigues/paved
-claude plugin install paved@paved
-```
-
-In Cursor, open **Customize → Plugins → From GitHub Repository**, import
-`https://github.com/andersonmrodrigues/paved`, then install Paved.
-
-Open the repository you want to work on and initialize Paved:
-
-```text
-Claude Code: /paved:init
-Codex:       paved:init
-Cursor:      /init
-```
-
-Then inspect its setup and start a change. For example:
-
-```text
-Cursor:      /status, /intent, /plan, /execute
-Claude Code: /paved:status, /paved:intent, /paved:plan, /paved:execute
-Codex:       paved:status, paved:intent, paved:plan, paved:execute
-```
-
-The launcher verifies and installs the plugin's bundled runtime under
-`.paved/runtime/`; it does not add dependencies to your application. The full
-[installation guide](docs/getting-started/installing-the-plugin.md) covers updates,
-runtime upgrades, removal and troubleshooting. To configure project context and
-verification, see [Integrating a repository](docs/getting-started/integrating-a-repository.md).
-
-## Workflows and commands
+- `intent` takes the request as you'd say it, decides whether it's a feature, a bug fix
+  or a refactor (or asks you when it can't tell), and gathers context. For a bug it wants
+  a failing regression test first; for a refactor, a passing baseline.
+- `plan` writes the plan to `.paved/documents/plans/`. You read it, comment on it in a
+  local Markdown preview if you want, and approve it in the conversation. The agent
+  can't approve on your behalf.
+- `execute` implements the plan, runs the project's tests and verification checks,
+  records the evidence and stops for your review before the run completes.
 
 ![How to use Paved commands in development](docs/assets/paved-command-flow.svg)
 
-Every change goes through three steps over one run. Paved keeps runs in the repository so
-an agent can resume them and people can inspect plans, approvals and results.
+The parts I care most about:
 
-| Command | Use it when… |
-| --- | --- |
-| `intent` | You want to change the repository. Pass your request as you would say it. Paved classifies it as a `feature`, a `bug` fix or a `refactor` from evidence, or asks you; a mixed request is split. It gathers context, and for a bug writes a failing regression test first, for a refactor records a passing baseline. |
-| `plan` | The change is understood. The plan is written to `.paved/documents/plans/`, reviewed in the Markdown preview, and approved by you in the conversation. |
-| `execute` | The plan is approved. Paved implements it, runs the tests and the verification profile, records evidence, opens the review in the preview and completes the run. New gardener proposals are listed as advice. |
-| `preview` | You want to review a Markdown plan, spec or a folder of them (an epic and its tasks), commenting on selected text and following each comment until the agent resolves it. |
+- Commands are declared, not guessed. A Check names a Tool, a Tool has an implementation
+  per project, and Paved runs exactly that. When it doesn't know how to test something
+  it says so and asks instead of inventing a command from `package.json`.
+- Evidence is checked, not trusted. Every check result records the revision, the
+  working tree digest and the exit code, and a record that claims more than its own
+  observations support is rejected.
+- Human decisions stay human. An approval records who made it, a run refuses to go on
+  when the run and the approval record disagree, and changing an approved plan needs a
+  new approval.
+- Everything lives in the repository under `.paved/`, so runs can be resumed, reviewed
+  and versioned with the code.
 
-You can also use `status` to inspect readiness, open runs and diagnostics (and answer its
-repair decisions), `init` to set up a repository, and `update` to apply a compatible local
-Core update. `test`, `verify`, `doctor`, `gardener` and `generate` remain CLI subcommands for
-CI and scripted use. Some operations depend on project configuration or approvals; Paved
-reports when they are unavailable. See the [agent command reference](docs/concepts/agent-commands.md)
-for inputs, behavior and availability conditions, and [migrating to 2.0](docs/getting-started/migrating-to-2.md)
-if you used the 1.x commands.
+Paved doesn't make the code correct. It makes it much harder for an agent to skip steps
+quietly, and easy to see afterwards what was actually checked and what wasn't.
 
-To follow several runs in one browser view, start the local Workbench with
-`paved workbench start`. Claude Code and Codex hooks add recent session activity while
-the dashboard is running; the run records remain authoritative and decisions stay in
-the conversation. See [installing the plugin](docs/getting-started/installing-the-plugin.md#follow-work-in-the-local-dashboard).
+![How Paved Core works](docs/assets/how-paved-core-works.svg)
 
-## What Paved provides
+## Trying it
 
-- **Project context** generated from repository evidence and reviewed by people.
-- **Skills and workflows** that give agents repeatable steps for common engineering work.
-- **Adapters** that add technology-specific knowledge while keeping the Core general.
-- **Explicit tools and verification** so commands are declared and checks are
-  configured for the project.
-- **Approvals and evidence** that preserve human decisions and show what was run.
-- **Repository-owned state** that can be reviewed and versioned with the project.
+Install the plugin for your agent:
 
-Paved currently provides adapters for Git, Java, Quarkus, TypeScript, Angular, Dart,
-Flutter and PostgreSQL. Supported integrations are Cursor, Codex and Claude Code. The set of
-available commands and checks depends on each repository's detected technologies
-and configuration.
+```bash
+# Claude Code
+claude plugin marketplace add andersonmrodrigues/paved
+claude plugin install paved@paved
 
-## Who makes Paved
+# Codex
+codex plugin marketplace add andersonmrodrigues/paved
+codex plugin add paved@paved
+```
 
-Paved was created by **Anderson Rodrigues** and is maintained in the open. Contributions
-are welcome; see [Contributing to Paved](CONTRIBUTING.md) for the repository's
-development setup and guidelines.
+In Cursor: **Customize → Plugins → From GitHub Repository**, import
+`https://github.com/andersonmrodrigues/paved` and install Paved.
 
-## Project status
+Then, inside the repository you want to work on, run `/paved:init` in Claude Code
+(`paved:init` in Codex, `/init` in Cursor), and start a change with `intent`.
 
-The current Core release is the latest entry in the [changelog](CHANGELOG.md). The Cursor,
-Codex and Claude Code plugins are available through this repository's GitHub-backed
-marketplaces. Paved is not listed in public
-agent plugin directories, and `paved-core` is not published to npm; the plugin bundles
-the runtime it needs.
+The plugin carries its own runtime and installs it under `.paved/runtime/`, so nothing is
+added to your application's dependencies. The [installation guide](docs/getting-started/installing-the-plugin.md)
+covers updates and troubleshooting, and [Integrating a repository](docs/getting-started/integrating-a-repository.md)
+covers project context and verification.
 
-## Learn more
+Besides the three main commands there are `status`, `update`, `preview`, and CLI-only
+subcommands (`test`, `verify`, `doctor`, `gardener`, `generate`) meant for CI. The
+[command reference](docs/concepts/agent-commands.md) has the details.
 
-- [Install the plugin](docs/getting-started/installing-the-plugin.md)
-- [Integrate a repository](docs/getting-started/integrating-a-repository.md)
-- [Agent command reference](docs/concepts/agent-commands.md)
-- [Conversational decisions](docs/concepts/decisions.md)
-- [Architecture](docs/concepts/architecture.md)
-- [Extensibility](docs/concepts/extensibility.md)
-- [Contributing](CONTRIBUTING.md)
-- [Changelog](CHANGELOG.md)
-- [Security](SECURITY.md)
-- [License](LICENSE)
+## How it's built
+
+- `core/` holds what is the same for every project: skills, workflows, rules, tools and
+  checks. It has no technology-specific knowledge.
+- `adapters/` add that knowledge: Git, Java, Quarkus, TypeScript, Angular, Dart, Flutter
+  and PostgreSQL so far.
+- `schemas/` has a JSON Schema for every document Paved reads or writes, and the CLI
+  validates against them on every load.
+- `cli/` is the runtime, and `plugins/` is generated from the sources, with a test that
+  fails if the two drift.
+
+There are a little under a thousand tests, many of them driving the real CLI against
+temporary Git repositories. Larger design choices are written down in
+[docs/decisions](docs/decisions/README.md) and the [architecture notes](docs/concepts/architecture.md).
+
+I use Paved on my own projects, and most fixes come from that. Version 2.6.0, for
+example, came out of building a [payment ledger service](https://github.com/andersonmrodrigues/payment-ledger-service)
+with it, where a few runs got stuck in ways the tests hadn't covered.
+
+## Status
+
+It's a personal project, used by me and not much tested outside my own repositories.
+The plugins are installed straight from this repository; Paved isn't in any public plugin
+directory and isn't published to npm. Changes are listed in the [changelog](CHANGELOG.md).
+
+If you want to try it or poke at the code, [CONTRIBUTING.md](CONTRIBUTING.md) has the
+setup. Issues and pull requests are welcome.
+
+[MIT License](LICENSE)
