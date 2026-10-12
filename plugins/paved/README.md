@@ -7,7 +7,7 @@ This directory is the installable plugin for Codex and Cursor. It is generated b
 `npm run build:plugin` in the Paved repository and must not be edited by hand.
 
 - Runtime: `paved-core@2.4.0` unpacked at `runtime/paved-core/`; its dependencies are bundled in its `node_modules/`.
-- Runtime integrity: `sha512-eAicaOaWwHywm+Xc7q6Mw+JOdt5HCSlNxlngfS4D8kt7X5gdfSVxw+XyxL8lqAZpA0793L5qd9+OhI4ku7H9gg==`, checked over the runtime and its dependencies before activation
+- Runtime integrity: `sha512-Zx+ibsxzAu0VxT8UFrsgnR9kcgl93B3ZRtrV54vW7n68jLSwYJ6VFryMgNVPjV9WYuRZQ9jkajKYTmIK25/EjA==`, checked over the runtime and its dependencies before activation
 - Launcher: `scripts/paved.mjs`
 - Prompt routing: `hooks/hooks.json` adds advisory Paved context once per session in repositories initialized with Paved, and again after compaction.
 - Workbench: `paved workbench start` opens the local run dashboard; optional lifecycle hooks show recent agent activity only while it is running.

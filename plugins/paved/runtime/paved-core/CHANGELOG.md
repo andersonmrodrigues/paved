@@ -17,6 +17,13 @@ releases, not the development sequence used to build them.
   ordinary test runner can bind to it without emitting JSON. Implementations that emit
   JSON keep working.
 
+### Fixed
+
+- Answering `amend` or `abandon` on an exhausted phase no longer grants an extra round of
+  attempts; only `retry` and an approved amendment do.
+- Work confirmed as already done before the run reaches completion with an empty change
+  diff instead of blocking the evidence phase.
+
 ## [2.4.0] - 2026-10-11
 
 ### Added
