@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.5.1] - 2026-10-12
+
 ### Fixed
 
 - Testing adoption detects explicitly declared npm `test:*` scripts, including unit,
