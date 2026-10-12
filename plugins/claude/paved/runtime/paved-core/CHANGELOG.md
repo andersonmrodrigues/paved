@@ -5,6 +5,13 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Fixed
+
+- Testing adoption detects explicitly declared npm `test:*` scripts, including unit,
+  integration and end-to-end suites, so development workflows can offer them as governed
+  testing commands.
+- Tool bindings accept `@` in direct executable paths, as used by some version managers.
+
 ## [2.5.0] - 2026-10-12
 
 ### Added
