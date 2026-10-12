@@ -29,7 +29,7 @@ properties:
       executable:
         description: Executable path or name. The runner invokes it with an argument vector, never through a shell.
         type: string
-        pattern: "^[A-Za-z0-9._/-]+$"
+        pattern: "^[A-Za-z0-9._/@-]+$"
       arguments:
         description: Fixed argv elements. No shell expansion or interpolation.
         type: array

@@ -156,6 +156,23 @@ export function detectCheckCandidates(projectRoot: string): CheckCandidate[] {
           ...(scriptArgs === undefined ? {} : { scriptArgs }),
         });
       }
+      for (const [scriptName, script] of Object.entries(scripts).sort(([a], [b]) => a.localeCompare(b, "en"))) {
+        if (!/^test:[a-z0-9][a-z0-9_-]*(?::[a-z0-9][a-z0-9_-]*)*$/i.test(scriptName) || typeof script !== "string" || script.trim() === "") continue;
+        const suffix = scriptName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        const type = /(^|:)e2e($|:)/i.test(scriptName)
+          ? "e2e"
+          : /(^|:)integration($|:)/i.test(scriptName)
+            ? "integration"
+            : "unit";
+        candidates.push({
+          id: `npm-${suffix}-test`,
+          label: `npm run ${scriptName}`,
+          command: scriptName,
+          scope,
+          source: evidence,
+          type,
+        });
+      }
     }
   }
   return candidates
