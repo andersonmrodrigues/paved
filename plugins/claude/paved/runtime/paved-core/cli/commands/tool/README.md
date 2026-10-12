@@ -1,9 +1,14 @@
 # `paved tool` command contract
 
-The command UX is specified here; no executable Tool runner is implemented in this
-phase. `cli/lib/tools.ts` supplies discovery, resolution, validation, policy and
+The command UX is specified here. Only `paved tool add` is implemented; the other
+operations are not yet. `cli/lib/tools.ts` supplies discovery, resolution, validation, policy and
 evidence-capture functions for the future runner.
 
+- `paved tool add <check-type> [label] [--scope <dir>] -- <executable> [args...] [--json]`
+  (implemented) writes a project Tool, its ToolImplementation and a Check for one exact
+  command, appends the Check to `.paved/verification/profile.yaml` and validates the
+  result before returning. Everything after `--` is the argv; no shell is involved. An
+  existing document with different content is never overwritten.
 - `paved tool list [--capability <name>] [--environment <kind>] [--json]` lists Tool
   contracts with safety, permissions, input/output shape, source and availability.
   Discovery never grants execution.

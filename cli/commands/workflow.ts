@@ -11,11 +11,11 @@ import { resolveSafePath } from "../lib/safe-path.ts";
 import { reportNewProposals } from "../lib/gardener-report.ts";
 import { reviewFor } from "../lib/review-block.ts";
 import { relaysAnswers, runPhase } from "../lib/workflow-gates/index.ts";
-import { fingerprint, now, projectRelative, readApproval, sha, sharedPhase, UNCHANGED_HANDLER } from "../lib/workflow-gates/shared.ts";
+import { now, projectRelative, readApproval, sha, sharedPhase, sourceUnchanged } from "../lib/workflow-gates/shared.ts";
 import {
   isOpen, loadContract, readRun, scanRuns, runCommand, runPath, TERMINAL_STATUSES, writeRun, type Failure, type Gate, type Phase, type Run,
 } from "../lib/workflow-runs.ts";
-import { AMENDED_RETRY, attemptRounds, RECOVER_HANDLER, recoveriesFor, recoveryQuestion, type WorkflowContract } from "../lib/workflows.ts";
+import { AMENDED_RETRY, attemptRounds, RECOVER_HANDLER, recoveriesFor, recoveryQuestion, UNCHANGED_HANDLER, type WorkflowContract } from "../lib/workflows.ts";
 import { createDiagnostic, createResult, type CommandResult, type DecisionProjection, type Diagnostic } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
 import { testHandler } from "./test.ts";
@@ -150,8 +150,7 @@ function runDecisionCandidate(decision: Decision): DecisionCandidate {
 
 /** An unanswered "is the work already done?" question stops mattering once the code changes. */
 function moot(projectRoot: string, run: Run, decision: Decision): boolean {
-  return decision.handler === UNCHANGED_HANDLER && decision.status === "ASKED"
-    && fingerprint(projectRoot) !== run.events[0]?.detail?.replace(/^source_sha256=/, "");
+  return decision.handler === UNCHANGED_HANDLER && decision.status === "ASKED" && !sourceUnchanged(projectRoot, run);
 }
 
 function resolveRunDecisions(invocation: CommandInvocation, run: Run, answers: readonly string[], fresh: readonly DecisionCandidate[] = []) {
@@ -471,16 +470,16 @@ async function resume(invocation: CommandInvocation, step: Step, run: Run, answe
   if (phase.status === "failed") {
     const contractPhase = workflow.phases.find((item) => item.phase === phase.phase);
     const retryLimit = contractPhase?.retry?.class === "non-retryable" ? 1 : (contractPhase?.retry?.max_attempts ?? 2);
-    const recovered = recoveriesFor(run.decisions, phase.phase);
-    if ((phase.attempts ?? 0) >= retryLimit * attemptRounds(run, phase.phase)) {
-      return ask(invocation, step, run, recoveryCandidate(projectRoot, run, phase),
-        `${phase.phase} used all its attempts. Present the decision, then resume with paved ${step} --run ${run.id} --advance --answer <id>=<value> --answered-by <you> --json.`);
-    }
-    const latest = recovered.at(-1);
+    // The latest recovery answer applies before the attempt limit: abandon and amend need no attempt.
+    const latest = recoveriesFor(run.decisions, phase.phase).at(-1);
     if (latest?.answer === "abandon") return abandon(invocation, step, run);
     const amendedSince = (planGate(run)?.decided_at ?? "") > (latest?.applied_at ?? "");
     if (latest?.answer === "amend" && !amendedSince) {
       return result(projectRoot, step, run, `Revise the plan, then run paved plan --run ${run.id} --amend --note <what changed> --json and ask the user to approve it.`);
+    }
+    if ((phase.attempts ?? 0) >= retryLimit * attemptRounds(run, phase.phase)) {
+      return ask(invocation, step, run, recoveryCandidate(projectRoot, run, phase),
+        `${phase.phase} used all its attempts. Present the decision, then resume with paved ${step} --run ${run.id} --advance --answer <id>=<value> --answered-by <you> --json.`);
     }
     phase.status = "running"; delete phase.failure; delete run.failure; delete run.ended_at; run.status = "running";
     phase.attempts = (phase.attempts ?? 0) + 1;

@@ -136,6 +136,7 @@ export function assessWorkflowQuality(files, context) {
     return problems;
 }
 export const RECOVER_HANDLER = "run.recover";
+export const UNCHANGED_HANDLER = "run.unchanged";
 export const AMENDED_RETRY = "plan amended";
 export function recoveryQuestion(phase, attempts) {
     return `The ${phase} phase failed ${attempts} times. How should Paved continue?`;
@@ -146,12 +147,13 @@ export function recoveriesFor(decisions, phase) {
         && decision.question?.startsWith(`The ${phase} phase failed `) === true);
 }
 /**
- * Each recovery the user chose and each approved plan amendment gives a phase a fresh
- * set of attempts on top of the workflow's limit.
+ * Each "retry" the user chose and each approved plan amendment gives a phase a fresh set
+ * of attempts on top of the workflow's limit. An "amend" answer earns its round only once
+ * the amendment is approved, so it is counted there and not twice.
  */
 export function attemptRounds(run, phase) {
     const amended = (run.events ?? []).filter((event) => event.type === "retry-started" && event.phase === phase && event.detail === AMENDED_RETRY).length;
-    return 1 + recoveriesFor(run.decisions, phase).length + amended;
+    return 1 + recoveriesFor(run.decisions, phase).filter((decision) => decision.answer === "retry").length + amended;
 }
 const DONE = new Set(["completed", "skipped"]);
 /** Problems with a run record measured against the workflow it claims to run. */

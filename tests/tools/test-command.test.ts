@@ -40,6 +40,8 @@ async function runTest(project: string): Promise<CommandResult> {
 function projectTool(project: string): { tool: ToolContract; implementation: ToolImplementation } {
   const tool = structuredClone(loadYaml(at("core", "tools", "testing", "run.yaml"))) as ToolContract;
   tool.id = "project.testing.run";
+  // Structured output is still supported; this suite pins it to cover output validation.
+  tool.outputs = { format: "json", description: "Structured test status.", fields: ["status"] };
   const implementation = {
     apiVersion: "paved/v1",
     kind: "ToolImplementation",

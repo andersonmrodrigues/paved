@@ -1,10 +1,10 @@
 apiVersion: paved/v1
 kind: Tool
 id: core.testing.run
-version: 0.1.0
+version: 0.1.1
 title: Run testing state
-purpose: Provide the testing run capability through an environment-specific
-  implementation with structured results.
+purpose: Run the project's tests through an environment-specific implementation;
+  the exit code decides the outcome.
 capability: testing-run
 safety: safe-mutation
 permissions:
@@ -15,10 +15,8 @@ environments:
   - ephemeral
 inputs: []
 outputs:
-  format: json
-  description: Structured observations and execution metadata for this capability.
-  fields:
-    - status
+  format: text
+  description: The test runner's own output; exit code 0 means the tests passed.
 side_effects:
   - process
   - filesystem
@@ -35,7 +33,6 @@ errors:
   - timeout
   - execution-failure
   - implementation-unavailable
-  - malformed-output
 evidence:
   capture:
     - revision
