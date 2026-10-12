@@ -27,7 +27,7 @@ A change goes through one run with three commands:
   completes.
 
 If you'd rather not think about the steps, `execute "<request>"` does it all from one
-command: it sets Paved up if the repository doesn't have it yet, works through the
+command: it sets Paved up if the repository doesn't have it yet (or updates it), works through the
 request and still stops for your answers and for your approval of the plan.
 
 ![How to use Paved commands in development](docs/assets/paved-command-flow.svg)

@@ -21,6 +21,7 @@ import { createDiagnostic, createResult, type CommandResult, type DecisionProjec
 import type { CommandInvocation } from "../runtime.ts";
 import { initHandler } from "./init.ts";
 import { testHandler } from "./test.ts";
+import { updateHandler } from "./update.ts";
 import { verifyHandler } from "./verify.ts";
 
 export type Step = "intent" | "plan" | "execute";
@@ -281,14 +282,21 @@ function startIntent(invocation: CommandInvocation): CommandResult {
 const OPEN_DECISION = new Set(["PENDING", "ASKED", "ANSWERED"]);
 
 /**
- * `paved execute "<request>"`: initializes Paved when the repository has none, then starts
- * the request as an intent. Every later step can be driven with paved execute as well.
+ * `paved execute "<request>"`: initializes Paved when the repository has none, or updates
+ * it when its state needs that, then starts the request as an intent. Every later step can
+ * be driven with paved execute as well.
  */
 function startWork(invocation: CommandInvocation): CommandResult {
   const { projectRoot, coreRoot } = invocation.paths;
   const lifecycle = inspectConsumer({ projectRoot, coreRoot }).lifecycleState;
   const initPending = lifecycle !== "UNINITIALIZED"
     && listDecisions(projectRoot, coreRoot).some((decision) => decision.command === "init" && OPEN_DECISION.has(decision.status));
+  if (!initPending && remediationFor(lifecycle)?.command === "paved update --json") {
+    const updated = updateHandler({ ...invocation, command: "update", selectors: [] });
+    if (updated.status === "failed") return updated;
+    const started = startIntent(invocation);
+    return { ...started, data: { ...(started.data as Record<string, unknown>), updated: true }, diagnostics: [...updated.diagnostics, ...started.diagnostics] };
+  }
   if (lifecycle !== "UNINITIALIZED" && !initPending) return startIntent(invocation);
   const initialized = initHandler({ ...invocation, command: "init", selectors: [] });
   if (initialized.status === "failed") return initialized;

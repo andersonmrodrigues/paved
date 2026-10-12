@@ -5,7 +5,8 @@ import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse, stringify } from "yaml";
-import { initializeConsumer } from "../../cli/lib/generator-runtime.ts";
+import { initializeConsumer, runGenerators } from "../../cli/lib/generator-runtime.ts";
+import { inspectConsumer } from "../../cli/lib/consumer-state.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
 import type { CommandResult } from "../../cli/result.ts";
 import { cleanupTemporaryDirectories, temporaryDirectory } from "../helpers.ts";
@@ -390,6 +391,20 @@ describe("starting work with execute", () => {
     const data = started.data as { run?: string; nextAction: string };
     if (started.status === "awaiting_input") assert.match(data.nextAction, /repeat paved execute "Enable the behavior"/);
     else assert.ok(data.run, JSON.stringify(started));
+  });
+
+  it("updates stale Paved state before recording the request", async () => {
+    const root = project();
+    runGenerators(core, root);
+    write(root, "README.md", "# Consumer, changed\n");
+    assert.equal(inspectConsumer({ projectRoot: root, coreRoot: core }).lifecycleState, "STALE");
+
+    const started = await dispatchCli({ argv: ["execute", "Enable the behavior", "--workflow", "feature", "--because", "New behavior.", "--project", root, "--json"] });
+
+    assert.equal(started.status, "success", JSON.stringify(started));
+    assert.equal((started.data as { updated?: boolean }).updated, true);
+    assert.ok((started.data as { run?: string }).run);
+    assert.notEqual(inspectConsumer({ projectRoot: root, coreRoot: core }).lifecycleState, "STALE");
   });
 
   it("takes a request through intent and planning to implementation with execute alone", async () => {
