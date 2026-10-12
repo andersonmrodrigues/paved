@@ -22,6 +22,13 @@ describe("Tool capabilities", () => {
     assert.deepEqual(validateTool(tool), []);
   });
 
+  it("accepts a direct executable path containing a version-manager marker", () => {
+    const command = copy(implementation);
+    command.invocation = { type: "command", executable: process.execPath, arguments: [] };
+    const validity = schemas().validate(command);
+    assert.ok(validity.valid, formatErrors(command.id, validity.errors));
+  });
+
   it("discovers capabilities without granting execution", () => {
     const found = discoverTools([tool], [implementation], "local", true);
     assert.equal(found[0]?.id, tool.id);
