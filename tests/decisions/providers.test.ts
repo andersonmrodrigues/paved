@@ -186,6 +186,21 @@ describe("verification candidate detection", () => {
     assert.ok(ids.includes("npm-test"));
   });
 
+  it("detects namespaced test scripts as governed test candidates with their declared level", () => {
+    const project = workspace({
+      "package.json": JSON.stringify({ scripts: {
+        "test:unit": "vitest run",
+        "test:integration": "vitest run --config vitest.integration.ts",
+        "test:e2e": "playwright test",
+      } }),
+    });
+    const candidates = detectCheckCandidates(project);
+    assert.deepEqual(
+      candidates.map((candidate) => [candidate.command, candidate.type]),
+      [["test:e2e", "e2e"], ["test:integration", "integration"], ["test:unit", "unit"]],
+    );
+  });
+
   it("skips ng test when the project has no spec file to run", () => {
     const project = workspace({
       "package.json": JSON.stringify({ scripts: { build: "ng build", test: "ng test" } }),
