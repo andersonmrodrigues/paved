@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-10-12
+
 ### Added
 
 - `paved tool add <check-type> [label] [--scope <dir>] -- <command...>` writes a Tool,
