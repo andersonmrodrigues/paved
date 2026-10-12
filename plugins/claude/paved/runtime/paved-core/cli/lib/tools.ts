@@ -380,7 +380,7 @@ export function captureToolExecution(args: {
 /** Convert a captured Tool result into the CheckResult part of the existing Evidence contract. */
 export function toEvidenceCheck(
   result: ReturnType<typeof captureToolExecution>,
-  check: { id: string; type: string; tool: string; expected: { exit_code?: number } },
+  check: { id: string; type: string; covers?: readonly string[]; tool: string; expected: { exit_code?: number } },
   id: string,
 ): CheckResult {
   if (check.tool !== result.tool.id) throw new Error(`Check ${check.id} names ${check.tool}, but Tool result names ${result.tool.id}`);
@@ -391,6 +391,7 @@ export function toEvidenceCheck(
   const observation = { name: "tool-status", value: result.status };
   return {
     id, check: check.id, type: check.type,
+    ...(check.covers?.length ? { covers: [...check.covers] } : {}),
     tool: { id: result.tool.id, version: result.tool.version },
     status,
     ...(status === "passed" || status === "failed" ? ("exit_code" in result ? { exit_code: result.exit_code } : {}) : {}),

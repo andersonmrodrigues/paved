@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { parse } from "yaml";
-import { assessEvidence, loadEvidenceRegistry } from "./evidence.js";
+import { assessEvidence, coveredTypes, loadEvidenceRegistry } from "./evidence.js";
 import { createRegistry } from "./schemas.js";
 export class GardenerInputError extends Error {
 }
@@ -51,7 +51,7 @@ function reviews(projectRoot, coreRoot) {
     }
     return latest;
 }
-function evidenceIncidents(projectRoot, coreRoot) {
+function evidenceIncidents(projectRoot, coreRoot, skipped) {
     const found = [];
     const paths = [
         ...files(join(projectRoot, ".paved/generated/evidence"), ".yaml"),
@@ -61,19 +61,22 @@ function evidenceIncidents(projectRoot, coreRoot) {
     for (const path of paths) {
         const { raw, value } = readValidated(path, coreRoot);
         const record = value;
+        const rel = posix(relative(projectRoot, path));
+        // One self-contradicting record must not hide what every other record shows.
         const problems = assessEvidence(record, loadEvidenceRegistry(join(coreRoot, "core/verification/registry.yaml")));
-        if (problems.length > 0)
-            throw new GardenerInputError("Evidence record contradicts its recorded observations.");
+        if (problems.length > 0) {
+            skipped.push({ record: rel, problems });
+            continue;
+        }
         // A retained copy and its disposable original represent one run.
         const recordHash = hash(JSON.stringify(record));
         const previous = seen.get(record.id);
         if (previous !== undefined) {
             if (previous !== recordHash)
-                throw new GardenerInputError("Evidence id has conflicting record contents.");
+                throw new GardenerInputError(`Evidence id ${record.id} has conflicting record contents in ${rel}.`);
             continue;
         }
         seen.set(record.id, recordHash);
-        const rel = posix(relative(projectRoot, path));
         const base = { at: record.created_at, record: rel, revision: record.change.revision, sourceHash: hash(raw) };
         for (const check of record.checks) {
             for (const fact of check.observations ?? []) {
@@ -93,9 +96,8 @@ function evidenceIncidents(projectRoot, coreRoot) {
             found.push({ ...base, category: "rule-violation", subject: rule.id, pattern: `rule:${rule.id}`, state: "documented", item: rule.id });
         }
         for (const type of record.plan.required) {
-            if (record.checks.some((check) => check.type === type && check.status === "passed"))
-                continue;
-            if (record.checks.some((check) => check.type === type && (check.status === "failed" || check.status === "error")))
+            const covering = record.checks.filter((check) => coveredTypes(check).includes(type));
+            if (covering.some((check) => ["passed", "failed", "error"].includes(check.status)))
                 continue;
             found.push({ ...base, category: "missing-verification", subject: type, pattern: `missing:${type}`, state: "documented", item: type });
         }
@@ -172,7 +174,8 @@ export function analyzeGardener(input) {
         throw new GardenerInputError("Consumer manifest has no project name.");
     const decisions = reviews(input.projectRoot, input.coreRoot);
     const groups = new Map();
-    for (const incident of [...evidenceIncidents(input.projectRoot, input.coreRoot), ...generatorIncidents(input.projectRoot)]) {
+    const skipped = [];
+    for (const incident of [...evidenceIncidents(input.projectRoot, input.coreRoot, skipped), ...generatorIncidents(input.projectRoot)]) {
         const key = `${name}\u0000${incident.pattern}`;
         groups.set(key, [...(groups.get(key) ?? []), incident]);
     }
@@ -207,7 +210,7 @@ export function analyzeGardener(input) {
             ...(currentReview === undefined ? {} : { review: { by: currentReview.by, at: currentReview.at, reason: currentReview.reason, ...(currentReview.superseded_by === undefined ? {} : { superseded_by: currentReview.superseded_by }) } }),
         });
     }
-    return { consumer: name, observations, proposals };
+    return { consumer: name, observations, proposals, skipped };
 }
 /** Explicit, read-only comparison for human reviewers; never called by the consumer CLI. */
 export function considerCoreCandidates(results) {

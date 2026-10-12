@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 export class AnswerIdentityError extends Error {
 }
 const DECISION_ID = /^d-[a-f0-9]{20}$/;
@@ -83,4 +84,16 @@ export function assertAnswerIdentity(identity) {
         throw new AnswerIdentityError(`--answered-by must name a person, not ${trimmed}.`);
     }
     return trimmed;
+}
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/**
+ * The identity as decision records store it. Records under .paved/ are versioned, so an
+ * email address becomes a stable pseudonym: the same person still maps to the same
+ * name, without publishing the address.
+ */
+export function recordedIdentity(identity) {
+    const trimmed = identity.trim();
+    if (!EMAIL.test(trimmed))
+        return trimmed;
+    return `person-${createHash("sha256").update(trimmed.toLowerCase()).digest("hex").slice(0, 12)}`;
 }

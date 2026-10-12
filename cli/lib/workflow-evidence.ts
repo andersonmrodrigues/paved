@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { stringify } from "yaml";
 import { atomicWriteFileSync } from "./atomic-write.ts";
 import { loadYaml } from "./documents.ts";
-import type { EvidenceRecord } from "./evidence.ts";
+import { coveredTypes, type EvidenceRecord } from "./evidence.ts";
 import { resolveSafePath } from "./safe-path.ts";
 import type { Run } from "./workflow-runs.ts";
 import { UNCHANGED_HANDLER, type WorkflowContract } from "./workflows.ts";
@@ -27,7 +27,10 @@ const lines = (text: string): string[] => text.split("\n").map((line) => line.tr
 /** The change since the run started: committed, staged, unstaged and untracked files, against the run's revision. */
 function collectChange(projectRoot: string, revision: string): ChangeDiff | undefined {
   if (git(projectRoot, ["rev-parse", "--is-inside-work-tree"]).stdout.trim() !== "true") return undefined;
-  const base = [revision, "HEAD"].find((ref) => ref !== "unversioned" && git(projectRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]).ok);
+  // A run started before the repository had a commit changed every file it now holds.
+  const base = revision === "unversioned"
+    ? undefined
+    : [revision, "HEAD"].find((ref) => git(projectRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]).ok);
   const untracked = lines(git(projectRoot, ["ls-files", "--others", "--exclude-standard", ...PATHSPEC]).stdout);
   const changed = base === undefined
     ? [...lines(git(projectRoot, ["ls-files", "--cached", ...PATHSPEC]).stdout), ...untracked]
@@ -68,10 +71,13 @@ export function writeWorkflowEvidence(input: {
   if (change.files.length === 0 && !preExisting) return { problem: "No changed file was found since the run started." };
 
   const createdAt = new Date().toISOString();
-  const diffRef = `.paved/generated/evidence/${run.id}.diff`;
-  const recordRef = `.paved/generated/evidence/${run.id}-workflow.yaml`;
+  // Each recording gets its own files, so evidence a reopened run already recorded is never rewritten.
+  const attempt = run.events.filter((event) => event.type === "evidence-recorded" && event.phase === "evidence").length + 1;
+  const suffix = attempt === 1 ? "" : `-${attempt}`;
+  const diffRef = `.paved/generated/evidence/${run.id}${suffix}.diff`;
+  const recordRef = `.paved/generated/evidence/${run.id}-workflow${suffix}.yaml`;
   const plan = workflowPlan(workflow, authoritative);
-  const covered = new Set(authoritative.checks.filter((check) => check.status === "passed").map((check) => check.type));
+  const covered = new Set(authoritative.checks.filter((check) => check.status === "passed").flatMap(coveredTypes));
   const profilePath = resolveSafePath(projectRoot, ".paved/verification/profile.yaml");
   const unavailable = existsSync(profilePath) ? (loadYaml(profilePath) as ProfileDocument).unavailable ?? [] : [];
   const gaps = (plan.recommended ?? []).filter((type) => !covered.has(type)).map((type) => ({
@@ -81,7 +87,7 @@ export function writeWorkflowEvidence(input: {
     risk: "low",
   }));
   const record = {
-    apiVersion: "paved/v1", kind: "Evidence", id: `${run.id}-workflow`, created_at: createdAt,
+    apiVersion: "paved/v1", kind: "Evidence", id: `${run.id}-workflow${suffix}`, created_at: createdAt,
     producer: { agent: "paved-cli", workflow: workflow.id, run: run.id },
     verification: authoritative.verification,
     retention: "local",

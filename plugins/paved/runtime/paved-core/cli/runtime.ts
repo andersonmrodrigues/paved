@@ -17,7 +17,7 @@ import { workbenchHandler } from "./commands/workbench.ts";
 import { toolHandler } from "./commands/tool.ts";
 import { createDiagnostic, createResult, type CommandResult } from "./result.ts";
 import { CliPathError, resolveCoreRoot, resolveProjectRoot } from "./paths.ts";
-import { assertAnswerIdentity, parseAnswerFlags } from "./lib/decisions/answers.ts";
+import { assertAnswerIdentity, parseAnswerFlags, recordedIdentity } from "./lib/decisions/answers.ts";
 
 export const COMMAND_NAMES = ["init", "status", "intent", "plan", "execute", "test", "verify", "update", "doctor", "gardener", "generate", "agent", "decision", "preview", "workbench", "tool"] as const;
 const STEP_COMMANDS: readonly string[] = ["intent", "plan", "execute"];
@@ -201,7 +201,7 @@ function commandUsage(command: CommandName | undefined): string {
       "  --project <dir>  Select a project directory.",
       "  --json           Render structured JSON output.",
       "  --answer <id>=<value>    Answer a pending Paved decision; repeatable.",
-      "  --answered-by <identity> The person who decided; required with --answer.",
+      "  --answered-by <identity> The person who decided; required with --answer. An email is stored as a pseudonym.",
       "",
       "Command options:",
       ...(commandOptions.length === 0 ? ["  (none)"] : commandOptions),
@@ -516,7 +516,7 @@ function parse(argv: readonly string[]): Parsed {
     ...(because === undefined ? {} : { because }),
     ...(recommend === undefined ? {} : { recommend }),
     ...(reply === undefined ? {} : { reply }),
-    ...(answeredBy === undefined ? {} : { answeredBy }),
+    ...(answeredBy === undefined ? {} : { answeredBy: recordedIdentity(answeredBy) }),
     ...(run === undefined ? {} : { run }),
     ...(note === undefined ? {} : { note }),
     ...(evidence === undefined ? {} : { evidence }),

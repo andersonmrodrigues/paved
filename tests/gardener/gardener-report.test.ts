@@ -13,7 +13,7 @@ afterEach(() => rmSync(projectRoot, { recursive: true, force: true }));
 const proposal = (id: string, sha: string, status = "CANDIDATE") => ({
   id, status, evidence_sha256: sha, problem: `Problem ${id}`, proposed_change: `Change ${id}`, recommended_layer: "rule",
 }) as unknown as GardenerProposal;
-const analyzer = (proposals: GardenerProposal[]) => (): GardenerResult => ({ consumer: "consumer", observations: [], proposals });
+const analyzer = (proposals: GardenerProposal[]) => (): GardenerResult => ({ consumer: "consumer", observations: [], proposals, skipped: [] });
 
 describe("gardener report at the end of execute", () => {
   it("lists a new candidate once", () => {

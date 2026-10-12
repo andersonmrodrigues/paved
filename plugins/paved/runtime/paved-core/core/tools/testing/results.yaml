@@ -1,7 +1,7 @@
 apiVersion: paved/v1
 kind: Tool
 id: core.testing.results
-version: 0.1.0
+version: 0.1.1
 title: Results testing state
 purpose: Provide the testing results capability through an environment-specific
   implementation with structured results.
@@ -22,7 +22,7 @@ outputs:
 side_effects: []
 preconditions: []
 idempotency: idempotent
-timeout_seconds: 300
+timeout_seconds: 3600
 retry:
   max_attempts: 1
   backoff_seconds: 0

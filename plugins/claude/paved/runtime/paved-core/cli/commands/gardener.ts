@@ -9,6 +9,10 @@ export function gardenerHandler(invocation: CommandInvocation): CommandResult {
   try {
     const result = analyzeGardener(invocation.paths);
     const count = result.proposals.filter((proposal) => proposal.status === "CANDIDATE").length;
+    const skippedDiagnostics = result.skipped.map(({ record, problems }) => createDiagnostic({
+      severity: "warning", category: "findings", code: "PAVED_GARDENER_EVIDENCE_SKIPPED", component: "gardener",
+      message: `Skipped ${record}: it contradicts its recorded observations (${problems.join("; ")}). Regenerate or remove the record.`,
+    }));
     const outcome = runDecisionGate({
       context: {
         projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot,
@@ -22,10 +26,10 @@ export function gardenerHandler(invocation: CommandInvocation): CommandResult {
       severity: "error", category: "usage", code: "PAVED_DECISION_ANSWER_INVALID", component: "gardener", message,
     }));
     return createResult({
-      command: "gardener", status: decisionDiagnostics.length > 0 ? "failed" : count > 0 ? "warning" : "success",
+      command: "gardener", status: decisionDiagnostics.length > 0 ? "failed" : count > 0 || skippedDiagnostics.length > 0 ? "warning" : "success",
       decisions: outcome.projections,
       data: { ...result, dryRun: invocation.flags.dryRun, approvalRequired: true },
-      diagnostics: [...decisionDiagnostics, ...(count > 0 ? [createDiagnostic({
+      diagnostics: [...decisionDiagnostics, ...skippedDiagnostics, ...(count > 0 ? [createDiagnostic({
         severity: "warning", category: "findings", code: "PAVED_GARDENER_PROPOSALS", component: "gardener",
         message: `${count} improvement proposal(s) require human review.`,
       })] : [])],

@@ -1,7 +1,7 @@
 apiVersion: paved/v1
 kind: Tool
 id: core.testing.targeted
-version: 0.1.0
+version: 0.1.1
 title: Targeted testing state
 purpose: Provide the testing targeted capability through an environment-specific
   implementation with structured results.
@@ -24,7 +24,7 @@ side_effects:
   - filesystem
 preconditions: []
 idempotency: unknown
-timeout_seconds: 300
+timeout_seconds: 3600
 retry:
   max_attempts: 1
   backoff_seconds: 0

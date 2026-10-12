@@ -268,6 +268,25 @@ describe("Tool capabilities", () => {
     assert.ok(validity.valid, formatErrors("Tool CheckResult", validity.errors));
   });
 
+  it("carries the types a Check covers into its evidence result", () => {
+    const record = captureToolExecution({
+      tool, implementation, environment: "local", revision: "abc123", runtime_version: "synthetic/1",
+      started_at: "2026-01-01T00:00:00Z", finished_at: "2026-01-01T00:00:01Z",
+      status: "succeeded", exit_code: 0, output: {count: 2}, inputs: {path: "src/file"},
+    });
+    const definition = {id: "project.synthetic.check", type: "unit", covers: ["integration"], tool: tool.id, expected: {exit_code: 0}};
+    assert.deepEqual(toEvidenceCheck(record, definition, "synthetic-run").covers, ["integration"]);
+    assert.equal("covers" in toEvidenceCheck(record, {...definition, covers: []}, "synthetic-run"), false);
+  });
+
+  it("lets a project bind the Core test runner with a timeout for a long suite", () => {
+    const runner = loadYaml(at("core", "tools", "testing", "run.yaml")) as ToolContract;
+    const binding = copy(implementation);
+    Object.assign(binding, {id: "project.testing.slow-suite", tool: runner.id, contract: `^${runner.version}`, source: "project", environments: ["local"]});
+    binding.invocation = {type: "command", executable: process.execPath, arguments: [], timeout_seconds: 1800};
+    assert.deepEqual(validateImplementation(binding, runner).filter((problem) => /timeout/.test(problem)), []);
+  });
+
   it("does not turn execution success into a passed Check without a matching observation", () => {
     const record = captureToolExecution({
       tool, implementation, environment: "local", revision: "abc123", runtime_version: "synthetic/1",
