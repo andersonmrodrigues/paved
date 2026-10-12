@@ -5,6 +5,14 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- `paved execute "<request>"` starts work from a single command. It initializes Paved
+  when the repository has none, updates it when its state needs `paved update`, records the request and returns the decisions it needs
+  answered. `paved execute --run <id>` then drives the run through context, discovery
+  and planning as well, and `--approve` records the user's approval of the plan.
+  Nothing is implemented before that approval.
+
 ## [2.7.0] - 2026-10-12
 
 ### Changed

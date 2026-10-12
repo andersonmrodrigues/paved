@@ -23,7 +23,12 @@ A change goes through one run with three commands:
   local Markdown preview if you want, and approve it in the conversation. The agent
   can't approve on your behalf.
 - `execute` implements the plan, runs the project's tests and verification checks,
-  records the evidence and stops for your review before the run completes.
+  records the evidence and has a separate subagent review the change before the run
+  completes.
+
+If you'd rather not think about the steps, `execute "<request>"` does it all from one
+command: it sets Paved up if the repository doesn't have it yet (or updates it), works through the
+request and still stops for your answers and for your approval of the plan.
 
 ![How to use Paved commands in development](docs/assets/paved-command-flow.svg)
 

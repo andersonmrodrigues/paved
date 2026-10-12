@@ -15,6 +15,9 @@ function availability(command, inspection, projectRoot, coreRoot) {
             recommendedNextAction: inspection.initialized ? "/paved:status" : "/paved:init",
         };
     }
+    // execute starts by initializing Paved, which detects the checks and the testing Tool.
+    if (command.name === "execute" && !inspection.initialized)
+        return { available: true };
     if (["intent", "plan", "execute"].includes(command.name)) {
         if (inspection.verificationProfile !== "present") {
             if (detectCheckCandidates(projectRoot).length === 0) {

@@ -21,7 +21,7 @@ Paved projects seven agent commands:
 | `status` | Inspect Paved state and offer repairs; answer a repair decision with `--answer` | Any lifecycle; manifest and lock | Lifecycle, lock, adapters, context, verification profile, open runs, diagnostics and repair decisions. Read-only unless the user answers a repair decision | Reports missing/invalid state without writes; no repair is applied without the user's answer. |
 | `intent` | The user's request, verbatim; `--workflow <feature\|bug\|refactor> --because "<evidence>"` when the evidence shows the kind of change | `RESOLVED`, `GENERATED`, `VALIDATED`, or `READY`; project context, rules and the Core workflows | Creates the run and its Intent document, settles the classification (or asks the user), and runs `context` and `discovery`, including a bug's failing regression test and a refactor's baseline | A workflow without evidence is refused; uncertainty becomes a decision; Paved never guesses. |
 | `plan` | The run, when several are open (`--run <id>`) | Same development states; the run's workflow and verification profile | Records the plan at `.paved/documents/plans/<run-id>.md`, opens it in the preview, and records the approval the user gives in the conversation (`--approve`) | A changed plan needs a new approval; only the user approves. |
-| `execute` | The run, when several are open (`--run <id>`) | Same development states; the run's workflow, verification profile and tool bindings | Implementation, tests, verification, evidence, review in the preview, completion, and new gardener proposals | A run without an approved plan is refused; failed tests or verification fail the phase within bounded retries; gardener proposals never block completion. |
+| `execute` | A new request, or the run when several are open (`--run <id>`) | Any state that `init` or `update` resolves (it runs them first); the run's workflow, verification profile and tool bindings | Implementation, tests, verification, evidence, independent review, completion, and new gardener proposals | Nothing is implemented before the user approves the plan; failed tests or verification fail the phase within bounded retries; gardener proposals never block completion. |
 | `preview` | Review a Markdown file, or a folder of them, with selected-text comments | Same development states; Markdown file or folder | Loopback preview and comments with received, working and resolved status | A comment on a stale document is refused; the preview approves nothing. |
 | `update` | Update local Core/adapters/inputs; no input | Initialized lifecycle; manifest and lock | Uses the existing safe update transaction, then rewrites an outdated managed `AGENTS.md` block | Unknown compatibility, migrations and ownership conflicts stop unsafe writes; remote update is unsupported. |
 
@@ -55,8 +55,18 @@ and each owns a fixed range of its workflow's phases:
 
 Within its range a step advances with `--advance`, `--note`, `--evidence` and `--answer`. A
 step invoked outside its range returns `PAVED_WORKFLOW_STEP_OUT_OF_RANGE` and names the
-step that owns the run's current phase. `execute` refuses a run whose plan is not
-approved. The agent supplies observations and code changes; the runtime checks phase
+step that owns the run's current phase. `execute` is the exception: it acts as the step
+that owns the current phase, so one command can drive a whole run, and `execute --approve`
+records the plan approval like `plan --approve`. Implementation still starts only once the
+plan is approved.
+
+`execute "<request>"` starts work without the other commands. When the repository has
+no Paved state it runs `init` first, and when `init` needs answers it returns them and
+asks for the same call to be repeated with `--answer`. When the state needs `paved update`
+(initialized but not generated, stale or incompatible), it runs `update` first. It then records the request as
+`intent "<request>"` does, with the same `--workflow`, `--because`, `--recommend`,
+`--part` and `--input` options. A request together with `--run` is refused
+(`PAVED_EXECUTE_REQUEST_WITH_RUN`). The agent supplies observations and code changes; the runtime checks phase
 order and plan approval, calls the testing Tool, runs authoritative Paved verification,
 and requires matching workflow evidence before completion. When those return decisions
 of their own, the step returns them and passes the user's answers through when it resumes.
