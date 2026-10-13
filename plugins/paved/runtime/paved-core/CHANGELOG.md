@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-10-13
+
 ### Added
 
 - The Flutter adapter now provides cross-platform implementation guidance for shared
