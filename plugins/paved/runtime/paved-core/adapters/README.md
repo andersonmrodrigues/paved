@@ -12,6 +12,10 @@ The current set includes the Git infrastructure adapter and technology adapters
 TypeScript, Angular, Dart, Flutter and PostgreSQL remain independently selectable
 when their evidence is present.
 
+Flutter also supplies on-demand implementation guidance for shared iOS, Android and
+Web applications. The selected targets and repository architecture remain
+project-specific.
+
 Reusable meanings remain capabilities rather than technology adapters. The Core
 capability registry includes testing evidence, HTTP API evidence and OpenAPI
 contract evidence. Providers report observed repository evidence only; detection

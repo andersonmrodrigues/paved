@@ -95,6 +95,11 @@ There are a little under a thousand tests, many of them driving the real CLI aga
 temporary Git repositories. Larger design choices are written down in
 [docs/decisions](docs/decisions/README.md) and the [architecture notes](docs/concepts/architecture.md).
 
+For quick local feedback, `npm run check:fast` runs type checking and the fast
+unit/contract profile. `npm run check` still runs every test. The marked E2E tests can
+also be run with `npm run check:e2e`; GitHub Actions provides a manual `e2e` workflow
+for that profile.
+
 I use Paved on my own projects, and most fixes come from that. Version 2.6.0, for
 example, came out of building a [payment ledger service](https://github.com/andersonmrodrigues/payment-ledger-service)
 with it, where a few runs got stuck in ways the tests hadn't covered.

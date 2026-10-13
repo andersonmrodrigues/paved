@@ -61,5 +61,5 @@ validated transaction.
 
 - [Installing the Paved plugin](../getting-started/installing-the-plugin.md)
 - [Plugin build](../../plugins/build.ts)
-- [Clean-room install test](../../tests/plugins/install.test.ts)
-- [Launcher failure modes](../../tests/plugins/failure-modes.test.ts)
+- [Clean-room install test](../../tests/plugins/install.e2e.test.ts)
+- [Launcher failure modes](../../tests/plugins/failure-modes.e2e.test.ts)

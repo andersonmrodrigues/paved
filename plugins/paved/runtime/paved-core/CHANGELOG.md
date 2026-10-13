@@ -5,6 +5,12 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- The Flutter adapter now provides cross-platform implementation guidance for shared
+  iOS, Android and Web applications, and feature development loads relevant knowledge
+  from the selected technology adapter before implementation.
+
 ## [2.8.0] - 2026-10-12
 
 ### Added

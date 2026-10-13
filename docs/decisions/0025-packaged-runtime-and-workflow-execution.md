@@ -54,4 +54,4 @@ letting each agent implement its own workflow would split command semantics.
 
 - [Agent command reference](../concepts/agent-commands.md)
 - [Workflow state](../concepts/workflow-state.md)
-- [Runtime package smoke test](../../tests/package/bootstrap.test.ts)
+- [Runtime package smoke test](../../tests/package/bootstrap.e2e.test.ts)

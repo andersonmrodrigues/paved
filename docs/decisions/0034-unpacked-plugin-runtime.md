@@ -49,4 +49,4 @@ also easier for any reviewer, human or automated, to audit than a compressed art
 
 - [Plugin build](../../plugins/build.ts)
 - [Launcher](../../integrations/shared/bootstrap.mjs)
-- [Launcher failure modes](../../tests/plugins/failure-modes.test.ts)
+- [Launcher failure modes](../../tests/plugins/failure-modes.e2e.test.ts)

@@ -2,8 +2,8 @@ apiVersion: paved/v1
 kind: Adapter
 id: technology/flutter
 title: Flutter
-version: 0.1.0
-summary: Static evidence about Flutter applications, packages and test organization.
+version: 0.2.0
+summary: Static evidence and cross-platform implementation guidance for Flutter applications.
 requires:
   core: ^1.0.0 || ^2.0.0
   adapters:
@@ -17,6 +17,8 @@ detect:
       pattern: '(^|\n)\s*sdk\s*:\s*flutter'
   confidence: strong
 provides:
+  knowledge:
+    - knowledge/development.md
   capabilities:
     - id: source.build
       evidence:
@@ -54,7 +56,22 @@ provides:
           pattern: '"openapi"\s*:'
           statement: OpenAPI document used by Flutter project
 sources:
+  - title: Flutter app architecture
+    url: https://docs.flutter.dev/app-architecture
+    retrieved_at: 2026-10-12
+  - title: Flutter supported platforms
+    url: https://docs.flutter.dev/reference/supported-platforms
+    retrieved_at: 2026-10-12
+  - title: Flutter platform integration
+    url: https://docs.flutter.dev/platform-integration
+    retrieved_at: 2026-10-12
+  - title: Flutter testing overview
+    url: https://docs.flutter.dev/testing/overview
+    retrieved_at: 2026-10-12
+  - title: Dart I/O library
+    url: https://api.dart.dev/dart-io/
+    retrieved_at: 2026-10-12
   - title: Flutter project configuration
     url: https://docs.flutter.dev/tools/pubspec
-    retrieved_at: 2026-09-27
-reviewed_at: 2026-09-27
+    retrieved_at: 2026-10-12
+reviewed_at: 2026-10-12

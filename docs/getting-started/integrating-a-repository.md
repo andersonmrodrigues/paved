@@ -14,7 +14,7 @@ in the existing repository, `$paved-init` or `/paved:init` acquires the pinned
 runtime, verifies its package integrity, and initializes `.paved/` without a
 global install or application dependency. Package and integration distribution
 have not yet been published; this consumer path is currently validated from a
-packed local artifact in `tests/package/bootstrap.test.ts`.
+packed local artifact in `tests/package/bootstrap.e2e.test.ts`.
 
 For maintainers validating a checkout before publication:
 

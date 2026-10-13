@@ -56,7 +56,7 @@ test('language adapters distinguish TypeScript, Dart and Flutter evidence', () =
   assert.equal(detection.find(d => d.adapter.id === 'technology/flutter')?.confidence, 'strong');
   const resolved = resolveAdapters(detection, [
     { id: 'technology/typescript', version: '^0.1.0' },
-    { id: 'technology/flutter', version: '^0.1.0' },
+    { id: 'technology/flutter', version: '^0.2.0' },
   ], '1.0.0');
   assert.deepEqual(resolved.diagnostics, []);
   assert.deepEqual(resolved.adapters.map(item => item.adapter.id), ['technology/dart', 'technology/flutter', 'technology/typescript']);
@@ -80,6 +80,28 @@ test('negative detection does not resolve Flutter for a Dart-only project', () =
   const resolved = resolveAdapters(detection, [{ id: 'technology/dart', version: '^0.1.0' }], '1.0.0');
   assert.deepEqual(resolved.diagnostics, []);
   assert.deepEqual(resolved.adapters.map(item => item.adapter.id), ['technology/dart']);
+});
+
+test('Flutter adapter publishes cross-platform implementation knowledge from official sources', () => {
+  const adapter = parse(readFileSync(join(core, 'adapters/technology/flutter/adapter.yaml'), 'utf8')) as {
+    version: string;
+    provides?: { knowledge?: string[] };
+    sources: { url: string }[];
+  };
+  assert.equal(adapter.version, '0.2.0');
+  assert.ok(adapter.provides?.knowledge?.includes('knowledge/development.md'));
+  const knowledge = readFileSync(join(core, 'adapters/technology/flutter/knowledge/development.md'), 'utf8');
+  assert.match(knowledge, /\biOS\b/);
+  assert.match(knowledge, /\bAndroid\b/);
+  assert.match(knowledge, /\bWeb\b/);
+  assert.match(knowledge, /dart:io/);
+  assert.match(knowledge, /flutter analyze/);
+  for (const url of [
+    'https://docs.flutter.dev/app-architecture',
+    'https://docs.flutter.dev/reference/supported-platforms',
+    'https://docs.flutter.dev/testing/overview',
+    'https://api.dart.dev/dart-io/',
+  ]) assert.ok(adapter.sources.some(source => source.url === url), `missing official source ${url}`);
 });
 
 test('evidence globs with a recursive prefix include files at the repository root', () => {

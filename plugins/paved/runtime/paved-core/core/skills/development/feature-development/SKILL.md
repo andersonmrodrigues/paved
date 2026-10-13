@@ -32,6 +32,9 @@ know which checks exist before promising any.
    List what is out of scope.
 2. **Locate the affected code** through the feature map or by following the entry point
    of the behavior. Name every file you expect to change.
+   For technology-specific code, read the relevant knowledge under the selected
+   adapter in the pinned Core runtime; use the project's adapter selection, and do not
+   apply guidance from an unselected technology.
 3. **Plan the proof.** For each claim, pick the check type from the profile that will
    prove it. A claim no check can prove gets a planned artifact and a gap, decided now,
    not after the code is written.

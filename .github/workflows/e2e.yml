@@ -1,0 +1,31 @@
+name: e2e
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Claude Code and Codex CLIs
+        run: npm install --global @anthropic-ai/claude-code @openai/codex
+
+      - name: Typecheck and E2E tests
+        run: npm run check:e2e

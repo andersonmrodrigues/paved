@@ -26,12 +26,11 @@ jobs:
 
       - run: npm ci
 
-      # The plugin install tests drive the real host CLIs; without them they are skipped.
-      - name: Install Claude Code and Codex CLIs
-        run: npm install --global @anthropic-ai/claude-code @openai/codex
+      - name: Install Claude Code CLI
+        run: npm install --global @anthropic-ai/claude-code
 
-      - name: Typecheck and tests
-        run: npm run check
+      - name: Typecheck and fast tests
+        run: npm run check:fast
 
       - name: Generated plugins match the build
         run: npm run check:plugin

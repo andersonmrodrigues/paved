@@ -80,6 +80,13 @@ describe("core skills", () => {
     assert.match(description, /even when no change is requested/i);
   });
 
+  it("loads selected adapter knowledge before implementing technology-specific code", () => {
+    const body = skills.find((skill) => skill.name === "feature-development")?.files.body;
+    assert.ok(body);
+    assert.match(body, /technology-specific code[\s\S]*selected\s+adapter[\s\S]*pinned Core runtime/i);
+    assert.match(body, /unselected technology/i);
+  });
+
   it("form an acyclic dependency graph", () => {
     assert.deepEqual(dependencyCycles(skills.map((s) => s.files.contract)), []);
   });

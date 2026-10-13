@@ -18,8 +18,14 @@ Paved is a personal project, but issues and pull requests are welcome.
 ```bash
 npm ci
 git config core.hooksPath .githooks
+npm run check:fast
 npm run check
 ```
+
+`npm run check:fast` runs strict type checking and the contract/unit test profile for
+quick local feedback. `npm run check:e2e` runs strict type checking and the explicitly
+marked E2E profile; `npm run check` still runs every test. The manual **e2e** GitHub
+Actions workflow runs the E2E profile with the real Claude Code and Codex CLIs installed.
 
 The `commit-msg` hook in `.githooks/` rejects `Co-authored-by` lines: commits record one
 author. If you already use a global `core.hooksPath`, call `.githooks/commit-msg` from it
