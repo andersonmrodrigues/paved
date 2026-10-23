@@ -161,5 +161,9 @@ Keep the evidence of every attempt. When the limit is reached, the run fails as
 A run may keep its state in `.paved/generated/runs/<id>.yaml` (kind `WorkflowRun`, see
 `templates/workflow-run.yaml`): inputs, each phase's status, attempts, skills and gates,
 the failure, warnings, outputs, the evidence path and an append-only list of events. It
-is disposable: the evidence record is what persists. Update it as you go, never
-afterwards from memory.
+is disposable: the evidence record is what persists. An implementation phase may also
+register a `DelegationPlan` when independent work can safely run in parallel. The host
+agent creates sessions through its native Claude Code or Codex tools; Paved validates
+the bounded task graph, records host-reported model/effort/usage and prevents advancing
+while tasks remain incomplete. Delegated reports still require primary-agent review and
+workflow verification. Update run state as you go, never afterwards from memory.

@@ -7,8 +7,10 @@ A run of a workflow can be recorded as a `WorkflowRun` document
 `refactor` by validating and advancing this record against the existing workflow
 contract. An agent supplies observations and implementation changes; the runtime
 enforces plan approval, invokes the governed testing Tool and verification
-engine, and requires complete workflow evidence before completion. There is no
-distributed scheduler.
+engine, and requires complete workflow evidence before completion. Optional
+implementation delegation uses a bounded `DelegationPlan`; Paved validates task
+dependencies, write scopes, concurrency and plan provenance, then records host-reported
+execution metadata. The host agent owns native session creation and coordination.
 
 ## Model
 
@@ -25,6 +27,18 @@ distributed scheduler.
 | `outputs[]` | What the run left behind (`kind`, `description`, `ref`) |
 | `events[]` | Append-only log |
 | `decisions[]` | Run-scoped decisions whose lifetime is this run |
+| `delegation` | Optional pointer and integrity digest for the implementation task graph |
+
+Delegation plans live under `.paved/generated/delegations/<run-id>.yaml`, with concise
+reports under `.paved/generated/delegation-results/<run-id>/`. Tasks declare
+dependencies, exact read/write paths, output contracts and a capacity/effort policy. The
+CLI only exposes ready tasks and records starts/results; it does not call model APIs or
+create sessions. Claude Code and Codex execute work through their native agent/session
+tools. The selected model and effort, session hash and optional token/cost/duration
+figures are host-reported observations, not verified claims. Raw session ids, prompts
+and credentials are not persisted. The workflow cannot leave implementation until all
+registered tasks are completed, and each result still needs review and verification by
+the primary agent.
 
 ```mermaid
 stateDiagram-v2
@@ -67,6 +81,7 @@ class.
 | `decision-raised`, `decision-asked`, `decision-answered`, `decision-applied`, `decision-superseded` | A run-scoped decision changes state |
 | `retry-started` | A new attempt of a phase began |
 | `phase-reopened` | An approved plan amendment returned a phase to `pending`; the run goes back to implementation |
+| `delegation-registered`, `delegation-task-started`, `delegation-task-completed`, `delegation-task-blocked`, `delegation-task-failed`, `delegation-superseded` | Delegation graph and task lifecycle observations |
 
 ## Plan approval
 

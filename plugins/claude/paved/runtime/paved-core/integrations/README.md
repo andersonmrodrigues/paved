@@ -27,6 +27,14 @@ The installable plugin in `plugins/` reuses this layer: its skills are rendered 
 `shared/bootstrap.mjs` unchanged. Consumers normally install that plugin through
 native plugin installation instead of committing a project-local projection.
 
+For parallel implementation work, Paved Core provides a bounded delegation graph and
+task/model policy, while execution remains host-native. Claude Code agents/sessions and
+Codex collaboration/session tools are selected and started by the active host agent;
+Paved neither calls provider APIs nor assumes a fixed model catalog. The runtime records
+the actual host-reported model, effort and optional usage. If a host does not expose
+per-task model selection, the agent follows that host's available routing behavior and
+records what actually ran.
+
 Claude Code and Codex also load plugin-bundled lifecycle hooks from
 `shared/hooks.json`. Host hooks stay advisory and fail open. The prompt hook adds
 session-scoped routing guidance; the Workbench hook sends minimal lifecycle activity

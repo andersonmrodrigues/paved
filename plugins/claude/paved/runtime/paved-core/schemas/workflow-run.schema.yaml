@@ -90,6 +90,18 @@ properties:
   evidence:
     description: Path of the run's evidence record.
     $ref: "urn:paved:schema:common:v1#/$defs/relativePath"
+  delegation:
+    description: >
+      Optional delegation graph for the implementation phase. The CLI binds the graph
+      to the approved plan digest and prevents implementation from advancing while
+      delegated tasks remain incomplete.
+    type: object
+    additionalProperties: false
+    required: [path, sha256, plan_sha256]
+    properties:
+      path: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+      sha256: { $ref: "urn:paved:schema:common:v1#/$defs/sha256" }
+      plan_sha256: { $ref: "urn:paved:schema:common:v1#/$defs/sha256" }
   outputs:
     type: array
     items:
@@ -122,6 +134,12 @@ properties:
             - tool-invoked
             - verification-executed
             - evidence-recorded
+            - delegation-registered
+            - delegation-task-started
+            - delegation-task-completed
+            - delegation-task-blocked
+            - delegation-task-failed
+            - delegation-superseded
             - approval-requested
             - approval-decided
             - decision-raised

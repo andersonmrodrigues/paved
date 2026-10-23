@@ -26,6 +26,7 @@ const KIND_TO_SCHEMA = {
     Skill: "urn:paved:schema:skill:v1",
     Workflow: "urn:paved:schema:workflow:v1",
     WorkflowRun: "urn:paved:schema:workflow-run:v1",
+    DelegationPlan: "urn:paved:schema:delegation-plan:v1",
     Check: "urn:paved:schema:check:v1",
     Decision: "urn:paved:schema:decision:v1",
     Tool: "urn:paved:schema:tool:v1",
