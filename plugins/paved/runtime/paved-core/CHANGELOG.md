@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.11.0] - 2026-10-23
+
 ### Added
 
 - Bounded implementation delegation graphs with task dependencies, write-scope and
