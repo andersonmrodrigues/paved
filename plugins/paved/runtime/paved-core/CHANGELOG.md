@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.10.0] - 2026-10-23
+
 ### Changed
 
 - Feature development guidance now helps agents choose model capacity by task difficulty,
