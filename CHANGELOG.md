@@ -5,6 +5,12 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Changed
+
+- Feature development guidance now helps agents choose model capacity by task difficulty,
+  split independent work across isolated sessions when coordination is worthwhile, and
+  keep integration, verification and evidence with the primary agent.
+
 ## [2.9.0] - 2026-10-13
 
 ### Added

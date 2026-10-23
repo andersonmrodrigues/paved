@@ -39,16 +39,36 @@ know which checks exist before promising any.
 3. **Plan the proof.** For each claim, pick the check type from the profile that will
    prove it. A claim no check can prove gets a planned artifact and a gap, decided now,
    not after the code is written.
-4. **Implement in small steps** that mirror the chosen sibling: naming, structure, error
+4. **Choose the working capacity.** Use the lightest available model that can handle
+   each bounded task reliably. Reserve stronger models for ambiguous requirements,
+   architecture choices, difficult debugging, security-sensitive reasoning and final
+   synthesis. Use cheaper, faster models for mechanical edits, narrow research, test
+   drafting and independent checks when their output is easy to verify. Model names and
+   capabilities vary by host; inspect its available choices instead of assuming a fixed
+   catalog, and do not spend tokens asking a model to repeat context another session
+   already has.
+5. **Delegate only independent work.** Split work when tasks have clear inputs and
+   outputs, can proceed without editing the same files or waiting on each other, and the
+   expected time saved exceeds the cost of starting and coordinating sessions. Give each
+   session a narrow brief with relevant context, expected result and constraints. Use
+   separate sessions for parallel research, isolated test work or independent review;
+   keep shared-state edits and tightly coupled reasoning in one session. Limit concurrent
+   sessions to what the host and task can usefully support.
+6. **Integrate centrally.** The primary agent owns the approved plan, resolves conflicting
+   results, checks delegated changes against the plan and repository state, and remains
+   responsible for tests, verification, evidence and completion. A delegated result is
+   input, not proof: inspect its diff and rerun affected checks. Do not let parallel work
+   bypass approvals or change scope without updating the plan.
+7. **Implement in small steps** that mirror the chosen sibling: naming, structure, error
    handling, logging, configuration. The diff contains only what the claims need.
-5. **Add tests with the code.** Hand the tests for each level to its skill:
+8. **Add tests with the code.** Hand the tests for each level to its skill:
    `unit-testing` for logic, `integration-testing` for boundaries with real
    collaborators, `e2e-testing` when the claim is a user-visible flow.
-6. **Run the fast checks** after each meaningful step and fix failures before going on.
-7. **Clean up** imports, parameters, files and flags the change left unused.
-8. **Self-review** the diff with `core.repository.diff`, and confirm with `core.repository.status` that
+9. **Run the fast checks** after each meaningful step and fix failures before going on.
+10. **Clean up** imports, parameters, files and flags the change left unused.
+11. **Self-review** the diff with `core.repository.diff`, and confirm with `core.repository.status` that
    no unintended file changed.
-9. **Verify and record** every required check, then hand over to the `verification` phase.
+12. **Verify and record** every required check, then hand over to the `verification` phase.
 
 For a Paved workflow, keep the durable plan at
 `.paved/documents/plans/<run-id>.md`. Put a behavior contract in
