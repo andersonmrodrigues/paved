@@ -7,6 +7,7 @@ import { decisionId, transition } from "../lib/decisions/record.js";
 import { listDecisions } from "../lib/decisions/store.js";
 import { applyClassificationAnswer, classificationCandidate, createIntentRun, intentDocumentPath, IntentError, missingInputs, normalizeWorkflow, parseInputs, writeIntentDocument, } from "../lib/intent.js";
 import { resolveSafePath } from "../lib/safe-path.js";
+import { readDelegation } from "../lib/delegation.js";
 import { reportNewProposals } from "../lib/gardener-report.js";
 import { reviewFor } from "../lib/review-block.js";
 import { relaysAnswers, runPhase } from "../lib/workflow-gates/index.js";
@@ -98,6 +99,9 @@ function load(invocation, id) {
         if (decision?.decision !== gate.status || decision?.decided_by !== gate.decided_by || decision?.decided_at !== gate.decided_at) {
             throw new Error("Workflow approval state does not match the human-owned approval record.");
         }
+    }
+    if (run.delegation && !(invocation.command === "plan" && (invocation.flags.amend || amendmentPending(run)))) {
+        readDelegation(projectRoot, coreRoot, run);
     }
     // Only the evidence in force must stay intact: a reopened evidence phase records new files,
     // and amending the plan is how a run whose evidence changed recovers.
@@ -467,6 +471,10 @@ async function approveAmendment(invocation, run, workflow) {
     // An approved amendment earns the failed phase a fresh start; a run already past
     // implementation goes back to it, so the amended plan is implemented, verified and reviewed.
     const failed = run.phases.find((phase) => phase.status === "failed");
+    if (run.delegation) {
+        run.events.push({ at: now(), type: "delegation-superseded", phase: "implementation", ref: run.delegation.path, detail: "approved plan amendment" });
+        delete run.delegation;
+    }
     if (failed) {
         failed.status = "running";
         failed.attempts = (failed.attempts ?? 0) + 1;
@@ -525,6 +533,14 @@ async function resume(invocation, step, run, answers) {
     if (decisions.applied.length > 0)
         writeRun(projectRoot, coreRoot, run);
     const phase = current;
+    if (phase.phase === "implementation") {
+        const graph = readDelegation(projectRoot, coreRoot, run);
+        const incomplete = graph?.tasks.filter((task) => task.status !== "completed") ?? [];
+        if (incomplete.length > 0) {
+            const ids = incomplete.map((task) => `${task.id} (${task.status ?? "pending"})`).join(", ");
+            return blocked(step, "PAVED_DELEGATION_INCOMPLETE", `Delegated tasks remain incomplete: ${ids}.`, `Run paved delegation ready --run ${run.id} --json, complete each ready task with the host's native sessions, then advance implementation again.`, { run: run.id, incomplete: incomplete.map((task) => task.id) });
+        }
+    }
     const approvalPending = phase.gates?.some((gate) => gate.id === "plan-approved" && gate.status === "awaiting-approval") === true;
     const relays = relaysAnswers(run.workflow.id, phase.phase);
     // Answers for the testing Tool or verification are passed to them; while a plan awaits approval stray answers are ignored, as in 1.x.

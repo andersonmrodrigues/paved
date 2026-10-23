@@ -30,7 +30,7 @@ All Core skills are `experimental`.
 |---|---|---|---|
 | `bootstrap` | `repository-onboarding` | 0.3.1 | Set up or repair Paved in a repository |
 | `discovery` | `context-discovery` | 0.3.2 | Understand a repository or the part a task touches |
-| `development` | `feature-development` | 0.5.0 | Add or change behavior |
+| `development` | `feature-development` | 0.6.0 | Add or change behavior |
 | | `frontend-design` | 0.1.1 | Plan and critique user-facing frontend interfaces |
 | | `refactoring` | 0.2.1 | Change structure without changing behavior |
 | | `prototyping` | 0.1.1 | Answer a feasibility question with throwaway code |

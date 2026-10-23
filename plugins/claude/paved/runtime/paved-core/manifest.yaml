@@ -17,6 +17,7 @@ schemas:
   Skill: schemas/skill.schema.yaml
   Workflow: schemas/workflow.schema.yaml
   WorkflowRun: schemas/workflow-run.schema.yaml
+  DelegationPlan: schemas/delegation-plan.schema.yaml
   Tool: schemas/tool.schema.yaml
   ToolImplementation: schemas/tool-implementation.schema.yaml
   Evidence: schemas/evidence.schema.yaml
@@ -247,6 +248,22 @@ consumer_layout:
     description: >
       One record per workflow run (<run-id>.yaml): phase and gate status, failures,
       approvals and events. Kept until the change it describes is merged or abandoned.
+  - path: .paved/generated/delegations/
+    ownership: disposable
+    required: false
+    committed: false
+    schema: DelegationPlan
+    description: >
+      Host-executed task graphs and delegated result references, bound to one approved
+      plan. Paved validates dependencies and records model and usage metadata reported by
+      the host; it does not create agent sessions or treat worker output as verification.
+  - path: .paved/generated/delegation-results/
+    ownership: disposable
+    required: false
+    committed: false
+    description: >
+      Concise host-reported result notes for delegation tasks. Their digests are recorded
+      in the matching delegation plan; they are reports, not verification evidence.
   - path: .paved/generated/evidence/
     ownership: disposable
     required: false

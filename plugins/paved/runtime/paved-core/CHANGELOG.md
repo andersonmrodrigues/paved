@@ -5,6 +5,12 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- Bounded implementation delegation graphs with task dependencies, write-scope and
+  concurrency checks, host-native Claude Code/Codex execution guidance, task-level
+  model-capacity policy, and host-reported model, effort and usage records.
+
 ## [2.10.0] - 2026-10-23
 
 ### Changed

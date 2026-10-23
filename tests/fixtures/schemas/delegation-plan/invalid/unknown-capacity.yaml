@@ -1,0 +1,19 @@
+# expect-error: must be equal to one of the allowed values
+apiVersion: paved/v1
+kind: DelegationPlan
+id: feature-20261023-dag
+run: feature-20261023-dag
+plan_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+max_concurrency: 2
+tasks:
+  - id: research
+    title: Inspect the related modules
+    brief: Identify the relevant modules and report the public contracts.
+    depends_on: []
+    read_paths: [cli/]
+    write_paths: []
+    output_contract: A concise report with file paths and findings.
+    model_policy:
+      capacity: impossible
+      reasoning_effort: low
+      rationale: Narrow repository inspection.

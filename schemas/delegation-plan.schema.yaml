@@ -1,0 +1,98 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:delegation-plan:v1
+title: Paved delegation plan
+description: >
+  A bounded dependency graph for parallel or sequential work delegated within one
+  approved workflow implementation phase. Paved stores lifecycle and model usage
+  observations here; the host owns agent and session execution.
+type: object
+additionalProperties: false
+required: [apiVersion, kind, id, run, plan_sha256, max_concurrency, tasks]
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { const: DelegationPlan }
+  id: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+  run: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+  plan_sha256: { $ref: "urn:paved:schema:common:v1#/$defs/sha256" }
+  max_concurrency: { type: integer, minimum: 1, maximum: 8 }
+  tasks:
+    type: array
+    minItems: 1
+    maxItems: 32
+    items: { $ref: "#/$defs/task" }
+$defs:
+  task:
+    type: object
+    additionalProperties: false
+    required: [id, title, brief, depends_on, read_paths, write_paths, output_contract, model_policy]
+    properties:
+      id: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+      title: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      brief:
+        description: Bounded assignment. Do not include credentials or unrelated conversation history.
+        $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+      depends_on:
+        type: array
+        uniqueItems: true
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+      read_paths:
+        type: array
+        uniqueItems: true
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+      write_paths:
+        description: Exact repository-relative paths this worker may edit; globs are not accepted.
+        type: array
+        uniqueItems: true
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+      output_contract: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      model_policy:
+        type: object
+        additionalProperties: false
+        required: [capacity, reasoning_effort, rationale]
+        properties:
+          capacity:
+            description: Relative capability tier for the host to resolve; it is not a model identifier.
+            enum: [economy, balanced, frontier]
+          reasoning_effort:
+            description: Requested reasoning budget; the host may report that it cannot honor this value.
+            enum: [low, medium, high]
+          rationale: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      status: { enum: [pending, running, completed, blocked, failed] }
+      attempts:
+        type: array
+        items: { $ref: "#/$defs/attempt" }
+      result:
+        type: object
+        additionalProperties: false
+        required: [path, sha256]
+        properties:
+          path: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+          sha256: { $ref: "urn:paved:schema:common:v1#/$defs/sha256" }
+  attempt:
+    type: object
+    additionalProperties: false
+    required: [host, selected_model, selected_effort, selected_by, started_at]
+    properties:
+      host: { enum: [claude-code, codex] }
+      selected_model: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      selected_effort: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      selected_by: { enum: [host, agent, human] }
+      session_sha256:
+        description: Optional hash of a host session identifier. Never store raw session identifiers.
+        $ref: "urn:paved:schema:common:v1#/$defs/sha256"
+      started_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+      finished_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+      outcome: { enum: [completed, blocked, failed] }
+      usage:
+        description: Usage reported by the host or agent; Paved does not independently verify it.
+        type: object
+        additionalProperties: false
+        properties:
+          input_tokens: { type: integer, minimum: 0 }
+          output_tokens: { type: integer, minimum: 0 }
+          reasoning_tokens: { type: integer, minimum: 0 }
+          cost_usd: { type: number, minimum: 0 }
+          duration_ms: { type: integer, minimum: 0 }
+    allOf:
+      - if: { required: [outcome] }
+        then: { required: [finished_at] }

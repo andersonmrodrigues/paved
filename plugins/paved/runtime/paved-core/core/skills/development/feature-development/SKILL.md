@@ -53,6 +53,26 @@ know which checks exist before promising any.
    separate sessions for parallel research, isolated test work or independent review;
    keep shared-state edits and tightly coupled reasoning in one session. Limit concurrent
    sessions to what the host and task can usefully support.
+   When delegation will save time, register a machine-readable graph with
+   `paved delegation plan --run <id> --file <graph.yaml> --json`, bound to the approved
+   plan digest. Include task dependencies, exact read/write paths, output contracts and
+   model policy. Keep concurrent write scopes disjoint. Use
+   `paved delegation ready --run <id> --json` to see what can start. Paved validates
+   and records the graph; the active host owns native agent/session creation and work.
+   Use Claude Code's native subagents when available. In Codex, use native collaboration
+   tools when available and account for delegated agents inheriting the parent model and
+   execution environment when the host offers no per-task routing. Inspect the host's
+   actual model and reasoning controls; map `economy`, `balanced` and `frontier` to its
+   lightest suitable options rather than assuming a fixed model catalog. Keep stronger
+   capacity for ambiguity, architecture, difficult debugging and security-sensitive
+   tasks. Treat requested reasoning effort as guidance if the host cannot honor it.
+   Record the actual host/model/effort with `paved delegation start`; after the host
+   reports completion, save a concise result under
+   `.paved/generated/delegation-results/<run-id>/` and use `paved delegation finish`
+   with the result path, outcome and available usage. Usage is host-reported, not
+   independently verified. Never store prompts, credentials or raw session ids. Keep
+   short, tightly dependent or shared-file tasks in the primary session when startup
+   and coordination cost exceeds the likely time saved.
 6. **Integrate centrally.** The primary agent owns the approved plan, resolves conflicting
    results, checks delegated changes against the plan and repository state, and remains
    responsible for tests, verification, evidence and completion. A delegated result is

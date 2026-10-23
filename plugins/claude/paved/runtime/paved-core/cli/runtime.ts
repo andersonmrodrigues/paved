@@ -15,11 +15,12 @@ import { stepHandler } from "./commands/workflow.ts";
 import { previewHandler } from "./commands/preview.ts";
 import { workbenchHandler } from "./commands/workbench.ts";
 import { toolHandler } from "./commands/tool.ts";
+import { delegationHandler } from "./commands/delegation.ts";
 import { createDiagnostic, createResult, type CommandResult } from "./result.ts";
 import { CliPathError, resolveCoreRoot, resolveProjectRoot } from "./paths.ts";
 import { assertAnswerIdentity, parseAnswerFlags, recordedIdentity } from "./lib/decisions/answers.ts";
 
-export const COMMAND_NAMES = ["init", "status", "intent", "plan", "execute", "test", "verify", "update", "doctor", "gardener", "generate", "agent", "decision", "preview", "workbench", "tool"] as const;
+export const COMMAND_NAMES = ["init", "status", "intent", "plan", "execute", "delegation", "test", "verify", "update", "doctor", "gardener", "generate", "agent", "decision", "preview", "workbench", "tool"] as const;
 const STEP_COMMANDS: readonly string[] = ["intent", "plan", "execute"];
 export type CommandName = (typeof COMMAND_NAMES)[number];
 
@@ -49,6 +50,16 @@ export interface CliFlags {
   readonly intentInputs: readonly string[];
   readonly scope?: string;
   readonly toolCommand?: readonly string[];
+  readonly task?: string;
+  readonly file?: string;
+  readonly host?: string;
+  readonly model?: string;
+  readonly effort?: string;
+  readonly session?: string;
+  readonly result?: string;
+  readonly outcome?: string;
+  readonly usage?: string;
+  readonly selectedBy?: string;
 }
 
 export interface CommandPaths {
@@ -112,6 +123,7 @@ const COMMAND_RULES: Record<CommandName, CommandRule> = {
   preview: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   workbench: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   tool: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
+  delegation: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   intent: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   plan: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
   execute: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
@@ -178,7 +190,7 @@ function commandUsage(command: CommandName | undefined): string {
   if (command !== undefined) {
     const selectors = command === "generate" ? " [generator-id...]" : command === "agent"
       ? " <operation> [integration|command-name]" : command === "preview" ? " <start|serve|status|wait|working|resolve|stop> <file.md|folder> [cursor|comment-id]" : command === "workbench" ? " <start|serve|status|stop>"
-        : command === "tool" ? " add <check-type> [label] [--scope <dir>] -- <executable> [args...]" : command === "execute" ? " [request]" : "";
+      : command === "tool" ? " add <check-type> [label] [--scope <dir>] -- <executable> [args...]" : command === "delegation" ? " <plan|ready|start|finish>" : command === "execute" ? " [request]" : "";
     const commandOptions: string[] = [];
     const rule = COMMAND_RULES[command];
     if (rule.adapters) commandOptions.push("  --adapter <id>   Select an adapter for status, doctor, or verification content resolution; repeatable.");
@@ -193,6 +205,7 @@ function commandUsage(command: CommandName | undefined): string {
     if (command === "plan") commandOptions.push("  --approve        Record the user's approval of the current plan, given in the conversation.", "  --run <id> --amend --note <change> [--evidence <plan>]  Ask approval for a revised plan mid-run.");
     if (command === "execute") commandOptions.push("  \"<request>\"      Start new work: initialize Paved if needed and record the request.", "  --approve        Record the user's approval of the current plan, given in the conversation.", "  --auto           Advance through every phase that needs no human input.");
     if (command === "tool") commandOptions.push("  --scope <dir>    Run the command from this project directory.", "  -- <executable> [args...]  The exact command; everything after -- is passed as argv.");
+    if (command === "delegation") commandOptions.push("  --run <id> --file <path>  Register a graph that matches the approved plan.", "  --run <id> --task <id> --host <codex|claude-code> --model <name> --effort <value> [--selected-by <host|agent|human>] [--session <id>]  Start one ready task.", "  --run <id> --task <id> --outcome <completed|blocked|failed> [--result <path>] [--usage <json>]  Record a host-reported result.", "  Session ids are hashed before storage; usage is host-reported and not verified by Paved.");
     return [
       `Usage: paved ${command}${selectors} [options]`,
       "",
@@ -284,6 +297,16 @@ function parse(argv: readonly string[]): Parsed {
   const intentInputs: string[] = [];
   let scope: string | undefined;
   let toolCommand: string[] | undefined;
+  let task: string | undefined;
+  let file: string | undefined;
+  let host: string | undefined;
+  let model: string | undefined;
+  let effort: string | undefined;
+  let session: string | undefined;
+  let result: string | undefined;
+  let outcome: string | undefined;
+  let usageJson: string | undefined;
+  let selectedBy: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -370,6 +393,24 @@ function parse(argv: readonly string[]): Parsed {
       continue;
     }
 
+    if (["--task", "--file", "--host", "--model", "--effort", "--session", "--result", "--outcome", "--usage", "--selected-by"].includes(token)) {
+      if (command !== "delegation") return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by delegation.`) };
+      const value = takeValue(argv, index, token, command);
+      if (typeof value !== "string") return { kind: "error", result: value };
+      if (token === "--task") task = value;
+      if (token === "--file") file = value;
+      if (token === "--host") host = value;
+      if (token === "--model") model = value;
+      if (token === "--effort") effort = value;
+      if (token === "--session") session = value;
+      if (token === "--result") result = value;
+      if (token === "--outcome") outcome = value;
+      if (token === "--usage") usageJson = value;
+      if (token === "--selected-by") selectedBy = value;
+      index += 1;
+      continue;
+    }
+
     if (["--workflow", "--because", "--recommend", "--part", "--input"].includes(token)) {
       if (command !== "intent" && command !== "execute") return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by intent and execute.`) };
       const value = takeValue(argv, index, token, command);
@@ -383,7 +424,7 @@ function parse(argv: readonly string[]): Parsed {
       continue;
     }
     if (["--run", "--note", "--evidence"].includes(token)) {
-      if (!command || !STEP_COMMANDS.includes(command)) return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by intent, plan and execute.`) };
+      if (!command || (!STEP_COMMANDS.includes(command) && !(command === "delegation" && token === "--run"))) return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by intent, plan, execute${token === "--run" ? " and delegation" : ""}.`) };
       const value = takeValue(argv, index, token, command);
       if (typeof value !== "string") return { kind: "error", result: value };
       if (token === "--run") run = value;
@@ -525,6 +566,16 @@ function parse(argv: readonly string[]): Parsed {
     ...(decision === undefined ? {} : { decision }),
     ...(scope === undefined ? {} : { scope }),
     ...(toolCommand === undefined ? {} : { toolCommand }),
+    ...(task === undefined ? {} : { task }),
+    ...(file === undefined ? {} : { file }),
+    ...(host === undefined ? {} : { host }),
+    ...(model === undefined ? {} : { model }),
+    ...(effort === undefined ? {} : { effort }),
+    ...(session === undefined ? {} : { session }),
+    ...(result === undefined ? {} : { result }),
+    ...(outcome === undefined ? {} : { outcome }),
+    ...(usageJson === undefined ? {} : { usage: usageJson }),
+    ...(selectedBy === undefined ? {} : { selectedBy }),
   };
 
   return {
@@ -562,6 +613,7 @@ const DEFAULT_HANDLERS: CommandHandlers = {
   preview: previewHandler,
   workbench: workbenchHandler,
   tool: toolHandler,
+  delegation: delegationHandler,
   doctor: doctorHandler,
   generate: generateHandler,
   gardener: gardenerHandler,
