@@ -42,8 +42,11 @@ decide it.
 adapters, validates project documents and override targets, and computes affected
 generators from their declared dependencies and recorded inputs. A Core move beyond
 a known compatible patch line is reported as unknown compatibility and blocked.
-Documents that fail the candidate schema require a human migration; the CLI does
-not rewrite them. Override targets that disappeared or changed digest require review.
+Documents that fail the candidate schema stay unchanged unless exactly one known
+deterministic migration applies. `paved update` runs that migration on the staged
+copy and validates it before publishing; any other case blocks the update
+([versioning](versioning.md#evolving-a-schema)). Override targets that disappeared
+or changed digest require review.
 
 For an applicable update, Paved copies the consumer into a temporary workspace,
 generates affected context there, validates the staged state, checks that the real
@@ -56,8 +59,9 @@ into the stage and never rewritten by generators; conflicts produce disposable
 proposals. Application source files are read only.
 
 `--dry-run` plans generation without publishing state. The Core and adapters must
-already be available locally. Remote resolution, automatic schema migrations,
-fleet-wide rollouts, and Core caches are planned rather than implemented.
+already be available locally. Remote resolution, fleet-wide rollouts, and Core
+caches are planned rather than implemented. An unknown schema change is not
+rewritten by guessing; only a reviewed migration from the typed registry runs.
 
 Generated context records source hashes and generator metadata. `status` detects
 changed or removed cited files, newly relevant source files, changed manifest and
