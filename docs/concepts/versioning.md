@@ -73,7 +73,7 @@ previously complete task into an incomplete one.
 |---|---|
 | **Compatible change** | `paved update` within the range; revalidate; no human action |
 | **Breaking change** | New Core major (or minor while `0.x`); outside existing ranges, so no project gets it without editing its manifest |
-| **Migration** | Documents that require migration block `update`; automatic transforms are not implemented. |
+| **Migration** | `paved update` applies one known deterministic migration on a staged copy; unknown, ambiguous, or invalid migrations block `update` and leave the documents unchanged. |
 | **Regeneration** | Needed when a generator's output format changes (`generator_version` bump) or its sources change (stale hashes). Follows the merge strategy; never a migration of human content |
 | **Validation failure** | After update or migration, any invalid document stops the update and restores the previous lock ([failure handling](failure-handling.md)) |
 | **Override target changed** | Subtractive overrides suspended until re-confirmed ([inheritance](inheritance.md)) |
