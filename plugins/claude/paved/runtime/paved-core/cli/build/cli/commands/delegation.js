@@ -42,6 +42,9 @@ function noWriteConflict(graph, task) {
             throw new Error(`Task ${task.id} would edit ${conflict} while ${running.id} is running.`);
     }
 }
+function outsideWriteScope(task, changedPaths) {
+    return changedPaths.filter((changedPath) => !task.write_paths.some((scope) => changedPath === scope || changedPath.startsWith(`${scope.replace(/\/$/, "")}/`)));
+}
 function readUsage(raw) {
     if (raw === undefined)
         return undefined;
@@ -141,6 +144,12 @@ export function delegationHandler(invocation) {
                 throw new Error("start requires --isolation shared-workspace or isolated-worktree.");
             if (task.status !== undefined && task.status !== "pending" && task.status !== "failed")
                 throw new Error(`Task ${task.id} is ${task.status}; only pending or failed tasks may start.`);
+            for (const previous of task.attempts ?? []) {
+                const unresolved = previous.scope_violations ?? [];
+                if (previous.workspace_snapshot && unresolved.some((path) => changedSinceSnapshot(projectRoot, previous.workspace_snapshot).includes(path))) {
+                    throw new Error(`Task ${task.id} cannot retry while out-of-scope paths remain changed: ${unresolved.join(", ")}. Restore them to their pre-attempt contents first.`);
+                }
+            }
             if (!readyTasks(graph).some((item) => item.id === task.id))
                 throw new Error(`Task ${task.id} is not ready; complete its dependencies first.`);
             if (graph.tasks.filter(active).length >= graph.max_concurrency)
@@ -173,6 +182,10 @@ export function delegationHandler(invocation) {
             const attempt = task.attempts?.at(-1);
             if (!attempt || attempt.outcome)
                 throw new Error(`Task ${task.id} has no active execution attempt.`);
+            if (attempt.isolation === "shared-workspace" && attempt.workspace_snapshot) {
+                attempt.changed_paths = changedSinceSnapshot(projectRoot, attempt.workspace_snapshot);
+                attempt.scope_violations = outsideWriteScope(task, attempt.changed_paths);
+            }
             attempt.outcome = "failed";
             attempt.finished_at = new Date().toISOString();
             attempt.recovery_reason = invocation.flags.note;
@@ -192,11 +205,18 @@ export function delegationHandler(invocation) {
             const attempt = task.attempts?.at(-1);
             if (!attempt || attempt.outcome)
                 throw new Error(`Task ${task.id} has no active execution attempt.`);
-            attempt.outcome = outcome;
-            attempt.finished_at = new Date().toISOString();
             const usage = readUsage(invocation.flags.usage);
             if (usage)
                 attempt.usage = usage;
+            const reportedPaths = invocation.flags.changedPaths ?? [];
+            const observedPaths = attempt.isolation === "shared-workspace" && attempt.workspace_snapshot
+                ? changedSinceSnapshot(projectRoot, attempt.workspace_snapshot) : [...reportedPaths];
+            if (outcome === "completed" && attempt.isolation === "isolated-worktree" && !reportedPaths.length)
+                throw new Error("isolated-worktree completion requires repeatable --changed-path reports.");
+            if (outcome === "completed" && attempt.isolation === "shared-workspace" && reportedPaths.some((path) => !observedPaths.includes(path)))
+                throw new Error("A host-reported changed path was not observed in the shared workspace snapshot.");
+            attempt.changed_paths = observedPaths;
+            attempt.scope_violations = outsideWriteScope(task, observedPaths);
             if (outcome === "completed") {
                 if (!invocation.flags.result)
                     throw new Error("A completed task requires --result <path> containing its concise report.");
@@ -207,17 +227,20 @@ export function delegationHandler(invocation) {
                 if (!existsSync(resultPath))
                     throw new Error(`Task result file does not exist: ${invocation.flags.result}.`);
                 task.result = { path: invocation.flags.result, sha256: digest(readFileSync(resultPath)) };
-                const reportedPaths = invocation.flags.changedPaths ?? [];
-                if (attempt.isolation === "isolated-worktree" && !reportedPaths.length)
-                    throw new Error("isolated-worktree completion requires repeatable --changed-path reports.");
-                task.changed_paths = attempt.isolation === "shared-workspace" && attempt.workspace_snapshot
-                    ? changedSinceSnapshot(projectRoot, attempt.workspace_snapshot) : [...reportedPaths];
-                if (attempt.isolation === "shared-workspace" && reportedPaths.some((path) => !task.changed_paths?.includes(path)))
-                    throw new Error("A host-reported changed path was not observed in the shared workspace snapshot.");
-                for (const changedPath of task.changed_paths)
-                    if (!task.write_paths.some((scope) => changedPath === scope || changedPath.startsWith(`${scope.replace(/\/$/, "")}/`)))
-                        throw new Error(`Reported changed path ${changedPath} is outside task ${task.id}'s declared write_paths.`);
+                if (attempt.scope_violations.length) {
+                    attempt.outcome = "failed";
+                    attempt.finished_at = new Date().toISOString();
+                    task.status = "failed";
+                    run.events.push({ at: new Date().toISOString(), type: "delegation-task-failed", phase: "implementation", ref: task.id, detail: `scope_violations=${attempt.scope_violations.join(",")}` });
+                    const stored = writeDelegation(projectRoot, graph);
+                    run.delegation.sha256 = stored.sha256;
+                    writeRun(projectRoot, coreRoot, run);
+                    return failure(`Task ${task.id} changed files outside its declared write_paths: ${attempt.scope_violations.join(", ")}.`, "Restore each out-of-scope path to its pre-attempt contents before retrying. The attempt remains recorded as failed.");
+                }
+                task.changed_paths = observedPaths;
             }
+            attempt.outcome = outcome;
+            attempt.finished_at = new Date().toISOString();
             task.status = outcome;
             const type = outcome === "completed" ? "delegation-task-completed" : outcome === "blocked" ? "delegation-task-blocked" : "delegation-task-failed";
             run.events.push({ at: new Date().toISOString(), type, phase: "implementation", ref: task.id, detail: `outcome=${outcome}` });
