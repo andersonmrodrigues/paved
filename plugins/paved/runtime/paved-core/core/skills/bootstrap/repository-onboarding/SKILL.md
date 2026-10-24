@@ -41,8 +41,12 @@ files. Everything you learn is a proposal until a human confirms it.
    check types the repository lacks under `unavailable`, with the reason.
 7. **Connect agents.** Add the Paved block to the root `AGENTS.md` from
    `templates/AGENTS.md`. If the file exists, add the block and change nothing else.
-8. **Validate.** Validate every created document against its schema and fix what fails.
-9. Summarize what was created, what was proposed and what is unknown.
+8. **Create app verification.** When repository evidence shows a runnable user-facing
+   application or command-line interface and no matching `.paved/skills/verify-*` guide
+   exists, create one with `core.testing.app-verification` as part of initialization.
+   Preserve any existing guide. A repository without such an interface needs no guide.
+9. **Validate.** Validate every created document against its schema and fix what fails.
+10. Summarize what was created, what was proposed and what is unknown.
 
 ## Tools
 

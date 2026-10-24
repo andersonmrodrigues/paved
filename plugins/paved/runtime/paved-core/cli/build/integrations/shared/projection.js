@@ -58,6 +58,9 @@ export function renderCommand(command, rendering) {
             "3. Pass the user's request verbatim. When the evidence shows the kind of change, add `--workflow <feature|bug|refactor> --because \"<evidence>\"`. When it does not, omit `--workflow` (optionally `--recommend <id> --because …`) and present the returned decision. When the request mixes kinds of change, pass each part with `--part` and present the split decision. Never classify on a guess.",
             "4. When the result has a `review` block, start `paved preview start <target> --json` and follow the `paved.preview` review loop.",
         ] : []),
+        ...(command.name === "init" ? [
+            "3. After a successful initialization, inspect repository evidence for a runnable user-facing application or command-line interface. If one exists and no matching `.paved/skills/verify-*` guide exists, activate `core.testing.app-verification` and create the project-local guide as part of initialization. If no runnable interface is present, finish initialization without creating one. Never overwrite an existing project guide; mention that `app-verification` can update it when requested.",
+        ] : []),
         ...(command.name === "plan" ? [
             "3. Read the run's Intent document at `.paved/documents/intents/<run-id>.md`, then write a plan that answers it and links to it. Save the plan at `.paved/documents/plans/<run-id>.md` and run this command with `--advance --evidence <plan> --note <summary>`. When the result carries a `review` block, start the preview on its target (with its companions) and follow the `paved.preview` review loop without ending your turn: resolve each comment after editing and advance once after edits so the approval request covers the current plan. When the user approves the plan in the conversation with an explicit yes, run `paved plan --run <run-id> --approve --json`; never approve on your own or on an ambiguous reply.",
         ] : []),

@@ -41,8 +41,20 @@ describe("agent projections", () => {
       assert.deepEqual(AGENT_COMMANDS.map((item) => item.name), ["init", "status", "intent", "plan", "execute", "preview", "update"]);
       assert.equal(AGENT_COMMANDS.find((item) => item.name === "status")!.interaction, "conversational");
       assert.deepEqual(AGENT_COMMANDS.find((item) => item.name === "status")!.decisionSources, ["runtime"]);
+      assert.deepEqual(AGENT_COMMANDS.find((item) => item.name === "init")!.decisionSources, ["runtime", "agent"]);
       assert.deepEqual(AGENT_COMMANDS.find((item) => item.name === "intent")!.decisionSources, ["runtime", "agent"]);
       assert.equal(metadata("codex", at(".")).version, "2.0.0");
+    });
+
+    it("creates app verification after successful init without a separate opt-in", async () => {
+      const { renderCommand } = await import("../../integrations/shared/projection.ts");
+      const command = AGENT_COMMANDS.find((item) => item.name === "init")!;
+      const text = renderCommand(command, { headerLine: "<!-- h -->", title: "/paved:init", launcher: { command: "node b.mjs" } });
+      assert.match(text, /After a successful initialization/);
+      assert.match(text, /runnable user-facing application or command-line interface/);
+      assert.match(text, /create the project-local guide as part of initialization/);
+      assert.doesNotMatch(text, /explicit yes/);
+      assert.match(text, /Never overwrite an existing project guide/);
     });
 
     it("directs the plan step to the durable canonical plan file and its review", async () => {

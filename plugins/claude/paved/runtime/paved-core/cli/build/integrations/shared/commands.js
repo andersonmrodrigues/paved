@@ -5,13 +5,13 @@ const DEVELOPMENT_STATES = ["RESOLVED", "GENERATED", "VALIDATED", "READY"];
 const COMMAND_DEFINITIONS = [
     {
         id: "paved.init", name: "init", group: "management",
-        description: "Initialize Paved and prepare repository context and verification. Use when setting up Paved in a repository that is not initialized.",
+        description: "Initialize Paved and prepare repository context and verification; offer a project-local app verification guide when a runnable user interface is present. Use when setting up Paved in a repository that is not initialized.",
         input: { required: false, description: "No arguments." },
-        output: "Initialization result, detected adapters, lifecycle state, and diagnostics.",
+        output: "Initialization result, detected adapters, lifecycle state, diagnostics, and an optional app verification guide offer.",
         requiredContext: [".paved/manifest.yaml", "repository evidence"],
-        allowedSideEffects: [".paved/ initialization state", "generated project context", "managed AGENTS.md block"],
+        allowedSideEffects: [".paved/ initialization state", "generated project context", "managed AGENTS.md block", ".paved/skills/verify-<app>/ only after the user accepts the offer"],
         lifecycle: ["UNINITIALIZED"], cliCommand: "init",
-        interaction: "conversational", decisionSources: ["runtime"], answerChannels: ["relayed"],
+        interaction: "conversational", decisionSources: ["runtime", "agent"], answerChannels: ["relayed", "human-authored"],
         failureSemantics: ["Existing Paved state is never reset.", "Invalid partial state fails with diagnostics.", "Package acquisition and runtime activation require verified integrity."],
     },
     {

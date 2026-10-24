@@ -44,3 +44,9 @@ only configures what Paved will run; it does not prove that the check passed. A 
 `verify` invocation executes the configured Tools and records evidence. Existing valid
 profiles remain supported as already-decided project configuration. See
 [conversational decisions](decisions.md).
+
+During initialization, Paved creates a project-local `verify-*` skill when repository
+evidence shows a runnable user-facing interface. The skill records safe launch and cleanup
+instructions and a feature map grounded in the repository. It is ready only after a configured runtime check has
+exercised a feature and captured evidence; without a usable harness it remains a draft
+with the missing capability stated. Later end-to-end work can use the project guide.
