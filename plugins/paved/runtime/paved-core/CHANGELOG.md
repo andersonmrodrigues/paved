@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.15.0] - 2026-10-24
+
 ### Added
 
 - Optional task-level harness experiments in approved delegation graphs: one baseline
