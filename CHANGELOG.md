@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.13.0] - 2026-10-24
+
 ### Added
 
 - A schema-validated paired delegation evaluation dataset and CLI analyzer for
