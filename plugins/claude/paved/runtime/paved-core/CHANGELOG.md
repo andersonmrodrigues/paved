@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.12.1] - 2026-10-24
+
 ### Fixed
 
 - Preserve shared-workspace scope violations from failed and recovered attempts, and
