@@ -92,6 +92,16 @@ $defs:
       finished_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
       outcome: { enum: [completed, blocked, failed] }
       recovery_reason: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      changed_paths:
+        description: Paths observed or reported for this execution attempt.
+        type: array
+        uniqueItems: true
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+      scope_violations:
+        description: Changed paths outside this task's declared write scope.
+        type: array
+        uniqueItems: true
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
       workspace_snapshot:
         description: Changed-file state observed at task start in a shared workspace.
         type: array

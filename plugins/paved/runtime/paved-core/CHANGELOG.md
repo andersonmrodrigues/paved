@@ -5,6 +5,11 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve shared-workspace scope violations from failed and recovered attempts, and
+  require out-of-scope edits to be restored before retrying.
+
 ## [2.12.0] - 2026-10-24
 
 ### Added

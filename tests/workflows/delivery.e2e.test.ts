@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -453,6 +453,34 @@ describe("starting work with execute", () => {
     assert.equal(approved.status, "success", JSON.stringify(approved));
     const started = await invoke("delegation", "start", "--run", id, "--task", "edit", "--host", "codex", "--model", "gpt", "--effort", "low", "--isolation", "shared-workspace");
     assert.equal(started.status, "success", JSON.stringify(started));
+    write(root, "feature.js", "export const enabled = true;\n");
+    write(root, `.paved/generated/delegation-results/${id}/edit.md`, "Created feature.js.\n");
+    const finished = await invoke("delegation", "finish", "--run", id, "--task", "edit", "--outcome", "completed", "--result", `.paved/generated/delegation-results/${id}/edit.md`, "--changed-path", "feature.js");
+    assert.equal(finished.status, "success", JSON.stringify(finished));
+  });
+
+  it("keeps out-of-scope changes from being hidden by a shared-workspace retry", async () => {
+    const root = project();
+    const { id, invoke } = await approvedRun(root);
+    const runDoc = parse(readFileSync(join(root, ".paved/generated/runs", `${id}.yaml`), "utf8")) as { phases: { phase: string; gates?: { id: string; reason?: string }[] }[] };
+    const planSha = /plan_sha256=([a-f0-9]{64})/.exec(runDoc.phases.find((phase) => phase.phase === "planning")?.gates?.find((gate) => gate.id === "plan-approved")?.reason ?? "")?.[1];
+    assert.ok(planSha);
+    write(root, ".paved/documents/delegation.yaml", stringify({
+      apiVersion: "paved/v1", kind: "DelegationPlan", id, run: id, plan_sha256: planSha,
+      max_concurrency: 1, tasks: [{ id: "edit", title: "Edit file", brief: "Create feature file", depends_on: [], read_paths: [], write_paths: ["feature.js"], output_contract: "Create feature.js", model_policy: { capacity: "economy", reasoning_effort: "low", rationale: "Simple bounded edit" } }],
+    }));
+    await invoke("delegation", "plan", "--run", id, "--file", ".paved/documents/delegation.yaml");
+    await invoke("delegation", "approve", "--run", id, "--approve");
+    const start = () => invoke("delegation", "start", "--run", id, "--task", "edit", "--host", "codex", "--model", "gpt", "--effort", "low", "--isolation", "shared-workspace");
+    assert.equal((await start()).status, "success");
+    write(root, "outside.txt", "out-of-scope edit\n");
+    const failed = await invoke("delegation", "finish", "--run", id, "--task", "edit", "--outcome", "failed");
+    assert.equal(failed.status, "success", JSON.stringify(failed));
+    const unsafeRetry = await start();
+    assert.equal(unsafeRetry.status, "failed");
+    assert.match(unsafeRetry.diagnostics[0]?.message ?? "", /out-of-scope paths remain changed/);
+    rmSync(join(root, "outside.txt"));
+    assert.equal((await start()).status, "success");
     write(root, "feature.js", "export const enabled = true;\n");
     write(root, `.paved/generated/delegation-results/${id}/edit.md`, "Created feature.js.\n");
     const finished = await invoke("delegation", "finish", "--run", id, "--task", "edit", "--outcome", "completed", "--result", `.paved/generated/delegation-results/${id}/edit.md`, "--changed-path", "feature.js");

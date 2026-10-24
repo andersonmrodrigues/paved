@@ -22,6 +22,8 @@ export interface DelegationAttempt {
   outcome?: "completed" | "blocked" | "failed";
   recovery_reason?: string;
   workspace_snapshot?: { path: string; exists: boolean; sha256?: string }[];
+  changed_paths?: string[];
+  scope_violations?: string[];
   usage?: { input_tokens?: number; output_tokens?: number; reasoning_tokens?: number; cost_usd?: number; duration_ms?: number };
 }
 
