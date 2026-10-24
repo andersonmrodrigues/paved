@@ -1,7 +1,7 @@
 {
   "package": "paved-core",
-  "version": "2.11.0",
-  "integrity": "sha512-hWmN5c7IlA4s/WbKOoxB4TjFB08Hn2uVbIemv1tZaS5oMSXTKVUhozXc58it4wXhZfinaFzMkWxoZ++rPQH2aw==",
+  "version": "2.12.0",
+  "integrity": "sha512-De44/URANRtoswcMkH4BKON3dCsx1Dv9VvRWHVQCx+eVhePgCNcBpeifIzDddRrROaS4RJkcbYkgTD7nKK043A==",
   "runtime": "../runtime/paved-core",
   "dependencies": "..",
   "_paved_generated": true
