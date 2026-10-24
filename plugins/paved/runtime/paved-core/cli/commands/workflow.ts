@@ -521,6 +521,9 @@ async function resume(invocation: CommandInvocation, step: Step, run: Run, answe
   const phase = current!;
   if (phase.phase === "implementation") {
     const graph = readDelegation(projectRoot, coreRoot, run);
+    if (graph && !run.delegation?.approval) {
+      return blocked(step, "PAVED_DELEGATION_APPROVAL_REQUIRED", "The registered delegation graph has not been approved by a human.", `Show the exact graph to the user, ask for approval, then run paved delegation approve --run ${run.id} --approve --json.`, { run: run.id });
+    }
     const incomplete = graph?.tasks.filter((task) => task.status !== "completed") ?? [];
     if (incomplete.length > 0) {
       const ids = incomplete.map((task) => `${task.id} (${task.status ?? "pending"})`).join(", ");

@@ -68,12 +68,20 @@ $defs:
         properties:
           path: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
           sha256: { $ref: "urn:paved:schema:common:v1#/$defs/sha256" }
+      changed_paths:
+        description: Repository paths reported and checked for the completed task.
+        type: array
+        uniqueItems: true
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
   attempt:
     type: object
     additionalProperties: false
     required: [host, selected_model, selected_effort, selected_by, started_at]
     properties:
       host: { enum: [claude-code, codex] }
+      isolation:
+        description: Host-reported execution workspace. Paved serializes shared-workspace writers and compares Git-status file digests at start and completion.
+        enum: [shared-workspace, isolated-worktree]
       selected_model: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
       selected_effort: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
       selected_by: { enum: [host, agent, human] }
@@ -83,6 +91,19 @@ $defs:
       started_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
       finished_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
       outcome: { enum: [completed, blocked, failed] }
+      recovery_reason: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      workspace_snapshot:
+        description: Changed-file state observed at task start in a shared workspace.
+        type: array
+        uniqueItems: true
+        items:
+          type: object
+          additionalProperties: false
+          required: [path, exists]
+          properties:
+            path: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+            exists: { type: boolean }
+            sha256: { $ref: "urn:paved:schema:common:v1#/$defs/sha256" }
       usage:
         description: Usage reported by the host or agent; Paved does not independently verify it.
         type: object

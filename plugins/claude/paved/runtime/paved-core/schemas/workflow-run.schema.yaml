@@ -102,6 +102,18 @@ properties:
       path: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
       sha256: { $ref: "urn:paved:schema:common:v1#/$defs/sha256" }
       plan_sha256: { $ref: "urn:paved:schema:common:v1#/$defs/sha256" }
+      approval:
+        description: Human decision bound to the exact graph digest, mirrored from its approval record.
+        type: object
+        additionalProperties: false
+        required: [graph_sha256, decided_by, decided_at]
+        properties:
+          graph_sha256: { $ref: "urn:paved:schema:common:v1#/$defs/sha256" }
+          decided_by:
+            type: string
+            minLength: 1
+            not: { enum: [agent, paved, ci] }
+          decided_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
   outputs:
     type: array
     items:
@@ -139,6 +151,9 @@ properties:
             - delegation-task-completed
             - delegation-task-blocked
             - delegation-task-failed
+            - delegation-task-recovered
+            - delegation-task-approved
+            - delegation-cancelled
             - delegation-superseded
             - approval-requested
             - approval-decided

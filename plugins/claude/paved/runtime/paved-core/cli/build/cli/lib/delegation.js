@@ -1,13 +1,33 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { stringify } from "yaml";
-import { atomicWriteFileSync } from "./atomic-write.js";
 import { loadYaml } from "./documents.js";
 import { resolveSafePath } from "./safe-path.js";
 import { createRegistry } from "./schemas.js";
+import { localApprover } from "./local-identity.js";
+import { atomicWriteFileSync } from "./atomic-write.js";
 export function digest(bytes) {
     return createHash("sha256").update(bytes).digest("hex");
+}
+export function delegationSpecDigest(graph) {
+    return digest(JSON.stringify({ run: graph.run, id: graph.id, plan_sha256: graph.plan_sha256, max_concurrency: graph.max_concurrency,
+        tasks: graph.tasks.map(({ id, title, brief, depends_on, read_paths, write_paths, output_contract, model_policy }) => ({ id, title, brief, depends_on, read_paths, write_paths, output_contract, model_policy })) }));
+}
+export function workspaceSnapshot(projectRoot) {
+    const output = execFileSync("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames"], { cwd: projectRoot, encoding: "buffer" });
+    const paths = output.toString("utf8").split("\0").filter(Boolean).map((entry) => entry.slice(3)).filter(Boolean);
+    return paths.sort().map((relativePath) => {
+        const path = resolveSafePath(projectRoot, relativePath);
+        return existsSync(path) ? { path: relativePath, exists: true, sha256: digest(readFileSync(path)) } : { path: relativePath, exists: false };
+    });
+}
+export function changedSinceSnapshot(projectRoot, baseline) {
+    const fingerprint = (item) => JSON.stringify(item);
+    const before = new Map(baseline.map((item) => [item.path, fingerprint(item)]));
+    const current = new Map(workspaceSnapshot(projectRoot).map((item) => [item.path, fingerprint(item)]));
+    return [...new Set([...before.keys(), ...current.keys()])].filter((path) => before.get(path) !== current.get(path)).sort();
 }
 export function graphPath(projectRoot, runId) {
     return resolveSafePath(projectRoot, `.paved/generated/delegations/${runId}.yaml`);
@@ -99,6 +119,16 @@ export function readDelegation(projectRoot, coreRoot, run) {
     const plan = loadYaml(path);
     validateDelegationPlan(coreRoot, plan);
     const graph = plan;
+    if (run.delegation.approval) {
+        const approvalPath = resolveSafePath(projectRoot, `.paved/approvals/delegations/${run.id}.json`);
+        if (!existsSync(approvalPath))
+            throw new Error("Delegation graph approval record is missing.");
+        const approval = JSON.parse(readFileSync(approvalPath, "utf8"));
+        if (approval.run !== run.id || approval.decision !== "approved" || approval.graph_sha256 !== delegationSpecDigest(graph)
+            || run.delegation.approval.graph_sha256 !== delegationSpecDigest(graph) || approval.decided_by !== run.delegation.approval.decided_by
+            || approval.decided_at !== run.delegation.approval.decided_at)
+            throw new Error("Delegation approval does not match this exact graph digest.");
+    }
     if (graph.run !== run.id || graph.id !== run.id)
         throw new Error(`Delegation plan ${run.delegation.path} belongs to another run.`);
     if (graph.plan_sha256 !== run.delegation.plan_sha256)
@@ -114,6 +144,16 @@ export function readDelegation(projectRoot, coreRoot, run) {
             throw new Error(`Delegation result for ${task.id} is missing or changed.`);
     }
     return graph;
+}
+export function approveDelegation(projectRoot, run, graph) {
+    if (!run.delegation)
+        throw new Error("No delegation graph is registered.");
+    const graphSha = delegationSpecDigest(graph);
+    const approval = { run: run.id, graph_sha256: graphSha, decision: "approved", decided_by: localApprover(), decided_at: new Date().toISOString() };
+    const path = resolveSafePath(projectRoot, `.paved/approvals/delegations/${run.id}.json`);
+    mkdirSync(dirname(path), { recursive: true });
+    atomicWriteFileSync(path, `${JSON.stringify(approval, null, 2)}\n`);
+    return { graph_sha256: graphSha, decided_by: approval.decided_by, decided_at: approval.decided_at };
 }
 export function writeDelegation(projectRoot, graph) {
     const path = graphPath(projectRoot, graph.run);

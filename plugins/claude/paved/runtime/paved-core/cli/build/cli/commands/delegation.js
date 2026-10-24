@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { loadYaml } from "../lib/documents.js";
 import { resolveSafePath } from "../lib/safe-path.js";
 import { readRun, writeRun } from "../lib/workflow-runs.js";
-import { approvedPlanDigest, digest, readDelegation, readyTasks, validateDelegationPlan, writeDelegation } from "../lib/delegation.js";
+import { approvedPlanDigest, approveDelegation, changedSinceSnapshot, delegationSpecDigest, digest, readDelegation, readyTasks, validateDelegationPlan, workspaceSnapshot, writeDelegation } from "../lib/delegation.js";
 import { createDiagnostic, createResult } from "../result.js";
 const completed = (task) => task.status === "completed";
 const active = (task) => task.status === "running";
@@ -69,7 +69,13 @@ export function delegationHandler(invocation) {
     const { projectRoot, coreRoot } = invocation.paths;
     const runId = invocation.flags.run;
     if (!operation || invocation.selectors.length !== 1)
-        return failure("Choose one operation: plan, ready, start or finish.", "Run paved delegation --help to see the operation and its required flags.");
+        return failure("Choose one operation: plan, approve, ready, start, finish, recover or capabilities.", "Run paved delegation --help to see the operation and its required flags.");
+    if (operation === "capabilities") {
+        const host = invocation.flags.host;
+        if (host !== "claude-code" && host !== "codex")
+            return failure("capabilities requires --host codex or --host claude-code.", "Pass the host you are currently using.");
+        return createResult({ command: "delegation", status: "success", data: { host, nativeSessions: "host-managed", modelSelection: host === "claude-code" ? "per-subagent model and effort controls; inspect host catalog" : "host-dependent; may inherit parent model", isolation: "use host-native isolated worktrees for parallel writers when available", permissionBoundary: "Paved records task scopes; host permissions remain authoritative" } });
+    }
     if (!runId)
         return failure("--run is required.", "Pass the current workflow run id.");
     try {
@@ -106,17 +112,33 @@ export function delegationHandler(invocation) {
         const graph = readDelegation(projectRoot, coreRoot, run);
         if (!graph)
             throw new Error(`Run ${run.id} has no delegation graph. Register one with paved delegation plan --run ${run.id} --file <graph.yaml>.`);
+        if (operation === "approve") {
+            if (!invocation.flags.approve)
+                throw new Error("After showing this exact graph to the user and receiving approval, pass --approve.");
+            if (graph.tasks.some((item) => item.status === "running" || item.attempts?.length))
+                throw new Error("A graph can only be approved before any task starts.");
+            const approval = approveDelegation(projectRoot, run, graph);
+            run.delegation.approval = approval;
+            run.events.push({ at: new Date().toISOString(), type: "delegation-task-approved", phase: "implementation", ref: approval.graph_sha256, detail: `decided_by=${approval.decided_by}` });
+            writeRun(projectRoot, coreRoot, run);
+            return graphResult(run, graph, `Exact graph ${approval.graph_sha256} approved. Ready tasks may now start.`);
+        }
         if (operation === "ready")
             return graphResult(run, graph, "Use the host's native agent/session tools. A delegated result is not verification; inspect changes and run the required checks in the primary session.");
         const task = graph.tasks.find((item) => item.id === invocation.flags.task);
         if (!task)
             throw new Error("Pass --task with an id from this delegation graph.");
         if (operation === "start") {
+            if (!run.delegation?.approval || run.delegation.approval.graph_sha256 !== delegationSpecDigest(graph))
+                throw new Error("This exact delegation graph has not been explicitly approved by the user.");
             const { host, model, effort } = invocation.flags;
             if (host !== "codex" && host !== "claude-code")
                 throw new Error("start requires --host codex or --host claude-code.");
             if (!model || !effort)
                 throw new Error("start requires the actual --model and --effort selected by the host.");
+            const isolation = invocation.flags.isolation;
+            if (isolation !== "shared-workspace" && isolation !== "isolated-worktree")
+                throw new Error("start requires --isolation shared-workspace or isolated-worktree.");
             if (task.status !== undefined && task.status !== "pending" && task.status !== "failed")
                 throw new Error(`Task ${task.id} is ${task.status}; only pending or failed tasks may start.`);
             if (!readyTasks(graph).some((item) => item.id === task.id))
@@ -124,12 +146,15 @@ export function delegationHandler(invocation) {
             if (graph.tasks.filter(active).length >= graph.max_concurrency)
                 throw new Error(`Delegation concurrency limit ${graph.max_concurrency} has been reached.`);
             noWriteConflict(graph, task);
+            if (isolation === "shared-workspace" && graph.tasks.some((item) => item.status === "running" && (item.write_paths.length > 0 || task.write_paths.length > 0)))
+                throw new Error("Shared-workspace editing is serialized; finish the active writer first or use host-native isolated worktrees.");
             const selectedBy = invocation.flags.selectedBy ?? "agent";
             if (!["host", "agent", "human"].includes(selectedBy))
                 throw new Error("--selected-by must be host, agent or human.");
             const attempt = {
                 host: host, selected_model: model, selected_effort: effort, selected_by: selectedBy,
-                started_at: new Date().toISOString(),
+                started_at: new Date().toISOString(), isolation: isolation,
+                ...(isolation === "shared-workspace" ? { workspace_snapshot: workspaceSnapshot(projectRoot) } : {}),
                 ...(invocation.flags.session ? { session_sha256: digest(invocation.flags.session) } : {}),
             };
             task.attempts = [...(task.attempts ?? []), attempt];
@@ -139,6 +164,24 @@ export function delegationHandler(invocation) {
             run.delegation.sha256 = stored.sha256;
             writeRun(projectRoot, coreRoot, run);
             return graphResult(run, graph, `Task ${task.id} started in ${host} using host-reported model ${model} and effort ${effort}.`);
+        }
+        if (operation === "recover") {
+            if (task.status !== "running")
+                throw new Error(`Task ${task.id} is not running.`);
+            if (!invocation.flags.confirmedStopped || !invocation.flags.note?.trim())
+                throw new Error("recover requires --confirmed-stopped and --note <reason> after confirming the native session has stopped.");
+            const attempt = task.attempts?.at(-1);
+            if (!attempt || attempt.outcome)
+                throw new Error(`Task ${task.id} has no active execution attempt.`);
+            attempt.outcome = "failed";
+            attempt.finished_at = new Date().toISOString();
+            attempt.recovery_reason = invocation.flags.note;
+            task.status = "failed";
+            run.events.push({ at: new Date().toISOString(), type: "delegation-task-recovered", phase: "implementation", ref: task.id, detail: invocation.flags.note });
+            const stored = writeDelegation(projectRoot, graph);
+            run.delegation.sha256 = stored.sha256;
+            writeRun(projectRoot, coreRoot, run);
+            return graphResult(run, graph, `Task ${task.id} recovered as failed; a retry can start after reapproving the updated graph.`);
         }
         if (operation === "finish") {
             const outcome = invocation.flags.outcome;
@@ -164,6 +207,16 @@ export function delegationHandler(invocation) {
                 if (!existsSync(resultPath))
                     throw new Error(`Task result file does not exist: ${invocation.flags.result}.`);
                 task.result = { path: invocation.flags.result, sha256: digest(readFileSync(resultPath)) };
+                const reportedPaths = invocation.flags.changedPaths ?? [];
+                if (attempt.isolation === "isolated-worktree" && !reportedPaths.length)
+                    throw new Error("isolated-worktree completion requires repeatable --changed-path reports.");
+                task.changed_paths = attempt.isolation === "shared-workspace" && attempt.workspace_snapshot
+                    ? changedSinceSnapshot(projectRoot, attempt.workspace_snapshot) : [...reportedPaths];
+                if (attempt.isolation === "shared-workspace" && reportedPaths.some((path) => !task.changed_paths?.includes(path)))
+                    throw new Error("A host-reported changed path was not observed in the shared workspace snapshot.");
+                for (const changedPath of task.changed_paths)
+                    if (!task.write_paths.some((scope) => changedPath === scope || changedPath.startsWith(`${scope.replace(/\/$/, "")}/`)))
+                        throw new Error(`Reported changed path ${changedPath} is outside task ${task.id}'s declared write_paths.`);
             }
             task.status = outcome;
             const type = outcome === "completed" ? "delegation-task-completed" : outcome === "blocked" ? "delegation-task-blocked" : "delegation-task-failed";

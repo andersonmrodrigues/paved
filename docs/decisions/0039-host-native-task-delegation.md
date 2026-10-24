@@ -17,7 +17,13 @@ Represent optional implementation delegation as a schema-validated `DelegationPl
 bound to the hash of the human-approved workflow plan. Each task declares dependencies,
 bounded repository read/write paths, an output contract and a relative model capacity
 and reasoning-effort policy. The CLI validates acyclic dependencies, non-overlapping
-unordered write scopes, task readiness and concurrency. The workflow cannot advance
+unordered write scopes, task readiness and concurrency. A human approves the immutable
+delegation graph digest before any task starts. Shared-workspace writers are serialized;
+Paved snapshots Git-status file digests at start and checks the observed changed paths
+against exact write scopes at completion.
+For isolated worktrees those paths are host-reported and the primary agent inspects the
+integrated diff. Interrupted attempts require explicit recovery after confirming that
+the native session stopped. The workflow cannot advance
 until every registered task is recorded complete.
 
 The active Claude Code or Codex agent creates and supervises work using the host's

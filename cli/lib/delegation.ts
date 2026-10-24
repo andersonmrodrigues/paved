@@ -1,22 +1,27 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { stringify } from "yaml";
-import { atomicWriteFileSync } from "./atomic-write.ts";
 import { loadYaml } from "./documents.ts";
 import { resolveSafePath } from "./safe-path.ts";
 import { createRegistry } from "./schemas.ts";
 import type { Run } from "./workflow-runs.ts";
+import { localApprover } from "./local-identity.ts";
+import { atomicWriteFileSync } from "./atomic-write.ts";
 
 export interface DelegationAttempt {
   host: "claude-code" | "codex";
   selected_model: string;
   selected_effort: string;
   selected_by: "host" | "agent" | "human";
+  isolation?: "shared-workspace" | "isolated-worktree";
   session_sha256?: string;
   started_at: string;
   finished_at?: string;
   outcome?: "completed" | "blocked" | "failed";
+  recovery_reason?: string;
+  workspace_snapshot?: { path: string; exists: boolean; sha256?: string }[];
   usage?: { input_tokens?: number; output_tokens?: number; reasoning_tokens?: number; cost_usd?: number; duration_ms?: number };
 }
 
@@ -32,6 +37,7 @@ export interface DelegationTask {
   status?: "pending" | "running" | "completed" | "blocked" | "failed";
   attempts?: DelegationAttempt[];
   result?: { path: string; sha256: string };
+  changed_paths?: string[];
 }
 
 export interface DelegationPlan {
@@ -46,6 +52,27 @@ export interface DelegationPlan {
 
 export function digest(bytes: string | Buffer): string {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+export function delegationSpecDigest(graph: DelegationPlan): string {
+  return digest(JSON.stringify({ run: graph.run, id: graph.id, plan_sha256: graph.plan_sha256, max_concurrency: graph.max_concurrency,
+    tasks: graph.tasks.map(({ id, title, brief, depends_on, read_paths, write_paths, output_contract, model_policy }) => ({ id, title, brief, depends_on, read_paths, write_paths, output_contract, model_policy })) }));
+}
+
+export function workspaceSnapshot(projectRoot: string): { path: string; exists: boolean; sha256?: string }[] {
+  const output = execFileSync("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames"], { cwd: projectRoot, encoding: "buffer" });
+  const paths = output.toString("utf8").split("\0").filter(Boolean).map((entry) => entry.slice(3)).filter(Boolean);
+  return paths.sort().map((relativePath) => {
+    const path = resolveSafePath(projectRoot, relativePath);
+    return existsSync(path) ? { path: relativePath, exists: true, sha256: digest(readFileSync(path)) } : { path: relativePath, exists: false };
+  });
+}
+
+export function changedSinceSnapshot(projectRoot: string, baseline: NonNullable<DelegationAttempt["workspace_snapshot"]>): string[] {
+  const fingerprint = (item: { exists: boolean; sha256?: string }) => JSON.stringify(item);
+  const before = new Map(baseline.map((item) => [item.path, fingerprint(item)]));
+  const current = new Map(workspaceSnapshot(projectRoot).map((item) => [item.path, fingerprint(item)]));
+  return [...new Set([...before.keys(), ...current.keys()])].filter((path) => before.get(path) !== current.get(path)).sort();
 }
 
 export function graphPath(projectRoot: string, runId: string): string {
@@ -125,6 +152,14 @@ export function readDelegation(projectRoot: string, coreRoot: string, run: Run):
   const plan = loadYaml(path) as unknown;
   validateDelegationPlan(coreRoot, plan);
   const graph = plan as DelegationPlan;
+  if (run.delegation.approval) {
+    const approvalPath = resolveSafePath(projectRoot, `.paved/approvals/delegations/${run.id}.json`);
+    if (!existsSync(approvalPath)) throw new Error("Delegation graph approval record is missing.");
+    const approval = JSON.parse(readFileSync(approvalPath, "utf8")) as Record<string, unknown>;
+    if (approval.run !== run.id || approval.decision !== "approved" || approval.graph_sha256 !== delegationSpecDigest(graph)
+      || run.delegation.approval.graph_sha256 !== delegationSpecDigest(graph) || approval.decided_by !== run.delegation.approval.decided_by
+      || approval.decided_at !== run.delegation.approval.decided_at) throw new Error("Delegation approval does not match this exact graph digest.");
+  }
   if (graph.run !== run.id || graph.id !== run.id) throw new Error(`Delegation plan ${run.delegation.path} belongs to another run.`);
   if (graph.plan_sha256 !== run.delegation.plan_sha256) throw new Error(`Delegation plan ${run.delegation.path} has stale plan provenance.`);
   for (const task of graph.tasks) {
@@ -135,6 +170,16 @@ export function readDelegation(projectRoot: string, coreRoot: string, run: Run):
     if (!existsSync(resultPath) || digest(readFileSync(resultPath)) !== task.result.sha256) throw new Error(`Delegation result for ${task.id} is missing or changed.`);
   }
   return graph;
+}
+
+export function approveDelegation(projectRoot: string, run: Run, graph: DelegationPlan): { graph_sha256: string; decided_by: string; decided_at: string } {
+  if (!run.delegation) throw new Error("No delegation graph is registered.");
+  const graphSha = delegationSpecDigest(graph);
+  const approval = { run: run.id, graph_sha256: graphSha, decision: "approved", decided_by: localApprover(), decided_at: new Date().toISOString() };
+  const path = resolveSafePath(projectRoot, `.paved/approvals/delegations/${run.id}.json`);
+  mkdirSync(dirname(path), { recursive: true });
+  atomicWriteFileSync(path, `${JSON.stringify(approval, null, 2)}\n`);
+  return { graph_sha256: graphSha, decided_by: approval.decided_by, decided_at: approval.decided_at };
 }
 
 export function writeDelegation(projectRoot: string, graph: DelegationPlan): { path: string; sha256: string } {
