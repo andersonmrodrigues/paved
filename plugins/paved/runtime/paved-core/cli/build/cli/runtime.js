@@ -100,7 +100,7 @@ function commandUsage(command) {
     if (command !== undefined) {
         const selectors = command === "generate" ? " [generator-id...]" : command === "agent"
             ? " <operation> [integration|command-name]" : command === "preview" ? " <start|serve|status|wait|working|resolve|stop> <file.md|folder> [cursor|comment-id]" : command === "workbench" ? " <start|serve|status|stop>"
-            : command === "tool" ? " add <check-type> [label] [--scope <dir>] -- <executable> [args...]" : command === "delegation" ? " <plan|ready|start|finish>" : command === "execute" ? " [request]" : "";
+            : command === "tool" ? " add <check-type> [label] [--scope <dir>] -- <executable> [args...]" : command === "delegation" ? " <plan|approve|ready|start|finish|recover|capabilities>" : command === "execute" ? " [request]" : "";
         const commandOptions = [];
         const rule = COMMAND_RULES[command];
         if (rule.adapters)
@@ -128,7 +128,7 @@ function commandUsage(command) {
         if (command === "tool")
             commandOptions.push("  --scope <dir>    Run the command from this project directory.", "  -- <executable> [args...]  The exact command; everything after -- is passed as argv.");
         if (command === "delegation")
-            commandOptions.push("  --run <id> --file <path>  Register a graph that matches the approved plan.", "  --run <id> --task <id> --host <codex|claude-code> --model <name> --effort <value> [--selected-by <host|agent|human>] [--session <id>]  Start one ready task.", "  --run <id> --task <id> --outcome <completed|blocked|failed> [--result <path>] [--usage <json>]  Record a host-reported result.", "  Session ids are hashed before storage; usage is host-reported and not verified by Paved.");
+            commandOptions.push("  plan --run <id> --file <path>; approve --run <id> --approve after showing the exact graph to the user.", "  start --run <id> --task <id> --host <codex|claude-code> --model <name> --effort <value> --isolation <shared-workspace|isolated-worktree>.", "  finish --run <id> --task <id> --outcome <completed|blocked|failed> [--result <path>] [--usage <json>] [--changed-path <path> ...].", "  recover --run <id> --task <id> --confirmed-stopped --note <reason>; capabilities --host <codex|claude-code>.", "  Session ids are hashed; usage and isolated-worktree changed paths are host-reported.");
         return [
             `Usage: paved ${command}${selectors} [options]`,
             "",
@@ -224,6 +224,9 @@ function parse(argv) {
     let outcome;
     let usageJson;
     let selectedBy;
+    let isolation;
+    let confirmedStopped = false;
+    const changedPaths = [];
     for (let index = 0; index < argv.length; index += 1) {
         const token = argv[index];
         if (token === undefined) {
@@ -304,7 +307,7 @@ function parse(argv) {
             index += 1;
             continue;
         }
-        if (["--task", "--file", "--host", "--model", "--effort", "--session", "--result", "--outcome", "--usage", "--selected-by"].includes(token)) {
+        if (["--task", "--file", "--host", "--model", "--effort", "--session", "--result", "--outcome", "--usage", "--selected-by", "--isolation", "--changed-path"].includes(token)) {
             if (command !== "delegation")
                 return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by delegation.`) };
             const value = takeValue(argv, index, token, command);
@@ -330,7 +333,17 @@ function parse(argv) {
                 usageJson = value;
             if (token === "--selected-by")
                 selectedBy = value;
+            if (token === "--isolation")
+                isolation = value;
+            if (token === "--changed-path")
+                changedPaths.push(value);
             index += 1;
+            continue;
+        }
+        if (token === "--confirmed-stopped") {
+            if (command !== "delegation")
+                return { kind: "error", result: usage(command ?? "cli", "--confirmed-stopped is supported only by delegation recover.") };
+            confirmedStopped = true;
             continue;
         }
         if (["--workflow", "--because", "--recommend", "--part", "--input"].includes(token)) {
@@ -353,8 +366,9 @@ function parse(argv) {
             continue;
         }
         if (["--run", "--note", "--evidence"].includes(token)) {
-            if (!command || (!STEP_COMMANDS.includes(command) && !(command === "delegation" && token === "--run")))
-                return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by intent, plan, execute${token === "--run" ? " and delegation" : ""}.`) };
+            const delegationFlag = command === "delegation" && (token === "--run" || (token === "--note" && selectors[0] === "recover"));
+            if (!command || (!STEP_COMMANDS.includes(command) && !delegationFlag))
+                return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by intent, plan, execute${delegationFlag ? " and delegation" : ""}.`) };
             const value = takeValue(argv, index, token, command);
             if (typeof value !== "string")
                 return { kind: "error", result: value };
@@ -378,8 +392,8 @@ function parse(argv) {
             continue;
         }
         if (token === "--approve") {
-            if (command !== "plan" && command !== "execute")
-                return { kind: "error", result: usage(command ?? "cli", "--approve is supported only by plan and execute.") };
+            if (command !== "plan" && command !== "execute" && command !== "delegation")
+                return { kind: "error", result: usage(command ?? "cli", "--approve is supported only by plan, execute and delegation.") };
             approve = true;
             continue;
         }
@@ -511,6 +525,9 @@ function parse(argv) {
         ...(outcome === undefined ? {} : { outcome }),
         ...(usageJson === undefined ? {} : { usage: usageJson }),
         ...(selectedBy === undefined ? {} : { selectedBy }),
+        ...(isolation === undefined ? {} : { isolation }),
+        changedPaths,
+        ...(confirmedStopped ? { confirmedStopped } : {}),
     };
     return {
         kind: "command",

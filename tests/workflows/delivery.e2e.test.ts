@@ -434,4 +434,28 @@ describe("starting work with execute", () => {
 
     assert.equal(refused.diagnostics[0]?.code, "PAVED_EXECUTE_REQUEST_WITH_RUN", JSON.stringify(refused));
   });
+
+  it("approves the exact delegation graph before starting and finishing its task", async () => {
+    const root = project();
+    const { id, invoke } = await approvedRun(root);
+    const runDoc = parse(readFileSync(join(root, ".paved/generated/runs", `${id}.yaml`), "utf8")) as { phases: { phase: string; gates?: { id: string; reason?: string }[] }[] };
+    const planSha = /plan_sha256=([a-f0-9]{64})/.exec(runDoc.phases.find((phase) => phase.phase === "planning")?.gates?.find((gate) => gate.id === "plan-approved")?.reason ?? "")?.[1];
+    assert.ok(planSha);
+    write(root, ".paved/documents/delegation.yaml", stringify({
+      apiVersion: "paved/v1", kind: "DelegationPlan", id, run: id, plan_sha256: planSha,
+      max_concurrency: 1, tasks: [{ id: "edit", title: "Edit file", brief: "Create feature file", depends_on: [], read_paths: [], write_paths: ["feature.js"], output_contract: "Create feature.js", model_policy: { capacity: "economy", reasoning_effort: "low", rationale: "Simple bounded edit" } }],
+    }));
+    const registered = await invoke("delegation", "plan", "--run", id, "--file", ".paved/documents/delegation.yaml");
+    assert.equal(registered.status, "success", JSON.stringify(registered));
+    const premature = await invoke("delegation", "start", "--run", id, "--task", "edit", "--host", "codex", "--model", "gpt", "--effort", "low", "--isolation", "shared-workspace");
+    assert.equal(premature.status, "failed");
+    const approved = await invoke("delegation", "approve", "--run", id, "--approve");
+    assert.equal(approved.status, "success", JSON.stringify(approved));
+    const started = await invoke("delegation", "start", "--run", id, "--task", "edit", "--host", "codex", "--model", "gpt", "--effort", "low", "--isolation", "shared-workspace");
+    assert.equal(started.status, "success", JSON.stringify(started));
+    write(root, "feature.js", "export const enabled = true;\n");
+    write(root, `.paved/generated/delegation-results/${id}/edit.md`, "Created feature.js.\n");
+    const finished = await invoke("delegation", "finish", "--run", id, "--task", "edit", "--outcome", "completed", "--result", `.paved/generated/delegation-results/${id}/edit.md`, "--changed-path", "feature.js");
+    assert.equal(finished.status, "success", JSON.stringify(finished));
+  });
 });

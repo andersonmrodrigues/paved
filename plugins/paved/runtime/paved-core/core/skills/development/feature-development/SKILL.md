@@ -57,7 +57,10 @@ know which checks exist before promising any.
    `paved delegation plan --run <id> --file <graph.yaml> --json`, bound to the approved
    plan digest. Include task dependencies, exact read/write paths, output contracts and
    model policy. Keep concurrent write scopes disjoint. Use
-   `paved delegation ready --run <id> --json` to see what can start. Paved validates
+   `paved delegation ready --run <id> --json` to see what can start. Show the complete
+   graph to the user and obtain explicit approval before `paved delegation approve
+   --run <id> --approve --json`; approval is tied to the immutable graph digest.
+   Start work only after approval. Paved validates
    and records the graph; the active host owns native agent/session creation and work.
    Use Claude Code's native subagents when available. In Codex, use native collaboration
    tools when available and account for delegated agents inheriting the parent model and
@@ -66,10 +69,21 @@ know which checks exist before promising any.
    lightest suitable options rather than assuming a fixed model catalog. Keep stronger
    capacity for ambiguity, architecture, difficult debugging and security-sensitive
    tasks. Treat requested reasoning effort as guidance if the host cannot honor it.
-   Record the actual host/model/effort with `paved delegation start`; after the host
+   Ask `paved delegation capabilities --host <claude-code|codex>` for host guidance.
+   Claude Code subagents support per-invocation model and effort selection; prefer
+   isolated worktrees for parallel edits. Codex routing and isolation depend on the
+   active host configuration. Host permissions remain authoritative. Start with
+   `--isolation shared-workspace` or `--isolation isolated-worktree`; shared-workspace
+   writers are serialized. Record the actual host/model/effort with
+   `paved delegation start`; after the host
    reports completion, save a concise result under
    `.paved/generated/delegation-results/<run-id>/` and use `paved delegation finish`
-   with the result path, outcome and available usage. Usage is host-reported, not
+   with the result path, outcome, each changed path via repeated `--changed-path`, and
+   available usage. Paved checks reported paths against exact write scopes; paths from
+   isolated worktrees remain host-reported and require primary-agent diff inspection.
+   For an interrupted session, verify it has stopped before
+   `paved delegation recover --run <id> --task <id> --confirmed-stopped --note <reason>`.
+   Recovery preserves the attempt and makes it retryable. Usage is host-reported, not
    independently verified. Never store prompts, credentials or raw session ids. Keep
    short, tightly dependent or shared-file tasks in the primary session when startup
    and coordination cost exceeds the likely time saved.

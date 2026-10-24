@@ -13,7 +13,8 @@ export interface Gate { id: string; status: string; reason?: string; requested_a
 export interface Failure { code: string; phase: string; reason: string; retry: string; next_action: string }
 export interface Phase { phase: string; status: PhaseStatus; attempts?: number; gates?: Gate[]; failure?: Failure }
 export interface RunEvent { at: string; type: string; phase?: string; ref?: string; detail?: string }
-export interface DelegationRef { path: string; sha256: string; plan_sha256: string }
+export interface DelegationApproval { graph_sha256: string; decided_by: string; decided_at: string }
+export interface DelegationRef { path: string; sha256: string; plan_sha256: string; approval?: DelegationApproval }
 export interface RunInput { id: string; value: string; source: "human" | "ticket" | "repository" }
 export interface Classification { workflow?: string; because?: string; decided_by?: "agent" | "human"; decision?: string; parts?: string[] }
 export interface Run {

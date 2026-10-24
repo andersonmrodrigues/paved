@@ -5,6 +5,14 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- Human approval bound to the immutable delegation graph, serialized shared-workspace
+  writers, host-reported changed-path checks, interrupted-session recovery, and
+  host-specific Claude Code/Codex capability guidance.
+- A reproducible paired evaluation protocol comparing sequential and delegated task
+  quality, token usage, cost and latency.
+
 ## [2.11.0] - 2026-10-23
 
 ### Added
