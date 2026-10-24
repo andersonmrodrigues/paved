@@ -26,6 +26,8 @@
   "files": [
     "adapters/",
     "cli/",
+    "cli/analyze-delegation-evaluation.mjs",
+    "cli/analyze-delegation-evaluation.d.mts",
     "core/",
     "generators/",
     "integrations/",
@@ -43,6 +45,7 @@
     "build": "rm -rf cli/build && tsc -p tsconfig.build.json",
     "build:plugin": "node plugins/build.ts",
     "check:plugin": "node plugins/build.ts --check",
+    "benchmark:delegation": "node cli/analyze-delegation-evaluation.mjs",
     "package:openai": "node plugins/package-openai.ts",
     "prepack": "npm run build",
     "pretest": "npm run build",

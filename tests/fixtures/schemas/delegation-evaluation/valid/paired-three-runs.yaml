@@ -1,0 +1,12 @@
+schema_version: 1
+scenario_id: synthetic-example
+repository_revision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+host: codex
+host_version: synthetic fixture, not a measured host run
+measurements:
+  - { strategy: sequential, repetition: 1, model: synthetic-model, effort: medium, success: true, acceptance_passed: 4, acceptance_total: 4, input_tokens: 1000, output_tokens: 300, reasoning_tokens: 120, cost_usd: 0.08, duration_ms: 12000, retries: 0, evidence: synthetic/seq-1.md }
+  - { strategy: delegated, repetition: 1, model: synthetic-model, effort: medium, success: true, acceptance_passed: 4, acceptance_total: 4, input_tokens: 900, output_tokens: 280, reasoning_tokens: 100, cost_usd: 0.07, duration_ms: 8000, retries: 0, evidence: synthetic/del-1.md }
+  - { strategy: sequential, repetition: 2, model: synthetic-model, effort: medium, success: true, acceptance_passed: 3, acceptance_total: 4, input_tokens: 1100, output_tokens: 320, reasoning_tokens: 140, cost_usd: 0.09, duration_ms: 13000, retries: 0, evidence: synthetic/seq-2.md }
+  - { strategy: delegated, repetition: 2, model: synthetic-model, effort: medium, success: true, acceptance_passed: 4, acceptance_total: 4, input_tokens: 950, output_tokens: 290, reasoning_tokens: 110, cost_usd: 0.075, duration_ms: 9000, retries: 0, evidence: synthetic/del-2.md }
+  - { strategy: sequential, repetition: 3, model: synthetic-model, effort: medium, success: true, acceptance_passed: 4, acceptance_total: 4, input_tokens: 1050, output_tokens: 310, reasoning_tokens: 130, cost_usd: 0.085, duration_ms: 12500, retries: 0, evidence: synthetic/seq-3.md }
+  - { strategy: delegated, repetition: 3, model: synthetic-model, effort: medium, success: true, acceptance_passed: 4, acceptance_total: 4, input_tokens: 920, output_tokens: 285, reasoning_tokens: 105, cost_usd: 0.072, duration_ms: 8500, retries: 0, evidence: synthetic/del-3.md }

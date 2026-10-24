@@ -41,6 +41,7 @@ schemas:
 schema_definitions:
   - schemas/common.schema.yaml
   - schemas/provenance.schema.yaml
+  - schemas/delegation-evaluation.schema.yaml
 
 content:
   instructions: core/instructions

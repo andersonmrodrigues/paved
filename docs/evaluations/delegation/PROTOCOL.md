@@ -21,14 +21,24 @@ the active Claude Code or Codex host and label it as host-reported.
 
 ## Measurement record
 
-Keep one row per scenario, strategy and repetition with: scenario id, strategy
-(`sequential` or `delegated`), repetition, success, quality checks passed/total,
-input/output/reasoning tokens, cost, duration, retries, host, model, effort, revision,
-and evidence. Preserve raw rows alongside the summary so the comparison can be rerun.
+Store measurements as YAML validated by `schemas/delegation-evaluation.schema.yaml`.
+Pin the scenario id, repository revision, host and host version at the top level. Add
+one row per strategy and repetition with the selected model and effort, success,
+acceptance checks passed/total, input/output tokens, duration, retries and an evidence
+reference. Include reasoning tokens and cost when the host reports them; omit them when
+unavailable. Include coordinator and every worker in the delegated row totals. Preserve
+the raw rows and referenced evidence so the summary can be rerun.
+
+Run `npm run benchmark:delegation -- <evaluation.yaml>` to validate paired repetitions
+and print JSON with strategy medians, success and acceptance ratios, and paired median
+percentage changes for duration, input/output tokens, reasoning tokens, cost and retries.
+Negative efficiency deltas mean the delegated strategy used less. Missing metrics are
+reported as unavailable, not estimated. The checked-in fixture is synthetic test data,
+not a measured benchmark result.
 
 ## Decision rule
 
-Delegation is a win only when acceptance quality is not lower and at least one target
-(latency or cost) improves across paired medians. Treat token usage as a separate
+Delegation is a win only when success rate and acceptance quality are not lower and at
+least one target (latency or cost) improves across paired medians. Treat token usage as a separate
 efficiency measure. If quality falls, measurements are not paired, or host usage is
 missing, do not claim an overall win. Repeat after material host/model changes.
