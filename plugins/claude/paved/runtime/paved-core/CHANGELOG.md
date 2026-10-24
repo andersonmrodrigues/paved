@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.14.0] - 2026-10-24
+
 ### Added
 
 - During initialization, create a project-local app verification skill and feature map
