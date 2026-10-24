@@ -9,8 +9,10 @@ without saying so, and then wrote "all tests pass" without having run them. None
 is a model problem you can prompt away. It's a process problem, so I wrote the process
 down and made the agent go through it.
 
-In practice Paved is a TypeScript CLI plus a plugin for each agent. The plugin gives the
-agent skills and commands; the CLI decides what is allowed and records what happened.
+In practice Paved is a TypeScript CLI plus a plugin for each agent. The plugin guides the
+agent through Paved's workflow; the project-local CLI validates workflow transitions and
+declared checks, and records the evidence it observes. The host agent still controls its
+own tool permissions.
 
 ## What it does
 
@@ -43,8 +45,9 @@ The parts I care most about:
 - Human decisions stay human. An approval records who made it, a run refuses to go on
   when the run and the approval record disagree, and changing an approved plan needs a
   new approval.
-- Everything lives in the repository under `.paved/`, so runs can be resumed, reviewed
-  and versioned with the code.
+- Paved keeps its workflow documents and state under `.paved/`, so work can be resumed
+  and inspected. Durable project context and plans can be reviewed and committed with
+  the code; generated run records and local evidence are disposable and can be regenerated.
 
 Paved doesn't make the code correct. It makes it much harder for an agent to skip steps
 quietly, and easy to see afterwards what was actually checked and what wasn't.
@@ -68,8 +71,17 @@ codex plugin add paved@paved
 In Cursor: **Customize → Plugins → From GitHub Repository**, import
 `https://github.com/andersonmrodrigues/paved` and install Paved.
 
-Then, inside the repository you want to work on, run `/paved:init` in Claude Code
-(`paved:init` in Codex, `/init` in Cursor), and start a change with `intent`.
+Then, inside the repository you want to work on, initialize Paved and start a change:
+
+```text
+Claude Code: /paved:init, then /paved:execute Add a health check endpoint
+Codex:       paved:init, then paved:execute Add a health check endpoint
+Cursor:      /init, then /execute Add a health check endpoint
+```
+
+`execute` initializes Paved when needed, prepares a plan and asks for your approval
+before implementation. You can also run the steps separately with `intent`, `plan` and
+`execute`; see the [command reference](docs/concepts/agent-commands.md).
 
 The plugin carries its own runtime and installs it under `.paved/runtime/`, so nothing is
 added to your application's dependencies. The [installation guide](docs/getting-started/installing-the-plugin.md)
@@ -107,8 +119,9 @@ with it, where a few runs got stuck in ways the tests hadn't covered.
 ## Status
 
 It's a personal project, used by me and not much tested outside my own repositories.
-The plugins are installed straight from this repository; Paved isn't in any public plugin
-directory and isn't published to npm. Changes are listed in the [changelog](CHANGELOG.md).
+You can install the plugins from this GitHub repository as a marketplace source. Paved
+isn't listed in the hosts' built-in public plugin directories, and `paved-core` isn't
+published to npm. Changes are listed in the [changelog](CHANGELOG.md).
 
 If you want to try it or poke at the code, [CONTRIBUTING.md](CONTRIBUTING.md) has the
 setup. Issues and pull requests are welcome.

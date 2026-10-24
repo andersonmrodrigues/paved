@@ -28,7 +28,7 @@ All Core skills are `experimental`.
 
 | Category | Skill | Version | Purpose |
 |---|---|---|---|
-| `bootstrap` | `repository-onboarding` | 0.3.1 | Set up or repair Paved in a repository |
+| `bootstrap` | `repository-onboarding` | 0.4.0 | Set up Paved and offer project-local app verification |
 | `discovery` | `context-discovery` | 0.3.2 | Understand a repository or the part a task touches |
 | `development` | `feature-development` | 0.6.0 | Add or change behavior |
 | | `frontend-design` | 0.1.1 | Plan and critique user-facing frontend interfaces |
@@ -39,7 +39,8 @@ All Core skills are `experimental`.
 | | `runtime-debugging` | 0.1.1 | Observe a running system safely |
 | `testing` | `unit-testing` | 0.1.1 | Isolated tests for local logic |
 | | `integration-testing` | 0.1.1 | Tests across real boundaries |
-| | `e2e-testing` | 0.1.1 | Tests of critical user-visible flows |
+| | `app-verification` | 0.1.0 | Create or maintain a project-local user-facing verification skill |
+| | `e2e-testing` | 0.2.0 | Tests of critical user-visible flows using the project's verification guide |
 | | `regression-testing` | 0.2.1 | A test that fails before a fix and passes after |
 | `performance` | `profiling` | 0.2.1 | Measure, locate the bottleneck, change one thing |
 | | `backend-performance` | 0.1.1 | Server-side latency, data access, caching, concurrency |

@@ -1,0 +1,19 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.testing.app-verification
+version: 0.1.0
+status: experimental
+category: testing
+context:
+  required: [manifest, verification]
+  optional: [feature-map, product, technology]
+tools:
+  optional: [core.runtime.start, core.runtime.inspect, core.runtime.stop, core.browser.interact]
+rules: [core.quality.unknowns-stay-unknown]
+depends_on:
+  optional: [core.discovery.context-discovery]
+verification:
+  required: [runtime]
+evidence:
+  required: [check-result, diff]
+references: [references/project-skill-layout.md]

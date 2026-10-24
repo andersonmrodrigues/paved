@@ -1,0 +1,107 @@
+---
+name: app-verification
+description: >-
+  Create or maintain a project-local skill and feature map for exercising user-visible
+  behavior through the repository's existing verification tools. Use when setting up Paved
+  in a repository with a runnable application, or when its verification guide is missing
+  or stale.
+---
+
+# Application verification
+
+## When to use
+
+Create a project-specific verification skill during Paved initialization when repository
+evidence shows a runnable user-facing application or command-line interface, when a
+person asks for one, or when an existing guide needs an update. This skill records how to
+reach user-visible behavior and what observable result proves it.
+
+## Required context
+
+Read the verification profile and the repository's own files. Use the feature map,
+product context and technology context when they help locate behavior or its entry
+points. Treat unconfirmed facts as unknown.
+
+## Preconditions
+
+- Paved is initializing the repository, or the user asked to create or update the guide.
+- Paved is initialized and the working tree is known.
+- The repository has a runnable user-facing application or command-line interface.
+
+If the repository has no such interface, explain that and stop.
+
+## Procedure
+
+1. Inspect project documentation, configuration, routes or commands, tests and the
+   `.paved/project/feature-map/`. Identify a small first set of three to five important
+   user-visible features; include all features when the interface is smaller. Cite the
+   repository paths that establish each entry point. Use `context-discovery` when those
+   sources do not explain where a user-visible flow starts.
+2. Find the exact existing launch, readiness, interaction, evidence and cleanup methods.
+   Prefer configured verification checks and project Tool implementations. Resolve each
+   Tool and check its permissions, environment and preconditions before use. The optional
+   `core.runtime.start`, `core.runtime.inspect`, `core.runtime.stop` and
+   `core.browser.interact` Tools may help when compatible implementations are available.
+   Never invent a command, use a production environment, or use personal data.
+3. Create a project skill under `.paved/skills/verify-<app>/` with `SKILL.md`, `skill.yaml`
+   and `references/features.md`. Use the output structure in
+   `references/project-skill-layout.md`. Keep the skill and map project-owned; do not
+   replace an existing human-edited guide. If a matching guide already exists, propose
+   specific edits and preserve unrelated content.
+4. Mark each claim in the feature map as `observed` only when supported by source or
+   documentation; otherwise leave it unknown. For launch and interaction instructions,
+   distinguish commands found in project configuration from behavior actually exercised.
+5. If an existing configured check or Tool can safely exercise the app, verify one
+   representative feature end to end, capture its result and clean up only resources
+   this run created. Do not change application code to make the guide pass. If no usable
+   harness exists, leave the skill explicitly marked as a draft and name the missing
+   capability; never claim live verification.
+6. Check the generated files against the Paved skill contract and confirm the selected
+   check passed before calling the guide ready. Summarize the mapped features, evidence,
+   unknowns and any draft limitation.
+
+## Tools
+
+Use configured verification checks and selected project Tool implementations. The
+optional `core.runtime.start`, `core.runtime.inspect`, `core.runtime.stop` and
+`core.browser.interact` Tools are usable only when their bindings resolve and their
+policies allow the intended local or ephemeral run. Without a usable implementation,
+write a draft guide and state what is missing; do not run a guessed command.
+
+## Rules
+
+Follow `core.quality.unknowns-stay-unknown` and the Core instruction's Tool execution
+boundary. Treat a guide as instructions, not evidence that its steps passed.
+
+## Verification
+
+Require a `runtime` check when a configured harness can exercise the application. If no
+runtime check or compatible Tool exists, the guide remains a draft and the verification
+gap is reported.
+
+## Evidence
+
+Include the diff and the result of one exercised feature when a usable harness exists.
+Attach the captured runtime artifact or check result. A draft records the missing
+capability instead of claiming a pass.
+
+## Completion criteria
+
+- The project skill and feature map follow the referenced layout and preserve existing
+  human-owned content.
+- Every mapped entry point and result is grounded in repository evidence.
+- One feature has a captured runtime result, or the guide is clearly marked as a draft
+  with the missing capability recorded.
+
+## Failure modes
+
+| Failure | Signal | Response |
+|---|---|---|
+| Guessed instructions | A command or route has no source in project files or configuration | Remove it or ask the user |
+| No safe runtime path | No configured check or Tool can exercise the interface | Leave a draft and name the missing harness |
+| Stale guide | A documented path no longer matches the source | Update only that claim and recheck it |
+| Shared or sensitive state | A run would use production or personal data | Stop; ask for a safe local or ephemeral environment |
+
+## References
+
+- [references/project-skill-layout.md](references/project-skill-layout.md): the generated skill and feature-map contract.

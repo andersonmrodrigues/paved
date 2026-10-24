@@ -59,13 +59,13 @@ describe("core skills", () => {
     assert.equal(new Set(names).size, names.length);
   });
 
-  it("expose 30 goal-and-trigger descriptions to Claude", () => {
+  it("expose 31 goal-and-trigger descriptions to Claude", () => {
     const catalog = [
       ...skills.map((skill) => ({ name: skill.name, description: skill.files.description })),
       ...AGENT_COMMANDS.map((command) => ({ name: command.name, description: command.description })),
     ];
-    assert.equal(catalog.length, 30);
-    assert.equal(new Set(catalog.map((entry) => entry.name)).size, 30);
+    assert.equal(catalog.length, 31);
+    assert.equal(new Set(catalog.map((entry) => entry.name)).size, 31);
     for (const { name, description } of catalog) {
       assert.ok(description.length > 0 && description.length <= 1024, `${name}: description length`);
       assert.match(description, /\buse when\b/i, `${name}: name the activation condition with “Use when …”`);
@@ -85,6 +85,18 @@ describe("core skills", () => {
     assert.ok(body);
     assert.match(body, /technology-specific code[\s\S]*selected\s+adapter[\s\S]*pinned Core runtime/i);
     assert.match(body, /unselected technology/i);
+  });
+
+  it("creates project verification guides during init and preserves runtime evidence limits", () => {
+    const appVerification = skills.find((skill) => skill.name === "app-verification")?.files.body;
+    const e2e = skills.find((skill) => skill.name === "e2e-testing")?.files.body;
+    assert.ok(appVerification);
+    assert.match(appVerification, /during Paved initialization/);
+    assert.match(appVerification, /never claim live verification/);
+    assert.match(appVerification, /explicitly marked as a draft/);
+    assert.ok(e2e);
+    assert.match(e2e, /project-local verification guide/);
+    assert.match(e2e, /`.paved\/skills\/`/);
   });
 
   it("form an acyclic dependency graph", () => {

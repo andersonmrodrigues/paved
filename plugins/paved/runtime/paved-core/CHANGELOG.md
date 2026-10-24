@@ -5,6 +5,12 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- During initialization, create a project-local app verification skill and feature map
+  when repository evidence shows a runnable application or CLI; live evidence is still
+  required before the guide is marked ready.
+
 ## [2.13.0] - 2026-10-24
 
 ### Added
