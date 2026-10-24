@@ -5,6 +5,15 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- Optional task-level harness experiments in approved delegation graphs: one baseline
+  and up to two isolated candidates, with equivalent scopes and explicit change rationale.
+- A reusable harness-refinement procedure that compares quality before reported cost,
+  token use and duration, and treats incomplete comparisons as inconclusive.
+- A local paired-run analyzer for task-level harness evaluations, with independent-review
+  and acceptance-check requirements before recommending an efficiency variant.
+
 ## [2.14.0] - 2026-10-24
 
 ### Added

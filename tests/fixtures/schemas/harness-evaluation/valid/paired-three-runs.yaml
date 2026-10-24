@@ -1,0 +1,79 @@
+apiVersion: paved/v1
+kind: HarnessEvaluation
+id: task-probe
+repository_revision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+host: codex
+host_version: 1.0.0
+acceptance_criteria: [behavior, regression]
+variants:
+  - task_id: baseline
+    role: baseline
+    changes: []
+    measurements:
+      - repetition: 1
+        model: codex-model
+        effort: high
+        checks: { behavior: true, regression: true }
+        review: accepted
+        reviewer: reviewer-1
+        evidence: .paved/verification/evidence/run-1.yaml
+        input_tokens: 100
+        output_tokens: 10
+        duration_ms: 100
+      - repetition: 2
+        model: codex-model
+        effort: high
+        checks: { behavior: true, regression: true }
+        review: accepted
+        reviewer: reviewer-1
+        evidence: .paved/verification/evidence/run-2.yaml
+        input_tokens: 100
+        output_tokens: 10
+        duration_ms: 110
+      - repetition: 3
+        model: codex-model
+        effort: high
+        checks: { behavior: true, regression: true }
+        review: accepted
+        reviewer: reviewer-1
+        evidence: .paved/verification/evidence/run-3.yaml
+        input_tokens: 100
+        output_tokens: 10
+        duration_ms: 90
+  - task_id: focused-prompt
+    role: candidate
+    changes:
+      - id: focused-brief
+        target: prompt
+        rationale: Clarify required output and acceptance boundary.
+    measurements:
+      - repetition: 1
+        model: codex-model
+        effort: high
+        checks: { behavior: true, regression: true }
+        review: accepted
+        reviewer: reviewer-2
+        evidence: .paved/verification/evidence/candidate-1.yaml
+        input_tokens: 80
+        output_tokens: 10
+        duration_ms: 80
+      - repetition: 2
+        model: codex-model
+        effort: high
+        checks: { behavior: true, regression: true }
+        review: accepted
+        reviewer: reviewer-2
+        evidence: .paved/verification/evidence/candidate-2.yaml
+        input_tokens: 80
+        output_tokens: 10
+        duration_ms: 90
+      - repetition: 3
+        model: codex-model
+        effort: high
+        checks: { behavior: true, regression: true }
+        review: accepted
+        reviewer: reviewer-2
+        evidence: .paved/verification/evidence/candidate-3.yaml
+        input_tokens: 80
+        output_tokens: 10
+        duration_ms: 70

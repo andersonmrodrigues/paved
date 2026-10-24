@@ -18,6 +18,7 @@ schemas:
   Workflow: schemas/workflow.schema.yaml
   WorkflowRun: schemas/workflow-run.schema.yaml
   DelegationPlan: schemas/delegation-plan.schema.yaml
+  HarnessEvaluation: schemas/harness-evaluation.schema.yaml
   Tool: schemas/tool.schema.yaml
   ToolImplementation: schemas/tool-implementation.schema.yaml
   Evidence: schemas/evidence.schema.yaml
@@ -265,6 +266,12 @@ consumer_layout:
     description: >
       Concise host-reported result notes for delegation tasks. Their digests are recorded
       in the matching delegation plan; they are reports, not verification evidence.
+  - path: .paved/generated/harness-evaluations/
+    ownership: disposable
+    required: false
+    committed: false
+    schema: HarnessEvaluation
+    description: Paired baseline and candidate task measurements for the local harness evaluator; reported usage is host-provided.
   - path: .paved/generated/evidence/
     ownership: disposable
     required: false

@@ -1,0 +1,22 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.testing.harness-refinement
+version: 0.1.0
+status: experimental
+category: testing
+context:
+  required: [manifest, verification]
+  optional: [rules, feature-map]
+tools:
+  required: [core.repository.diff]
+  optional: []
+rules: []
+depends_on:
+  required: [core.development.feature-development]
+  optional: [core.testing.regression-testing, core.code-review.change-review]
+verification:
+  required: [unit]
+  recommended: [static-analysis]
+evidence:
+  required: [check-result, review]
+references: []
