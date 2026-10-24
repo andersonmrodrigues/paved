@@ -1,0 +1,37 @@
+# expect-error: must NOT have fewer than 1 items
+apiVersion: paved/v1
+kind: HarnessEvaluation
+id: task-probe
+repository_revision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+host: codex
+host_version: 1.0.0
+acceptance_criteria: [behavior]
+variants:
+  - task_id: baseline
+    role: baseline
+    changes: []
+    measurements:
+      - repetition: 1
+        model: codex-model
+        effort: high
+        checks: { behavior: true }
+        review: accepted
+        reviewer: reviewer
+        evidence: .paved/verification/evidence/base.yaml
+        input_tokens: 100
+        output_tokens: 10
+        duration_ms: 100
+  - task_id: candidate
+    role: candidate
+    changes: []
+    measurements:
+      - repetition: 1
+        model: codex-model
+        effort: high
+        checks: { behavior: true }
+        review: accepted
+        reviewer: reviewer
+        evidence: .paved/verification/evidence/candidate.yaml
+        input_tokens: 90
+        output_tokens: 10
+        duration_ms: 90

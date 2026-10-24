@@ -134,6 +134,8 @@ export function delegationHandler(invocation) {
         if (operation === "start") {
             if (!run.delegation?.approval || run.delegation.approval.graph_sha256 !== delegationSpecDigest(graph))
                 throw new Error("This exact delegation graph has not been explicitly approved by the user.");
+            if (task.experiment && invocation.flags.isolation !== "isolated-worktree")
+                throw new Error(`Experiment task ${task.id} must use --isolation isolated-worktree so candidates cannot contaminate one another.`);
             const { host, model, effort } = invocation.flags;
             if (host !== "codex" && host !== "claude-code")
                 throw new Error("start requires --host codex or --host claude-code.");

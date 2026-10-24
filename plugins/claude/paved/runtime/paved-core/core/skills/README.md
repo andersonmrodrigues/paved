@@ -42,6 +42,7 @@ All Core skills are `experimental`.
 | | `app-verification` | 0.1.0 | Create or maintain a project-local user-facing verification skill |
 | | `e2e-testing` | 0.2.0 | Tests of critical user-visible flows using the project's verification guide |
 | | `regression-testing` | 0.2.1 | A test that fails before a fix and passes after |
+| | `harness-refinement` | 0.1.0 | Compare bounded alternative harness configurations using isolated runs and evidence |
 | `performance` | `profiling` | 0.2.1 | Measure, locate the bottleneck, change one thing |
 | | `backend-performance` | 0.1.1 | Server-side latency, data access, caching, concurrency |
 | | `frontend-performance` | 0.1.1 | Perceived load time, responsiveness, payload size |

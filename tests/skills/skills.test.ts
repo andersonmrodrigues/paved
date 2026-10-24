@@ -59,13 +59,13 @@ describe("core skills", () => {
     assert.equal(new Set(names).size, names.length);
   });
 
-  it("expose 31 goal-and-trigger descriptions to Claude", () => {
+  it("expose 32 goal-and-trigger descriptions to Claude", () => {
     const catalog = [
       ...skills.map((skill) => ({ name: skill.name, description: skill.files.description })),
       ...AGENT_COMMANDS.map((command) => ({ name: command.name, description: command.description })),
     ];
-    assert.equal(catalog.length, 31);
-    assert.equal(new Set(catalog.map((entry) => entry.name)).size, 31);
+    assert.equal(catalog.length, 32);
+    assert.equal(new Set(catalog.map((entry) => entry.name)).size, 32);
     for (const { name, description } of catalog) {
       assert.ok(description.length > 0 && description.length <= 1024, `${name}: description length`);
       assert.match(description, /\buse when\b/i, `${name}: name the activation condition with “Use when …”`);

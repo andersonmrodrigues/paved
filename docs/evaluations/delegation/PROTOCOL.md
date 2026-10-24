@@ -36,6 +36,12 @@ Negative efficiency deltas mean the delegated strategy used less. Missing metric
 reported as unavailable, not estimated. The checked-in fixture is synthetic test data,
 not a measured benchmark result.
 
+For task-level harness variants, use the `HarnessEvaluation` format and run
+`npm run benchmark:harness -- <evaluation.yaml>`. It requires at least three paired
+repetitions, identical model and effort, shared acceptance criteria, and accepted
+independent review. Its recommendation preserves the baseline on quality regressions,
+unpaired data, or metric ties. The harness evaluation fixture is also synthetic.
+
 ## Decision rule
 
 Delegation is a win only when success rate and acceptance quality are not lower and at

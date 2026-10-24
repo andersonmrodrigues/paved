@@ -42,4 +42,28 @@ describe("delegation plans", () => {
     state.tasks[0]!.write_paths = [".paved/generated/runs/run.yaml"];
     assert.throws(() => validateDelegationPlan(at("."), state), /Paved run state/);
   });
+
+  it("validates bounded experiment alternatives with identical scope", () => {
+    const graph = plan();
+    const base = graph.tasks[1]!;
+    base.depends_on = [];
+    graph.tasks = [
+      { ...base, id: "baseline", experiment: { group: "probe", role: "baseline" } },
+      { ...base, id: "candidate-a", experiment: { group: "probe", role: "candidate", changes: [{ id: "prompt-tightening", target: "prompt", rationale: "Clarify the output boundary" }] } },
+    ];
+    validateDelegationPlan(at("."), graph);
+    graph.tasks[1]!.write_paths = ["docs/new.md"];
+    assert.throws(() => validateDelegationPlan(at("."), graph), /share dependencies and read\/write scopes/);
+  });
+
+  it("rejects experiment groups without exactly one baseline and a candidate", () => {
+    const graph = plan();
+    const base = graph.tasks[1]!;
+    base.depends_on = [];
+    graph.tasks = [
+      { ...base, id: "candidate-a", experiment: { group: "probe", role: "candidate", changes: [{ id: "variant", target: "skill", rationale: "Try a focused procedure" }] } },
+      { ...base, id: "candidate-b", experiment: { group: "probe", role: "candidate", changes: [{ id: "variant-2", target: "skill", rationale: "Try another focused procedure" }] } },
+    ];
+    assert.throws(() => validateDelegationPlan(at("."), graph), /exactly one baseline/);
+  });
 });

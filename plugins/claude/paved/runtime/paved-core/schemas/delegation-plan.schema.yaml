@@ -57,6 +57,9 @@ $defs:
             description: Requested reasoning budget; the host may report that it cannot honor this value.
             enum: [low, medium, high]
           rationale: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      experiment:
+        description: Optional baseline/candidate group for task-level harness experiments. Group members are alternatives, not tasks to combine.
+        $ref: "#/$defs/experiment"
       status: { enum: [pending, running, completed, blocked, failed] }
       attempts:
         type: array
@@ -73,6 +76,36 @@ $defs:
         type: array
         uniqueItems: true
         items: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+    allOf:
+      - if:
+          properties: { experiment: { type: object, properties: { role: { const: baseline } }, required: [role] } }
+          required: [experiment]
+        then:
+          properties: { experiment: { type: object, properties: { changes: { type: array, maxItems: 0 } } } }
+      - if:
+          properties: { experiment: { type: object, properties: { role: { const: candidate } }, required: [role] } }
+          required: [experiment]
+        then:
+          properties: { experiment: { type: object, required: [changes], properties: { changes: { type: array, minItems: 1 } } } }
+  experiment:
+    type: object
+    additionalProperties: false
+    required: [group, role]
+    properties:
+      group: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+      role: { enum: [baseline, candidate] }
+      changes:
+        type: array
+        maxItems: 8
+        items: { $ref: "#/$defs/harnessChange" }
+  harnessChange:
+    type: object
+    additionalProperties: false
+    required: [id, target, rationale]
+    properties:
+      id: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+      target: { enum: [prompt, guardrail, memory, tool-guidance, subagent, skill, script, plugin] }
+      rationale: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
   attempt:
     type: object
     additionalProperties: false

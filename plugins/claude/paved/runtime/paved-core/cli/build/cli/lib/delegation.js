@@ -13,7 +13,7 @@ export function digest(bytes) {
 }
 export function delegationSpecDigest(graph) {
     return digest(JSON.stringify({ run: graph.run, id: graph.id, plan_sha256: graph.plan_sha256, max_concurrency: graph.max_concurrency,
-        tasks: graph.tasks.map(({ id, title, brief, depends_on, read_paths, write_paths, output_contract, model_policy }) => ({ id, title, brief, depends_on, read_paths, write_paths, output_contract, model_policy })) }));
+        tasks: graph.tasks.map(({ id, title, brief, depends_on, read_paths, write_paths, output_contract, model_policy, experiment }) => ({ id, title, brief, depends_on, read_paths, write_paths, output_contract, model_policy, experiment })) }));
 }
 export function workspaceSnapshot(projectRoot) {
     const output = execFileSync("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames"], { cwd: projectRoot, encoding: "buffer" });
@@ -66,6 +66,24 @@ export function validateDelegationPlan(coreRoot, plan) {
             }
         }
     }
+    const experimentGroups = new Map();
+    for (const task of graph.tasks)
+        if (task.experiment)
+            experimentGroups.set(task.experiment.group, [...(experimentGroups.get(task.experiment.group) ?? []), task]);
+    for (const [group, members] of experimentGroups) {
+        if (members.length < 2 || members.length > 3)
+            throw new Error(`Experiment group ${group} must contain one baseline and one or two candidates.`);
+        if (members.filter((task) => task.experiment.role === "baseline").length !== 1 || members.some((task) => task.experiment.role === "candidate") === false)
+            throw new Error(`Experiment group ${group} must contain exactly one baseline and at least one candidate.`);
+        const baseline = members.find((task) => task.experiment.role === "baseline");
+        for (const member of members) {
+            if (member.id !== baseline.id && (JSON.stringify(member.depends_on) !== JSON.stringify(baseline.depends_on) || JSON.stringify(member.read_paths) !== JSON.stringify(baseline.read_paths) || JSON.stringify(member.write_paths) !== JSON.stringify(baseline.write_paths)))
+                throw new Error(`Experiment group ${group} members must share dependencies and read/write scopes.`);
+        }
+        for (const task of graph.tasks)
+            if (!members.includes(task) && task.depends_on.some((id) => members.some((member) => member.id === id)))
+                throw new Error(`Task ${task.id} cannot depend on one alternative in experiment group ${group}.`);
+    }
     for (const task of graph.tasks) {
         for (const dependency of task.depends_on) {
             if (dependency === task.id)
@@ -96,7 +114,8 @@ export function validateDelegationPlan(coreRoot, plan) {
             if (ordered)
                 continue;
             const collision = left.write_paths.find((a) => right.write_paths.some((b) => pathsOverlap(a, b)));
-            if (collision)
+            const alternatives = left.experiment && right.experiment && left.experiment.group === right.experiment.group;
+            if (collision && !alternatives)
                 throw new Error(`Parallel delegation tasks ${left.id} and ${right.id} both write ${collision}; declare a dependency or split the write scope.`);
         }
     }
