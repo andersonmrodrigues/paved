@@ -5,6 +5,11 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- A schema-validated paired delegation evaluation dataset and CLI analyzer for
+  reproducible quality, latency, token, cost and retry comparisons.
+
 ## [2.12.1] - 2026-10-24
 
 ### Fixed
