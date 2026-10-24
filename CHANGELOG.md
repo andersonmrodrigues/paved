@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.12.0] - 2026-10-24
+
 ### Added
 
 - Human approval bound to the immutable delegation graph, serialized shared-workspace
