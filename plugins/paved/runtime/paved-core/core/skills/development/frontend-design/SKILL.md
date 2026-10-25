@@ -34,14 +34,27 @@ committing to a direction.
 3. In the workflow plan, record a compact direction for the relevant dimensions: visual
    hierarchy, color, type, spacing and layout, content, and interaction or motion. Tie each
    choice to the brief or project context; omit dimensions the task does not affect.
+   For a substantial interface or flow, make the direction concrete with named palette
+   colors, type roles, a layout concept, and a rough wireframe when it helps compare options.
+   Keep small changes proportional; do not create a design-system deliverable for a one-off fix.
 4. Review the direction against the user's goals and relevant UX principles before coding.
    Use the checklist in `references/ux-principles.md` to identify applicable principles,
    the concrete design choice they inform, and any tradeoff. Treat laws and heuristics as
    evidence-informed guides, not universal formulas; prioritize user research, accessibility,
-   product context and explicit user direction when they conflict.
-5. Implement with the project's existing components and conventions. Keep content useful
-   and specific to the task; do not add decoration or motion without a user-facing purpose.
-6. Inspect the rendered result at the relevant screen sizes and states. Check keyboard
+   product context and explicit user direction when they conflict. Check whether visual
+   choices are grounded in this product's subject, audience, and purpose, or are defaults
+   that could be pasted into an unrelated interface. Keep a familiar or fashionable choice
+   when the brief, evidence, or established system supports it; do not apply a blacklist of
+   styles as a substitute for judgment.
+5. Implement with the project's existing components and conventions. Write interface copy
+   from the user's perspective in clear, specific terms. Use active labels that name the
+   result of an action, keep terms consistent through a flow, and make errors and empty states
+   explain what happened or what the user can do next. Keep copy and decoration useful to the
+   task; do not add motion without a user-facing purpose.
+6. Inspect the rendered result at the relevant screen sizes and states. Review screenshots
+   or previews while refining when available. Reserve the strongest visual emphasis for
+   something important to the task, and remove or justify elements that compete with it or
+   add no meaning. Check keyboard
    operation, visible focus, readable contrast, and reduced-motion behavior. Use the
    project's visual review tools when available; otherwise report what could not be checked.
 7. Compare the result with the plan, refine mismatches, then run the applicable verification
@@ -77,8 +90,10 @@ the environment supports visual review. Explain any unverified screen size or st
 ## Completion criteria
 
 - The interface change addresses the stated user need and follows the approved design direction.
+- Substantial visual choices and interface copy are grounded in the product and user context.
 - Relevant responsive states and interaction/accessibility basics were checked, or their
   verification gaps are recorded.
+- The rendered result was critiqued and unnecessary visual noise was removed or justified.
 - Applicable tests and checks pass, and no unrelated visual changes remain.
 
 ## Failure modes
@@ -86,7 +101,9 @@ the environment supports visual review. Explain any unverified screen size or st
 | Failure | Signal | Response |
 |---|---|---|
 | Aesthetic direction is guessed | Purpose, audience or brand choices are unsupported | Read project context or ask the user before implementation |
+| A familiar template is used without a reason | Visual choices could be pasted into an unrelated product without changing their meaning | Ground the direction in the subject, audience and brief; retain familiar choices when context supports them |
 | Existing design system is bypassed | New styles or components duplicate established patterns | Reuse the existing system or document why the task needs a change |
+| Interface copy is vague or system-centered | Labels hide outcomes, terms change within a flow, or errors leave the user without a next step | Use user-facing language, name action outcomes, and make failure or empty states actionable |
 | Visual quality is claimed without review | No rendered view or interaction was inspected | Run available visual checks or report the gap |
 
 ## References

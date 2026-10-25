@@ -112,6 +112,17 @@ describe("core skills", () => {
     assert.match(catalog, /A checklist or a passing automated accessibility scan is not a usability test/i);
   });
 
+  it("grounds visual direction, interface copy, and self-critique in product context", () => {
+    const body = skills.find((skill) => skill.name === "frontend-design")?.files.body;
+    assert.ok(body);
+    assert.match(body, /substantial interface or flow[\s\S]*named palette[\s\S]*type roles[\s\S]*rough wireframe/i);
+    assert.match(body, /could be pasted into an unrelated interface/i);
+    assert.match(body, /do not apply a blacklist of\s+styles/i);
+    assert.match(body, /labels that name the[\s\S]*result of an action/i);
+    assert.match(body, /errors and empty states[\s\S]*what the user can do next/i);
+    assert.match(body, /review screenshots[\s\S]*remove or justify elements/i);
+  });
+
   it("form an acyclic dependency graph", () => {
     assert.deepEqual(dependencyCycles(skills.map((s) => s.files.contract)), []);
   });

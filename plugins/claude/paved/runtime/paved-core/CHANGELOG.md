@@ -5,6 +5,12 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Changed
+
+- The frontend-design skill now asks for concrete visual direction on substantial work,
+  checks for choices that lack product-specific rationale, guides clear and actionable
+  interface copy, and adds an explicit rendered-result critique.
+
 ## [2.15.1] - 2026-10-25
 
 ### Changed
