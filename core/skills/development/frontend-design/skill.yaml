@@ -1,7 +1,7 @@
 apiVersion: paved/v1
 kind: Skill
 id: core.development.frontend-design
-version: 0.1.1
+version: 0.1.2
 status: experimental
 category: development
 context:
@@ -20,3 +20,5 @@ verification:
   recommended: [build, static-analysis, e2e]
 evidence:
   required: [check-result, diff]
+references:
+  - references/ux-principles.md
