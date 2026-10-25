@@ -15,6 +15,19 @@ import { answeredProviders } from "./decisions/capability-answers.js";
 import { DecisionStoreError, listDecisions } from "./decisions/store.js";
 import { readActiveRuntimeSelection, readRuntimeSelection } from "./runtime-lock.js";
 import { planDocumentMigrations } from "./document-migrations.js";
+/**
+ * Source drift: generated context cites repository files that changed, or new relevant
+ * source files appeared. Ordinary development causes it, so it is reported and offered
+ * for regeneration but never moves the project to STALE; blocking on it would let the
+ * change Paved supervises disable Paved. Integrity problems (lock, Core, generator
+ * contract or manifest digests, missing outputs) still make the project STALE.
+ */
+export const CONTEXT_DRIFT_CODES = new Set([
+    "PAVED_GENERATED_SOURCE_STALE", "PAVED_GENERATOR_SOURCE_SET_STALE",
+]);
+export function hasContextDrift(inspection) {
+    return inspection.diagnostics.some((item) => CONTEXT_DRIFT_CODES.has(item.code));
+}
 function lifecycleState(input) {
     if (!input.hasManifest)
         return "UNINITIALIZED";
@@ -25,8 +38,7 @@ function lifecycleState(input) {
         item.code === "PAVED_LOCK_CORE_VERSION_MISMATCH" || item.code === "PAVED_ADAPTER_INCOMPATIBLE" ||
         item.code === "PAVED_LOCK_ADAPTER_VERSION_MISMATCH"))
         return "INCOMPATIBLE";
-    if (input.diagnostics.some((item) => item.code === "PAVED_GENERATED_SOURCE_STALE" ||
-        item.code === "PAVED_GENERATOR_INPUTS_STALE" || item.code === "PAVED_GENERATOR_SOURCE_SET_STALE" ||
+    if (input.diagnostics.some((item) => item.code === "PAVED_GENERATOR_INPUTS_STALE" ||
         item.code === "PAVED_GENERATED_OUTPUT_MISSING" ||
         item.code === "PAVED_LOCK_CORE_DIGEST_MISMATCH" || item.code === "PAVED_LOCK_ADAPTER_DIGEST_MISMATCH" ||
         item.code === "PAVED_LOCK_GENERATOR_DIGEST_MISMATCH" || item.code === "PAVED_LOCK_GENERATOR_VERSION_MISMATCH" ||
@@ -389,7 +401,7 @@ function inspectLastRun(projectRoot, coreRoot, evidence, diagnostics) {
                 if (currentPaths.some((path) => !cited.has(path))) {
                     diagnostics.push(diagnostic({ code: "PAVED_GENERATOR_SOURCE_SET_STALE", component: "consumer.generated", category: "findings",
                         message: `Generator ${execution.generator} has new relevant source evidence.`,
-                        remediation: "Review and regenerate the affected context." }));
+                        remediation: "Work is not blocked. Regenerate the context with paved update --json, or answer the repair decision from paved status." }));
                 }
             }
             if (Array.isArray(execution.proposals)) {
@@ -492,7 +504,7 @@ function inspectProvenanceObject(registry, projectRoot, document, body, path, di
                 component: "consumer.generated",
                 category: "findings",
                 message: `${path} cites a source file that is missing or whose digest has changed: ${entry.location}.`,
-                remediation: "Review whether the generated context is stale.",
+                remediation: "Work is not blocked. Regenerate the context with paved update --json, or answer the repair decision from paved status.",
             }));
         }
     }

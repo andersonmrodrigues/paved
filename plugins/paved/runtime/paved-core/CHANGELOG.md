@@ -5,6 +5,19 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Fixed
+
+- Source drift in generated project context (a cited file changed, or new relevant
+  sources appeared) no longer makes the project `STALE`, so `test`, `intent`, `plan` and
+  `execute` keep working during development. `status` reports it as
+  `generatedContext: drifted`, and a completed run regenerates the context. Lock, Core,
+  generator-input and missing-output problems still block work.
+- Regenerating generated context is a recoverable `context-regenerating` effect that a
+  user can answer in the conversation instead of authoring an approval file.
+- The context repair decision keeps its id while more cited files change, so an answer
+  is no longer lost when the findings grow; a regeneration or new evidence still asks
+  again. A skipped repair no longer fails `status` once its evidence changes.
+
 ## [2.15.2] - 2026-10-25
 
 ### Changed

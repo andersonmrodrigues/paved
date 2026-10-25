@@ -78,7 +78,9 @@ cannot lower its own requirements.
 
 `--answered-by` must be an identity supplied by the user. Reserved identities such as
 `agent`, `paved` and `ci` are rejected. A human-authored channel is used for irreversible
-repository mutations and destructive effects. Plan approval remains a separate
+repository mutations and destructive effects. Regenerating Paved-generated project
+context (`context-regenerating`) is recoverable: generators rebuild it from the repository
+and keep human edits as proposals, so a user can answer it in the conversation. Plan approval remains a separate
 human-authored gate tied to the plan digest.
 
 ## Answering and batching

@@ -114,6 +114,8 @@ describe("effect class tiering", () => {
   it("routes recoverable effects through the relayed channel", () => {
     assert.equal(tierFor("config-mutating").channel, "relayed");
     assert.equal(tierFor("lock-transaction").channel, "relayed");
+    assert.equal(tierFor("context-regenerating").channel, "relayed");
+    assert.equal(tierFor("context-regenerating").reversibility, "recoverable");
   });
 
   it("forces irreversible effects onto the human-authored channel", () => {

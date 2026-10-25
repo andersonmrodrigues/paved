@@ -6,7 +6,7 @@ import { afterEach, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse, stringify } from "yaml";
 import { initializeConsumer, runGenerators } from "../../cli/lib/generator-runtime.ts";
-import { inspectConsumer } from "../../cli/lib/consumer-state.ts";
+import { hasContextDrift, inspectConsumer } from "../../cli/lib/consumer-state.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
 import type { CommandResult } from "../../cli/result.ts";
 import { cleanupTemporaryDirectories, temporaryDirectory } from "../helpers.ts";
@@ -148,6 +148,24 @@ describe("delivering an approved plan", () => {
 
     const completed = await reviewClean(root, id, invoke, delivered);
     assert.equal(runState(root, id).status, "completed", JSON.stringify(completed));
+  });
+
+  it("delivers a change to files that generated context cites and regenerates that context at completion", async () => {
+    const root = project(false);
+    runGenerators(core, root);
+    commitAll(root, "base");
+    const { id, invoke } = await approvedRun(root);
+    write(root, "feature.js", "export const enabled = true;\n");
+    write(root, "README.md", "# Consumer\n\nThe behavior is enabled.\n");
+    assert.equal(hasContextDrift(inspectConsumer({ projectRoot: root, coreRoot: core })), true);
+
+    const delivered = await invoke("execute", "--run", id, "--auto", "--note", "Enabled the behavior");
+    assert.equal((delivered.data as { currentPhase: string }).currentPhase, "review", JSON.stringify(delivered));
+    const completed = await reviewClean(root, id, invoke, delivered);
+
+    assert.equal(runState(root, id).status, "completed", JSON.stringify(completed));
+    assert.equal((completed.data as { contextRefreshed?: boolean }).contextRefreshed, true, JSON.stringify(completed));
+    assert.equal(hasContextDrift(inspectConsumer({ projectRoot: root, coreRoot: core })), false);
   });
 
   it("accepts work that already exists once the user confirms it", async () => {
@@ -397,14 +415,14 @@ describe("starting work with execute", () => {
     const root = project();
     runGenerators(core, root);
     write(root, "README.md", "# Consumer, changed\n");
-    assert.equal(inspectConsumer({ projectRoot: root, coreRoot: core }).lifecycleState, "STALE");
+    assert.equal(hasContextDrift(inspectConsumer({ projectRoot: root, coreRoot: core })), true);
 
     const started = await dispatchCli({ argv: ["execute", "Enable the behavior", "--workflow", "feature", "--because", "New behavior.", "--project", root, "--json"] });
 
     assert.equal(started.status, "success", JSON.stringify(started));
     assert.equal((started.data as { updated?: boolean }).updated, true);
     assert.ok((started.data as { run?: string }).run);
-    assert.notEqual(inspectConsumer({ projectRoot: root, coreRoot: core }).lifecycleState, "STALE");
+    assert.equal(hasContextDrift(inspectConsumer({ projectRoot: root, coreRoot: core })), false);
   });
 
   it("takes a request through intent and planning to implementation with execute alone", async () => {

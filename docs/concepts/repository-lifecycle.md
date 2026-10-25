@@ -27,9 +27,18 @@ context has been reviewed.
 | `GENERATED` | Generated context exists; an explicit valid verification profile is absent. |
 | `VALIDATED` | Profile exists, but conflicts, pending proposals or other blocking findings prevent readiness. |
 | `READY` | Matching lock, generated context, valid profile and no outstanding diagnostic preventing readiness. |
-| `STALE` | Content digests, generator inputs or relevant source evidence changed. |
+| `STALE` | Locked Core, adapter, generator or capability content, generator inputs (contract, engine, manifest) changed, or a recorded generated output is missing. |
 | `INCOMPATIBLE` | Manifest range or locked versions cannot use the available Core/adapters. |
 | `BROKEN` | Manifest, Core metadata or generated metadata is invalid. |
+
+Source drift is not `STALE`. When files that generated context cites change, or new
+relevant source files appear (`PAVED_GENERATED_SOURCE_STALE`,
+`PAVED_GENERATOR_SOURCE_SET_STALE`), the repository keeps its state and `status` reports
+`generatedContext: drifted` with warnings. Ordinary development causes this drift, so it
+must not block `test`, `intent`, `plan` or `execute`. `status` offers a repair decision to
+regenerate the context; `execute "<request>"` regenerates it before starting, and a run
+regenerates it again when it completes. Integrity problems above stay `STALE` and block
+work until `paved update` resolves them.
 
 Diagnostics and exit categories remain separate from lifecycle state. A stale
 consumer may also have a conflict, and a missing profile can be reported alongside
@@ -66,5 +75,6 @@ rewritten by guessing; only a reviewed migration from the typed registry runs.
 Generated context records source hashes and generator metadata. `status` detects
 changed or removed cited files, newly relevant source files, changed manifest and
 generator inputs, and changed locked Core or adapter content. A source-only change
-can be reconciled by `update` without rewriting an unchanged lock. Context review
+is drift rather than staleness and can be reconciled by `update` without rewriting an
+unchanged lock. Context review
 and an explicit verification profile remain human decisions.

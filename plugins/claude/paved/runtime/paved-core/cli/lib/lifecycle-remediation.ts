@@ -1,3 +1,5 @@
+import { hasContextDrift, type ConsumerInspection } from "./consumer-state.ts";
+
 /** A Paved command that brings the project back to a workable lifecycle state without a human decision of its own. */
 export interface Remediation {
   readonly command: string;
@@ -14,4 +16,14 @@ export function remediationFor(lifecycle: string): Remediation | undefined {
     return { command: "paved update --json", reason: `The project is ${lifecycle}; an update resolves it.` };
   }
   return undefined;
+}
+
+/**
+ * Like remediationFor, but also offers to regenerate project context whose cited sources
+ * changed. That drift never blocks work; refreshing it is still worthwhile.
+ */
+export function refreshFor(inspection: Pick<ConsumerInspection, "lifecycleState" | "diagnostics">): Remediation | undefined {
+  return remediationFor(inspection.lifecycleState) ?? (hasContextDrift(inspection)
+    ? { command: "paved update --json", reason: "Generated project context cites source files that changed; an update regenerates it." }
+    : undefined);
 }

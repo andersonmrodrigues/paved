@@ -18,6 +18,10 @@ const effectTiersTable: Record<EffectClass, EffectTier> = {
   "config-additive": { risk: "low", reversibility: "reversible", channel: "relayed" },
   "config-mutating": { risk: "medium", reversibility: "recoverable", channel: "relayed" },
   "lock-transaction": { risk: "medium", reversibility: "recoverable", channel: "relayed" },
+  // Rewrites only Paved-generated context under .paved/. Generators keep human edits as
+  // proposals and can rebuild their output from the repository at any time, so this is
+  // recoverable; changes to the user's own files stay repository-mutating.
+  "context-regenerating": { risk: "medium", reversibility: "recoverable", channel: "relayed" },
   "repository-mutating": { risk: "high", reversibility: "irreversible", channel: "human-authored" },
   destructive: { risk: "high", reversibility: "irreversible", channel: "human-authored" },
 };

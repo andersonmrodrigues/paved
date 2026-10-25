@@ -76,6 +76,7 @@ const EFFECT_CLASS: Record<EffectClass, true> = {
   "config-additive": true,
   "config-mutating": true,
   "lock-transaction": true,
+  "context-regenerating": true,
   "repository-mutating": true,
   destructive: true,
 };

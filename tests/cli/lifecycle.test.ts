@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { afterEach, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse, stringify } from "yaml";
-import { inspectConsumer } from "../../cli/lib/consumer-state.ts";
+import { hasContextDrift, inspectConsumer } from "../../cli/lib/consumer-state.ts";
 import { initializeConsumer, runGenerators } from "../../cli/lib/generator-runtime.ts";
 import { planConsumerUpdate } from "../../cli/lib/consumer-state.ts";
 import { applyConsumerUpdate } from "../../cli/lib/update-transaction.ts";
@@ -109,7 +109,8 @@ test("consumer identity and lifecycle are derived from local manifest and eviden
     assert.equal(state(a), "GENERATED");
     assert.equal(state(b), "RESOLVED");
     writeFileSync(join(a, "README.md"), "# Changed input\n");
-    assert.equal(state(a), "STALE");
+    assert.equal(state(a), "GENERATED");
+    assert.equal(hasContextDrift(inspectConsumer({ projectRoot: a, coreRoot: core })), true);
     const stalePlan = planConsumerUpdate({ projectRoot: a, coreRoot: core });
     assert.equal(stalePlan.changed, true);
     assert.ok(stalePlan.plannedGeneratorIds.includes("project-context/architecture"));
@@ -284,8 +285,41 @@ test("source staleness follows generator inputs and ignores unrelated files", ()
     assert.equal(state(a), "GENERATED");
     writeFileSync(join(a, "scratch.bin"), "unrelated");
     assert.equal(state(a), "GENERATED");
+    assert.equal(hasContextDrift(inspectConsumer({ projectRoot: a, coreRoot: core })), false);
     writeFileSync(join(a, "package.json"), '{"name":"consumer-a"}\n');
-    assert.equal(state(a), "STALE");
+    assert.equal(state(a), "GENERATED");
+    assert.equal(hasContextDrift(inspectConsumer({ projectRoot: a, coreRoot: core })), true);
+  } finally { rmSync(a, { recursive: true, force: true }); }
+});
+
+test("source drift in generated context does not block testing or starting work", async () => {
+  const a = consumer("consumer-a");
+  try {
+    initializeConsumer(core, a, "consumer-a");
+    runGenerators(core, a);
+    writeFileSync(join(a, "README.md"), "# Changed during development\n");
+    const status = await dispatchCli({ argv: ["status", "--project", a, "--json"] });
+    const data = status.data as { lifecycleState: string; generatedContext: string; nextAction: string };
+    assert.notEqual(data.lifecycleState, "STALE");
+    assert.equal(data.generatedContext, "drifted");
+    assert.match(data.nextAction, /paved update --json/);
+    assert.ok(status.diagnostics.some((item) => item.code === "PAVED_GENERATED_SOURCE_STALE" && item.severity === "warning"));
+    const tested = await dispatchCli({ argv: ["test", "--project", a, "--json"] });
+    assert.ok(!tested.diagnostics.some((item) => item.code === "PAVED_TEST_LIFECYCLE_BLOCKED"), JSON.stringify(tested.diagnostics));
+    const started = await dispatchCli({ argv: ["intent", "Change the behavior", "--workflow", "feature", "--because", "Requested.", "--project", a, "--json"] });
+    assert.ok(!started.diagnostics.some((item) => item.code === "PAVED_WORKFLOW_LIFECYCLE_BLOCKED"), JSON.stringify(started.diagnostics));
+    assert.ok((started.data as { run?: string }).run, JSON.stringify(started));
+  } finally { rmSync(a, { recursive: true, force: true }); }
+});
+
+test("integrity problems in generated context still block work", async () => {
+  const a = consumer("consumer-a");
+  try {
+    initializeConsumer(core, a, "consumer-a");
+    runGenerators(core, a, { generators: ["project-context/architecture"] });
+    rmSync(join(a, ".paved/project/architecture/overview.md"));
+    const tested = await dispatchCli({ argv: ["test", "--project", a, "--json"] });
+    assert.ok(tested.diagnostics.some((item) => item.code === "PAVED_TEST_LIFECYCLE_BLOCKED"), JSON.stringify(tested.diagnostics));
   } finally { rmSync(a, { recursive: true, force: true }); }
 });
 

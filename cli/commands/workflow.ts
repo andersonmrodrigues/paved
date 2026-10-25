@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { inspectConsumer } from "../lib/consumer-state.ts";
-import { remediationFor } from "../lib/lifecycle-remediation.ts";
+import { refreshFor, remediationFor, type Remediation } from "../lib/lifecycle-remediation.ts";
 import { runDecisionGate, toProjection, type DecisionCandidate, type DecisionStorage, type HandlerRegistration } from "../lib/decisions/gate.ts";
 import { decisionId, transition, type Decision } from "../lib/decisions/record.ts";
 import { listDecisions } from "../lib/decisions/store.ts";
@@ -292,10 +292,11 @@ const OPEN_DECISION = new Set(["PENDING", "ASKED", "ANSWERED"]);
  */
 function startWork(invocation: CommandInvocation): CommandResult {
   const { projectRoot, coreRoot } = invocation.paths;
-  const lifecycle = inspectConsumer({ projectRoot, coreRoot }).lifecycleState;
+  const inspection = inspectConsumer({ projectRoot, coreRoot });
+  const lifecycle = inspection.lifecycleState;
   const initPending = lifecycle !== "UNINITIALIZED"
     && listDecisions(projectRoot, coreRoot).some((decision) => decision.command === "init" && OPEN_DECISION.has(decision.status));
-  if (!initPending && remediationFor(lifecycle)?.command === "paved update --json") {
+  if (!initPending && refreshFor(inspection)?.command === "paved update --json") {
     const updated = updateHandler({ ...invocation, command: "update", selectors: [] });
     if (updated.status === "failed") return updated;
     const started = startIntent(invocation);
@@ -593,12 +594,27 @@ async function resume(invocation: CommandInvocation, step: Step, run: Run, answe
       if (run.status !== "completed") return result(projectRoot, step, run, nextStepAction(run));
       // Advisory only: a gardener failure or proposal never changes the outcome.
       const gardener = reportNewProposals(projectRoot, coreRoot);
-      // The change may have made generated project context stale, e.g. when the repository was empty at init.
-      const remediation = remediationFor(inspectConsumer({ projectRoot, coreRoot }).lifecycleState);
-      return result(projectRoot, step, run, `Workflow complete with authoritative verification evidence.${remediation ? ` Then run ${remediation.command} to refresh project context.` : ""}`, [],
-        { data: { ...(Object.keys(gardener).length > 0 ? { gardener } : {}), ...(remediation ? { remediation } : {}) } });
+      const refresh = refreshContext(invocation);
+      return result(projectRoot, step, run, `Workflow complete with authoritative verification evidence.${refresh.remediation ? ` Then run ${refresh.remediation.command} to refresh project context.` : ""}`, [],
+        { data: { ...(Object.keys(gardener).length > 0 ? { gardener } : {}), ...(refresh.remediation ? { remediation: refresh.remediation } : {}),
+          ...(refresh.refreshed ? { contextRefreshed: true } : {}) } });
     }
   }
+}
+
+/**
+ * The change usually edits files that generated project context cites. When that drift
+ * is the only thing to refresh, regenerate it now through the same transactional update
+ * execute already runs before work starts; anything else is left to the user.
+ */
+function refreshContext(invocation: CommandInvocation): { refreshed: boolean; remediation?: Remediation } {
+  const { projectRoot, coreRoot } = invocation.paths;
+  const inspection = inspectConsumer({ projectRoot, coreRoot });
+  const remediation = refreshFor(inspection);
+  if (remediation === undefined) return { refreshed: false };
+  if (remediationFor(inspection.lifecycleState) !== undefined) return { refreshed: false, remediation };
+  const updated = updateHandler({ ...invocation, command: "update", selectors: [], flags: { ...invocation.flags, answers: [], dryRun: false } });
+  return updated.status === "failed" ? { refreshed: false, remediation } : { refreshed: true };
 }
 
 /**

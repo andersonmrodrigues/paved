@@ -1,6 +1,6 @@
 import { createDiagnostic, createResult, type CommandResult, type Diagnostic, type ResultStatus } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
-import { inspectConsumer, type ConsumerInspection } from "../lib/consumer-state.ts";
+import { hasContextDrift, inspectConsumer, type ConsumerInspection } from "../lib/consumer-state.ts";
 import { discoverAgentCommands } from "../lib/agent-commands.ts";
 import { agentsBlockInvalidDiagnostic, inspectAgentsBlock } from "../lib/agents-block.ts";
 import { runDecisionGate } from "../lib/decisions/gate.ts";
@@ -25,7 +25,8 @@ export function statusData(inspection: ConsumerInspection): Record<string, unkno
       recommendedNextAction: command.recommendedNextAction ?? "Run paved status for guidance.",
     }));
   const answerCommand = `paved ${waiting[0]?.command === "doctor" ? "status" : waiting[0]?.command ?? "status"}`;
-  const nextAction = waiting.length > 0
+  const drifted = hasContextDrift(inspection);
+  const baseAction = waiting.length > 0
     ? inspection.pendingApprovals.length > 0
       ? `Waiting for ${waiting.length} decision${waiting.length === 1 ? "" : "s"}. Review the pending approval ids, then relay approved answers with ${answerCommand} --answer <id>=<value>.`
       : `Waiting for ${waiting.length} decision${waiting.length === 1 ? "" : "s"}. Answer with ${answerCommand} --answer <id>=<value> --answered-by <you>.`
@@ -35,6 +36,9 @@ export function statusData(inspection: ConsumerInspection): Record<string, unkno
           ? "Run paved status and answer its repair decisions."
           : inspection.verificationProfile !== "present" ? "Run paved verify to choose repository checks."
             : 'Start work with paved intent "<request>" --json.';
+  const nextAction = drifted && inspection.lifecycleState !== "STALE"
+    ? `${baseAction} Generated project context cites changed source files; this does not block work, and paved update --json regenerates it.`
+    : baseAction;
   return {
     initialized: inspection.initialized,
     lifecycleState: inspection.lifecycleState,
@@ -48,6 +52,7 @@ export function statusData(inspection: ConsumerInspection): Record<string, unkno
     capabilityProviders: inspection.capabilityProviders,
     lockHealth: inspection.lockHealth,
     verificationProfile: inspection.verificationProfile,
+    generatedContext: drifted ? "drifted" : "current",
     generatorState: inspection.lastRun ?? { present: false, proposals: [], conflicts: [] },
     proposals: inspection.proposals,
     conflicts: inspection.conflicts,
