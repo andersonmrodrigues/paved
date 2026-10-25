@@ -105,6 +105,28 @@ open and leave the prompt unaffected. If the hook is disabled, untrusted, or uns
 by the host, the existing Paved skills and the `AGENTS.md` guidance remain available
 where that host loads them.
 
+## Run Paved from a terminal
+
+The plugin launcher lives in a versioned plugin directory, so its path changes with
+every plugin update. Each time it runs in a repository, it also keeps a project-local
+command at `.paved/runtime/bin/paved`: a copy of the launcher and a POSIX shell shim that
+enters the repository and runs it. The command works from any shell, interactive or not,
+and from any directory, and keeps working after a plugin update removes the old plugin
+directory. Like the plugin launcher, it verifies the runtime pinned by
+`.paved/paved.lock` before every run.
+
+```bash
+.paved/runtime/bin/paved status --json            # from the repository root
+"/path/to/repo/.paved/runtime/bin/paved" update   # from anywhere
+```
+
+When Paved runs through a launcher, the commands it prints in `nextAction` and
+`remediation` texts use this command, quoted for the shell, so they can be pasted and run
+as is. To type `paved` instead, add `.paved/runtime/bin` to `PATH` or define an alias in
+your shell profile. On Windows, run `node .paved/runtime/bin/paved.mjs`. The command is
+under `.paved/runtime/`, which is ignored by version control and disposable; running any
+Paved command through the agent launcher writes it again.
+
 ## Follow work in the local dashboard
 
 From an initialized repository, run `paved workbench start` and open the returned local
@@ -137,10 +159,12 @@ update verifies and activates it, rewrites the lock through the Core's transacti
 update and keeps the previous state for rollback; `update --dry-run` only reports the
 runtime it would adopt. The same or an older plugin runtime never changes the pin.
 
-The launcher also exposes the runtime operations directly. Its path is `scripts/paved.mjs` in the
-installed plugin directory (Claude Code: `installPath` from
-`claude plugin list --json`; Codex: under
-`$CODEX_HOME/plugins/cache/paved/paved/<version>/`).
+The launcher also exposes the runtime operations directly, through the project command
+`.paved/runtime/bin/paved runtime ...` or the plugin launcher. The plugin launcher's
+path is `scripts/paved.mjs` in the installed plugin directory (Claude Code:
+`installPath` from `claude plugin list --json`; Codex: under
+`$CODEX_HOME/plugins/cache/paved/paved/<version>/`). Adopting a newer plugin runtime
+needs the newer plugin launcher once; after that the project command carries it.
 
 ```bash
 node <plugin>/scripts/paved.mjs runtime status --json    # plugin, locked and active runtime

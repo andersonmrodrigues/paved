@@ -17,6 +17,10 @@ releases, not the development sequence used to build them.
 - The context repair decision keeps its id while more cited files change, so an answer
   is no longer lost when the findings grow; a regeneration or new evidence still asks
   again. A skipped repair no longer fails `status` once its evidence changes.
+- The launcher keeps a version-independent project command at
+  `.paved/runtime/bin/paved` that works from non-interactive shells and survives plugin
+  updates. Remediation and next-action texts print that command, quoted, so they can be
+  pasted as is instead of naming a `paved` that may not exist on `PATH`.
 
 ## [2.15.2] - 2026-10-25
 
