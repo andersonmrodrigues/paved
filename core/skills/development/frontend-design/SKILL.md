@@ -34,10 +34,11 @@ committing to a direction.
 3. In the workflow plan, record a compact direction for the relevant dimensions: visual
    hierarchy, color, type, spacing and layout, content, and interaction or motion. Tie each
    choice to the brief or project context; omit dimensions the task does not affect.
-4. Review the direction against the brief before coding. Ask whether the same choices would
-   fit an unrelated product, whether each visual element helps understanding, and whether
-   the hierarchy matches the importance of the content. Revise choices that have no reason
-   beyond habit. Follow explicit user direction even when it asks for a familiar pattern.
+4. Review the direction against the user's goals and relevant UX principles before coding.
+   Use the checklist in `references/ux-principles.md` to identify applicable principles,
+   the concrete design choice they inform, and any tradeoff. Treat laws and heuristics as
+   evidence-informed guides, not universal formulas; prioritize user research, accessibility,
+   product context and explicit user direction when they conflict.
 5. Implement with the project's existing components and conventions. Keep content useful
    and specific to the task; do not add decoration or motion without a user-facing purpose.
 6. Inspect the rendered result at the relevant screen sizes and states. Check keyboard
@@ -45,6 +46,12 @@ committing to a direction.
    project's visual review tools when available; otherwise report what could not be checked.
 7. Compare the result with the plan, refine mismatches, then run the applicable verification
    checks. Record visual review evidence when available and list any remaining gaps.
+
+When the interface or user flow changes, scan every group in the UX principles catalog,
+include relevant principles and their consequences in the design review, and briefly explain
+why a group does not apply when it might reasonably be expected. For substantial flow
+redesigns, address every group. Do not force an individual principle onto an unrelated
+choice.
 
 ## Tools
 
@@ -84,4 +91,6 @@ the environment supports visual review. Explain any unverified screen size or st
 
 ## References
 
+- [UX principles reference](references/ux-principles.md) — practical design implications,
+  limits, and research sources for relevant interaction and perception principles.
 - [Frontend Design skill](https://github.com/anthropics/claude-code/blob/main/plugins/frontend-design/skills/frontend-design/SKILL.md) — inspiration for subject-grounded choices and a plan-review-build-critique loop; this Paved procedure is original.

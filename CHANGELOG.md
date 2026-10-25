@@ -5,6 +5,12 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Changed
+
+- The frontend-design skill now evaluates applicable UX principles, including target
+  acquisition, familiar conventions, choice complexity, grouping, and accessible target
+  size, while treating them as context-sensitive guidance rather than universal laws.
+
 ## [2.15.0] - 2026-10-24
 
 ### Added

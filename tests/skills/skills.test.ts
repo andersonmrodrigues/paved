@@ -99,6 +99,19 @@ describe("core skills", () => {
     assert.match(e2e, /`.paved\/skills\/`/);
   });
 
+  it("reviews applicable UX principles across the full interface design catalog", () => {
+    const frontendDesign = skills.find((skill) => skill.name === "frontend-design")?.files;
+    assert.ok(frontendDesign);
+    assert.match(frontendDesign.body, /scan every group in the UX principles catalog/i);
+    const catalog = frontendDesign.supporting["references/ux-principles.md"];
+    assert.ok(catalog);
+    for (const principle of ["Fitts's law", "Hick", "Jakob", "Gestalt", "Peak–end", "WCAG"]) {
+      assert.ok(catalog.toLowerCase().includes(principle.toLowerCase()), `UX catalog omits ${principle}`);
+    }
+    assert.match(catalog, /not a\s+claim that UX has one complete or universally agreed list/i);
+    assert.match(catalog, /A checklist or a passing automated accessibility scan is not a usability test/i);
+  });
+
   it("form an acyclic dependency graph", () => {
     assert.deepEqual(dependencyCycles(skills.map((s) => s.files.contract)), []);
   });
