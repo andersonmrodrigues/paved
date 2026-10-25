@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.15.2] - 2026-10-25
+
 ### Changed
 
 - The frontend-design skill now asks for concrete visual direction on substantial work,
