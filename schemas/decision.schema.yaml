@@ -145,4 +145,4 @@ $defs:
     description: >
       The registered effect class of this decision's apply handler. Determines risk,
       reversibility and answer channel. Never settable per decision.
-    enum: [record-only, config-additive, config-mutating, lock-transaction, repository-mutating, destructive]
+    enum: [record-only, config-additive, config-mutating, lock-transaction, context-regenerating, repository-mutating, destructive]

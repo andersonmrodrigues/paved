@@ -56,5 +56,28 @@ matches the code, and that the failure names a phase that actually failed or is 
 - A phase that can reach a destructive tool must not be `retryable`
   (`assessWorkflowQuality`).
 
+## Environment failures and the baseline
+
+A failed test run is not always a regression. When the testing Tool's output shows a
+service that refused the connection or did not resolve, a missing container engine, or a
+missing program (exit code 126 or 127), the test runner records the Tool result with
+`error_code: environment-failure` and reports `PAVED_TEST_ENVIRONMENT_UNAVAILABLE`.
+Validation, and bug discovery, then block with `PAVED_WORKFLOW_ENVIRONMENT_UNAVAILABLE`
+instead of failing: no attempt is spent, and the run continues once the environment is
+available or those tests are excluded from the testing Tool. The classification only
+changes how a failure is reported; it never lets a run pass.
+
+When the plan is approved and nothing has changed yet, Paved runs the testing Tool once
+and records the outcome as the run's baseline (a `tool-invoked` event in `planning` with
+`baseline status=passed|failed|environment-unavailable`). If validation later fails and
+the baseline had failed too, the failure carries `PAVED_WORKFLOW_BASELINE_FAILING`
+naming the baseline evidence, so it is not attributed to the change by itself.
+
+Limits: the testing Tool reports one exit code and text output, so the baseline compares
+whole runs, not individual tests, and a failure on a failing baseline still spends an
+attempt. Comparing failing tests one by one (for example from JUnit reports), applying
+the same baseline to verification checks, and having onboarding detect tests that need
+external infrastructure and propose excluding or tagging them are follow-up work.
+
 The bug workflow's guidance adds a domain-specific stop: two failed fix attempts mean the
 cause was not confirmed, so discovery is repeated rather than a third fix attempted.

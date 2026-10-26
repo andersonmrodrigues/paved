@@ -4,14 +4,17 @@
 // runtime under .paved/runtime/ and hands the arguments to the packaged Paved CLI.
 import { createHash, randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 
-const launcherDir = realpathSync(dirname(fileURLToPath(import.meta.url)));
-const packageRoot = dirname(launcherDir);
-const configPath = join(launcherDir, 'bootstrap.json');
+const launcherPath = fileURLToPath(import.meta.url);
+const configPath = join(realpathSync(dirname(launcherPath)), 'bootstrap.json');
+// The project-local copy (see installProjectCommand) records the integration it came from,
+// so its bundled artifacts still resolve and stay confined to that integration.
+let launcherDir = realpathSync(dirname(launcherPath));
+let packageRoot = dirname(launcherDir);
 const versionPattern = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const integrityPattern = /^sha512-[A-Za-z0-9+/]+={0,2}$/;
 const digestPattern = /^[a-f0-9]{64}$/;
@@ -177,8 +180,12 @@ function readConfig() {
   const optionalPath = (value) => value === undefined || (typeof value === 'string' && value !== '');
   if (config.package !== 'paved-core' || !versionPattern.test(config.version || '') || (config.integrity && !integrityPattern.test(config.integrity))
     || !optionalPath(config.tarball) || !optionalPath(config.runtime) || !optionalPath(config.dependencies) || (config.tarball && config.runtime)
-    || (config.dependencies && !config.runtime)) {
+    || (config.dependencies && !config.runtime) || (config.launcher_dir !== undefined && (typeof config.launcher_dir !== 'string' || !isAbsolute(config.launcher_dir)))) {
     fail('PAVED_RUNTIME_CONFIG_INVALID', 'Integration bootstrap config is invalid.', 'Reinstall a valid Paved agent integration.');
+  }
+  if (config.launcher_dir) {
+    launcherDir = config.launcher_dir;
+    packageRoot = dirname(launcherDir);
   }
   // A bundled artifact is addressed relative to the launcher and must stay in its package.
   for (const field of ['tarball', 'runtime', 'dependencies']) {
@@ -424,6 +431,42 @@ function rollbackRecord(ctx) {
   return existsSync(ctx.rollbackPath) ? readJson(ctx.rollbackPath) : undefined;
 }
 
+function shellQuote(value) {
+  return /^[A-Za-z0-9_./:@%+=-]+$/.test(value) ? value : `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function writeIfChanged(path, content, mode) {
+  if (existsSync(path) && readFileSync(path).equals(Buffer.from(content))) return;
+  writeAtomic(path, content);
+  if (mode !== undefined) chmodSync(path, mode);
+}
+
+// Keeps a copy of this launcher under .paved/runtime/bin/ with a POSIX `paved` shim, so the
+// project has a command that works from any shell and survives plugin updates that remove
+// the versioned plugin directory. The copy still verifies the pinned runtime on every run.
+// Returns the command to print in remediation texts, or undefined when none is available.
+function installProjectCommand(ctx, config) {
+  const bin = join(ctx.runtimeDir, 'bin');
+  const script = join(bin, 'paved.mjs');
+  const shim = join(bin, 'paved');
+  const command = process.platform === 'win32' ? `node "${script}"` : shellQuote(shim);
+  if (config.launcher_dir) return existsSync(script) ? command : undefined;
+  try {
+    noSymlinks(bin, ctx.runtimeDir);
+    mkdirSync(bin, { recursive: true });
+    ensureIgnored(ctx);
+    const integration = { ...readJson(configPath), launcher_dir: launcherDir };
+    writeIfChanged(script, readFileSync(launcherPath));
+    writeIfChanged(join(bin, 'bootstrap.json'), `${JSON.stringify(integration, null, 2)}\n`);
+    // The runtime already runs from the project root, so entering it first changes no paths.
+    writeIfChanged(shim, `#!/bin/sh\n# Project-local Paved command written by the Paved launcher.\ncd ${shellQuote(ctx.projectRoot)} || exit 1\nexec node ${shellQuote(script)} "$@"\n`, 0o755);
+    return command;
+  } catch (error) {
+    notice('PAVED_RUNTIME_COMMAND_UNAVAILABLE', `The project-local paved command could not be written: ${error instanceof Error ? error.message : String(error)}`, 'Check permissions for .paved/runtime/bin/; the agent launcher keeps working.');
+    return undefined;
+  }
+}
+
 function launch(ctx, config, argv) {
   const locked = lockedRuntime(ctx);
   // `update` adopts a newer plugin runtime; an older plugin never downgrades the project.
@@ -461,7 +504,9 @@ function launch(ctx, config, argv) {
     : 'Restore the runtime selected by paved.lock.');
   // The runtime receives the consumer the launcher resolved, so both always agree on it.
   const project = argv.some((arg) => arg === '--project' || arg.startsWith('--project=')) ? [] : ['--project', ctx.projectRoot];
-  const child = spawnSync(process.execPath, [executable, ...project, ...argv], { cwd: ctx.projectRoot, shell: false, stdio: 'inherit', env: process.env });
+  const command = installProjectCommand(ctx, config);
+  const env = command === undefined ? process.env : { ...process.env, PAVED_COMMAND: command };
+  const child = spawnSync(process.execPath, [executable, ...project, ...argv], { cwd: ctx.projectRoot, shell: false, stdio: 'inherit', env });
   if (child.error) fail('PAVED_RUNTIME_EXECUTION_FAILED', child.error.message, 'Inspect the installed runtime and retry.');
   process.exit(child.status ?? 1);
 }
@@ -556,6 +601,8 @@ function runtimeRollback(ctx) {
 // the same way instead of as a stack trace.
 try {
   const argv = process.argv.slice(2);
+  // Read first: it settles which integration the project root must stay outside of.
+  const config = readConfig();
   const projectRoot = resolveProjectRoot(argv);
   const runtimeDir = join(projectRoot, '.paved', 'runtime');
   const ctx = {
@@ -567,7 +614,6 @@ try {
     rollbackLockPath: join(runtimeDir, 'rollback.lock'),
   };
   prepareRuntimeDir(ctx);
-  const config = readConfig();
   if (argv[0] === 'runtime') {
     const [, action = 'status', ...rest] = argv;
     const extra = rest.filter((arg, index) => arg !== '--json' && !arg.startsWith('--project') && rest[index - 1] !== '--project');

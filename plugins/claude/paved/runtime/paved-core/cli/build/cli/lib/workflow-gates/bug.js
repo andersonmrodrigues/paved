@@ -1,5 +1,5 @@
 import { resolveSafePath } from "../safe-path.js";
-import { blocked, failedTestingEvidence, projectRelative } from "./shared.js";
+import { blocked, environmentBlocked, failedTestingEvidence, projectRelative } from "./shared.js";
 export const bugGates = {
     workflow: "core.bug",
     handles: ["expected-behavior-known", "cause-confirmed", "test-failed-first"],
@@ -15,6 +15,10 @@ export const bugGates = {
                 const tested = await context.tools.test();
                 if (tested.status === "awaiting_input")
                     return { kind: "relay", result: tested };
+                // A failure from missing infrastructure does not reproduce the reported defect.
+                const unavailable = environmentBlocked(tested.diagnostics);
+                if (unavailable)
+                    return unavailable;
                 const produced = tested.data?.evidence;
                 if (produced)
                     path = resolveSafePath(context.projectRoot, produced);

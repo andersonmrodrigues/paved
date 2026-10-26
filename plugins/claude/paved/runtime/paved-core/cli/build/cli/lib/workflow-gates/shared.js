@@ -8,6 +8,7 @@ import { discoverSources } from "../generator-runtime.js";
 import { localApprover } from "../local-identity.js";
 import { resolveSafePath } from "../safe-path.js";
 import { createRegistry } from "../schemas.js";
+import { ENVIRONMENT_UNAVAILABLE } from "../test-runner.js";
 import { sanitizeToolOutput } from "../tools.js";
 import { writeWorkflowEvidence } from "../workflow-evidence.js";
 import { assessWorkflowEvidence, UNCHANGED_HANDLER } from "../workflows.js";
@@ -137,7 +138,47 @@ function recordApproval(projectRoot, run, planSha) {
     atomicWriteFileSync(path, `${JSON.stringify({ run: run.id, plan_sha256: planSha, decision: "approved",
         decided_by: localApprover(), decided_at: now() }, null, 2)}\n`);
 }
-const planning = (context) => {
+const BASELINE = "baseline status=";
+/**
+ * Runs the testing Tool once when the plan is approved and nothing has changed yet, so a
+ * later validation failure can be told apart from tests that were already failing.
+ * A baseline that cannot run is skipped; it never blocks the approval.
+ */
+async function recordBaseline(context) {
+    const { run, projectRoot } = context;
+    if (run.events.some((event) => event.type === "tool-invoked") || !sourceUnchanged(projectRoot, run))
+        return;
+    const tested = await context.tools.test();
+    const ref = tested.data?.evidence;
+    if (tested.status === "awaiting_input" || ref === undefined)
+        return;
+    const outcome = tested.status === "success" ? "passed" : environmentProblem(tested.diagnostics) ? "environment-unavailable" : "failed";
+    run.events.push({ at: now(), type: "tool-invoked", phase: "planning", ref, detail: `${BASELINE}${outcome}` });
+}
+/** The baseline recorded at plan approval, when one ran. */
+export function baseline(run) {
+    const event = run.events.find((item) => item.type === "tool-invoked" && item.phase === "planning" && item.detail?.startsWith(BASELINE));
+    return event === undefined ? undefined : { outcome: event.detail.slice(BASELINE.length), ...(event.ref === undefined ? {} : { ref: event.ref }) };
+}
+// The testing Tool could not reach what it needs; neither a regression nor a setup mistake.
+const ENVIRONMENT_CODES = new Set([ENVIRONMENT_UNAVAILABLE, "PAVED_TEST_LAUNCH_FAILED"]);
+function environmentProblem(diagnostics) {
+    return diagnostics.find((item) => ENVIRONMENT_CODES.has(item.code));
+}
+/** Blocks without spending an attempt when the tests could not run against their environment. */
+export function environmentBlocked(diagnostics) {
+    const problem = environmentProblem(diagnostics);
+    if (problem === undefined)
+        return undefined;
+    return blocked("PAVED_WORKFLOW_ENVIRONMENT_UNAVAILABLE", `${problem.message} This is not attributed to the change.`, `${problem.remediation ?? "Make the test environment available."} Advance again afterwards; an unavailable environment does not consume a phase attempt.`);
+}
+const planning = async (context) => {
+    const outcome = approvePlan(context);
+    if (outcome.kind === "pass")
+        await recordBaseline(context);
+    return outcome;
+};
+function approvePlan(context) {
     const { run, phase, projectRoot } = context;
     const gate = phase.gates?.find((item) => item.id === "plan-approved");
     if (!gate) {
@@ -192,7 +233,7 @@ const planning = (context) => {
     }
     run.status = "running";
     return { kind: "pass" };
-};
+}
 // Only these mean the project's code failed. Anything else (a malformed Tool, a missing
 // profile, an unresolvable implementation) is setup the agent fixes without spending an attempt.
 const TEST_FAILURE_CODES = new Set(["PAVED_TEST_TOOL_FAILED"]);
@@ -213,8 +254,24 @@ const validation = async (context) => {
     const ref = tested.data?.evidence;
     context.run.events.push({ at: now(), type: "tool-invoked", phase: "validation", ref: ref ?? "testing-run" });
     if (tested.status !== "success") {
+        const unavailable = environmentBlocked(tested.diagnostics);
+        if (unavailable)
+            return unavailable;
         if (!codeFailed(tested.diagnostics, TEST_FAILURE_CODES))
             return setupBlocked("testing", tested.diagnostics);
+        const before = baseline(context.run);
+        if (before?.outcome === "failed") {
+            return {
+                kind: "fail",
+                reason: "The governed tests did not pass, and they already failed before implementation started, so the failure may not come from this change.",
+                nextAction: "Compare the failure with the baseline evidence, fix what this change broke or make the pre-existing failures pass, then resume this run with paved execute --advance.",
+                diagnostics: [...tested.diagnostics, createDiagnostic({
+                        severity: "warning", category: "findings", code: "PAVED_WORKFLOW_BASELINE_FAILING", component: "workflow.runtime",
+                        message: `The testing Tool already failed when the plan was approved${before.ref ? ` (${before.ref})` : ""}; this failure is not attributed to the change by itself.`,
+                        remediation: "Make the baseline pass, or exclude the tests that were already failing from the testing Tool.",
+                    })],
+            };
+        }
         return { kind: "fail", reason: "The governed regression test did not pass.", nextAction: "Fix the failure and resume this run with paved execute --advance.", diagnostics: tested.diagnostics };
     }
     return { kind: "pass" };

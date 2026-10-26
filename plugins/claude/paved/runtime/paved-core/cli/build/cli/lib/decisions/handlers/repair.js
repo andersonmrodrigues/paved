@@ -12,5 +12,5 @@ function apply(answer, context) {
         .sort((a, b) => a.localeCompare(b, "en"));
 }
 export const repairHandler = {
-    effect: "repository-mutating", apply, reject: (answer) => answer === "skip",
+    effect: "context-regenerating", apply, reject: (answer) => answer === "skip",
 };

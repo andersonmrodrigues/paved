@@ -92,6 +92,29 @@ describe("decision gate", () => {
     });
     assert.ok(answered.applied.some((item) => item.id === shown.projections[0]!.id));
   });
+  it("asks a rejected question again beside the rejection once its evidence changes", () => {
+    const project = workspace();
+    const repair = (sha: string) => candidate({
+      question: "Apply this optional repair?", required: false, effect: "record-only", handler: "repair.apply",
+      candidates: ["repair:project-context"], evidence: [{ type: "file", location: "state.json", sha256: sha.repeat(64) }],
+    });
+    const handlers = new Map<string, HandlerRegistration>([["repair.apply", {
+      effect: "record-only", apply: () => [], reject: (answer) => answer === "none",
+    }]]);
+    const ctx = (answers: string[] = []) => context(project, { command: "doctor", answers, answeredBy: "tester@example.com" });
+    const shown = runDecisionGate({ context: ctx(), providers: [() => [repair("a")]], handlers, persist: true });
+    const id = shown.projections[0]!.id;
+    runDecisionGate({ context: ctx([`${id}=none`]), providers: [() => [repair("a")]], handlers, persist: true });
+    assert.equal(runDecisionGate({ context: ctx(), providers: [() => [repair("a")]], handlers, persist: true }).projections.length, 0);
+
+    const again = runDecisionGate({ context: ctx(), providers: [() => [repair("b")]], handlers, persist: true });
+
+    assert.equal(again.projections.length, 1);
+    assert.notEqual(again.projections[0]!.id, id);
+    assert.equal(readDecision(project, coreRoot, id)?.status, "REJECTED");
+    assert.equal(runDecisionGate({ context: ctx(), providers: [() => [repair("b")]], handlers, persist: true }).projections[0]!.id, again.projections[0]!.id);
+  });
+
   it("raises a material decision and reports awaiting-input", () => {
     const project = workspace();
     const outcome = runDecisionGate({

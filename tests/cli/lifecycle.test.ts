@@ -1,16 +1,18 @@
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { afterEach, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse, stringify } from "yaml";
-import { inspectConsumer } from "../../cli/lib/consumer-state.ts";
+import { hasContextDrift, inspectConsumer } from "../../cli/lib/consumer-state.ts";
 import { initializeConsumer, runGenerators } from "../../cli/lib/generator-runtime.ts";
 import { planConsumerUpdate } from "../../cli/lib/consumer-state.ts";
 import { applyConsumerUpdate } from "../../cli/lib/update-transaction.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
 import { hashLocalFile, hashLocalTree } from "../../cli/lib/local-core.ts";
 import { exitCode } from "../../cli/result.ts";
+import { mainWorktreeRoot, resolveProjectRoot } from "../../cli/paths.ts";
 import { CORE_VERSION, cleanupTemporaryDirectories, temporaryDirectory, temporaryFixture } from "../helpers.ts";
 
 const core = resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -109,7 +111,8 @@ test("consumer identity and lifecycle are derived from local manifest and eviden
     assert.equal(state(a), "GENERATED");
     assert.equal(state(b), "RESOLVED");
     writeFileSync(join(a, "README.md"), "# Changed input\n");
-    assert.equal(state(a), "STALE");
+    assert.equal(state(a), "GENERATED");
+    assert.equal(hasContextDrift(inspectConsumer({ projectRoot: a, coreRoot: core })), true);
     const stalePlan = planConsumerUpdate({ projectRoot: a, coreRoot: core });
     assert.equal(stalePlan.changed, true);
     assert.ok(stalePlan.plannedGeneratorIds.includes("project-context/architecture"));
@@ -284,8 +287,41 @@ test("source staleness follows generator inputs and ignores unrelated files", ()
     assert.equal(state(a), "GENERATED");
     writeFileSync(join(a, "scratch.bin"), "unrelated");
     assert.equal(state(a), "GENERATED");
+    assert.equal(hasContextDrift(inspectConsumer({ projectRoot: a, coreRoot: core })), false);
     writeFileSync(join(a, "package.json"), '{"name":"consumer-a"}\n');
-    assert.equal(state(a), "STALE");
+    assert.equal(state(a), "GENERATED");
+    assert.equal(hasContextDrift(inspectConsumer({ projectRoot: a, coreRoot: core })), true);
+  } finally { rmSync(a, { recursive: true, force: true }); }
+});
+
+test("source drift in generated context does not block testing or starting work", async () => {
+  const a = consumer("consumer-a");
+  try {
+    initializeConsumer(core, a, "consumer-a");
+    runGenerators(core, a);
+    writeFileSync(join(a, "README.md"), "# Changed during development\n");
+    const status = await dispatchCli({ argv: ["status", "--project", a, "--json"] });
+    const data = status.data as { lifecycleState: string; generatedContext: string; nextAction: string };
+    assert.notEqual(data.lifecycleState, "STALE");
+    assert.equal(data.generatedContext, "drifted");
+    assert.match(data.nextAction, /paved update --json/);
+    assert.ok(status.diagnostics.some((item) => item.code === "PAVED_GENERATED_SOURCE_STALE" && item.severity === "warning"));
+    const tested = await dispatchCli({ argv: ["test", "--project", a, "--json"] });
+    assert.ok(!tested.diagnostics.some((item) => item.code === "PAVED_TEST_LIFECYCLE_BLOCKED"), JSON.stringify(tested.diagnostics));
+    const started = await dispatchCli({ argv: ["intent", "Change the behavior", "--workflow", "feature", "--because", "Requested.", "--project", a, "--json"] });
+    assert.ok(!started.diagnostics.some((item) => item.code === "PAVED_WORKFLOW_LIFECYCLE_BLOCKED"), JSON.stringify(started.diagnostics));
+    assert.ok((started.data as { run?: string }).run, JSON.stringify(started));
+  } finally { rmSync(a, { recursive: true, force: true }); }
+});
+
+test("integrity problems in generated context still block work", async () => {
+  const a = consumer("consumer-a");
+  try {
+    initializeConsumer(core, a, "consumer-a");
+    runGenerators(core, a, { generators: ["project-context/architecture"] });
+    rmSync(join(a, ".paved/project/architecture/overview.md"));
+    const tested = await dispatchCli({ argv: ["test", "--project", a, "--json"] });
+    assert.ok(tested.diagnostics.some((item) => item.code === "PAVED_TEST_LIFECYCLE_BLOCKED"), JSON.stringify(tested.diagnostics));
   } finally { rmSync(a, { recursive: true, force: true }); }
 });
 
@@ -471,4 +507,33 @@ test("moving a consumer keeps its portable lock and derived identity state", () 
     assert.equal(state(moved), "RESOLVED");
     assert.equal(readFileSync(join(a, ".paved/paved.lock")).equals(readFileSync(join(moved, ".paved/paved.lock"))), true);
   } finally { rmSync(a, { recursive: true, force: true }); rmSync(moved, { recursive: true, force: true }); }
+});
+
+test("a linked worktree finds the main worktree's Paved state without borrowing it", async () => {
+  const main = temporaryDirectory("paved-worktree-main");
+  writeFileSync(join(main, "README.md"), "# Consumer\n");
+  const git = (cwd: string, ...args: string[]) => {
+    const result = spawnSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", ...args], { cwd, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+  };
+  git(main, "init", "-q");
+  git(main, "add", "README.md");
+  git(main, "commit", "-qm", "base");
+  initializeConsumer(core, main, "consumer");
+  const linked = join(temporaryDirectory("paved-worktree-linked"), "feature");
+  git(main, "worktree", "add", "-q", "-b", "feature", linked);
+  mkdirSync(join(linked, "src"));
+
+  assert.equal(mainWorktreeRoot(main), undefined);
+  assert.equal(mainWorktreeRoot(linked), realpathSync(main));
+  assert.equal(resolveProjectRoot({ cwd: join(linked, "src") }).projectRoot, join(linked, "src"));
+  const status = await dispatchCli({ argv: ["status", "--json"], cwd: linked });
+  const data = status.data as { lifecycleState: string; mainWorktree?: string; nextAction: string; projectRoot: string };
+  assert.equal(data.lifecycleState, "UNINITIALIZED");
+  assert.equal(data.projectRoot, linked, "Paved evaluates the worktree it runs in");
+  assert.equal(data.mainWorktree, realpathSync(main));
+  assert.ok(data.nextAction.includes(realpathSync(main)), data.nextAction);
+  assert.ok(status.diagnostics.some((item) => item.code === "PAVED_WORKTREE_STATE_IN_MAIN"), JSON.stringify(status.diagnostics));
+  const plain = await dispatchCli({ argv: ["status", "--json"], cwd: temporaryDirectory("paved-no-worktree") });
+  assert.equal((plain.data as { mainWorktree?: string }).mainWorktree, undefined);
 });

@@ -71,7 +71,7 @@ describe("Decision schema", () => {
   });
 
   it("accepts each valid effect class value through schema validation", () => {
-    const effectValues = ["record-only", "config-additive", "config-mutating", "lock-transaction", "repository-mutating", "destructive"] as const;
+    const effectValues = ["record-only", "config-additive", "config-mutating", "lock-transaction", "context-regenerating", "repository-mutating", "destructive"] as const;
     for (const effect of effectValues) {
       const result = registry().validate(minimalDecision({ effect }));
       assert.equal(result.valid, true, `effect: ${effect} failed validation: ${result.errors.join("; ")}`);

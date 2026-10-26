@@ -5,6 +5,31 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Fixed
+
+- Source drift in generated project context (a cited file changed, or new relevant
+  sources appeared) no longer makes the project `STALE`, so `test`, `intent`, `plan` and
+  `execute` keep working during development. `status` reports it as
+  `generatedContext: drifted`, and a completed run regenerates the context. Lock, Core,
+  generator-input and missing-output problems still block work.
+- Regenerating generated context is a recoverable `context-regenerating` effect that a
+  user can answer in the conversation instead of authoring an approval file.
+- The context repair decision keeps its id while more cited files change, so an answer
+  is no longer lost when the findings grow; a regeneration or new evidence still asks
+  again. A skipped repair no longer fails `status` once its evidence changes.
+- The launcher keeps a version-independent project command at
+  `.paved/runtime/bin/paved` that works from non-interactive shells and survives plugin
+  updates. Remediation and next-action texts print that command, quoted, so they can be
+  pasted as is instead of naming a `paved` that may not exist on `PATH`.
+- Tests that fail because a service, container engine or program is unavailable are
+  reported as `PAVED_TEST_ENVIRONMENT_UNAVAILABLE` and block validation with
+  `PAVED_WORKFLOW_ENVIRONMENT_UNAVAILABLE` without spending attempts. Plan approval
+  records a test baseline, and a validation failure on tests that already failed carries
+  `PAVED_WORKFLOW_BASELINE_FAILING`.
+- In a linked Git worktree without Paved state, `status` finds the main worktree's state
+  and reports it (`mainWorktree`, `PAVED_WORKTREE_STATE_IN_MAIN`) with how to share it,
+  instead of only suggesting a fresh `init`.
+
 ## [2.15.2] - 2026-10-25
 
 ### Changed

@@ -117,16 +117,22 @@ function runDecisionGateUnlocked(input) {
         const relevant = [...stored.values()].filter((item) => item.scope === decision.scope && item.command === decision.command
             && item.run === decision.run && item.question === decision.question
             && item.status !== "SUPERSEDED" && item.status !== "CANCELLED");
-        const existing = relevant.find((item) => item.id === id) ?? relevant.at(-1);
+        // 2. REVALIDATE — narrow fingerprint; a mismatch supersedes even an APPLIED decision.
+        const fingerprint = fingerprintOf(candidate.evidence, candidate.candidates);
+        const existing = relevant.find((item) => item.fingerprint.sha256 === fingerprint.sha256)
+            ?? relevant.find((item) => item.id === id) ?? relevant.at(-1);
         if (existing === undefined) {
             live.set(id, decision);
             continue;
         }
-        // 2. REVALIDATE — narrow fingerprint; a mismatch supersedes even an APPLIED decision.
-        const fingerprint = fingerprintOf(candidate.evidence, candidate.candidates);
         if (existing.fingerprint.sha256 !== fingerprint.sha256) {
             const successorId = decisionId(candidate.question, scopeKey(candidate, context), [...candidate.candidates, fingerprint.sha256]);
             const successor = { ...decision, id: successorId, supersedes: existing.id };
+            // A rejection is final for the evidence it saw; new evidence asks again beside it.
+            if (existing.status === "REJECTED") {
+                live.set(successorId, { ...decision, id: successorId });
+                continue;
+            }
             const superseded = supersede(existing, "Cited evidence or candidate set changed.", successor.id);
             if (persist) {
                 storage.write(superseded);
@@ -135,7 +141,10 @@ function runDecisionGateUnlocked(input) {
             live.set(successor.id, successor);
             continue;
         }
-        live.set(existing.id, existing);
+        // The question and evidence are unchanged, so the open decision keeps its id and any
+        // answer; only the explanation follows what the provider reports now.
+        live.set(existing.id, existing.status === "PENDING" || existing.status === "ASKED"
+            ? { ...existing, reason: decision.reason } : existing);
     }
     // A crash after a handler wrote its configuration can make its provider disappear
     // before APPLIED was recorded. Resume the durable ANSWERED transaction anyway.

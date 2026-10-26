@@ -24,6 +24,9 @@ command is read-only.
 The structured result summarizes initialization state, project name, Core and lock
 health, selected/detected/resolved adapters, generator state, pending proposals,
 conflicts, verification profile status and derived `lifecycleState`.
+`generatedContext` is `drifted` when generated project context cites source files that
+changed since it was generated; that drift is a warning that does not block work, and
+the repair decision or `paved update --json` regenerates the context.
 
 Missing verification profile is reported as a warning/finding, not as implicit
 authorization to verify anything.

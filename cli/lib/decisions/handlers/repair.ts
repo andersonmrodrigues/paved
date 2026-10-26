@@ -13,5 +13,5 @@ function apply(answer: AnswerValue, context: DecisionContext): readonly string[]
 }
 
 export const repairHandler: HandlerRegistration = {
-  effect: "repository-mutating", apply, reject: (answer) => answer === "skip",
+  effect: "context-regenerating", apply, reject: (answer) => answer === "skip",
 };

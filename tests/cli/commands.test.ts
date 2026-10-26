@@ -8,7 +8,6 @@ import { parse, stringify } from "yaml";
 import { copyProjectForInitDryRun, createInitDryRunWorkspace, initDryRunScratchPrefix, projectNameFor } from "../../cli/commands/init.ts";
 import { hashLocalCore, hashLocalFile, hashLocalTree } from "../../cli/lib/local-core.ts";
 import { initializeConsumer, runGenerators } from "../../cli/lib/generator-runtime.ts";
-import { decisionDigest } from "../../cli/lib/decisions/approval.ts";
 import { acquireConsumerOperationLock } from "../../cli/lib/operation-lock.ts";
 import { renderHuman, renderJson } from "../../cli/output.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
@@ -529,15 +528,16 @@ function writeManifest(project: string, manifest: unknown): void {
 }
 
 describe("status and doctor commands", () => {
-  it("offers a read-only human-approved repair for stale generated context", async () => {
+  it("offers a read-only repair for stale generated context that a user can answer in conversation", async () => {
     const project = projectWithStaleGeneratedContext();
     try {
       const before = snapshotFiles(project);
       const result = await run(project, "doctor");
       assert.ok((result.decisions?.length ?? 0) >= 1, JSON.stringify(result));
       assert.equal(result.decisions?.[0]?.required, false);
-      assert.equal(result.decisions?.[0]?.risk, "high");
-      assert.equal(result.decisions?.[0]?.answerChannel, "human-authored");
+      assert.equal(result.decisions?.[0]?.risk, "medium");
+      assert.equal(result.decisions?.[0]?.reversibility, "recoverable");
+      assert.equal(result.decisions?.[0]?.answerChannel, "relayed");
       assert.ok(result.decisions?.[0]?.reason);
       assert.ok((result.decisions?.[0]?.evidence.length ?? 0) > 0);
       assert.equal(existsSync(join(project, ".paved/decisions")), false);
@@ -545,32 +545,55 @@ describe("status and doctor commands", () => {
     } finally { rmSync(project, { recursive: true, force: true }); }
   });
 
-  it("does not apply the repair without a matching human approval", async () => {
+  it("applies the context repair from a relayed answer without an approval file", async () => {
     const project = projectWithStaleGeneratedContext();
     try {
       const first = await run(project, "doctor");
       const decision = first.decisions![0]!;
-      const attempted = await run(project, "doctor", ["--answer", `${decision.id}=apply`, "--answered-by", "tester@example.com"]);
-      assert.match(JSON.stringify(attempted), /approvals/);
-      assert.ok(existsSync(join(project, ".paved/decisions", `${decision.id}.yaml`)));
-    } finally { rmSync(project, { recursive: true, force: true }); }
-  });
-  it("applies the repair after a matching human approval", async () => {
-    const project = projectWithStaleGeneratedContext();
-    try {
-      const first = await run(project, "doctor");
-      const decision = first.decisions![0]!;
-      await run(project, "doctor", ["--answer", `${decision.id}=apply`, "--answered-by", "tester@example.com"]);
-      const record = parse(readFileSync(join(project, ".paved/decisions", `${decision.id}.yaml`), "utf8")) as Parameters<typeof decisionDigest>[0];
-      mkdirSync(join(project, ".paved/approvals"), { recursive: true });
-      writeFileSync(join(project, `.paved/approvals/${decision.id}.json`), JSON.stringify({
-        decision: decision.id, decision_sha256: decisionDigest(record), answer: "apply",
-        decided_by: "maintainer@example.com", decided_at: "2026-09-28T00:00:00.000Z",
-      }));
       const result = await run(project, "doctor", ["--answer", `${decision.id}=apply`, "--answered-by", "tester@example.com"]);
       assert.ok(result.status !== "failed", JSON.stringify(result));
+      assert.ok(!codes(result).includes("PAVED_DECISION_ANSWER_INVALID"), JSON.stringify(result.diagnostics));
+      assert.equal(existsSync(join(project, ".paved/approvals")), false);
+      const record = parse(readFileSync(join(project, ".paved/decisions", `${decision.id}.yaml`), "utf8")) as { status: string; answer_source: string };
+      assert.equal(record.status, "APPLIED");
+      assert.equal(record.answer_source, "agent-relayed");
+      const after = await run(project, "doctor");
+      assert.equal(after.decisions?.length ?? 0, 0);
+      assert.ok(!codes(after).includes("PAVED_GENERATED_SOURCE_STALE"), JSON.stringify(after.diagnostics));
+    } finally { rmSync(project, { recursive: true, force: true }); }
+  });
+
+  it("keeps the repair decision id when another cited source changes before the answer", async () => {
+    const project = projectWithStaleGeneratedContext();
+    try {
+      const first = await run(project, "doctor");
+      const decision = first.decisions![0]!;
+      const driftBefore = codes(first).filter((code) => code === "PAVED_GENERATED_SOURCE_STALE").length;
+      writeFileSync(join(project, "web/src/app-routing.module.ts"), "const routes = [{ path: 'courses', component: CoursesPage, title: 'Courses' }];\n");
+      const second = await run(project, "doctor");
+      assert.ok(codes(second).filter((code) => code === "PAVED_GENERATED_SOURCE_STALE").length > driftBefore, JSON.stringify(second.diagnostics));
+      assert.equal(second.decisions?.[0]?.id, decision.id);
+      const applied = await run(project, "doctor", ["--answer", `${decision.id}=apply`, "--answered-by", "tester@example.com"]);
+      assert.ok(!codes(applied).includes("PAVED_DECISION_ANSWER_INVALID"), JSON.stringify(applied.diagnostics));
+      const record = parse(readFileSync(join(project, ".paved/decisions", `${decision.id}.yaml`), "utf8")) as { status: string };
+      assert.equal(record.status, "APPLIED");
+      assert.ok(!codes(await run(project, "doctor")).includes("PAVED_GENERATED_SOURCE_STALE"));
+    } finally { rmSync(project, { recursive: true, force: true }); }
+  });
+
+  it("asks again after a skipped repair once generated context changes", async () => {
+    const project = projectWithStaleGeneratedContext();
+    try {
+      const first = await run(project, "doctor");
+      const decision = first.decisions![0]!;
+      await run(project, "doctor", ["--answer", `${decision.id}=skip`, "--answered-by", "tester@example.com"]);
       assert.equal((await run(project, "doctor")).decisions?.length ?? 0, 0);
-      assert.equal(existsSync(join(project, ".paved/generated/state/last-run.json")), true);
+      runGenerators(ROOT, project);
+      writeFileSync(join(project, "README.md"), "# Changed again\n");
+      const again = await run(project, "doctor");
+      assert.notEqual(again.status, "failed", JSON.stringify(again.diagnostics));
+      assert.equal(again.decisions?.length, 1);
+      assert.notEqual(again.decisions?.[0]?.id, decision.id);
     } finally { rmSync(project, { recursive: true, force: true }); }
   });
   it("reports pending decisions and a conversational next action without mutating them", async () => {

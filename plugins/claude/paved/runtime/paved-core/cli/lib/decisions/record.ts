@@ -10,7 +10,7 @@ export type DecisionRisk = "low" | "medium" | "high";
 export type DecisionReversibility = "reversible" | "recoverable" | "irreversible";
 export type EffectClass =
   | "record-only" | "config-additive" | "config-mutating"
-  | "lock-transaction" | "repository-mutating" | "destructive";
+  | "lock-transaction" | "context-regenerating" | "repository-mutating" | "destructive";
 export type RequiredAnswerType = "single-choice" | "multi-choice" | "boolean" | "free-text";
 
 export interface DecisionOption {

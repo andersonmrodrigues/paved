@@ -6,7 +6,7 @@ import { afterEach, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse, stringify } from "yaml";
 import { initializeConsumer, runGenerators } from "../../cli/lib/generator-runtime.ts";
-import { inspectConsumer } from "../../cli/lib/consumer-state.ts";
+import { hasContextDrift, inspectConsumer } from "../../cli/lib/consumer-state.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
 import type { CommandResult } from "../../cli/result.ts";
 import { cleanupTemporaryDirectories, temporaryDirectory } from "../helpers.ts";
@@ -148,6 +148,24 @@ describe("delivering an approved plan", () => {
 
     const completed = await reviewClean(root, id, invoke, delivered);
     assert.equal(runState(root, id).status, "completed", JSON.stringify(completed));
+  });
+
+  it("delivers a change to files that generated context cites and regenerates that context at completion", async () => {
+    const root = project(false);
+    runGenerators(core, root);
+    commitAll(root, "base");
+    const { id, invoke } = await approvedRun(root);
+    write(root, "feature.js", "export const enabled = true;\n");
+    write(root, "README.md", "# Consumer\n\nThe behavior is enabled.\n");
+    assert.equal(hasContextDrift(inspectConsumer({ projectRoot: root, coreRoot: core })), true);
+
+    const delivered = await invoke("execute", "--run", id, "--auto", "--note", "Enabled the behavior");
+    assert.equal((delivered.data as { currentPhase: string }).currentPhase, "review", JSON.stringify(delivered));
+    const completed = await reviewClean(root, id, invoke, delivered);
+
+    assert.equal(runState(root, id).status, "completed", JSON.stringify(completed));
+    assert.equal((completed.data as { contextRefreshed?: boolean }).contextRefreshed, true, JSON.stringify(completed));
+    assert.equal(hasContextDrift(inspectConsumer({ projectRoot: root, coreRoot: core })), false);
   });
 
   it("accepts work that already exists once the user confirms it", async () => {
@@ -299,6 +317,50 @@ describe("delivering an approved plan", () => {
   });
 });
 
+describe("telling regressions from the environment", () => {
+  const events = (root: string, id: string) => (parse(readFileSync(join(root, ".paved/generated/runs", `${id}.yaml`), "utf8")) as {
+    events: { type: string; phase?: string; detail?: string; ref?: string }[];
+  }).events;
+
+  it("blocks validation without spending attempts while the tests cannot reach a service", async () => {
+    const root = project();
+    const real = readFileSync(join(root, "check.mjs"), "utf8");
+    write(root, "check.mjs", 'console.error("Error: connect ECONNREFUSED 127.0.0.1:5432");\nprocess.exit(1);\n');
+    commitAll(root, "tests need a database");
+    const { id, invoke } = await approvedRun(root);
+    assert.equal(events(root, id).find((event) => event.phase === "planning" && event.type === "tool-invoked")?.detail, "baseline status=environment-unavailable");
+    write(root, "feature.js", "export const enabled = true;\n");
+    assert.equal((await invoke("execute", "--run", id, "--advance", "--note", "Enabled the behavior")).status, "success");
+    for (let call = 0; call < 4; call += 1) {
+      const unavailable = await invoke("execute", "--run", id, "--advance");
+      assert.equal(unavailable.diagnostics[0]?.code, "PAVED_WORKFLOW_ENVIRONMENT_UNAVAILABLE", JSON.stringify(unavailable));
+      assert.match(unavailable.diagnostics[0]?.message ?? "", /refused the connection/);
+    }
+    assert.equal(runState(root, id).status, "running");
+    assert.equal(runState(root, id).phases.find((phase) => phase.phase === "validation")?.attempts, 1);
+
+    write(root, "check.mjs", real);
+    const passed = await invoke("execute", "--run", id, "--advance");
+    assert.equal((passed.data as { currentPhase: string }).currentPhase, "verification", JSON.stringify(passed));
+  });
+
+  it("records a baseline at approval and does not attribute tests that already failed to the change", async () => {
+    const root = project();
+    const { id, invoke } = await approvedRun(root);
+    const recorded = events(root, id).find((event) => event.phase === "planning" && event.type === "tool-invoked");
+    assert.equal(recorded?.detail, "baseline status=failed");
+    assert.match(recorded?.ref ?? "", /^\.paved\/generated\/evidence\//);
+    write(root, "feature.js", "export const enabled = 'no';\n");
+    await invoke("execute", "--run", id, "--advance", "--note", "Tried something");
+    const failed = await invoke("execute", "--run", id, "--advance");
+
+    assert.equal(runState(root, id).status, "failed", JSON.stringify(failed));
+    const attribution = failed.diagnostics.find((item) => item.code === "PAVED_WORKFLOW_BASELINE_FAILING");
+    assert.ok(attribution, JSON.stringify(failed));
+    assert.ok(attribution.message.includes(recorded!.ref!));
+  });
+});
+
 describe("independent review", () => {
   const blocking: Finding = { severity: "blocking", file: "feature.js", line: 1, summary: "The flag is exported as a string elsewhere." };
 
@@ -397,14 +459,14 @@ describe("starting work with execute", () => {
     const root = project();
     runGenerators(core, root);
     write(root, "README.md", "# Consumer, changed\n");
-    assert.equal(inspectConsumer({ projectRoot: root, coreRoot: core }).lifecycleState, "STALE");
+    assert.equal(hasContextDrift(inspectConsumer({ projectRoot: root, coreRoot: core })), true);
 
     const started = await dispatchCli({ argv: ["execute", "Enable the behavior", "--workflow", "feature", "--because", "New behavior.", "--project", root, "--json"] });
 
     assert.equal(started.status, "success", JSON.stringify(started));
     assert.equal((started.data as { updated?: boolean }).updated, true);
     assert.ok((started.data as { run?: string }).run);
-    assert.notEqual(inspectConsumer({ projectRoot: root, coreRoot: core }).lifecycleState, "STALE");
+    assert.equal(hasContextDrift(inspectConsumer({ projectRoot: root, coreRoot: core })), false);
   });
 
   it("takes a request through intent and planning to implementation with execute alone", async () => {
