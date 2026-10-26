@@ -9,7 +9,7 @@ const REPAIRABLE = new Set([
 ]);
 
 export const repairProvider: DecisionProvider = (context) => {
-  const findings = inspectConsumer({ projectRoot: context.projectRoot, coreRoot: context.coreRoot }).diagnostics
+  const findings = inspectConsumer({ projectRoot: context.projectRoot, coreRoot: context.coreRoot, ...(context.sourceRoot === undefined ? {} : { sourceRoot: context.sourceRoot }) }).diagnostics
     .filter((item) => REPAIRABLE.has(item.code));
   if (findings.length === 0) return [];
   const evidencePath = ".paved/generated/state/last-run.json";

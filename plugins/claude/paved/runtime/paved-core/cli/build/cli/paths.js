@@ -22,35 +22,49 @@ function manifestIn(projectRoot) {
     const manifestPath = join(projectRoot, ".paved/manifest.yaml");
     return existsSync(manifestPath) && statSync(manifestPath).isFile() ? manifestPath : undefined;
 }
+/** The nearest ancestor manifest, or else the repository root that ended the search. */
 function nearestAncestorManifest(start) {
     let current = start;
     for (;;) {
         const manifestPath = manifestIn(current);
         if (manifestPath !== undefined) {
-            return manifestPath;
+            return { manifestPath };
         }
         // A consumer nested in a repository must not inherit Paved state from an
         // unrelated directory above that repository (for example a workspace root).
         if (existsSync(join(current, ".git"))) {
-            return undefined;
+            return { repositoryRoot: current };
         }
         const parent = dirname(current);
         if (parent === current) {
-            return undefined;
+            return {};
         }
         current = parent;
     }
+}
+/**
+ * The main worktree whose Paved state the linked worktree at `worktreeRoot` shares: the main
+ * worktree has `.paved/manifest.yaml` at its root. The caller has already found that the
+ * linked worktree has none of its own, which always takes precedence.
+ */
+export function sharedStateRoot(worktreeRoot) {
+    const mainRoot = mainWorktreeRoot(worktreeRoot);
+    return mainRoot !== undefined && manifestIn(mainRoot) !== undefined ? mainRoot : undefined;
+}
+function sharedState(sourceRoot) {
+    const stateRoot = sharedStateRoot(sourceRoot);
+    return stateRoot === undefined ? undefined : { projectRoot: stateRoot, manifestPath: join(stateRoot, ".paved/manifest.yaml"), sourceRoot };
 }
 export function resolveProjectRoot(input) {
     if (input.project !== undefined) {
         const projectRoot = requireDirectory(resolve(input.cwd, input.project), "Project path");
         const manifestPath = manifestIn(projectRoot);
-        return manifestPath === undefined ? { projectRoot } : { projectRoot, manifestPath };
+        return manifestPath === undefined ? sharedState(projectRoot) ?? { projectRoot } : { projectRoot, manifestPath };
     }
     const cwd = requireDirectory(input.cwd, "Current working directory");
-    const manifestPath = nearestAncestorManifest(cwd);
+    const { manifestPath, repositoryRoot } = nearestAncestorManifest(cwd);
     if (manifestPath === undefined) {
-        return { projectRoot: cwd };
+        return (repositoryRoot === undefined ? undefined : sharedState(repositoryRoot)) ?? { projectRoot: cwd };
     }
     return {
         projectRoot: dirname(dirname(manifestPath)),
@@ -79,6 +93,16 @@ export function mainWorktreeRoot(projectRoot) {
     }
     catch {
         return undefined;
+    }
+}
+/** Whether `checkout` is the state root itself or a linked worktree of it, compared physically. */
+export function isCheckoutOf(checkout, stateRoot) {
+    try {
+        const state = realpathSync(stateRoot);
+        return realpathSync(checkout) === state || mainWorktreeRoot(checkout) === state;
+    }
+    catch {
+        return false;
     }
 }
 function realExecutablePath(path) {

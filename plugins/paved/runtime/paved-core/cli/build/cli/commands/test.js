@@ -37,6 +37,7 @@ export async function testHandler(invocation) {
     }
     const lifecycle = inspectConsumer({
         projectRoot: invocation.paths.projectRoot,
+        sourceRoot: invocation.paths.sourceRoot,
         coreRoot: invocation.paths.coreRoot,
     }).lifecycleState;
     if (!["RESOLVED", "GENERATED", "VALIDATED", "READY"].includes(lifecycle)) {
@@ -58,7 +59,7 @@ export async function testHandler(invocation) {
     try {
         const outcome = runDecisionGate({
             context: {
-                projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot,
+                projectRoot: invocation.paths.projectRoot, sourceRoot: invocation.paths.sourceRoot, coreRoot: invocation.paths.coreRoot,
                 command: "test", answers: invocation.flags.answers,
                 ...(invocation.flags.answeredBy === undefined ? {} : { answeredBy: invocation.flags.answeredBy }),
             },
@@ -81,6 +82,7 @@ export async function testHandler(invocation) {
         try {
             const result = await runTestingTool({
                 projectRoot: invocation.paths.projectRoot,
+                sourceRoot: invocation.paths.sourceRoot,
                 coreRoot: invocation.paths.coreRoot,
                 inputs,
             });

@@ -48,7 +48,7 @@ export function agentHandler(invocation: CommandInvocation): CommandResult {
         })],
       });
     }
-    const discovery = discoverAgentCommands(invocation.paths.projectRoot, invocation.paths.coreRoot);
+    const discovery = discoverAgentCommands(invocation.paths.projectRoot, invocation.paths.coreRoot, invocation.paths.sourceRoot);
     return createResult({
       command: "agent",
       status: "success",
@@ -91,7 +91,7 @@ export function agentHandler(invocation: CommandInvocation): CommandResult {
         })],
       });
     }
-    const discovery = discoverAgentCommands(invocation.paths.projectRoot, invocation.paths.coreRoot);
+    const discovery = discoverAgentCommands(invocation.paths.projectRoot, invocation.paths.coreRoot, invocation.paths.sourceRoot);
     const discovered = discovery.commands.find((command) => command.id === contract.id)!;
     if (!discovered.available) {
       return createResult({

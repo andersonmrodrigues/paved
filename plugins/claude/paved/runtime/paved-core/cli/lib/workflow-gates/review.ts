@@ -4,7 +4,7 @@ import { loadYaml } from "../documents.ts";
 import { resolveSafePath } from "../safe-path.ts";
 import { createRegistry } from "../schemas.ts";
 import { REVIEW_FIX, REVIEW_HANDLER } from "../workflows.ts";
-import type { Run } from "../workflow-runs.ts";
+import { runSourceRoot, type Run } from "../workflow-runs.ts";
 import type { PhaseHook } from "./index.ts";
 import { blocked, fingerprint, now, projectRelative, reopenImplementation, sha } from "./shared.ts";
 
@@ -29,7 +29,7 @@ export function reviewedState(projectRoot: string, run: Run): ReviewedState | un
   const planPath = resolveSafePath(projectRoot, plan);
   const evidencePath = resolveSafePath(projectRoot, run.evidence);
   if (!existsSync(planPath) || !existsSync(evidencePath)) return undefined;
-  return { plan_sha256: sha(readFileSync(planPath)), source_sha256: fingerprint(projectRoot), evidence_sha256: sha(readFileSync(evidencePath)) };
+  return { plan_sha256: sha(readFileSync(planPath)), source_sha256: fingerprint(runSourceRoot(projectRoot, run)), evidence_sha256: sha(readFileSync(evidencePath)) };
 }
 
 const STATE_NAMES: Readonly<Record<keyof ReviewedState, string>> = { plan_sha256: "plan", source_sha256: "source", evidence_sha256: "evidence" };

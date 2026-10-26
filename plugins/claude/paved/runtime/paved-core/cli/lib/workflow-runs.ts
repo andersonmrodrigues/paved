@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, realpathSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { stringify } from "yaml";
 import { atomicWriteFileSync } from "./atomic-write.ts";
 import { loadYaml } from "./documents.ts";
@@ -22,6 +22,8 @@ export interface Run {
   workflow?: { id: string; version: string };
   classification?: Classification;
   revision: string; started_at: string; status: string;
+  /** The linked worktree the run works on, when it shares the state of another checkout. */
+  worktree?: string;
   inputs: RunInput[]; phases: Phase[];
   decisions?: Decision[];
   delegation?: DelegationRef;
@@ -35,6 +37,17 @@ export const TERMINAL_STATUSES: ReadonlySet<string> = new Set(["completed", "com
 export function runPath(projectRoot: string, id: string): string {
   if (!/^[a-z][a-z0-9-]{5,80}$/.test(id)) throw new Error(`Invalid workflow run id: ${id}.`);
   return resolveSafePath(projectRoot, `.paved/generated/runs/${id}.yaml`);
+}
+
+/** The checkout a run works on: the linked worktree it records, or the checkout holding the state. */
+export function runSourceRoot(projectRoot: string, run: Pick<Run, "worktree">): string {
+  return run.worktree ?? projectRoot;
+}
+
+/** True when the run works on the checkout at sourceRoot, so it may be resumed from there. */
+export function runBelongsTo(projectRoot: string, run: Pick<Run, "worktree">, sourceRoot: string): boolean {
+  const real = (path: string): string => { try { return realpathSync(path); } catch { return resolve(path); } };
+  return real(runSourceRoot(projectRoot, run)) === real(sourceRoot);
 }
 
 export function coreWorkflowIds(coreRoot: string): string[] {

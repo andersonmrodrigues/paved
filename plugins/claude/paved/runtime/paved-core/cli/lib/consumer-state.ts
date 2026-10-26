@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { stringify } from "yaml";
-import { mainWorktreeRoot } from "../paths.ts";
+import { isCheckoutOf } from "../paths.ts";
 import { createDiagnostic, type Diagnostic } from "../result.ts";
 import { capabilityEvidence, capabilityLockEntries, capabilityProviders as providerReport, resolveCapabilities, detectAdapters, loadAdapters, resolveAdapters, type AdapterEvidence, type CapabilityProviderEntry, type Detection, type ProviderSelection } from "./adapters.ts";
 import { loadYaml, loadMarkdown } from "./documents.ts";
@@ -20,6 +20,8 @@ import { planDocumentMigrations, type PlannedDocumentMigration } from "./documen
 
 export interface InspectConsumerInput {
   readonly projectRoot: string;
+  /** The checkout adapters are detected in; defaults to projectRoot, which holds the state. */
+  readonly sourceRoot?: string;
   readonly coreRoot: string;
   readonly manifestPath?: string;
   readonly adapterSelections?: readonly string[];
@@ -27,6 +29,8 @@ export interface InspectConsumerInput {
 
 export interface PlanConsumerUpdateInput {
   readonly projectRoot: string;
+  /** The checkout regeneration will read; defaults to projectRoot. */
+  readonly sourceRoot?: string;
   readonly coreRoot: string;
   readonly manifestPath?: string;
 }
@@ -92,8 +96,10 @@ export interface ConsumerInspection {
   readonly conflicts: readonly string[];
   readonly pendingDecisions: readonly { id: string; question: string; required: boolean; command: string }[];
   readonly pendingApprovals: readonly string[];
-  /** The main worktree holding Paved state, when this uninitialized checkout is a linked worktree of it. */
-  readonly mainWorktree?: string;
+  /** The linked worktree whose source is used, when it shares the state of projectRoot. */
+  readonly sourceRoot?: string;
+  /** Linked worktrees the generated context was last generated from, when not projectRoot. */
+  readonly contextWorktrees?: readonly string[];
   readonly diagnostics: readonly Diagnostic[];
 }
 
@@ -218,6 +224,14 @@ function impactedGenerators(
     }
   }
   return [...affected].sort();
+}
+
+function sameDirectory(left: string, right: string): boolean {
+  try {
+    return realpathSync(left) === realpathSync(right);
+  } catch {
+    return resolve(left) === resolve(right);
+  }
 }
 
 function diagnostic(input: {
@@ -515,7 +529,38 @@ function verificationProfile(
   return diagnostics.length === before ? "present" : "invalid";
 }
 
-function inspectLastRun(projectRoot: string, coreRoot: string, evidence: readonly AdapterEvidence[], diagnostics: Diagnostic[]): ConsumerInspection["lastRun"] {
+interface SourceScan {
+  readonly sources: ReturnType<typeof discoverSources>;
+  readonly evidence: readonly AdapterEvidence[];
+}
+
+/** The checkout each generator's context describes, and the sources and evidence found there. */
+interface ContextSources {
+  readonly rootFor: (generator: unknown) => string;
+  readonly scan: (root: string) => SourceScan;
+}
+
+/**
+ * Linked worktrees that generators last read, as recorded in last-run.json. Only a linked
+ * worktree of the checkout holding the state is accepted, so a tampered record can never
+ * point drift checks at an unrelated directory.
+ */
+function recordedContextRoots(projectRoot: string): Map<string, string> {
+  const roots = new Map<string, string>();
+  try {
+    const parsed = JSON.parse(readFileSync(join(projectRoot, ".paved/generated/state/last-run.json"), "utf8")) as { executions?: unknown };
+    for (const item of Array.isArray(parsed.executions) ? parsed.executions : []) {
+      const { generator, sourceWorktree } = (item ?? {}) as { generator?: unknown; sourceWorktree?: unknown };
+      if (typeof generator === "string" && typeof sourceWorktree === "string" && isAbsolute(sourceWorktree)
+        && isCheckoutOf(sourceWorktree, projectRoot)) roots.set(generator, sourceWorktree);
+    }
+  } catch {
+    // Missing or unreadable generator state is reported by inspectLastRun.
+  }
+  return roots;
+}
+
+function inspectLastRun(projectRoot: string, coreRoot: string, context: ContextSources, diagnostics: Diagnostic[]): ConsumerInspection["lastRun"] {
   const path = join(projectRoot, ".paved/generated/state/last-run.json");
   const proposalRoot = join(projectRoot, ".paved/generated/proposals");
   const proposalsOnDisk: string[] = [];
@@ -537,7 +582,6 @@ function inspectLastRun(projectRoot: string, coreRoot: string, evidence: readonl
   try {
     const parsed = JSON.parse(readFileSync(path, "utf8")) as { executions?: unknown };
     const executions = Array.isArray(parsed.executions) ? parsed.executions : [];
-    const currentSources = discoverSources(projectRoot);
     const engineDigest = hashLocalTree(coreRoot, ["manifest.yaml", "cli/lib/generator-runtime.ts", "schemas/project-context.schema.yaml", "schemas/feature.schema.yaml", "schemas/provenance.schema.yaml"]);
     const manifestDigest = hashFile(join(projectRoot, ".paved/manifest.yaml"));
     const proposals = [...proposalsOnDisk];
@@ -559,8 +603,9 @@ function inspectLastRun(projectRoot: string, coreRoot: string, evidence: readonl
             remediation: "Review and regenerate the affected context." }));
         }
         const cited = new Set((execution.sources ?? []).map((source) => source.path));
-        const currentPaths = [...sourcesFor(execution.generator, currentSources).map((source) => source.path),
-          ...relevantEvidenceFor(execution.generator, evidence).map((item) => item.source.path)];
+        const current = context.scan(context.rootFor(execution.generator));
+        const currentPaths = [...sourcesFor(execution.generator, current.sources).map((source) => source.path),
+          ...relevantEvidenceFor(execution.generator, current.evidence).map((item) => item.source.path)];
         if (currentPaths.some((path) => !cited.has(path))) {
           diagnostics.push(diagnostic({ code: "PAVED_GENERATOR_SOURCE_SET_STALE", component: "consumer.generated", category: "findings",
             message: `Generator ${execution.generator} has new relevant source evidence.`,
@@ -621,7 +666,7 @@ function walkFiles(root: string, callback: (path: string) => void): void {
 
 function inspectProvenanceObject(
   registry: SchemaRegistry,
-  projectRoot: string,
+  rootFor: ContextSources["rootFor"],
   document: Record<string, unknown>,
   body: string,
   path: string,
@@ -648,7 +693,7 @@ function inspectProvenanceObject(
       remediation: "Fix the generated markers or regenerate the artifact.",
     }));
   }
-  const provenance = document.provenance as { output_sha256?: unknown; sources?: unknown } | undefined;
+  const provenance = document.provenance as { generator?: unknown; output_sha256?: unknown; sources?: unknown } | undefined;
   if (typeof provenance?.output_sha256 === "string" && provenance.output_sha256 !== sha(body)) {
     diagnostics.push(diagnostic({
       code: "PAVED_GENERATED_PROVENANCE_TAMPERED",
@@ -663,7 +708,7 @@ function inspectProvenanceObject(
     if (source === null || typeof source !== "object") continue;
     const entry = source as { type?: unknown; location?: unknown; sha256?: unknown };
     if (entry.type !== "file" || typeof entry.location !== "string" || typeof entry.sha256 !== "string") continue;
-    const sourcePath = safe(projectRoot, entry.location);
+    const sourcePath = safe(rootFor(provenance?.generator), entry.location);
     if (!existsSync(sourcePath) || hashFile(sourcePath) !== entry.sha256) {
       diagnostics.push(diagnostic({
         code: "PAVED_GENERATED_SOURCE_STALE",
@@ -676,21 +721,21 @@ function inspectProvenanceObject(
   }
 }
 
-function inspectGeneratedProvenance(registry: SchemaRegistry, projectRoot: string, diagnostics: Diagnostic[]): void {
+function inspectGeneratedProvenance(registry: SchemaRegistry, projectRoot: string, rootFor: ContextSources["rootFor"], diagnostics: Diagnostic[]): void {
   walkFiles(join(projectRoot, ".paved/project"), (full) => {
     const repoPath = relative(projectRoot, full).split(sep).join("/");
     try {
       if (full.endsWith(".md")) {
         const markdown = loadMarkdown(full);
         if (markdown.frontmatter.kind === "ContextDocument") {
-          inspectProvenanceObject(registry, projectRoot, markdown.frontmatter, markdown.body, repoPath, diagnostics);
+          inspectProvenanceObject(registry, rootFor, markdown.frontmatter, markdown.body, repoPath, diagnostics);
         }
       } else if (full.endsWith(".yaml") || full.endsWith(".yml")) {
         const document = loadYaml(full);
         if (document !== null && typeof document === "object" && (document as { provenance?: unknown }).provenance !== undefined) {
           const withoutProvenance = structuredClone(document) as Record<string, unknown>;
           delete withoutProvenance.provenance;
-          inspectProvenanceObject(registry, projectRoot, document as Record<string, unknown>, stringify(withoutProvenance), repoPath, diagnostics);
+          inspectProvenanceObject(registry, rootFor, document as Record<string, unknown>, stringify(withoutProvenance), repoPath, diagnostics);
         }
       }
     } catch (error) {
@@ -803,15 +848,15 @@ function updateLockGenerators(
   return { entries, changedIds: changedIds.sort() };
 }
 
-function staleGeneratorIds(projectRoot: string, coreRoot: string, resolved: readonly Detection[], manifest: ProjectManifest): string[] {
+function staleGeneratorIds(projectRoot: string, sourceRoot: string, coreRoot: string, resolved: readonly Detection[], manifest: ProjectManifest): string[] {
   const path = join(projectRoot, ".paved/generated/state/last-run.json");
   if (!existsSync(path)) return [];
   let executions: { generator?: string; outputs?: string[]; sources?: { path?: string; sha256?: string }[];
     contractSha256?: string; engineSha256?: string; manifestSha256?: string }[];
   try { executions = (JSON.parse(readFileSync(path, "utf8")) as { executions?: typeof executions }).executions ?? []; }
   catch { return []; }
-  const sources = discoverSources(projectRoot);
-  const evidence = capabilityEvidence(projectRoot, sources, [...resolved], manifest.capability_providers, answeredProviders(projectRoot, coreRoot)).evidence;
+  const sources = discoverSources(sourceRoot);
+  const evidence = capabilityEvidence(sourceRoot, sources, [...resolved], manifest.capability_providers, answeredProviders(projectRoot, coreRoot)).evidence;
   const byPath = new Map(sources.map((source) => [source.path, source.sha256]));
   const engineDigest = hashLocalTree(coreRoot, ["manifest.yaml", "cli/lib/generator-runtime.ts", "schemas/project-context.schema.yaml", "schemas/feature.schema.yaml", "schemas/provenance.schema.yaml"]);
   const manifestDigest = hashFile(join(projectRoot, ".paved/manifest.yaml"));
@@ -908,8 +953,8 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
 
   let resolvedAdapters: Detection[] = [];
   try {
-    const sources = discoverSources(input.projectRoot);
-    const detectedAdapters = detectAdapters(input.projectRoot, loadAdapters(input.coreRoot), sources);
+    const sources = discoverSources(input.sourceRoot ?? input.projectRoot);
+    const detectedAdapters = detectAdapters(input.sourceRoot ?? input.projectRoot, loadAdapters(input.coreRoot), sources);
     const selectedAdapters = (manifest.adapters ?? []).map((adapter) => ({ id: adapter.id, version: adapter.version }));
     const resolved = resolveAdapters(detectedAdapters, selectedAdapters, core.version);
     resolvedAdapters = resolved.adapters;
@@ -991,7 +1036,7 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
   const runtimeChanged = JSON.stringify(lockResult.lock.runtime) !== JSON.stringify(nextLock.runtime);
   const capabilitiesChanged = JSON.stringify(lockResult.lock.capabilities ?? []) !== JSON.stringify(nextLock.capabilities ?? []);
   const lockChanged = coreChanged || adaptersChanged || generatorsChanged || runtimeChanged || capabilitiesChanged;
-  const staleIds = staleGeneratorIds(input.projectRoot, input.coreRoot, resolvedAdapters, manifest);
+  const staleIds = staleGeneratorIds(input.projectRoot, input.sourceRoot ?? input.projectRoot, input.coreRoot, resolvedAdapters, manifest);
   const priorAdapters = new Map((lockResult.lock.adapters ?? []).filter((entry) => entry.id).map((entry) => [entry.id as string, entry]));
   const nextAdapters = new Map((nextLock.adapters ?? []).filter((entry) => entry.id).map((entry) => [entry.id as string, entry]));
   const changedAdapterIds = [...new Set([...priorAdapters.keys(), ...nextAdapters.keys()])]
@@ -1032,16 +1077,16 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
   const manifestPath = input.manifestPath ?? join(pavedDir, "manifest.yaml");
   const hasPavedDir = existsSync(pavedDir);
   const hasManifest = existsSync(manifestPath);
-  // Paved evaluates the checkout it runs in, so state found in the main worktree is reported, not borrowed.
-  const mainWorktree = hasManifest ? undefined : mainWorktreeRoot(input.projectRoot);
-  const sharedState = mainWorktree !== undefined && existsSync(join(mainWorktree, ".paved", "manifest.yaml")) ? mainWorktree : undefined;
-  if (sharedState !== undefined) {
+  const sourceRoot = input.sourceRoot ?? input.projectRoot;
+  const sharedSource = sameDirectory(sourceRoot, input.projectRoot) ? undefined : sourceRoot;
+  if (sharedSource !== undefined) {
     diagnostics.push(diagnostic({
       code: "PAVED_WORKTREE_STATE_IN_MAIN",
       component: "consumer.manifest",
+      severity: "info",
       category: "findings",
-      message: `This is a linked Git worktree of ${sharedState}, which has Paved state; this worktree has none because .paved/ is not committed.`,
-      remediation: "Commit .paved/ in the main worktree (its runtime/ directory ignores itself) so every worktree checks out the same state, or run paved init here to give this worktree its own. Pointing --project at the main worktree would test and evaluate that checkout, not this one.",
+      message: `This linked Git worktree uses the shared Paved state of ${input.projectRoot}; source, tests and digests come from this worktree.`,
+      remediation: "No action is needed. Run paved init in this worktree only if it should keep its own state.",
     }));
   }
   if (!hasPavedDir && !hasManifest) {
@@ -1067,7 +1112,6 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
       conflicts: [],
       pendingDecisions: [],
       pendingApprovals: [],
-      ...(sharedState === undefined ? {} : { mainWorktree: sharedState }),
       diagnostics,
     };
   }
@@ -1088,7 +1132,6 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
       conflicts: [],
       pendingDecisions: [],
       pendingApprovals: [],
-      ...(sharedState === undefined ? {} : { mainWorktree: sharedState }),
       diagnostics,
     };
   }
@@ -1145,8 +1188,8 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
   let capabilityProviders: CapabilityProviderEntry[] = [];
   if (manifest && core) {
     try {
-      const sources = discoverSources(input.projectRoot);
-      detectedAdapters = detectAdapters(input.projectRoot, loadAdapters(input.coreRoot), sources);
+      const sources = discoverSources(sourceRoot);
+      detectedAdapters = detectAdapters(sourceRoot, loadAdapters(input.coreRoot), sources);
       const resolved = resolveAdapters(detectedAdapters, selectedAdapters, core.version);
       resolvedAdapters = resolved.adapters;
       compareAdapterLocks(lockResult.lock, input.coreRoot, resolvedAdapters, diagnostics);
@@ -1160,7 +1203,7 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
           remediation: "Adjust .paved/manifest.yaml adapter selections or add the missing repository evidence.",
         }));
       }
-      const capabilities = capabilityEvidence(input.projectRoot, sources, resolvedAdapters, manifest.capability_providers, answeredProviders(input.projectRoot, input.coreRoot, decisions));
+      const capabilities = capabilityEvidence(sourceRoot, sources, resolvedAdapters, manifest.capability_providers, answeredProviders(input.projectRoot, input.coreRoot, decisions));
       adapterEvidence = capabilities.evidence;
       capabilityProviders = providerReport(capabilities.resolutions);
       // A lock without a capabilities section recorded no decisions, which is exact for single-provider repositories.
@@ -1197,8 +1240,28 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
 
   const profile = verificationProfile(registry, input.projectRoot, diagnostics);
   if (manifest) diagnostics.push(...inspectOverrides(input.projectRoot, input.coreRoot, selectedAdapters.map((adapter) => adapter.id)));
-  const lastRun = inspectLastRun(input.projectRoot, input.coreRoot, adapterEvidence, diagnostics);
-  inspectGeneratedProvenance(registry, input.projectRoot, diagnostics);
+  // Context describes the checkout it was generated from, so its drift is judged there, not in whichever worktree runs status.
+  const contextRoots = recordedContextRoots(input.projectRoot);
+  const scans = new Map<string, SourceScan>();
+  const context: ContextSources = {
+    rootFor: (generator) => (typeof generator === "string" ? contextRoots.get(generator) : undefined) ?? input.projectRoot,
+    scan: (root) => {
+      const cached = scans.get(root);
+      if (cached !== undefined) return cached;
+      let scan: SourceScan;
+      if (sameDirectory(root, sourceRoot)) {
+        scan = { sources: discoverSources(sourceRoot), evidence: adapterEvidence };
+      } else {
+        const sources = discoverSources(root);
+        scan = { sources, evidence: manifest === undefined ? [] : capabilityEvidence(root, sources, resolvedAdapters, manifest.capability_providers, answeredProviders(input.projectRoot, input.coreRoot, decisions)).evidence };
+      }
+      scans.set(root, scan);
+      return scan;
+    },
+  };
+  const lastRun = inspectLastRun(input.projectRoot, input.coreRoot, context, diagnostics);
+  inspectGeneratedProvenance(registry, input.projectRoot, context.rootFor, diagnostics);
+  const contextWorktrees = [...new Set(contextRoots.values())].sort();
 
   const lockHealth = lockHealthFromDiagnostics(lockResult.health, diagnostics);
   const state = lifecycleState({
@@ -1224,6 +1287,8 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
       ...(coreDigestMatches === undefined ? {} : { lockDigestMatches: coreDigestMatches }),
     },
     lockHealth,
+    ...(sharedSource === undefined ? {} : { sourceRoot: sharedSource }),
+    ...(contextWorktrees.length === 0 ? {} : { contextWorktrees }),
     selectedAdapters: selectedAdapters.map((adapter) => adapter.id).sort(),
     detectedAdapters: detectedAdapters.filter((detection) => detection.confidence !== "unknown").map((detection) => ({
       id: detection.adapter.id,

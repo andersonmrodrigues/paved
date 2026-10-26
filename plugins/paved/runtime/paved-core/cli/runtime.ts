@@ -67,7 +67,13 @@ export interface CliFlags {
 
 export interface CommandPaths {
   readonly cwd: string;
+  /** The state root, holding the `.paved/` state in use. */
   readonly projectRoot: string;
+  /**
+   * The source root: the checkout whose files are read, tested and digested. It equals
+   * projectRoot except in a linked Git worktree that shares the main worktree's state.
+   */
+  readonly sourceRoot: string;
   readonly coreRoot: string;
   readonly manifestPath?: string;
 }
@@ -610,9 +616,10 @@ function pathsFor(state: ParseState, cwd: string, executablePath: string): Comma
   const project = resolveProjectRoot({ cwd, ...(state.flags.project === undefined ? {} : { project: state.flags.project }) });
   const coreRoot = resolveCoreRoot({ executablePath });
 
+  const sourceRoot = project.sourceRoot ?? project.projectRoot;
   return project.manifestPath === undefined
-    ? { cwd, projectRoot: project.projectRoot, coreRoot }
-    : { cwd, projectRoot: project.projectRoot, coreRoot, manifestPath: project.manifestPath };
+    ? { cwd, projectRoot: project.projectRoot, sourceRoot, coreRoot }
+    : { cwd, projectRoot: project.projectRoot, sourceRoot, coreRoot, manifestPath: project.manifestPath };
 }
 
 function defaultHandler(invocation: CommandInvocation): CommandResult {

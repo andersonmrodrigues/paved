@@ -70,6 +70,7 @@ export function updateHandler(invocation) {
     }
     const plan = planConsumerUpdate({
         projectRoot: invocation.paths.projectRoot,
+        sourceRoot: invocation.paths.sourceRoot,
         coreRoot: invocation.paths.coreRoot,
         ...(invocation.paths.manifestPath === undefined ? {} : { manifestPath: invocation.paths.manifestPath }),
     });
@@ -82,7 +83,7 @@ export function updateHandler(invocation) {
         });
     }
     if (!plan.changed) {
-        const lifecycleState = inspectConsumer({ projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot }).lifecycleState;
+        const lifecycleState = inspectConsumer({ projectRoot: invocation.paths.projectRoot, sourceRoot: invocation.paths.sourceRoot, coreRoot: invocation.paths.coreRoot }).lifecycleState;
         const status = statusFor(plan.diagnostics);
         const agentsBlock = invocation.flags.dryRun || status === "failed" ? undefined : refreshAgentsBlock(invocation.paths.coreRoot, invocation.paths.projectRoot);
         return createResult({
@@ -94,6 +95,7 @@ export function updateHandler(invocation) {
     }
     if (invocation.flags.dryRun) {
         const generation = plan.plannedGeneratorIds.length === 0 ? undefined : runGenerators(invocation.paths.coreRoot, invocation.paths.projectRoot, {
+            sourceRoot: invocation.paths.sourceRoot,
             dryRun: true,
             generators: [...plan.plannedGeneratorIds],
             ...(plan.nextLock === undefined ? {} : { lock: plan.nextLock }),
@@ -103,9 +105,12 @@ export function updateHandler(invocation) {
     }
     try {
         const registry = createRegistry(join(invocation.paths.coreRoot, "schemas"), ["paved/v1"]);
+        // Generators read a linked worktree sharing this state in place, so the run records it; the stage guards its sources.
+        const shared = invocation.paths.sourceRoot !== invocation.paths.projectRoot;
         const staged = applyConsumerUpdate(invocation.paths.projectRoot, (stagedRoot) => {
             applyDocumentMigrations(stagedRoot, plan.plannedMigrations, registry);
             const generation = plan.plannedGeneratorIds.length === 0 ? undefined : runGenerators(invocation.paths.coreRoot, stagedRoot, {
+                ...(shared ? { sourceRoot: invocation.paths.sourceRoot } : {}),
                 generators: [...plan.plannedGeneratorIds],
                 ...(plan.nextLock === undefined ? {} : { lock: plan.nextLock }),
             });
@@ -117,6 +122,7 @@ export function updateHandler(invocation) {
             }
             return { generation, diagnostics };
         }, {
+            ...(shared ? { sourceRoot: invocation.paths.sourceRoot } : {}),
             commitIf: (result) => result.diagnostics.every((item) => item.category === "findings"),
             onRejected: (stagedRoot, result) => {
                 for (const path of result.generation?.executions.flatMap((execution) => execution.proposals) ?? []) {
@@ -131,7 +137,7 @@ export function updateHandler(invocation) {
                 }
             },
         });
-        const lifecycleState = inspectConsumer({ projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot }).lifecycleState;
+        const lifecycleState = inspectConsumer({ projectRoot: invocation.paths.projectRoot, sourceRoot: invocation.paths.sourceRoot, coreRoot: invocation.paths.coreRoot }).lifecycleState;
         const status = statusFor(staged.diagnostics);
         const agentsBlock = status === "failed" ? undefined : refreshAgentsBlock(invocation.paths.coreRoot, invocation.paths.projectRoot);
         return createResult({

@@ -120,6 +120,7 @@ export function generateHandler(invocation) {
     let result;
     try {
         result = runGenerators(invocation.paths.coreRoot, invocation.paths.projectRoot, {
+            sourceRoot: invocation.paths.sourceRoot,
             dryRun: invocation.flags.dryRun,
             ...(invocation.selectors.length === 0 ? {} : { generators: [...invocation.selectors] }),
         });

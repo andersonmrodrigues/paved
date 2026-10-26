@@ -5,6 +5,21 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- A linked Git worktree without its own `.paved/` now uses the main worktree's Paved
+  state, while tests, verification, source digests, adapter detection and the run diff
+  use the linked worktree's files. `status` reports `stateRoot` and `sourceRoot`, and
+  `PAVED_WORKTREE_STATE_IN_MAIN` is now an info diagnostic saying shared state is in use;
+  `mainWorktree` is no longer reported. A worktree with its own `.paved/` keeps using it.
+- Generated context records the linked worktree it came from (`sourceWorktree` in
+  `last-run.json`, `contextWorktrees` in `status`), so changes in another worktree are not
+  reported as drift.
+- Workflow runs record their linked worktree (`worktree`) and resume only from it;
+  `--run` from another checkout fails with `PAVED_WORKFLOW_WORKTREE_MISMATCH`.
+- The project command `.paved/runtime/bin/paved` works from a linked worktree and keeps
+  working on it.
+
 ## [2.16.0] - 2026-10-26
 
 ### Fixed

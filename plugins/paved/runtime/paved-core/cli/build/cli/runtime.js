@@ -541,9 +541,10 @@ function parse(argv) {
 function pathsFor(state, cwd, executablePath) {
     const project = resolveProjectRoot({ cwd, ...(state.flags.project === undefined ? {} : { project: state.flags.project }) });
     const coreRoot = resolveCoreRoot({ executablePath });
+    const sourceRoot = project.sourceRoot ?? project.projectRoot;
     return project.manifestPath === undefined
-        ? { cwd, projectRoot: project.projectRoot, coreRoot }
-        : { cwd, projectRoot: project.projectRoot, coreRoot, manifestPath: project.manifestPath };
+        ? { cwd, projectRoot: project.projectRoot, sourceRoot, coreRoot }
+        : { cwd, projectRoot: project.projectRoot, sourceRoot, coreRoot, manifestPath: project.manifestPath };
 }
 function defaultHandler(invocation) {
     return createResult({

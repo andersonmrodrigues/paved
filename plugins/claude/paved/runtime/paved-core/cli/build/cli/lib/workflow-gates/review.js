@@ -4,6 +4,7 @@ import { loadYaml } from "../documents.js";
 import { resolveSafePath } from "../safe-path.js";
 import { createRegistry } from "../schemas.js";
 import { REVIEW_FIX, REVIEW_HANDLER } from "../workflows.js";
+import { runSourceRoot } from "../workflow-runs.js";
 import { blocked, fingerprint, now, projectRelative, reopenImplementation, sha } from "./shared.js";
 export const reviewBriefPath = (runId) => `.paved/generated/reviews/${runId}-brief.md`;
 export const reviewRecordPath = (runId) => `.paved/generated/reviews/${runId}-findings.yaml`;
@@ -17,7 +18,7 @@ export function reviewedState(projectRoot, run) {
     const evidencePath = resolveSafePath(projectRoot, run.evidence);
     if (!existsSync(planPath) || !existsSync(evidencePath))
         return undefined;
-    return { plan_sha256: sha(readFileSync(planPath)), source_sha256: fingerprint(projectRoot), evidence_sha256: sha(readFileSync(evidencePath)) };
+    return { plan_sha256: sha(readFileSync(planPath)), source_sha256: fingerprint(runSourceRoot(projectRoot, run)), evidence_sha256: sha(readFileSync(evidencePath)) };
 }
 const STATE_NAMES = { plan_sha256: "plan", source_sha256: "source", evidence_sha256: "evidence" };
 /**

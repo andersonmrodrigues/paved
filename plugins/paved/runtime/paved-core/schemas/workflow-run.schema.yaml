@@ -48,6 +48,12 @@ properties:
   revision:
     description: Source revision the run started from.
     $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+  worktree:
+    description: >
+      Absolute path of the linked Git worktree whose source the run works on, recorded when
+      that worktree shares the Paved state of another checkout. Absent means the checkout
+      holding the state. A run resumes only from the worktree it records.
+    $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
   started_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
   ended_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
   status:

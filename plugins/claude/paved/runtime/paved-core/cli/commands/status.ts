@@ -12,12 +12,12 @@ import { inspectVerificationConfig } from "../lib/verification-runner.ts";
 
 function statusFor(diagnostics: readonly Diagnostic[]): ResultStatus {
   if (diagnostics.some((diagnostic) => diagnostic.category !== "findings")) return "failed";
-  return diagnostics.length > 0 ? "warning" : "success";
+  return diagnostics.some((diagnostic) => diagnostic.severity !== "info") ? "warning" : "success";
 }
 
 export function statusData(inspection: ConsumerInspection): Record<string, unknown> {
   const waiting = inspection.pendingDecisions.filter((item) => item.required);
-  const unavailableCommands = discoverAgentCommands(inspection.projectRoot, inspection.coreRoot).commands
+  const unavailableCommands = discoverAgentCommands(inspection.projectRoot, inspection.coreRoot, inspection.sourceRoot).commands
     .filter((command) => !command.available)
     .map((command) => ({
       name: command.name,
@@ -30,8 +30,7 @@ export function statusData(inspection: ConsumerInspection): Record<string, unkno
     ? inspection.pendingApprovals.length > 0
       ? `Waiting for ${waiting.length} decision${waiting.length === 1 ? "" : "s"}. Review the pending approval ids, then relay approved answers with ${answerCommand} --answer <id>=<value>.`
       : `Waiting for ${waiting.length} decision${waiting.length === 1 ? "" : "s"}. Answer with ${answerCommand} --answer <id>=<value> --answered-by <you>.`
-    : inspection.lifecycleState === "UNINITIALIZED" ? inspection.mainWorktree === undefined ? "Run paved init to initialize this project."
-      : `This linked worktree has no Paved state; the main worktree at ${inspection.mainWorktree} has it. Commit .paved/ there so worktrees share it, or run paved init here.`
+    : inspection.lifecycleState === "UNINITIALIZED" ? "Run paved init to initialize this project."
       : inspection.lifecycleState === "STALE" ? "Run paved update to refresh stale generated state."
         : inspection.lifecycleState === "BROKEN" || inspection.lifecycleState === "INCOMPATIBLE"
           ? "Run paved status and answer its repair decisions."
@@ -53,7 +52,8 @@ export function statusData(inspection: ConsumerInspection): Record<string, unkno
     capabilityProviders: inspection.capabilityProviders,
     lockHealth: inspection.lockHealth,
     verificationProfile: inspection.verificationProfile,
-    ...(inspection.mainWorktree === undefined ? {} : { mainWorktree: inspection.mainWorktree }),
+    ...(inspection.sourceRoot === undefined ? {} : { stateRoot: inspection.projectRoot, sourceRoot: inspection.sourceRoot }),
+    ...(inspection.contextWorktrees === undefined ? {} : { contextWorktrees: inspection.contextWorktrees }),
     generatedContext: drifted ? "drifted" : "current",
     generatorState: inspection.lastRun ?? { present: false, proposals: [], conflicts: [] },
     proposals: inspection.proposals,
@@ -84,6 +84,7 @@ function openRuns(inspection: ConsumerInspection): { runs: Record<string, unknow
   const scanned = scanRuns(inspection.projectRoot, inspection.coreRoot);
   const runs = scanned.runs.filter(isOpen).map((run) => ({
     run: run.id, status: run.status, ...(run.workflow === undefined ? {} : { workflow: run.workflow.id }),
+    ...(run.worktree === undefined ? {} : { worktree: run.worktree }),
     currentPhase: run.phases.find((phase) => phase.status === "running")?.phase,
   }));
   return { runs, diagnostics: scanned.unreadable.map((run) => createDiagnostic({
@@ -98,7 +99,7 @@ function repairs(invocation: CommandInvocation): { projections: ReturnType<typeo
   try {
     return runDecisionGate({
       context: {
-        projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot,
+        projectRoot: invocation.paths.projectRoot, sourceRoot: invocation.paths.sourceRoot, coreRoot: invocation.paths.coreRoot,
         command: "doctor", answers: invocation.flags.answers,
         ...(invocation.flags.answeredBy === undefined ? {} : { answeredBy: invocation.flags.answeredBy }),
       },
@@ -128,6 +129,7 @@ function verificationFindings(invocation: CommandInvocation, inspection: Consume
 export function diagnose(invocation: CommandInvocation, command: "status" | "doctor"): CommandResult {
   const inspection = inspectConsumer({
     projectRoot: invocation.paths.projectRoot,
+    sourceRoot: invocation.paths.sourceRoot,
     coreRoot: invocation.paths.coreRoot,
     adapterSelections: invocation.flags.adapters,
     ...(invocation.paths.manifestPath === undefined ? {} : { manifestPath: invocation.paths.manifestPath }),
@@ -148,7 +150,7 @@ export function diagnose(invocation: CommandInvocation, command: "status" | "doc
     data: {
       ...statusData(inspection),
       openRuns: runs.runs,
-      actionableFindings: diagnostics.filter((item) => item.code !== "PAVED_DECISION_ANSWER_INVALID").map((diagnostic) => ({
+      actionableFindings: diagnostics.filter((item) => item.code !== "PAVED_DECISION_ANSWER_INVALID" && item.severity !== "info").map((diagnostic) => ({
         code: diagnostic.code, severity: diagnostic.severity, category: diagnostic.category,
         component: diagnostic.component, message: diagnostic.message, remediation: diagnostic.remediation,
       })),

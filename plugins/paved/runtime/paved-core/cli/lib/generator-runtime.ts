@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { parse, stringify } from 'yaml';
 import { createRegistry } from './schemas.ts';
@@ -16,11 +16,11 @@ import { resolveSafePath } from './safe-path.ts';
 import { readRuntimeSelection } from './runtime-lock.ts';
 
 export interface Source { path: string; kind: string; sha256: string; adapter?: string; adapterVersion?: string; capability?: string; detectionConfidence?: Detection['confidence']; detectionEvidence?: string[]; classification?: 'observed'; adapterEvidence?: { adapter: string; adapter_version: string; capability: string; detection_confidence: Detection['confidence']; classification: 'observed' }[] }
-export interface Execution { generator: string; version: string; contractSha256?: string; engineSha256?: string; manifestSha256?: string; status: 'written' | 'unchanged' | 'conflict' | 'proposed' | 'failed'; sources: Source[]; outputs: string[]; outputHashes: Record<string, string>; proposals: string[]; unknowns: string[]; warnings: string[]; errors: string[] }
+export interface Execution { generator: string; version: string; contractSha256?: string; engineSha256?: string; manifestSha256?: string; sourceWorktree?: string; status: 'written' | 'unchanged' | 'conflict' | 'proposed' | 'failed'; sources: Source[]; outputs: string[]; outputHashes: Record<string, string>; proposals: string[]; unknowns: string[]; warnings: string[]; errors: string[] }
 export interface RunResult { executionId: string; timestamp: string; coreVersion: string; consumer: string; sourceRevision?: string; unmatchedTechnologies: string[]; unmodeledTechnologies: string[]; adapterWarnings: string[]; adapterDiagnostics: Diagnostic[]; detectedAdapters: { id: string; confidence: string; evidence: string[] }[]; selectedAdapters: string[]; capabilityResolutions: Record<string, string>; capabilityProviders: CapabilityProviderEntry[]; adapterEvidence: AdapterEvidence[]; executions: Execution[]; errors: string[] }
 export interface LockEntry { id?: string; version: string; source: string; sha256: string }
 export interface GenerationLock { core: LockEntry; adapters?: readonly LockEntry[]; generators?: readonly LockEntry[] }
-export interface RunGeneratorOptions { dryRun?: boolean; generators?: string[]; lock?: GenerationLock }
+export interface RunGeneratorOptions { dryRun?: boolean; generators?: string[]; lock?: GenerationLock; /** The checkout whose files are read; defaults to the consumer holding the state. */ sourceRoot?: string }
 export interface ConsumerInitializationPlan { manifest: Record<string, unknown>; lock: Record<string, unknown>; selectedAdapters: string[]; resolvedAdapters: string[]; capabilityProviders: CapabilityProviderEntry[]; adapterDiagnostics: Diagnostic[]; capabilityDiagnostics: Diagnostic[]; plannedWrites: string[] }
 type ProjectManifestSelections = { adapters?: { id: string; version: string }[]; capability_providers?: Record<string, ProviderSelection> };
 type Registry = ReturnType<typeof createRegistry>;
@@ -64,9 +64,9 @@ function unmatchedTechnologies(sources: Source[]): string[] {
   if (paths.some(p => p.startsWith('.github/workflows/'))) result.push('GitHub Actions');
   return result;
 }
-export function planConsumerInitialization(core: string, consumer: string, name: string): ConsumerInitializationPlan {
+export function planConsumerInitialization(core: string, consumer: string, name: string, source: string = consumer): ConsumerInitializationPlan {
   const registry = createRegistry(join(core, 'schemas'), ['paved/v1']); const version = coreManifest(core).version;
-  const detected = detectAdapters(consumer, loadAdapters(core), discoverSources(consumer));
+  const detected = detectAdapters(source, loadAdapters(core), discoverSources(source));
   const adapters = detected.filter(d => d.confidence === 'strong' || (d.adapter.id === 'infrastructure/git' && d.confidence !== 'unknown')).map(d => d.adapter);
   const manifest = { apiVersion: 'paved/v1', kind: 'Project', project: { name }, paved: { core: `^${version}` }, adapters: adapters.map(a => ({ id: a.id, version: `^${a.version}` })) };
   validate(registry, manifest);
@@ -81,11 +81,11 @@ export function planConsumerInitialization(core: string, consumer: string, name:
   const capabilityDiagnostics = Object.values(resolutions).flatMap(r => r.diagnostics).filter(d => d.code !== 'missing-provider');
   return { manifest, lock, selectedAdapters: manifest.adapters.map(a => a.id).sort(), resolvedAdapters: selected.adapters.map(d => d.adapter.id).sort(), capabilityProviders: capabilityProviders(resolutions), adapterDiagnostics: selected.diagnostics, capabilityDiagnostics, plannedWrites: ['.paved/manifest.yaml', '.paved/paved.lock', '.paved/.gitignore', '.paved/documents/README.md'] };
 }
-export function initializeConsumer(core: string, consumer: string, name: string) {
+export function initializeConsumer(core: string, consumer: string, name: string, source: string = consumer) {
   const registry = createRegistry(join(core, 'schemas'), ['paved/v1']); const version = coreManifest(core).version;
   const runtime = readRuntimeSelection(consumer);
   if (runtime && runtime.version !== version) throw new Error(`Runtime ${runtime.version} is incompatible with Core ${version}.`);
-  const detected = detectAdapters(consumer, loadAdapters(core), discoverSources(consumer));
+  const detected = detectAdapters(source, loadAdapters(core), discoverSources(source));
   const adapters = detected.filter(d => d.confidence === 'strong' || (d.adapter.id === 'infrastructure/git' && d.confidence !== 'unknown')).map(d => d.adapter);
   const dir = join(consumer, '.paved'); mkdirSync(dir, { recursive: true });
   const manifest = { apiVersion: 'paved/v1', kind: 'Project', project: { name }, paved: { core: `^${version}` }, adapters: adapters.map(a => ({ id: a.id, version: `^${a.version}` })) };
@@ -189,7 +189,7 @@ function features(contract: Contract, sources: Source[], evidence: AdapterEviden
   }
   return outputs;
 }
-function verificationProposal(contract: Contract, sources: Source[], evidence: AdapterEvidence[], root: string, core: string, at: string, rev: string | undefined, dryRun: boolean): Output[] {
+function verificationProposal(contract: Contract, sources: Source[], evidence: AdapterEvidence[], root: string, source: string, core: string, at: string, rev: string | undefined, dryRun: boolean): Output[] {
   const draft = '.paved/generated/proposals/verification/profile.yaml';
   if (existsSync(safe(root, '.paved/verification/profile.yaml')) || answeredDecisionInputs(core, root, 'verification.adopt').size > 0) {
     withdrawProposal(root, draft, dryRun);
@@ -199,7 +199,7 @@ function verificationProposal(contract: Contract, sources: Source[], evidence: A
   const observations: string[] = [];
   for (const s of sources.filter(s => /package\.json$/.test(s.path))) {
     try {
-      const pkg = JSON.parse(readFileSync(safe(root, s.path), 'utf8')) as { scripts?: Record<string, unknown> };
+      const pkg = JSON.parse(readFileSync(safe(source, s.path), 'utf8')) as { scripts?: Record<string, unknown> };
       for (const name of Object.keys(pkg.scripts ?? {}).sort()) if (/^[a-z0-9:_-]+$/i.test(name) && !/secret|token|password|credential|key/i.test(name)) observations.push(`# Observed script: ${s.path} -> npm run ${name}`);
     } catch { /* malformed package manifests contribute no command observation */ }
   }
@@ -245,10 +245,10 @@ function withdrawProposal(root: string, path: string, dryRun: boolean): void {
   if (dryRun) return;
   for (const file of [path, `${path}.paved.yaml`]) rmSync(safe(root, file), { force: true });
 }
-function ruleProposals(contract: Contract, sources: Source[], root: string, core: string, at: string, rev: string | undefined, dryRun: boolean): Output[] {
+function ruleProposals(contract: Contract, sources: Source[], root: string, source: string, core: string, at: string, rev: string | undefined, dryRun: boolean): Output[] {
   const outputs: Output[] = [];
   const answered = answeredDecisionInputs(core, root, 'rules.adopt');
-  for (const item of detectCheckstyleModules(root, sources)) {
+  for (const item of detectCheckstyleModules(source, sources)) {
     const path = `.paved/generated/proposals/rules/${item.module}.yaml`;
     if (existsSync(safe(root, item.rulePath)) || answered.has(`candidate:${item.candidate}`)) { withdrawProposal(root, path, dryRun); continue; }
     const content = stringify(checkstyleRuleDocument(item)); const origins = [item.pom, item.config];
@@ -374,10 +374,13 @@ function generationLockErrors(core: string, consumer: string, registry: Registry
 function runGeneratorsUnlocked(core: string, consumer: string, options: RunGeneratorOptions = {}): RunResult {
   const registry = createRegistry(join(core, 'schemas'), ['paved/v1']); const info = coreManifest(core);
   const manifest = parse(readFileSync(join(consumer, '.paved/manifest.yaml'), 'utf8')) as ProjectManifestSelections; validate(registry, manifest);
-  const allSources = discoverSources(consumer); const timestamp = new Date().toISOString(); const sourceRevision = revision(consumer);
-  const detected = detectAdapters(consumer, loadAdapters(core), allSources);
+  const sourceRoot = options.sourceRoot ?? consumer;
+  // A linked worktree sharing this state is recorded, so drift is later judged against the checkout the context describes.
+  const sourceWorktree = realpathSync(sourceRoot) === realpathSync(consumer) ? undefined : sourceRoot;
+  const allSources = discoverSources(sourceRoot); const timestamp = new Date().toISOString(); const sourceRevision = revision(sourceRoot);
+  const detected = detectAdapters(sourceRoot, loadAdapters(core), allSources);
   const resolved = resolveAdapters(detected, manifest.adapters ?? [], info.version);
-  const capabilities = capabilityEvidence(consumer, allSources, resolved.adapters, manifest.capability_providers, answeredProviders(consumer, core));
+  const capabilities = capabilityEvidence(sourceRoot, allSources, resolved.adapters, manifest.capability_providers, answeredProviders(consumer, core));
   const adapterDiagnostics = [...resolved.diagnostics, ...Object.values(capabilities.resolutions).flatMap(r => r.diagnostics).filter(d => d.code !== 'missing-provider')];
   const adapterWarnings = adapterDiagnostics.map(d => d.message);
   const selectedIds = new Set(resolved.adapters.map(d => d.adapter.id));
@@ -397,7 +400,7 @@ function runGeneratorsUnlocked(core: string, consumer: string, options: RunGener
     const entry: Execution = { generator: contract.id, version: contract.version,
       contractSha256: hashLocalTree(core, [`generators/${contract.id}`]),
       engineSha256: hashLocalTree(core, ['manifest.yaml', 'cli/lib/generator-runtime.ts', 'schemas/project-context.schema.yaml', 'schemas/feature.schema.yaml', 'schemas/provenance.schema.yaml']),
-      manifestSha256: hashSource(consumer, '.paved/manifest.yaml'),
+      manifestSha256: hashSource(consumer, '.paved/manifest.yaml'), ...(sourceWorktree === undefined ? {} : { sourceWorktree }),
       status: 'unchanged', sources: [], outputs: [], outputHashes: {}, proposals: [], unknowns: [], warnings: [], errors: [] }; result.executions.push(entry);
     try {
       if ((contract.depends_on ?? []).some(d => !completed.has(d))) throw new Error('Required generator dependency failed');
@@ -421,10 +424,10 @@ function runGeneratorsUnlocked(core: string, consumer: string, options: RunGener
         if (contract.id.startsWith('project-context/')) throw new Error('Required repository source missing');
       }
       const outputs: Output[] = [];
-      if (contract.id.startsWith('project-context/') && !contract.id.endsWith('/feature-map')) { const generated = context(contract, sources, relevant, consumer, timestamp, sourceRevision); outputs.push(generated.output); entry.unknowns = generated.unknowns; }
+      if (contract.id.startsWith('project-context/') && !contract.id.endsWith('/feature-map')) { const generated = context(contract, sources, relevant, sourceRoot, timestamp, sourceRevision); outputs.push(generated.output); entry.unknowns = generated.unknowns; }
       else if (contract.id.endsWith('/feature-map')) outputs.push(...features(contract, sources, relevant, timestamp, sourceRevision));
-      else if (contract.id === 'verification') outputs.push(...verificationProposal(contract, sources, relevant, consumer, core, timestamp, sourceRevision, options.dryRun === true));
-      else if (contract.id === 'rules') outputs.push(...ruleProposals(contract, sources, consumer, core, timestamp, sourceRevision, options.dryRun === true));
+      else if (contract.id === 'verification') outputs.push(...verificationProposal(contract, sources, relevant, consumer, sourceRoot, core, timestamp, sourceRevision, options.dryRun === true));
+      else if (contract.id === 'rules') outputs.push(...ruleProposals(contract, sources, consumer, sourceRoot, core, timestamp, sourceRevision, options.dryRun === true));
       else entry.warnings.push('No explicit, schema-safe project policy was established; no proposal emitted.');
       for (const output of outputs) {
         const writeResult = writeOutput(consumer, output, registry, info, contract.id, options.dryRun === true);

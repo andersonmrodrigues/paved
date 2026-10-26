@@ -22,7 +22,7 @@ function conventionDocument(item) {
 function apply(answer, context) {
     if (answer === "decline")
         return [];
-    const found = detectRuleCandidates(context.projectRoot, true);
+    const found = detectRuleCandidates(context.projectRoot, true, context.sourceRoot);
     const chosenModule = found.modules.find((item) => moduleOptionId(item) === answer);
     if (answer !== "adopt" && chosenModule === undefined)
         throw new Error(`Unknown rule option: ${String(answer)}.`);

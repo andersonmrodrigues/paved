@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, realpathSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { stringify } from "yaml";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { loadYaml } from "./documents.js";
@@ -12,6 +12,20 @@ export function runPath(projectRoot, id) {
     if (!/^[a-z][a-z0-9-]{5,80}$/.test(id))
         throw new Error(`Invalid workflow run id: ${id}.`);
     return resolveSafePath(projectRoot, `.paved/generated/runs/${id}.yaml`);
+}
+/** The checkout a run works on: the linked worktree it records, or the checkout holding the state. */
+export function runSourceRoot(projectRoot, run) {
+    return run.worktree ?? projectRoot;
+}
+/** True when the run works on the checkout at sourceRoot, so it may be resumed from there. */
+export function runBelongsTo(projectRoot, run, sourceRoot) {
+    const real = (path) => { try {
+        return realpathSync(path);
+    }
+    catch {
+        return resolve(path);
+    } };
+    return real(runSourceRoot(projectRoot, run)) === real(sourceRoot);
 }
 export function coreWorkflowIds(coreRoot) {
     const root = join(coreRoot, "core/workflows");

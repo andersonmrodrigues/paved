@@ -6,7 +6,7 @@ const REPAIRABLE = new Set([
     ...CONTEXT_DRIFT_CODES, "PAVED_GENERATOR_INPUTS_STALE", "PAVED_GENERATED_OUTPUT_MISSING",
 ]);
 export const repairProvider = (context) => {
-    const findings = inspectConsumer({ projectRoot: context.projectRoot, coreRoot: context.coreRoot }).diagnostics
+    const findings = inspectConsumer({ projectRoot: context.projectRoot, coreRoot: context.coreRoot, ...(context.sourceRoot === undefined ? {} : { sourceRoot: context.sourceRoot }) }).diagnostics
         .filter((item) => REPAIRABLE.has(item.code));
     if (findings.length === 0)
         return [];

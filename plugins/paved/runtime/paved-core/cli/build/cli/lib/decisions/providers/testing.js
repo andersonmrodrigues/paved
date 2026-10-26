@@ -8,7 +8,7 @@ function optionId(id) {
     return `${slug}-${createHash("sha256").update(id).digest("hex").slice(0, 8)}`;
 }
 export const testingProvider = (context) => {
-    const resolution = resolveTestingTool(context.projectRoot, context.coreRoot);
+    const resolution = resolveTestingTool(context.projectRoot, context.coreRoot, context.sourceRoot);
     if (resolution.status !== "ambiguous")
         return [];
     const manifest = join(context.projectRoot, ".paved/manifest.yaml");
@@ -48,11 +48,11 @@ export function detectTestingCandidates(projectRoot) {
 export const testingAdoptProvider = (context) => {
     if (existsSync(join(context.projectRoot, TESTING_TOOL_PATH)))
         return [];
-    if (resolveTestingTool(context.projectRoot, context.coreRoot).status === "suite")
+    if (resolveTestingTool(context.projectRoot, context.coreRoot, context.sourceRoot).status === "suite")
         return [];
-    if (resolveTestingTool(context.projectRoot, context.coreRoot).status !== "unavailable")
+    if (resolveTestingTool(context.projectRoot, context.coreRoot, context.sourceRoot).status !== "unavailable")
         return [];
-    const candidates = detectTestingCandidates(context.projectRoot);
+    const candidates = detectTestingCandidates(context.sourceRoot ?? context.projectRoot);
     if (candidates.length === 0)
         return [];
     const where = (item) => (item.scope === "." ? "the repository root" : item.scope);

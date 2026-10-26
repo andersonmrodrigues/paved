@@ -7,7 +7,7 @@ import { atomicWriteFileSync } from "./atomic-write.ts";
 import { loadYaml } from "./documents.ts";
 import { coveredTypes, type EvidenceRecord } from "./evidence.ts";
 import { resolveSafePath } from "./safe-path.ts";
-import type { Run } from "./workflow-runs.ts";
+import { runSourceRoot, type Run } from "./workflow-runs.ts";
 import { UNCHANGED_HANDLER, type WorkflowContract } from "./workflows.ts";
 
 interface ChangeDiff { readonly files: string[]; readonly patch: string }
@@ -64,7 +64,7 @@ export function writeWorkflowEvidence(input: {
   const { projectRoot, run, workflow } = input;
   if (!run.evidence) return { problem: "The run has no authoritative verification evidence to build on." };
   const authoritative = loadYaml(resolveSafePath(projectRoot, run.evidence)) as EvidenceRecord & { verification: unknown };
-  const change = collectChange(projectRoot, run.revision);
+  const change = collectChange(runSourceRoot(projectRoot, run), run.revision);
   if (!change) return { problem: "The project is not a Git working tree, so Paved cannot derive the change diff." };
   // Work the user confirmed was already done before the run legitimately has an empty diff.
   const preExisting = run.decisions?.some((decision) => decision.handler === UNCHANGED_HANDLER && decision.answer === "already-done") === true;

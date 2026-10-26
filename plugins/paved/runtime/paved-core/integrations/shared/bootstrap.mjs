@@ -61,9 +61,43 @@ function noSymlinks(path, root) {
   }
 }
 
+function nearestConsumer(start) {
+  for (let current = start; ; current = dirname(current)) {
+    if (existsSync(join(current, '.paved', 'manifest.yaml')) || existsSync(join(current, '.git'))) return current;
+    if (dirname(current) === current) return start;
+  }
+}
+
+// The main worktree of a linked Git worktree, read from its .git file and commondir the way
+// Git resolves them; undefined for anything else. The CLI resolves it the same way.
+function mainWorktreeRoot(root) {
+  try {
+    const dotGit = join(root, '.git');
+    if (!lstatSync(dotGit).isFile()) return undefined;
+    const pointer = /^gitdir:\s*(.+?)\s*$/m.exec(readFileSync(dotGit, 'utf8'))?.[1];
+    if (pointer === undefined) return undefined;
+    const gitDir = resolve(root, pointer);
+    const commonDir = realpathSync(resolve(gitDir, readFileSync(join(gitDir, 'commondir'), 'utf8').trim()));
+    if (commonDir.split(sep).at(-1) !== '.git') return undefined;
+    const main = dirname(commonDir);
+    return main === realpathSync(root) ? undefined : main;
+  } catch {
+    return undefined;
+  }
+}
+
+// A linked worktree without its own Paved state shares the main worktree's: the runtime and
+// lock live there, while the CLI still works on the linked worktree's files.
+function stateRootFor(root) {
+  if (existsSync(join(root, '.paved', 'manifest.yaml'))) return root;
+  const main = mainWorktreeRoot(root);
+  return main !== undefined && existsSync(join(main, '.paved', 'manifest.yaml')) ? main : root;
+}
+
 // The consumer is the explicit --project, else the nearest ancestor holding Paved state or
 // a repository root, so a nested repository is never managed by its parent. The plugin
-// installation is never the consumer.
+// installation is never the consumer. The project command enters its project before it
+// runs; a caller inside a linked worktree of that project keeps working on that worktree.
 function resolveProjectRoot(argv) {
   const flag = argv.findIndex((arg) => arg === '--project' || arg.startsWith('--project='));
   let root;
@@ -72,10 +106,11 @@ function resolveProjectRoot(argv) {
     if (!value) fail('PAVED_RUNTIME_PROJECT_INVALID', '--project requires a path.', 'Pass the consumer repository path.');
     root = resolve(value);
   } else {
-    const start = resolve(process.cwd());
-    for (let current = start; ; current = dirname(current)) {
-      if (existsSync(join(current, '.paved', 'manifest.yaml')) || existsSync(join(current, '.git'))) { root = current; break; }
-      if (dirname(current) === current) { root = start; break; }
+    root = nearestConsumer(resolve(process.cwd()));
+    const caller = process.env.PAVED_CALLER_CWD;
+    if (caller && isAbsolute(caller) && statSync(caller, { throwIfNoEntry: false })?.isDirectory()) {
+      const checkout = nearestConsumer(resolve(caller));
+      if (mainWorktreeRoot(checkout) === realpathSync(root)) root = checkout;
     }
   }
   if (!statSync(root, { throwIfNoEntry: false })?.isDirectory()) fail('PAVED_RUNTIME_PROJECT_INVALID', `Consumer project is not a directory: ${root}.`, 'Run Paved from inside the repository you want to manage.');
@@ -459,7 +494,8 @@ function installProjectCommand(ctx, config) {
     writeIfChanged(script, readFileSync(launcherPath));
     writeIfChanged(join(bin, 'bootstrap.json'), `${JSON.stringify(integration, null, 2)}\n`);
     // The runtime already runs from the project root, so entering it first changes no paths.
-    writeIfChanged(shim, `#!/bin/sh\n# Project-local Paved command written by the Paved launcher.\ncd ${shellQuote(ctx.projectRoot)} || exit 1\nexec node ${shellQuote(script)} "$@"\n`, 0o755);
+    // The caller's directory goes along so a linked worktree sharing this state stays the source.
+    writeIfChanged(shim, `#!/bin/sh\n# Project-local Paved command written by the Paved launcher.\nPAVED_CALLER_CWD=$PWD\nexport PAVED_CALLER_CWD\ncd ${shellQuote(ctx.projectRoot)} || exit 1\nexec node ${shellQuote(script)} "$@"\n`, 0o755);
     return command;
   } catch (error) {
     notice('PAVED_RUNTIME_COMMAND_UNAVAILABLE', `The project-local paved command could not be written: ${error instanceof Error ? error.message : String(error)}`, 'Check permissions for .paved/runtime/bin/; the agent launcher keeps working.');
@@ -503,10 +539,11 @@ function launch(ctx, config, argv) {
     ? 'An interrupted runtime upgrade left a different selection; run the launcher with `runtime rollback`.'
     : 'Restore the runtime selected by paved.lock.');
   // The runtime receives the consumer the launcher resolved, so both always agree on it.
-  const project = argv.some((arg) => arg === '--project' || arg.startsWith('--project=')) ? [] : ['--project', ctx.projectRoot];
+  const project = argv.some((arg) => arg === '--project' || arg.startsWith('--project=')) ? [] : ['--project', ctx.sourceRoot];
   const command = installProjectCommand(ctx, config);
-  const env = command === undefined ? process.env : { ...process.env, PAVED_COMMAND: command };
-  const child = spawnSync(process.execPath, [executable, ...project, ...argv], { cwd: ctx.projectRoot, shell: false, stdio: 'inherit', env });
+  const { PAVED_CALLER_CWD: _caller, ...inherited } = process.env;
+  const env = command === undefined ? inherited : { ...inherited, PAVED_COMMAND: command };
+  const child = spawnSync(process.execPath, [executable, ...project, ...argv], { cwd: ctx.sourceRoot, shell: false, stdio: 'inherit', env });
   if (child.error) fail('PAVED_RUNTIME_EXECUTION_FAILED', child.error.message, 'Inspect the installed runtime and retry.');
   process.exit(child.status ?? 1);
 }
@@ -517,6 +554,7 @@ function runtimeStatus(ctx, config) {
   const record = rollbackRecord(ctx);
   emit('runtime', 'success', {
     projectRoot: ctx.projectRoot,
+    ...(ctx.sourceRoot === ctx.projectRoot ? {} : { sourceRoot: ctx.sourceRoot }),
     plugin: { package: config.package, version: config.version, integrity: config.integrity ?? null, bundled: Boolean(config.tarball || config.runtime) },
     locked: locked ?? null,
     selection: selection ?? null,
@@ -555,7 +593,7 @@ function runtimeUpgrade(ctx, config, command = 'runtime') {
     writeAtomic(ctx.rollbackPath, { previous: current, lock_sha256: sha256(lockBytes), created_at: new Date().toISOString() });
     writeAtomic(ctx.selectionPath, next);
     const executable = validateSelection(ctx, next, next);
-    const child = spawnSync(process.execPath, [executable, 'update', '--json', '--project', ctx.projectRoot], { cwd: ctx.projectRoot, shell: false, encoding: 'utf8', env: process.env, maxBuffer: 16 * 1024 * 1024 });
+    const child = spawnSync(process.execPath, [executable, 'update', '--json', '--project', ctx.sourceRoot], { cwd: ctx.sourceRoot, shell: false, encoding: 'utf8', env: process.env, maxBuffer: 16 * 1024 * 1024 });
     let result;
     try { result = JSON.parse(child.stdout); } catch { result = undefined; }
     const after = lockedRuntime(ctx);
@@ -603,10 +641,12 @@ try {
   const argv = process.argv.slice(2);
   // Read first: it settles which integration the project root must stay outside of.
   const config = readConfig();
-  const projectRoot = resolveProjectRoot(argv);
+  const sourceRoot = resolveProjectRoot(argv);
+  const projectRoot = stateRootFor(sourceRoot);
   const runtimeDir = join(projectRoot, '.paved', 'runtime');
   const ctx = {
     projectRoot,
+    sourceRoot,
     runtimeDir,
     lockPath: join(projectRoot, '.paved', 'paved.lock'),
     selectionPath: join(runtimeDir, 'selection.json'),

@@ -88,7 +88,8 @@ export function classify(coreRoot, run, workflowId, because, decidedBy, decision
     run.status = "running";
     run.events.push({ at: now(), type: "phase-started", phase: contract.phases[0].phase });
 }
-export function createIntentRun(projectRoot, coreRoot, input, revision) {
+/** `worktree` is the linked worktree the run works on when it shares the state of projectRoot. */
+export function createIntentRun(projectRoot, coreRoot, input, revision, worktree) {
     const request = input.request.trim();
     if (!request)
         throw new IntentError("PAVED_WORKFLOW_INPUT_REQUIRED", "intent requires the user's request.", "Run paved intent \"<request>\" --json.");
@@ -112,11 +113,11 @@ export function createIntentRun(projectRoot, coreRoot, input, revision) {
     const run = {
         apiVersion: "paved/v1", kind: "WorkflowRun",
         id: `intent-${sha(`${request}\0${revision}`).slice(0, 20)}`,
-        revision, started_at: created, status: "awaiting-input",
+        revision, ...(worktree === undefined ? {} : { worktree }), started_at: created, status: "awaiting-input",
         classification: input.parts.length > 0 ? { parts: [...input.parts] } : {},
         inputs: [{ id: "request", value: request, source: "human" }],
         phases: [],
-        events: [{ at: created, type: "run-started", detail: `source_sha256=${fingerprint(projectRoot)}` }],
+        events: [{ at: created, type: "run-started", detail: `source_sha256=${fingerprint(worktree ?? projectRoot)}` }],
     };
     if (workflowId !== undefined) {
         run.inputs.push(...parseInputs(coreRoot, workflowId, input.inputs));
