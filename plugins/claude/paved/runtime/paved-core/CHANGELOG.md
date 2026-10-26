@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.17.0] - 2026-10-26
+
 ### Added
 
 - A linked Git worktree without its own `.paved/` now uses the main worktree's Paved
