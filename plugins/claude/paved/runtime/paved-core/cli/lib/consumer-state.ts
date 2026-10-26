@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { stringify } from "yaml";
+import { mainWorktreeRoot } from "../paths.ts";
 import { createDiagnostic, type Diagnostic } from "../result.ts";
 import { capabilityEvidence, capabilityLockEntries, capabilityProviders as providerReport, resolveCapabilities, detectAdapters, loadAdapters, resolveAdapters, type AdapterEvidence, type CapabilityProviderEntry, type Detection, type ProviderSelection } from "./adapters.ts";
 import { loadYaml, loadMarkdown } from "./documents.ts";
@@ -91,6 +92,8 @@ export interface ConsumerInspection {
   readonly conflicts: readonly string[];
   readonly pendingDecisions: readonly { id: string; question: string; required: boolean; command: string }[];
   readonly pendingApprovals: readonly string[];
+  /** The main worktree holding Paved state, when this uninitialized checkout is a linked worktree of it. */
+  readonly mainWorktree?: string;
   readonly diagnostics: readonly Diagnostic[];
 }
 
@@ -1029,6 +1032,18 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
   const manifestPath = input.manifestPath ?? join(pavedDir, "manifest.yaml");
   const hasPavedDir = existsSync(pavedDir);
   const hasManifest = existsSync(manifestPath);
+  // Paved evaluates the checkout it runs in, so state found in the main worktree is reported, not borrowed.
+  const mainWorktree = hasManifest ? undefined : mainWorktreeRoot(input.projectRoot);
+  const sharedState = mainWorktree !== undefined && existsSync(join(mainWorktree, ".paved", "manifest.yaml")) ? mainWorktree : undefined;
+  if (sharedState !== undefined) {
+    diagnostics.push(diagnostic({
+      code: "PAVED_WORKTREE_STATE_IN_MAIN",
+      component: "consumer.manifest",
+      category: "findings",
+      message: `This is a linked Git worktree of ${sharedState}, which has Paved state; this worktree has none because .paved/ is not committed.`,
+      remediation: "Commit .paved/ in the main worktree (its runtime/ directory ignores itself) so every worktree checks out the same state, or run paved init here to give this worktree its own. Pointing --project at the main worktree would test and evaluate that checkout, not this one.",
+    }));
+  }
   if (!hasPavedDir && !hasManifest) {
     diagnostics.push(diagnostic({
       code: "PAVED_CONSUMER_UNINITIALIZED",
@@ -1052,6 +1067,7 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
       conflicts: [],
       pendingDecisions: [],
       pendingApprovals: [],
+      ...(sharedState === undefined ? {} : { mainWorktree: sharedState }),
       diagnostics,
     };
   }
@@ -1072,6 +1088,7 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
       conflicts: [],
       pendingDecisions: [],
       pendingApprovals: [],
+      ...(sharedState === undefined ? {} : { mainWorktree: sharedState }),
       diagnostics,
     };
   }

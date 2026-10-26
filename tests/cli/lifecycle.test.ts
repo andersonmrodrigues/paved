@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { afterEach, test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -11,6 +12,7 @@ import { applyConsumerUpdate } from "../../cli/lib/update-transaction.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
 import { hashLocalFile, hashLocalTree } from "../../cli/lib/local-core.ts";
 import { exitCode } from "../../cli/result.ts";
+import { mainWorktreeRoot, resolveProjectRoot } from "../../cli/paths.ts";
 import { CORE_VERSION, cleanupTemporaryDirectories, temporaryDirectory, temporaryFixture } from "../helpers.ts";
 
 const core = resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -505,4 +507,33 @@ test("moving a consumer keeps its portable lock and derived identity state", () 
     assert.equal(state(moved), "RESOLVED");
     assert.equal(readFileSync(join(a, ".paved/paved.lock")).equals(readFileSync(join(moved, ".paved/paved.lock"))), true);
   } finally { rmSync(a, { recursive: true, force: true }); rmSync(moved, { recursive: true, force: true }); }
+});
+
+test("a linked worktree finds the main worktree's Paved state without borrowing it", async () => {
+  const main = temporaryDirectory("paved-worktree-main");
+  writeFileSync(join(main, "README.md"), "# Consumer\n");
+  const git = (cwd: string, ...args: string[]) => {
+    const result = spawnSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", ...args], { cwd, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+  };
+  git(main, "init", "-q");
+  git(main, "add", "README.md");
+  git(main, "commit", "-qm", "base");
+  initializeConsumer(core, main, "consumer");
+  const linked = join(temporaryDirectory("paved-worktree-linked"), "feature");
+  git(main, "worktree", "add", "-q", "-b", "feature", linked);
+  mkdirSync(join(linked, "src"));
+
+  assert.equal(mainWorktreeRoot(main), undefined);
+  assert.equal(mainWorktreeRoot(linked), realpathSync(main));
+  assert.equal(resolveProjectRoot({ cwd: join(linked, "src") }).projectRoot, join(linked, "src"));
+  const status = await dispatchCli({ argv: ["status", "--json"], cwd: linked });
+  const data = status.data as { lifecycleState: string; mainWorktree?: string; nextAction: string; projectRoot: string };
+  assert.equal(data.lifecycleState, "UNINITIALIZED");
+  assert.equal(data.projectRoot, linked, "Paved evaluates the worktree it runs in");
+  assert.equal(data.mainWorktree, realpathSync(main));
+  assert.ok(data.nextAction.includes(realpathSync(main)), data.nextAction);
+  assert.ok(status.diagnostics.some((item) => item.code === "PAVED_WORKTREE_STATE_IN_MAIN"), JSON.stringify(status.diagnostics));
+  const plain = await dispatchCli({ argv: ["status", "--json"], cwd: temporaryDirectory("paved-no-worktree") });
+  assert.equal((plain.data as { mainWorktree?: string }).mainWorktree, undefined);
 });

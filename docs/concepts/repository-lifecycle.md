@@ -40,6 +40,16 @@ regenerate the context; `execute "<request>"` regenerates it before starting, an
 regenerates it again when it completes. Integrity problems above stay `STALE` and block
 work until `paved update` resolves them.
 
+Paved evaluates the checkout it runs in. In a linked Git worktree without its own
+`.paved/manifest.yaml`, Paved reads the `.git` file and the worktree's `commondir` to find
+the main worktree. When that one has Paved state, the worktree stays `UNINITIALIZED`,
+`status` reports `mainWorktree` and the finding `PAVED_WORKTREE_STATE_IN_MAIN`, and the
+next action says to commit `.paved/` so every worktree checks it out, or to run `init`
+in the worktree. Paved does not use the main worktree's state from a linked worktree:
+it would then test and evaluate source digests in the main checkout instead of the one
+being changed. Sharing one state across worktrees, with digests evaluated per worktree,
+is not supported yet.
+
 Diagnostics and exit categories remain separate from lifecycle state. A stale
 consumer may also have a conflict, and a missing profile can be reported alongside
 other findings. The state is computed from files and digests; timestamps do not

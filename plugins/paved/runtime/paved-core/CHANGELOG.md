@@ -26,6 +26,9 @@ releases, not the development sequence used to build them.
   `PAVED_WORKFLOW_ENVIRONMENT_UNAVAILABLE` without spending attempts. Plan approval
   records a test baseline, and a validation failure on tests that already failed carries
   `PAVED_WORKFLOW_BASELINE_FAILING`.
+- In a linked Git worktree without Paved state, `status` finds the main worktree's state
+  and reports it (`mainWorktree`, `PAVED_WORKTREE_STATE_IN_MAIN`) with how to share it,
+  instead of only suggesting a fresh `init`.
 
 ## [2.15.2] - 2026-10-25
 

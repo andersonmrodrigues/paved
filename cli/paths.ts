@@ -1,5 +1,5 @@
-import { existsSync, realpathSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 
 export interface ProjectRootInput {
   readonly cwd: string;
@@ -85,6 +85,27 @@ export function resolveProjectRoot(input: ProjectRootInput): ProjectRootResoluti
     projectRoot: dirname(dirname(manifestPath)),
     manifestPath,
   };
+}
+
+/**
+ * The main worktree's root when `projectRoot` is a linked Git worktree, read from the
+ * `.git` file and the worktree's `commondir` the way Git itself resolves them.
+ * Undefined for a main worktree, a bare repository or anything unreadable.
+ */
+export function mainWorktreeRoot(projectRoot: string): string | undefined {
+  try {
+    const dotGit = join(projectRoot, ".git");
+    if (!lstatSync(dotGit).isFile()) return undefined;
+    const pointer = /^gitdir:\s*(.+?)\s*$/m.exec(readFileSync(dotGit, "utf8"))?.[1];
+    if (pointer === undefined) return undefined;
+    const gitDir = resolve(projectRoot, pointer);
+    const commonDir = realpathSync(resolve(gitDir, readFileSync(join(gitDir, "commondir"), "utf8").trim()));
+    if (basename(commonDir) !== ".git") return undefined;
+    const mainRoot = dirname(commonDir);
+    return mainRoot === realpathSync(projectRoot) ? undefined : mainRoot;
+  } catch {
+    return undefined;
+  }
 }
 
 function realExecutablePath(path: string): string {
