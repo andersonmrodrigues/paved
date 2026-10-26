@@ -88,6 +88,8 @@ interface CheckContract extends CheckDefinition {
 
 export interface VerificationRunInput {
   readonly projectRoot: string;
+  /** Where Checks run and the revision is read; defaults to projectRoot. */
+  readonly sourceRoot?: string;
   readonly coreRoot: string;
   readonly adapterSelections?: readonly string[];
 }
@@ -482,6 +484,7 @@ function claimTypeFor(checkTypes: readonly string[]): EvidenceRecord["claims"][n
 
 function buildEvidence(args: {
   projectRoot: string;
+  sourceRoot: string;
   coreRoot: string;
   profilePath: string;
   profileSha: string;
@@ -491,7 +494,7 @@ function buildEvidence(args: {
   outputLogs: readonly { relativePath: string; content: string }[];
 }): { record: EvidenceRecord; evaluation: ReturnType<typeof evaluateCompletion> } {
   const now = new Date().toISOString();
-  const change = currentRevision(args.projectRoot);
+  const change = currentRevision(args.sourceRoot);
   const id = evidenceId();
   const checkTypes = [...new Set(args.checks.map((check) => check.type))].sort();
   const checkIds = args.evidenceChecks.map((check) => check.id);
@@ -582,7 +585,7 @@ async function executeCheck(args: {
   check: CheckContract;
   tools: readonly ToolContract[];
   implementations: readonly ToolImplementation[];
-  projectRoot: string;
+  sourceRoot: string;
   revision: string;
 }): Promise<{
   diagnostic?: Diagnostic;
@@ -707,8 +710,8 @@ async function executeCheck(args: {
   );
   const invocation = resolution.implementation.invocation as ToolImplementation["invocation"] & { working_directory?: string };
   const cwd = invocation.working_directory === undefined
-    ? args.projectRoot
-    : safe(args.projectRoot, invocation.working_directory);
+    ? args.sourceRoot
+    : safe(args.sourceRoot, invocation.working_directory);
   const started = new Date().toISOString();
   const execution = await spawnApproved({ executable: command.executable, argv: command.argv, cwd, timeoutSeconds });
   const finished = new Date().toISOString();
@@ -957,11 +960,12 @@ async function runVerificationUnlocked(input: VerificationRunInput): Promise<Ver
   if (!("profilePath" in resolved)) return resolved;
   const { profile, profilePath, checks, tools, implementations, diagnostics } = resolved;
 
-  const revision = currentRevision(input.projectRoot).revision;
+  const sourceRoot = input.sourceRoot ?? input.projectRoot;
+  const revision = currentRevision(sourceRoot).revision;
   const evidenceChecks: EvidenceRecord["checks"] = [];
   const logs: { relativePath: string; content: string }[] = [];
   for (const check of checks) {
-    const result = await executeCheck({ check, tools, implementations, projectRoot: input.projectRoot, revision });
+    const result = await executeCheck({ check, tools, implementations, sourceRoot, revision });
     if (result.diagnostic) diagnostics.push(result.diagnostic);
     if (result.evidenceCheck) evidenceChecks.push(result.evidenceCheck);
     if (result.log) logs.push(result.log);
@@ -970,6 +974,7 @@ async function runVerificationUnlocked(input: VerificationRunInput): Promise<Ver
   const profileSha = sha(readFileSync(profilePath));
   const built = buildEvidence({
     projectRoot: input.projectRoot,
+    sourceRoot,
     coreRoot: input.coreRoot,
     profilePath,
     profileSha,

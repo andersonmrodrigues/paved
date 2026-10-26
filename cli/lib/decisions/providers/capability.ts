@@ -20,9 +20,9 @@ export const capabilityProvider: DecisionProvider = (context) => {
       capability_providers?: Record<string, ProviderSelection>;
     }
     : undefined;
-  const sources = discoverSources(context.projectRoot);
+  const sources = discoverSources(context.sourceRoot ?? context.projectRoot);
   const sourceByPath = new Map(sources.map((source) => [source.path, source]));
-  const detected = detectAdapters(context.projectRoot, loadAdapters(context.coreRoot), sources);
+  const detected = detectAdapters(context.sourceRoot ?? context.projectRoot, loadAdapters(context.coreRoot), sources);
   const detectedSelections = detected.filter((item) => item.confidence === "strong")
     .map((item) => ({ id: item.adapter.id, version: `^${item.adapter.version}` }));
   const pkg = JSON.parse(readFileSync(join(context.coreRoot, "package.json"), "utf8")) as { version: string };
