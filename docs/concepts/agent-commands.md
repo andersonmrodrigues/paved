@@ -83,6 +83,11 @@ of their own, the step returns them and passes the user's answers through when i
   whether the approved work is already in the repository instead of failing.
 - A setup problem (an unresolved Tool, an invalid Check or binding) blocks with
   `PAVED_WORKFLOW_SETUP_INVALID` and does not consume a phase attempt.
+- Tests that cannot reach their environment (a refused connection, no container engine,
+  a missing program) block with `PAVED_WORKFLOW_ENVIRONMENT_UNAVAILABLE` and do not
+  consume a phase attempt either. Approving the plan runs the tests once as a baseline;
+  a validation failure on tests that already failed then carries
+  `PAVED_WORKFLOW_BASELINE_FAILING`.
 - When a phase runs out of attempts, the step asks whether to `retry` (a new round of
   attempts), `amend` the plan or `abandon` the run.
 - `plan --amend --note <what changed>` re-submits an edited plan for approval mid-run.

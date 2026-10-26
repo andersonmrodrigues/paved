@@ -29,6 +29,8 @@ import { spawnApproved } from "./verification-runner.ts";
 import { listDecisions } from "./decisions/store.ts";
 
 const TEST_RUNTIME_VERSION = "paved-test-runner/0.1.0";
+/** The tests failed because a service, container engine or program was unavailable. */
+export const ENVIRONMENT_UNAVAILABLE = "PAVED_TEST_ENVIRONMENT_UNAVAILABLE";
 const TEST_PERMISSIONS = ["repository-read", "process-read", "process-control"];
 
 interface TestRunInput {
@@ -46,6 +48,34 @@ interface Revision {
   readonly revision: string;
   readonly uncommitted: boolean;
   readonly worktreeSha?: string;
+}
+
+// Signals that a test run failed because something outside the change was missing:
+// a service that refused or could not be reached, a container engine, or a program.
+const SIGNALS: readonly (readonly [RegExp, string])[] = [
+  [/\bECONNREFUSED\b|Connection refused/i, "a service refused the connection"],
+  [/Could not find a valid Docker environment|Cannot connect to the Docker daemon|docker daemon is not running/i, "the container engine is not available"],
+  [/\bENOTFOUND\b|\bEAI_AGAIN\b|UnknownHostException|Name or service not known|nodename nor servname provided/i, "a host name did not resolve"],
+  [/: command not found\b|: not found$|is not recognized as an internal or external command|spawn \S+ ENOENT/im, "a required program is missing"],
+];
+
+/**
+ * Says why a failed test run looks like missing infrastructure rather than a regression,
+ * or returns undefined. Exit codes 126 and 127 are the shell's "cannot execute" and
+ * "command not found". A match only changes how the failure is reported and retried;
+ * a run never passes because of it.
+ */
+export function environmentFailure(exitCode: number | undefined, output: string): string | undefined {
+  if (exitCode === 127) return "a required program is missing";
+  if (exitCode === 126) return "a required program could not be executed";
+  for (const [pattern, reason] of SIGNALS) {
+    const match = pattern.exec(output);
+    if (match) {
+      const line = output.slice(output.lastIndexOf("\n", match.index) + 1).split("\n", 1)[0]!.trim().slice(0, 200);
+      return `${reason} (${line})`;
+    }
+  }
+  return undefined;
 }
 
 function diagnostic(code: string, category: Diagnostic["category"], message: string, remediation?: string): Diagnostic {
@@ -506,6 +536,15 @@ async function runOneTestingTool(input: TestRunInput, selected: ResolvedTestingT
   const status = processResult.kind === "timeout" ? "timed-out"
     : outputMalformed || outputInvalid ? "failed"
     : processResult.exitCode === 0 ? "succeeded" : "failed";
+  // Missing infrastructure is reported apart from a regression, so a retry is not spent on it.
+  const unavailable = status === "failed" && !outputMalformed && !outputInvalid
+    ? environmentFailure(processResult.exitCode, `${sanitizeToolOutput(processResult.stdout) as string}\n${sanitizeToolOutput(processResult.stderr) as string}`)
+    : undefined;
+  if (unavailable !== undefined) {
+    diagnostics.push(diagnostic(ENVIRONMENT_UNAVAILABLE, "environment",
+      `The tests could not run against their environment: ${unavailable}.`,
+      "Start the missing service or install the missing program, or exclude the tests that need external infrastructure from the testing Tool, then run the tests again."));
+  }
   const execution = captureToolExecution({
     tool,
     implementation,
@@ -519,7 +558,8 @@ async function runOneTestingTool(input: TestRunInput, selected: ResolvedTestingT
     status,
     ...(processResult.exitCode === undefined ? {} : { exit_code: processResult.exitCode }),
     ...(processResult.kind === "timeout" ? { error_code: "timeout" as const }
-      : outputMalformed || outputInvalid ? { error_code: "malformed-output" as const } : {}),
+      : outputMalformed || outputInvalid ? { error_code: "malformed-output" as const }
+        : unavailable !== undefined ? { error_code: "environment-failure" as const } : {}),
     output,
     inputs: validation.values,
     // Many runners (uv, gradle, cargo) report progress on stderr; it is an error only when the run failed.

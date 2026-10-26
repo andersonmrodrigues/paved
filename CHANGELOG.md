@@ -21,6 +21,11 @@ releases, not the development sequence used to build them.
   `.paved/runtime/bin/paved` that works from non-interactive shells and survives plugin
   updates. Remediation and next-action texts print that command, quoted, so they can be
   pasted as is instead of naming a `paved` that may not exist on `PATH`.
+- Tests that fail because a service, container engine or program is unavailable are
+  reported as `PAVED_TEST_ENVIRONMENT_UNAVAILABLE` and block validation with
+  `PAVED_WORKFLOW_ENVIRONMENT_UNAVAILABLE` without spending attempts. Plan approval
+  records a test baseline, and a validation failure on tests that already failed carries
+  `PAVED_WORKFLOW_BASELINE_FAILING`.
 
 ## [2.15.2] - 2026-10-25
 

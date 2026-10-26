@@ -1,6 +1,6 @@
 import { resolveSafePath } from "../safe-path.ts";
 import type { WorkflowGates } from "./index.ts";
-import { blocked, failedTestingEvidence, projectRelative } from "./shared.ts";
+import { blocked, environmentBlocked, failedTestingEvidence, projectRelative } from "./shared.ts";
 
 export const bugGates: WorkflowGates = {
   workflow: "core.bug",
@@ -16,6 +16,9 @@ export const bugGates: WorkflowGates = {
       if (!path) {
         const tested = await context.tools.test();
         if (tested.status === "awaiting_input") return { kind: "relay", result: tested };
+        // A failure from missing infrastructure does not reproduce the reported defect.
+        const unavailable = environmentBlocked(tested.diagnostics);
+        if (unavailable) return unavailable;
         const produced = (tested.data as { evidence?: string } | undefined)?.evidence;
         if (produced) path = resolveSafePath(context.projectRoot, produced);
         // No evidence means the testing Tool did not run, so its own diagnostic says why.
