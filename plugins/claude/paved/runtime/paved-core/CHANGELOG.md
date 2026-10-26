@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.16.0] - 2026-10-26
+
 ### Fixed
 
 - Source drift in generated project context (a cited file changed, or new relevant
