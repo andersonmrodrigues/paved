@@ -384,7 +384,7 @@ function claimTypeFor(checkTypes) {
 }
 function buildEvidence(args) {
     const now = new Date().toISOString();
-    const change = currentRevision(args.projectRoot);
+    const change = currentRevision(args.sourceRoot);
     const id = evidenceId();
     const checkTypes = [...new Set(args.checks.map((check) => check.type))].sort();
     const checkIds = args.evidenceChecks.map((check) => check.id);
@@ -578,8 +578,8 @@ async function executeCheck(args) {
     const timeoutSeconds = Math.min(args.check.timeout_seconds ?? resolution.tool.timeout_seconds, resolution.implementation.invocation.timeout_seconds ?? resolution.tool.timeout_seconds, resolution.tool.timeout_seconds);
     const invocation = resolution.implementation.invocation;
     const cwd = invocation.working_directory === undefined
-        ? args.projectRoot
-        : safe(args.projectRoot, invocation.working_directory);
+        ? args.sourceRoot
+        : safe(args.sourceRoot, invocation.working_directory);
     const started = new Date().toISOString();
     const execution = await spawnApproved({ executable: command.executable, argv: command.argv, cwd, timeoutSeconds });
     const finished = new Date().toISOString();
@@ -800,11 +800,12 @@ async function runVerificationUnlocked(input) {
     if (!("profilePath" in resolved))
         return resolved;
     const { profile, profilePath, checks, tools, implementations, diagnostics } = resolved;
-    const revision = currentRevision(input.projectRoot).revision;
+    const sourceRoot = input.sourceRoot ?? input.projectRoot;
+    const revision = currentRevision(sourceRoot).revision;
     const evidenceChecks = [];
     const logs = [];
     for (const check of checks) {
-        const result = await executeCheck({ check, tools, implementations, projectRoot: input.projectRoot, revision });
+        const result = await executeCheck({ check, tools, implementations, sourceRoot, revision });
         if (result.diagnostic)
             diagnostics.push(result.diagnostic);
         if (result.evidenceCheck)
@@ -815,6 +816,7 @@ async function runVerificationUnlocked(input) {
     const profileSha = sha(readFileSync(profilePath));
     const built = buildEvidence({
         projectRoot: input.projectRoot,
+        sourceRoot,
         coreRoot: input.coreRoot,
         profilePath,
         profileSha,

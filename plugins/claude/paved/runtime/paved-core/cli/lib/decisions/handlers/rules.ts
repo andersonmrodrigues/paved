@@ -25,7 +25,7 @@ function conventionDocument(item: RuleConvention) {
 
 function apply(answer: AnswerValue, context: DecisionContext): readonly string[] {
   if (answer === "decline") return [];
-  const found = detectRuleCandidates(context.projectRoot, true);
+  const found = detectRuleCandidates(context.projectRoot, true, context.sourceRoot);
   const chosenModule = found.modules.find((item) => moduleOptionId(item) === answer);
   if (answer !== "adopt" && chosenModule === undefined) throw new Error(`Unknown rule option: ${String(answer)}.`);
   const files = answer === "adopt"

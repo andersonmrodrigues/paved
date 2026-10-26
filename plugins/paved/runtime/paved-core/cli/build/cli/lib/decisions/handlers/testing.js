@@ -11,7 +11,7 @@ const IMPLEMENTATION_PATH = ".paved/tool-implementations/testing.yaml";
 function adopt(answer, context) {
     if (answer === "none")
         return [];
-    const candidates = detectTestingCandidates(context.projectRoot);
+    const candidates = detectTestingCandidates(context.sourceRoot ?? context.projectRoot);
     const chosen = answer === "all" && candidates.length > 1
         ? candidates
         : candidates.filter((item) => testingOptionId(item) === answer);

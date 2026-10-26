@@ -45,6 +45,7 @@ writing a new record that supersedes it, not by editing the old one.
 | [0038](0038-local-workbench-and-hook-activity.md) | Local workbench and hook activity | Accepted |
 | [0039](0039-host-native-task-delegation.md) | Host-native task delegation and model policy | Accepted |
 | [0040](0040-task-level-harness-experiments.md) | Task-level harness experiments | Accepted |
+| [0041](0041-shared-state-across-worktrees.md) | Shared state across linked worktrees | Accepted |
 
 ## Format
 

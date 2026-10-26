@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { loadYaml } from "../lib/documents.js";
-import { resolveSafePath } from "../lib/safe-path.js";
-import { readRun, writeRun } from "../lib/workflow-runs.js";
+import { resolveConsumerPath, resolveSafePath } from "../lib/safe-path.js";
+import { readRun, runBelongsTo, runSourceRoot, writeRun } from "../lib/workflow-runs.js";
 import { approvedPlanDigest, approveDelegation, changedSinceSnapshot, delegationSpecDigest, digest, readDelegation, readyTasks, validateDelegationPlan, workspaceSnapshot, writeDelegation } from "../lib/delegation.js";
 import { createDiagnostic, createResult } from "../result.js";
 const completed = (task) => task.status === "completed";
@@ -85,13 +85,15 @@ export function delegationHandler(invocation) {
         const run = readRun(projectRoot, coreRoot, runId);
         if (!run)
             throw new Error(`Workflow run ${runId} does not exist.`);
+        if (!runBelongsTo(projectRoot, run, invocation.paths.sourceRoot))
+            throw new Error(`Workflow run ${runId} works on the checkout at ${runSourceRoot(projectRoot, run)}; continue it from there.`);
         const planSha = requireImplementation(run);
         if (operation === "plan") {
             if (!invocation.flags.file)
                 throw new Error("plan requires --file <path>.");
             if (run.delegation)
                 throw new Error("A delegation graph is already registered. Amend the approved plan before replacing it.");
-            const inputPath = resolveSafePath(projectRoot, invocation.flags.file);
+            const inputPath = resolveConsumerPath(projectRoot, invocation.paths.sourceRoot, invocation.flags.file);
             if (!existsSync(inputPath))
                 throw new Error(`Delegation graph file does not exist: ${invocation.flags.file}.`);
             const graph = loadYaml(inputPath);
@@ -148,7 +150,7 @@ export function delegationHandler(invocation) {
                 throw new Error(`Task ${task.id} is ${task.status}; only pending or failed tasks may start.`);
             for (const previous of task.attempts ?? []) {
                 const unresolved = previous.scope_violations ?? [];
-                if (previous.workspace_snapshot && unresolved.some((path) => changedSinceSnapshot(projectRoot, previous.workspace_snapshot).includes(path))) {
+                if (previous.workspace_snapshot && unresolved.some((path) => changedSinceSnapshot(invocation.paths.sourceRoot, previous.workspace_snapshot).includes(path))) {
                     throw new Error(`Task ${task.id} cannot retry while out-of-scope paths remain changed: ${unresolved.join(", ")}. Restore them to their pre-attempt contents first.`);
                 }
             }
@@ -165,7 +167,7 @@ export function delegationHandler(invocation) {
             const attempt = {
                 host: host, selected_model: model, selected_effort: effort, selected_by: selectedBy,
                 started_at: new Date().toISOString(), isolation: isolation,
-                ...(isolation === "shared-workspace" ? { workspace_snapshot: workspaceSnapshot(projectRoot) } : {}),
+                ...(isolation === "shared-workspace" ? { workspace_snapshot: workspaceSnapshot(invocation.paths.sourceRoot) } : {}),
                 ...(invocation.flags.session ? { session_sha256: digest(invocation.flags.session) } : {}),
             };
             task.attempts = [...(task.attempts ?? []), attempt];
@@ -185,7 +187,7 @@ export function delegationHandler(invocation) {
             if (!attempt || attempt.outcome)
                 throw new Error(`Task ${task.id} has no active execution attempt.`);
             if (attempt.isolation === "shared-workspace" && attempt.workspace_snapshot) {
-                attempt.changed_paths = changedSinceSnapshot(projectRoot, attempt.workspace_snapshot);
+                attempt.changed_paths = changedSinceSnapshot(invocation.paths.sourceRoot, attempt.workspace_snapshot);
                 attempt.scope_violations = outsideWriteScope(task, attempt.changed_paths);
             }
             attempt.outcome = "failed";
@@ -212,7 +214,7 @@ export function delegationHandler(invocation) {
                 attempt.usage = usage;
             const reportedPaths = invocation.flags.changedPaths ?? [];
             const observedPaths = attempt.isolation === "shared-workspace" && attempt.workspace_snapshot
-                ? changedSinceSnapshot(projectRoot, attempt.workspace_snapshot) : [...reportedPaths];
+                ? changedSinceSnapshot(invocation.paths.sourceRoot, attempt.workspace_snapshot) : [...reportedPaths];
             if (outcome === "completed" && attempt.isolation === "isolated-worktree" && !reportedPaths.length)
                 throw new Error("isolated-worktree completion requires repeatable --changed-path reports.");
             if (outcome === "completed" && attempt.isolation === "shared-workspace" && reportedPaths.some((path) => !observedPaths.includes(path)))

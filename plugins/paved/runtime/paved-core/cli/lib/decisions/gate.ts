@@ -12,6 +12,8 @@ import { listDecisions, readDecision, writeDecision } from "./store.ts";
 
 export interface DecisionContext {
   readonly projectRoot: string;
+  /** Where providers detect candidates from repository files; defaults to projectRoot. */
+  readonly sourceRoot?: string;
   readonly coreRoot: string;
   readonly command: string;
   readonly run?: string;

@@ -12,7 +12,7 @@ import { ENVIRONMENT_UNAVAILABLE } from "../test-runner.ts";
 import { sanitizeToolOutput } from "../tools.ts";
 import { writeWorkflowEvidence } from "../workflow-evidence.ts";
 import { assessWorkflowEvidence, UNCHANGED_HANDLER } from "../workflows.ts";
-import type { Run } from "../workflow-runs.ts";
+import { runSourceRoot, type Run } from "../workflow-runs.ts";
 import { createDiagnostic, type Diagnostic } from "../../result.ts";
 import type { PhaseContext, PhaseHook, PhaseOutcome } from "./index.ts";
 
@@ -61,7 +61,7 @@ const UNCHANGED_QUESTION = "No source or test file changed since the run started
 /** True while the source and test files match the fingerprint recorded when the run started. */
 export function sourceUnchanged(projectRoot: string, run: Run): boolean {
   const started = run.events.find((event) => event.type === "run-started")?.detail?.replace(/^source_sha256=/, "");
-  return started !== undefined && fingerprint(projectRoot) === started;
+  return started !== undefined && fingerprint(runSourceRoot(projectRoot, run)) === started;
 }
 
 /** Implementation needs a change, unless the user confirms the approved work already exists; verification still has to prove it. */

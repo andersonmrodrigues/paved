@@ -95,6 +95,9 @@ export function primaryCategory(result) {
         return "awaiting-input";
     let primary = result.status === "success" ? "success" : "findings";
     for (const diagnostic of result.diagnostics) {
+        // An info diagnostic only reports context; it never changes the exit code.
+        if (diagnostic.severity === "info")
+            continue;
         if (CATEGORY_PRECEDENCE[diagnostic.category] > CATEGORY_PRECEDENCE[primary]) {
             primary = diagnostic.category;
         }

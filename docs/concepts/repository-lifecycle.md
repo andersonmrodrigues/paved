@@ -40,20 +40,69 @@ regenerate the context; `execute "<request>"` regenerates it before starting, an
 regenerates it again when it completes. Integrity problems above stay `STALE` and block
 work until `paved update` resolves them.
 
-Paved evaluates the checkout it runs in. In a linked Git worktree without its own
-`.paved/manifest.yaml`, Paved reads the `.git` file and the worktree's `commondir` to find
-the main worktree. When that one has Paved state, the worktree stays `UNINITIALIZED`,
-`status` reports `mainWorktree` and the finding `PAVED_WORKTREE_STATE_IN_MAIN`, and the
-next action says to commit `.paved/` so every worktree checks it out, or to run `init`
-in the worktree. Paved does not use the main worktree's state from a linked worktree:
-it would then test and evaluate source digests in the main checkout instead of the one
-being changed. Sharing one state across worktrees, with digests evaluated per worktree,
-is not supported yet.
-
 Diagnostics and exit categories remain separate from lifecycle state. A stale
 consumer may also have a conflict, and a missing profile can be reported alongside
 other findings. The state is computed from files and digests; timestamps do not
 decide it.
+
+### Linked Git worktrees
+
+Paved separates two roots. The **state root** is the checkout whose `.paved/` holds the
+Paved state in use. The **source root** is the checkout whose files are read, tested and
+digested. In a normal checkout both are the project root, and nothing below applies.
+
+In a linked Git worktree without its own `.paved/manifest.yaml`, Paved reads the `.git`
+file and the worktree's `commondir` to find the main worktree. When the main worktree has
+`.paved/manifest.yaml`, it becomes the state root and the linked worktree stays the source
+root. `status` then reports `stateRoot` and `sourceRoot`, and the info diagnostic
+`PAVED_WORKTREE_STATE_IN_MAIN` says shared state is in use; it changes neither the status
+nor the exit code.
+
+A worktree with its own `.paved/manifest.yaml`, committed or not, always uses it. Because
+`init` in a linked worktree sees the shared state, a worktree gets its own state by
+checking out a branch that commits `.paved/`. Only a consumer at the repository root is
+shared: a nested consumer in a linked worktree needs its own `.paved/`.
+
+| Path or operation | Root |
+| --- | --- |
+| Manifest, lock, approvals, decisions, documents, rules, verification profile, Tools | state |
+| Generated context, proposals, `last-run.json`, evidence, reviews, delegation graphs and results | state |
+| Workflow runs and intent documents | state |
+| `.paved/runtime/` (pinned runtime, `bin/paved`) and the consumer operation lock | state |
+| The managed `AGENTS.md` block and agent projections | state |
+| Testing and verification Tool working directory, revision and Maven module planning | source |
+| Generator source scanning, adapter and capability detection, check and rule detection | source |
+| Provenance digests, run fingerprints, the evidence diff and delegation workspace snapshots | source |
+| `--file` for `delegation plan` | `.paved/...` in state, anything else in source |
+| `--evidence`, `--result` and `preview` targets | state |
+
+Tools run in the source root, so a project Tool implementation whose command names a
+script under `.paved/` by a relative path does not find it from a linked worktree; keep
+such scripts in the repository, or make the binding independent of the working directory.
+
+Every path the CLI resolves goes through `resolveSafePath` against the root it belongs
+to, so it cannot escape that root or traverse a symbolic link in either. The consumer
+operation lock lives in the state root, so commands from different worktrees that write
+shared state run one at a time.
+
+Generated context describes one checkout. Each generator execution in `last-run.json`
+records `sourceWorktree` when it read a linked worktree, and `status` lists them as
+`contextWorktrees`. Drift is judged against the checkout the context came from, whichever
+worktree runs `status`: the recorded worktree when it is still a checkout of the state
+root, otherwise the state root. Changes in another worktree are therefore not drift.
+`update`, a repair and `execute` regenerate from the current source root, which moves the
+context there. A completing run refreshes context only when the context already came
+from its own worktree.
+
+A workflow run records `worktree` when it started in a linked worktree. A run continues
+only from the checkout it records: `--run` from any other refuses with
+`PAVED_WORKFLOW_WORKTREE_MISMATCH`, the automatic selection lists only the current
+worktree's open runs, and the same request started in another worktree gets its own run.
+
+The stable command `.paved/runtime/bin/paved` lives in the state root and works from a
+linked worktree too: it passes the caller's directory to the launcher, which keeps a
+linked worktree of that project as the source root. Remediation texts therefore print
+the main worktree's command.
 
 ## Local update
 

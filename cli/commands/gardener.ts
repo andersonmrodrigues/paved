@@ -15,7 +15,7 @@ export function gardenerHandler(invocation: CommandInvocation): CommandResult {
     }));
     const outcome = runDecisionGate({
       context: {
-        projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot,
+        projectRoot: invocation.paths.projectRoot, sourceRoot: invocation.paths.sourceRoot, coreRoot: invocation.paths.coreRoot,
         command: "gardener", answers: invocation.flags.answers,
         ...(invocation.flags.answeredBy === undefined ? {} : { answeredBy: invocation.flags.answeredBy }),
       },

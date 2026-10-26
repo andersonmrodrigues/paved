@@ -175,7 +175,7 @@ export function detectCheckCandidates(projectRoot) {
 export const verificationProvider = (context) => {
     if (existsSync(join(context.projectRoot, ".paved/verification/profile.yaml")))
         return [];
-    const candidates = detectCheckCandidates(context.projectRoot);
+    const candidates = detectCheckCandidates(context.sourceRoot ?? context.projectRoot);
     if (candidates.length === 0)
         return [];
     const scopes = [...new Set(candidates.map((item) => item.scope))].sort((a, b) => a.localeCompare(b, "en"));

@@ -56,4 +56,47 @@ describe("project-local paved command", () => {
     assert.ok(result.data.nextAction.includes(`'${shim}'`), result.data.nextAction);
     assert.match(readFileSync(join(project, ".paved", "runtime", ".gitignore"), "utf8"), /^\*$/m);
   });
+
+  it("works on a linked worktree that shares the main worktree's state", () => {
+    const parent = workspace("project-command-worktree");
+    temporary.push(parent);
+    const plugin = join(parent, "cache", "paved", "2.0.0");
+    cpSync(join(ROOT, PLUGIN_DIRECTORY), plugin, { recursive: true, verbatimSymlinks: true });
+    const project = consumer(parent);
+    const git = (cwd: string, ...args: string[]) =>
+      assert.equal(spawnSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", ...args], { cwd }).status, 0);
+    writeFileSync(join(project, ".gitignore"), ".paved/\n");
+    git(project, "add", ".");
+    git(project, "commit", "-qm", "base");
+    const init = spawnSync(process.execPath, [join(plugin, LAUNCHER_DIRECTORY, "paved.mjs"), "init", "--json"], {
+      cwd: project, encoding: "utf8", shell: false, env: { ...process.env, npm_config_offline: "true" },
+    });
+    assert.ok(init.status === 0 || init.status === 1, init.stdout + init.stderr);
+    const linked = join(parent, "linked worktree");
+    git(project, "worktree", "add", "-q", "-b", "feature", linked);
+    const shim = join(realpathSync(project), ".paved", "runtime", "bin", "paved");
+    const expectShared = (status: ReturnType<typeof spawnSync>) => {
+      assert.ok(status.status === 0 || status.status === 1, `${status.stdout}${status.stderr}`);
+      const result = JSON.parse(String(status.stdout)) as {
+        data: { stateRoot?: string; sourceRoot?: string; nextAction: string };
+        diagnostics: { code: string }[];
+      };
+      assert.equal(result.data.stateRoot, realpathSync(project));
+      assert.equal(result.data.sourceRoot, realpathSync(linked));
+      assert.ok(result.diagnostics.some((item) => item.code === "PAVED_WORKTREE_STATE_IN_MAIN"));
+      // Remediation texts name the main worktree's command, which works from the linked worktree too.
+      assert.ok(result.data.nextAction.includes(`'${shim}'`), result.data.nextAction);
+      assert.equal(existsSync(join(linked, ".paved")), false, "the linked worktree gains no state of its own");
+    };
+
+    // The agent launcher, started in the linked worktree.
+    expectShared(spawnSync(process.execPath, [join(plugin, LAUNCHER_DIRECTORY, "paved.mjs"), "status", "--json"], {
+      cwd: linked, encoding: "utf8", shell: false, env: { ...process.env, npm_config_offline: "true" },
+    }));
+    // The stable command enters the main worktree, yet keeps working on the linked worktree it was called from.
+    rmSync(join(parent, "cache"), { recursive: true, force: true });
+    expectShared(spawnSync("/bin/sh", ["-c", `'${shim}' status --json`], {
+      cwd: join(linked, "src"), encoding: "utf8", env: { PATH: process.env.PATH ?? "", HOME: parent },
+    }));
+  });
 });

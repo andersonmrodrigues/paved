@@ -21,7 +21,7 @@ function assertNoSymlinks(root: string): void {
 function applyConsumerUpdateUnlocked<T>(
   projectRoot: string,
   stage: (stagedRoot: string) => T,
-  options: { commitIf?: (result: T) => boolean; onRejected?: (stagedRoot: string, result: T) => void } = {},
+  options: { commitIf?: (result: T) => boolean; onRejected?: (stagedRoot: string, result: T) => void; sourceRoot?: string } = {},
 ): T {
   const paved = join(projectRoot, ".paved");
   const recovery = join(projectRoot, ".paved.update-backup");
@@ -31,12 +31,14 @@ function applyConsumerUpdateUnlocked<T>(
   assertNoSymlinks(paved);
   const before = hashLocalTree(projectRoot, [".paved"]);
   const sourceFingerprint = (root: string) => JSON.stringify(discoverSources(root).map((source) => [source.path, source.sha256]));
-  const sourcesBefore = sourceFingerprint(projectRoot);
+  // The stage copies the checkout generators read: a linked worktree sharing this state, or the project itself.
+  const sourceRoot = options.sourceRoot ?? projectRoot;
+  const sourcesBefore = sourceFingerprint(sourceRoot);
   const workspace = mkdtempSync(join(dirname(projectRoot), `.paved-update-${basename(projectRoot)}-`));
   const stagedRoot = join(workspace, "consumer");
   let committed = false;
   try {
-    copyProjectForInitDryRun(projectRoot, stagedRoot);
+    copyProjectForInitDryRun(sourceRoot, stagedRoot);
     cpSync(paved, join(stagedRoot, ".paved"), { recursive: true });
     if (sourceFingerprint(stagedRoot) !== sourcesBefore) throw new Error("Staged repository evidence differs from the consumer; update aborted.");
     const result = stage(stagedRoot);
@@ -44,7 +46,7 @@ function applyConsumerUpdateUnlocked<T>(
       options.onRejected?.(stagedRoot, result);
       return result;
     }
-    if (before !== hashLocalTree(projectRoot, [".paved"]) || sourcesBefore !== sourceFingerprint(projectRoot)) {
+    if (before !== hashLocalTree(projectRoot, [".paved"]) || sourcesBefore !== sourceFingerprint(sourceRoot)) {
       throw new Error("Consumer state or repository evidence changed during update; retry from the new state.");
     }
     renameSync(paved, recovery);
@@ -68,7 +70,7 @@ function applyConsumerUpdateUnlocked<T>(
 export function applyConsumerUpdate<T>(
   projectRoot: string,
   stage: (stagedRoot: string) => T,
-  options: { commitIf?: (result: T) => boolean; onRejected?: (stagedRoot: string, result: T) => void } = {},
+  options: { commitIf?: (result: T) => boolean; onRejected?: (stagedRoot: string, result: T) => void; sourceRoot?: string } = {},
 ): T {
   const release = acquireConsumerOperationLock(projectRoot, "update");
   try {

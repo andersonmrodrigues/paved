@@ -114,7 +114,7 @@ function writeFiles(projectRoot: string, coreRoot: string, files: readonly Paved
 
 /** Writes the complete runnable contract set, with the profile last as its commit marker. */
 function apply(answer: AnswerValue, context: DecisionContext): readonly string[] {
-  const candidates = detectCheckCandidates(context.projectRoot);
+  const candidates = detectCheckCandidates(context.sourceRoot ?? context.projectRoot);
   const chosen = selected(answer, candidates);
   if (answer !== "none" && chosen.length === 0) {
     throw new Error("The selected verification checks are no longer present in the repository.");

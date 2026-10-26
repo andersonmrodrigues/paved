@@ -4,7 +4,7 @@ import { AGENT_COMMANDS, } from "../../integrations/shared/commands.js";
 import { inspectConsumer } from "./consumer-state.js";
 import { resolveTestingTool } from "./test-runner.js";
 import { detectCheckCandidates } from "./decisions/providers/verification.js";
-function availability(command, inspection, projectRoot, coreRoot) {
+function availability(command, inspection, projectRoot, sourceRoot, coreRoot) {
     if (!command.lifecycle.includes(inspection.lifecycleState)) {
         if (command.name === "init" && inspection.initialized) {
             return { available: false, reason: "Paved is already initialized; init never resets existing state.", recommendedNextAction: "Run /paved:status or /paved:update." };
@@ -20,11 +20,11 @@ function availability(command, inspection, projectRoot, coreRoot) {
         return { available: true };
     if (["intent", "plan", "execute"].includes(command.name)) {
         if (inspection.verificationProfile !== "present") {
-            if (detectCheckCandidates(projectRoot).length === 0) {
+            if (detectCheckCandidates(sourceRoot).length === 0) {
                 return { available: false, reason: "An executable workflow needs a verification profile, and no repository check was detected.", recommendedNextAction: "Add a build or test command to the repository, then run /paved:init." };
             }
         }
-        const resolution = resolveTestingTool(projectRoot, coreRoot);
+        const resolution = resolveTestingTool(projectRoot, coreRoot, sourceRoot);
         if (resolution.status === "unavailable") {
             return { available: false, reason: resolution.message, recommendedNextAction: resolution.remediation };
         }
@@ -34,8 +34,8 @@ function availability(command, inspection, projectRoot, coreRoot) {
     }
     return { available: true };
 }
-export function discoverAgentCommands(projectRoot, coreRoot) {
-    const inspection = inspectConsumer({ projectRoot, coreRoot });
+export function discoverAgentCommands(projectRoot, coreRoot, sourceRoot = projectRoot) {
+    const inspection = inspectConsumer({ projectRoot, sourceRoot, coreRoot });
     const commands = AGENT_COMMANDS.map((command) => {
         if (command.name === "init" && existsSync(join(projectRoot, ".paved"))) {
             return {
@@ -47,7 +47,7 @@ export function discoverAgentCommands(projectRoot, coreRoot) {
                 recommendedNextAction: inspection.initialized ? "/paved:status or /paved:update" : "/paved:status",
             };
         }
-        return { ...command, ...availability(command, inspection, projectRoot, coreRoot) };
+        return { ...command, ...availability(command, inspection, projectRoot, sourceRoot, coreRoot) };
     });
     return { lifecycleState: inspection.lifecycleState, capabilityProviders: inspection.capabilityProviders, commands };
 }

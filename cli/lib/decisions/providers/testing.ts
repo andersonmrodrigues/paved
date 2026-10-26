@@ -11,7 +11,7 @@ function optionId(id: string): string {
 }
 
 export const testingProvider: DecisionProvider = (context) => {
-  const resolution = resolveTestingTool(context.projectRoot, context.coreRoot);
+  const resolution = resolveTestingTool(context.projectRoot, context.coreRoot, context.sourceRoot);
   if (resolution.status !== "ambiguous") return [];
   const manifest = join(context.projectRoot, ".paved/manifest.yaml");
   if (!existsSync(manifest)) return [];
@@ -52,9 +52,9 @@ export function detectTestingCandidates(projectRoot: string): CheckCandidate[] {
  */
 export const testingAdoptProvider: DecisionProvider = (context) => {
   if (existsSync(join(context.projectRoot, TESTING_TOOL_PATH))) return [];
-  if (resolveTestingTool(context.projectRoot, context.coreRoot).status === "suite") return [];
-  if (resolveTestingTool(context.projectRoot, context.coreRoot).status !== "unavailable") return [];
-  const candidates = detectTestingCandidates(context.projectRoot);
+  if (resolveTestingTool(context.projectRoot, context.coreRoot, context.sourceRoot).status === "suite") return [];
+  if (resolveTestingTool(context.projectRoot, context.coreRoot, context.sourceRoot).status !== "unavailable") return [];
+  const candidates = detectTestingCandidates(context.sourceRoot ?? context.projectRoot);
   if (candidates.length === 0) return [];
   const where = (item: CheckCandidate) => (item.scope === "." ? "the repository root" : item.scope);
   const evidence = [...new Map(candidates.map((item) => [item.source.location, item.source])).values()]

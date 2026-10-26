@@ -23,7 +23,7 @@ export async function verifyHandler(invocation: CommandInvocation): Promise<Comm
   try {
     const outcome = runDecisionGate({
       context: {
-        projectRoot: invocation.paths.projectRoot,
+        projectRoot: invocation.paths.projectRoot, sourceRoot: invocation.paths.sourceRoot,
         coreRoot: invocation.paths.coreRoot,
         command: "verify",
         answers: invocation.flags.answers,
@@ -48,6 +48,7 @@ export async function verifyHandler(invocation: CommandInvocation): Promise<Comm
     }
     result = await runVerification({
       projectRoot: invocation.paths.projectRoot,
+      sourceRoot: invocation.paths.sourceRoot,
       coreRoot: invocation.paths.coreRoot,
       adapterSelections: invocation.flags.adapters,
     });

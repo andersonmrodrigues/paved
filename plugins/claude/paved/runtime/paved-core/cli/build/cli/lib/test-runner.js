@@ -123,10 +123,10 @@ function selectedOverride(projectRoot, coreRoot, tool) {
     const document = loadYaml(overridePath);
     return (document.tools ?? []).find((entry) => entry.target === tool.id);
 }
-export function resolveTestingTool(projectRoot, coreRoot) {
-    return resolveTestingToolCandidate(projectRoot, coreRoot);
+export function resolveTestingTool(projectRoot, coreRoot, sourceRoot = projectRoot) {
+    return resolveTestingToolCandidate(projectRoot, coreRoot, sourceRoot);
 }
-function resolveTestingToolCandidate(projectRoot, coreRoot, selectedId) {
+function resolveTestingToolCandidate(projectRoot, coreRoot, sourceRoot, selectedId) {
     const registry = createRegistry(join(coreRoot, "schemas"), ["paved/v1"]);
     let roots;
     let tools;
@@ -152,7 +152,7 @@ function resolveTestingToolCandidate(projectRoot, coreRoot, selectedId) {
         tools = tools.filter((tool) => tool.id === selectedId);
     if (tools.length > 1) {
         if (tools.every((tool) => tool.id.startsWith("project.testing-detected-"))) {
-            const members = tools.map((tool) => resolveTestingToolCandidate(projectRoot, coreRoot, tool.id));
+            const members = tools.map((tool) => resolveTestingToolCandidate(projectRoot, coreRoot, sourceRoot, tool.id));
             const unavailable = members.find((member) => member.status === "unavailable");
             if (unavailable?.status === "unavailable")
                 return unavailable;
@@ -160,7 +160,7 @@ function resolveTestingToolCandidate(projectRoot, coreRoot, selectedId) {
             try {
                 const maven = resolved.filter((member) => member.implementation.invocation.executable === "mvn")
                     .map((member) => member.implementation.invocation.working_directory ?? ".");
-                const plan = planMavenDependencies(projectRoot, maven);
+                const plan = planMavenDependencies(sourceRoot, maven);
                 const rank = new Map(plan.scopes.map((scope, index) => [scope, index]));
                 for (const member of resolved) {
                     const binding = member.implementation.invocation;
@@ -197,11 +197,11 @@ function resolveTestingToolCandidate(projectRoot, coreRoot, selectedId) {
             }
         }
         const candidates = tools.flatMap((tool) => {
-            const resolution = resolveTestingToolCandidate(projectRoot, coreRoot, tool.id);
+            const resolution = resolveTestingToolCandidate(projectRoot, coreRoot, sourceRoot, tool.id);
             return resolution.status === "resolved" ? [tool.id] : [];
         }).sort((a, b) => a.localeCompare(b, "en"));
         if (candidates.length === 1)
-            return resolveTestingToolCandidate(projectRoot, coreRoot, candidates[0]);
+            return resolveTestingToolCandidate(projectRoot, coreRoot, sourceRoot, candidates[0]);
         if (candidates.length > 1) {
             const candidateInputs = candidates.map((id) => `candidate:${id}`);
             const manifestHash = sha(readFileSync(join(projectRoot, ".paved/manifest.yaml")));
@@ -217,7 +217,7 @@ function resolveTestingToolCandidate(projectRoot, coreRoot, selectedId) {
                 return option === undefined ? [] : [option.label];
             }).find((id) => candidates.includes(id));
             if (selected !== undefined)
-                return resolveTestingToolCandidate(projectRoot, coreRoot, selected);
+                return resolveTestingToolCandidate(projectRoot, coreRoot, sourceRoot, selected);
             return {
                 status: "ambiguous", candidates, code: "PAVED_TEST_TOOL_AMBIGUOUS",
                 message: "More than one authorized testing-run Tool is declared.",
@@ -406,7 +406,7 @@ async function runOneTestingTool(input, selected) {
     let cwd;
     try {
         const relativeWorkingDirectory = implementation.invocation.working_directory ?? ".";
-        cwd = resolveSafePath(input.projectRoot, relativeWorkingDirectory);
+        cwd = resolveSafePath(input.sourceRoot ?? input.projectRoot, relativeWorkingDirectory);
         const stat = lstatSync(cwd);
         if (!stat.isDirectory() || stat.isSymbolicLink())
             throw new Error("working directory is not a real directory");
@@ -414,7 +414,7 @@ async function runOneTestingTool(input, selected) {
     catch (error) {
         return { status: "failed", diagnostics: [diagnostic("PAVED_TEST_WORKING_DIRECTORY_INVALID", "config", error instanceof Error ? error.message : "Tool working directory is unsafe.")] };
     }
-    const revision = currentRevision(input.projectRoot);
+    const revision = currentRevision(input.sourceRoot ?? input.projectRoot);
     const startedAt = new Date().toISOString();
     const processResult = await spawnApproved({
         executable: command.executable,
@@ -546,7 +546,7 @@ async function runOneTestingTool(input, selected) {
     };
 }
 export async function runTestingTool(input) {
-    const selected = resolveTestingTool(input.projectRoot, input.coreRoot);
+    const selected = resolveTestingTool(input.projectRoot, input.coreRoot, input.sourceRoot);
     if (selected.status === "unavailable" || selected.status === "ambiguous") {
         return { status: "failed", diagnostics: [diagnostic(selected.code, "config", selected.message, selected.remediation)] };
     }

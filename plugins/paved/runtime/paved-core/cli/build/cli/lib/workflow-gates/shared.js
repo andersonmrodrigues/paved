@@ -12,6 +12,7 @@ import { ENVIRONMENT_UNAVAILABLE } from "../test-runner.js";
 import { sanitizeToolOutput } from "../tools.js";
 import { writeWorkflowEvidence } from "../workflow-evidence.js";
 import { assessWorkflowEvidence, UNCHANGED_HANDLER } from "../workflows.js";
+import { runSourceRoot } from "../workflow-runs.js";
 import { createDiagnostic } from "../../result.js";
 export const SHARED_GATES = ["plan-approved", "criteria-met"];
 export const sha = (value) => createHash("sha256").update(value).digest("hex");
@@ -56,7 +57,7 @@ const UNCHANGED_QUESTION = "No source or test file changed since the run started
 /** True while the source and test files match the fingerprint recorded when the run started. */
 export function sourceUnchanged(projectRoot, run) {
     const started = run.events.find((event) => event.type === "run-started")?.detail?.replace(/^source_sha256=/, "");
-    return started !== undefined && fingerprint(projectRoot) === started;
+    return started !== undefined && fingerprint(runSourceRoot(projectRoot, run)) === started;
 }
 /** Implementation needs a change, unless the user confirms the approved work already exists; verification still has to prove it. */
 export function implementationChanged(context) {

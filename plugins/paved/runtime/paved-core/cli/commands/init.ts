@@ -195,7 +195,7 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
   }
 
   const projectName = projectNameFor(invocation.paths.projectRoot);
-  const plan = planConsumerInitialization(invocation.paths.coreRoot, invocation.paths.projectRoot, projectName);
+  const plan = planConsumerInitialization(invocation.paths.coreRoot, invocation.paths.projectRoot, projectName, invocation.paths.sourceRoot);
   // Generation reports capability resolution itself; without it, the plan is the only report.
   const planningDiagnostics = adapterDiagnostics(invocation.flags.noGenerate ? [...plan.adapterDiagnostics, ...plan.capabilityDiagnostics] : plan.adapterDiagnostics);
   if (invocation.flags.dryRun) {
@@ -220,10 +220,10 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
     });
   }
 
-  initializeConsumer(invocation.paths.coreRoot, invocation.paths.projectRoot, projectName);
+  initializeConsumer(invocation.paths.coreRoot, invocation.paths.projectRoot, projectName, invocation.paths.sourceRoot);
   const outcome = runDecisionGate({
     context: {
-      projectRoot: invocation.paths.projectRoot,
+      projectRoot: invocation.paths.projectRoot, sourceRoot: invocation.paths.sourceRoot,
       coreRoot: invocation.paths.coreRoot,
       command: "init",
       answers: invocation.flags.answers,
@@ -239,11 +239,11 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
     persist: true,
   });
   if (outcome.applied.some((decision) => decision.handler === "capability.select")) {
-    initializeConsumer(invocation.paths.coreRoot, invocation.paths.projectRoot, projectName);
+    initializeConsumer(invocation.paths.coreRoot, invocation.paths.projectRoot, projectName, invocation.paths.sourceRoot);
   }
   const generation = invocation.flags.noGenerate
     ? undefined
-    : runGenerators(invocation.paths.coreRoot, invocation.paths.projectRoot);
+    : runGenerators(invocation.paths.coreRoot, invocation.paths.projectRoot, { sourceRoot: invocation.paths.sourceRoot });
   const agents = ensureAgentsBlock(invocation.paths.coreRoot, invocation.paths.projectRoot);
   const diagnostics = [
     ...planningDiagnostics,
@@ -259,7 +259,7 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
     component: "cli.init", message,
     remediation: "Answer with one of the offered option ids.",
   })));
-  const lifecycleState = inspectConsumer({ projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot }).lifecycleState;
+  const lifecycleState = inspectConsumer({ projectRoot: invocation.paths.projectRoot, sourceRoot: invocation.paths.sourceRoot, coreRoot: invocation.paths.coreRoot }).lifecycleState;
   const data = {
     initialized: true, dryRun: false, projectName,
     selectedAdapters: plan.selectedAdapters, resolvedAdapters: plan.resolvedAdapters,

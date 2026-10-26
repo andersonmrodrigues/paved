@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { inspectConsumer } from "../lib/consumer-state.js";
 import { refreshFor, remediationFor } from "../lib/lifecycle-remediation.js";
 import { runDecisionGate, toProjection } from "../lib/decisions/gate.js";
@@ -12,7 +12,7 @@ import { reportNewProposals } from "../lib/gardener-report.js";
 import { reviewFor } from "../lib/review-block.js";
 import { relaysAnswers, runPhase } from "../lib/workflow-gates/index.js";
 import { now, projectRelative, readApproval, reopenImplementation, sha, sharedPhase, sourceUnchanged } from "../lib/workflow-gates/shared.js";
-import { isOpen, loadContract, readRun, scanRuns, runCommand, runPath, TERMINAL_STATUSES, writeRun, } from "../lib/workflow-runs.js";
+import { isOpen, loadContract, readRun, runBelongsTo, runSourceRoot, scanRuns, runCommand, runPath, TERMINAL_STATUSES, writeRun, } from "../lib/workflow-runs.js";
 import { AMENDED_RETRY, attemptRounds, RECOVER_HANDLER, recoveriesFor, recoveryQuestion, REVIEW_HANDLER, UNCHANGED_HANDLER } from "../lib/workflows.js";
 import { createDiagnostic, createResult } from "../result.js";
 import { initHandler } from "./init.js";
@@ -38,6 +38,11 @@ function blocked(step, code, message, remediation, data) {
 function revision(projectRoot) {
     const result = spawnSync("git", ["rev-parse", "HEAD"], { cwd: projectRoot, encoding: "utf8", shell: false });
     return result.status === 0 && result.stdout.trim() ? result.stdout.trim() : "unversioned";
+}
+/** The linked worktree this invocation works on, when it shares the state of another checkout. */
+function linkedWorktree(invocation) {
+    const { projectRoot, sourceRoot } = invocation.paths;
+    return sourceRoot === projectRoot ? undefined : sourceRoot;
 }
 function activePhase(run) {
     return run.phases.find((phase) => phase.status === "running") ?? run.phases.find((phase) => phase.status === "failed");
@@ -85,6 +90,10 @@ function load(invocation, id) {
     const run = readRun(projectRoot, coreRoot, id);
     if (!run)
         throw new Error(`Workflow run ${id} does not exist.`);
+    // Its tests, digests and diff describe one checkout, so a run never continues in another.
+    if (!runBelongsTo(projectRoot, run, invocation.paths.sourceRoot)) {
+        throw new IntentError("PAVED_WORKFLOW_WORKTREE_MISMATCH", `Run ${id} works on the checkout at ${runSourceRoot(projectRoot, run)}, not on ${invocation.paths.sourceRoot}.`, `Continue run ${id} from ${runSourceRoot(projectRoot, run)}, or start a new intent in this worktree.`);
+    }
     const gate = run.phases.find((phase) => phase.phase === "planning")?.gates?.find((item) => item.id === "plan-approved");
     // An amendment is exactly the case where the approved plan file has changed; it asks for a new approval.
     if ((gate?.status === "approved" || gate?.status === "rejected") && !(invocation.command === "plan" && invocation.flags.amend)) {
@@ -171,7 +180,7 @@ function resolveRunDecisions(invocation, run, answers, fresh = []) {
     }
     const outcome = runDecisionGate({
         context: {
-            projectRoot: invocation.paths.projectRoot, coreRoot: invocation.paths.coreRoot,
+            projectRoot: invocation.paths.projectRoot, sourceRoot: invocation.paths.sourceRoot, coreRoot: invocation.paths.coreRoot,
             // 1.x runs keep the command that created them, so their decision ids do not change.
             command: runCommand(run), run: run.id, answers,
             ...(invocation.flags.answeredBy === undefined ? {} : { answeredBy: invocation.flags.answeredBy }),
@@ -192,9 +201,13 @@ function selectRun(invocation, step) {
     if (scanned.unreadable.length > 0) {
         return { result: blocked(step, "PAVED_WORKFLOW_RUN_INVALID", `Run ${scanned.unreadable.map((run) => run.id).join(", ")} could not be read: ${scanned.unreadable[0].reason}`, "Pass --run <id> for the run to continue, or restore or remove the unreadable document in .paved/generated/runs/.", { unreadable: scanned.unreadable.map((run) => run.id) }) };
     }
-    const open = scanned.runs.filter(isOpen);
-    if (open.length === 0)
-        return { result: blocked(step, "PAVED_WORKFLOW_RUN_REQUIRED", "No open run exists.", 'Start with paved intent "<request>" --json.') };
+    const openAnywhere = scanned.runs.filter(isOpen);
+    // Linked worktrees sharing this state each continue only their own runs.
+    const open = openAnywhere.filter((run) => runBelongsTo(projectRoot, run, invocation.paths.sourceRoot));
+    if (open.length === 0) {
+        const elsewhere = openAnywhere.map((run) => `${run.id} (${runSourceRoot(projectRoot, run)})`);
+        return { result: blocked(step, "PAVED_WORKFLOW_RUN_REQUIRED", elsewhere.length === 0 ? "No open run exists." : `No open run works on this checkout; open runs in other worktrees: ${elsewhere.join(", ")}.`, elsewhere.length === 0 ? 'Start with paved intent "<request>" --json.' : 'Continue those runs from their own worktree, or start with paved intent "<request>" --json here.') };
+    }
     if (open.length === 1)
         return { run: load(invocation, open[0].id), answers: invocation.flags.answers };
     const candidate = {
@@ -242,7 +255,7 @@ function selectRun(invocation, step) {
 function startIntent(invocation) {
     const { projectRoot, coreRoot } = invocation.paths;
     const flags = invocation.flags;
-    const lifecycle = inspectConsumer({ projectRoot, coreRoot }).lifecycleState;
+    const lifecycle = inspectConsumer({ projectRoot, sourceRoot: invocation.paths.sourceRoot, coreRoot }).lifecycleState;
     if (!["RESOLVED", "GENERATED", "VALIDATED", "READY"].includes(lifecycle)) {
         const remediation = remediationFor(lifecycle);
         return blocked("intent", "PAVED_WORKFLOW_LIFECYCLE_BLOCKED", `Cannot start work in lifecycle state ${lifecycle}.`, remediation ? `Run ${remediation.command}, then repeat this command.` : "Run paved status and resolve the reported state first.", remediation ? { remediation } : undefined);
@@ -252,9 +265,14 @@ function startIntent(invocation) {
         ...(flags.workflow === undefined ? {} : { workflow: flags.workflow }),
         ...(flags.recommend === undefined ? {} : { recommend: flags.recommend }),
         ...(flags.because === undefined ? {} : { because: flags.because }),
-    }, revision(projectRoot));
+    }, revision(invocation.paths.sourceRoot), linkedWorktree(invocation));
     const baseId = run.id;
     for (let attempt = 2; existsSync(runPath(projectRoot, run.id)); attempt += 1) {
+        const other = readRun(projectRoot, coreRoot, run.id);
+        if (other !== undefined && !runBelongsTo(projectRoot, other, invocation.paths.sourceRoot)) {
+            run.id = `${baseId}-${attempt}`;
+            continue;
+        }
         const existing = load(invocation, run.id);
         if (!isOpen(existing)) {
             run.id = `${baseId}-${attempt}`;
@@ -284,7 +302,7 @@ const OPEN_DECISION = new Set(["PENDING", "ASKED", "ANSWERED"]);
  */
 function startWork(invocation) {
     const { projectRoot, coreRoot } = invocation.paths;
-    const inspection = inspectConsumer({ projectRoot, coreRoot });
+    const inspection = inspectConsumer({ projectRoot, sourceRoot: invocation.paths.sourceRoot, coreRoot });
     const lifecycle = inspection.lifecycleState;
     const initPending = lifecycle !== "UNINITIALIZED"
         && listDecisions(projectRoot, coreRoot).some((decision) => decision.command === "init" && OPEN_DECISION.has(decision.status));
@@ -627,9 +645,15 @@ async function resume(invocation, step, run, answers) {
  */
 function refreshContext(invocation) {
     const { projectRoot, coreRoot } = invocation.paths;
-    const inspection = inspectConsumer({ projectRoot, coreRoot });
+    const inspection = inspectConsumer({ projectRoot, sourceRoot: invocation.paths.sourceRoot, coreRoot });
     const remediation = refreshFor(inspection);
     if (remediation === undefined)
+        return { refreshed: false };
+    // Context generated from another worktree describes that checkout; this change does not make it stale.
+    const real = (path) => realpathSync(path);
+    const here = linkedWorktree(invocation);
+    const origins = inspection.contextWorktrees ?? [];
+    if (here === undefined ? origins.length > 0 : origins.length !== 1 || real(origins[0]) !== real(here))
         return { refreshed: false };
     if (remediationFor(inspection.lifecycleState) !== undefined)
         return { refreshed: false, remediation };

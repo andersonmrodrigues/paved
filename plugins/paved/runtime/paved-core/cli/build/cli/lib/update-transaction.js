@@ -30,12 +30,14 @@ function applyConsumerUpdateUnlocked(projectRoot, stage, options = {}) {
     assertNoSymlinks(paved);
     const before = hashLocalTree(projectRoot, [".paved"]);
     const sourceFingerprint = (root) => JSON.stringify(discoverSources(root).map((source) => [source.path, source.sha256]));
-    const sourcesBefore = sourceFingerprint(projectRoot);
+    // The stage copies the checkout generators read: a linked worktree sharing this state, or the project itself.
+    const sourceRoot = options.sourceRoot ?? projectRoot;
+    const sourcesBefore = sourceFingerprint(sourceRoot);
     const workspace = mkdtempSync(join(dirname(projectRoot), `.paved-update-${basename(projectRoot)}-`));
     const stagedRoot = join(workspace, "consumer");
     let committed = false;
     try {
-        copyProjectForInitDryRun(projectRoot, stagedRoot);
+        copyProjectForInitDryRun(sourceRoot, stagedRoot);
         cpSync(paved, join(stagedRoot, ".paved"), { recursive: true });
         if (sourceFingerprint(stagedRoot) !== sourcesBefore)
             throw new Error("Staged repository evidence differs from the consumer; update aborted.");
@@ -44,7 +46,7 @@ function applyConsumerUpdateUnlocked(projectRoot, stage, options = {}) {
             options.onRejected?.(stagedRoot, result);
             return result;
         }
-        if (before !== hashLocalTree(projectRoot, [".paved"]) || sourcesBefore !== sourceFingerprint(projectRoot)) {
+        if (before !== hashLocalTree(projectRoot, [".paved"]) || sourcesBefore !== sourceFingerprint(sourceRoot)) {
             throw new Error("Consumer state or repository evidence changed during update; retry from the new state.");
         }
         renameSync(paved, recovery);

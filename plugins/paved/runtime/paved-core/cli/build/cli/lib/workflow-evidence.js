@@ -7,6 +7,7 @@ import { atomicWriteFileSync } from "./atomic-write.js";
 import { loadYaml } from "./documents.js";
 import { coveredTypes } from "./evidence.js";
 import { resolveSafePath } from "./safe-path.js";
+import { runSourceRoot } from "./workflow-runs.js";
 import { UNCHANGED_HANDLER } from "./workflows.js";
 // Paved state is not part of the change it records.
 const PATHSPEC = ["--", ".", ":(exclude).paved", ":(exclude).paved.update-backup"];
@@ -51,7 +52,7 @@ export function writeWorkflowEvidence(input) {
     if (!run.evidence)
         return { problem: "The run has no authoritative verification evidence to build on." };
     const authoritative = loadYaml(resolveSafePath(projectRoot, run.evidence));
-    const change = collectChange(projectRoot, run.revision);
+    const change = collectChange(runSourceRoot(projectRoot, run), run.revision);
     if (!change)
         return { problem: "The project is not a Git working tree, so Paved cannot derive the change diff." };
     // Work the user confirmed was already done before the run legitimately has an empty diff.

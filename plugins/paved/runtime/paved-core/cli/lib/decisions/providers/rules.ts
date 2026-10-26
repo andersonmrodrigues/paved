@@ -25,9 +25,9 @@ export function moduleOptionId(item: CheckstyleModule): string {
   return `module-${item.module}`;
 }
 
-export function detectRuleCandidates(projectRoot: string, includeExisting = false): RuleCandidates {
-  const sources = discoverSources(projectRoot);
-  const bound = detectCheckstyleModules(projectRoot, sources);
+export function detectRuleCandidates(projectRoot: string, includeExisting = false, sourceRoot: string = projectRoot): RuleCandidates {
+  const sources = discoverSources(sourceRoot);
+  const bound = detectCheckstyleModules(sourceRoot, sources);
   const modules = bound.filter((item) => includeExisting || !existsSync(join(projectRoot, item.rulePath)));
   const conventions = CONVENTIONS.flatMap((convention) => {
     // A build-bound module already carries the precise Checkstyle rule for its code.
@@ -41,7 +41,7 @@ export function detectRuleCandidates(projectRoot: string, includeExisting = fals
 }
 
 export const rulesProvider: DecisionProvider = (context) => {
-  const { modules, conventions } = detectRuleCandidates(context.projectRoot);
+  const { modules, conventions } = detectRuleCandidates(context.projectRoot, false, context.sourceRoot);
   if (modules.length === 0 && conventions.length === 0) return [];
   const labels = [
     ...modules.map((item) => `Checkstyle in ${item.dir === "." ? "the repository root" : item.dir}`),

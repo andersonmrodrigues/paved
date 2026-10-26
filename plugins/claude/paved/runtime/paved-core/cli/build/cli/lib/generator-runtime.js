@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { parse, stringify } from 'yaml';
 import { createRegistry } from './schemas.js';
@@ -66,10 +66,10 @@ function unmatchedTechnologies(sources) {
         result.push('GitHub Actions');
     return result;
 }
-export function planConsumerInitialization(core, consumer, name) {
+export function planConsumerInitialization(core, consumer, name, source = consumer) {
     const registry = createRegistry(join(core, 'schemas'), ['paved/v1']);
     const version = coreManifest(core).version;
-    const detected = detectAdapters(consumer, loadAdapters(core), discoverSources(consumer));
+    const detected = detectAdapters(source, loadAdapters(core), discoverSources(source));
     const adapters = detected.filter(d => d.confidence === 'strong' || (d.adapter.id === 'infrastructure/git' && d.confidence !== 'unknown')).map(d => d.adapter);
     const manifest = { apiVersion: 'paved/v1', kind: 'Project', project: { name }, paved: { core: `^${version}` }, adapters: adapters.map(a => ({ id: a.id, version: `^${a.version}` })) };
     validate(registry, manifest);
@@ -85,13 +85,13 @@ export function planConsumerInitialization(core, consumer, name) {
     const capabilityDiagnostics = Object.values(resolutions).flatMap(r => r.diagnostics).filter(d => d.code !== 'missing-provider');
     return { manifest, lock, selectedAdapters: manifest.adapters.map(a => a.id).sort(), resolvedAdapters: selected.adapters.map(d => d.adapter.id).sort(), capabilityProviders: capabilityProviders(resolutions), adapterDiagnostics: selected.diagnostics, capabilityDiagnostics, plannedWrites: ['.paved/manifest.yaml', '.paved/paved.lock', '.paved/.gitignore', '.paved/documents/README.md'] };
 }
-export function initializeConsumer(core, consumer, name) {
+export function initializeConsumer(core, consumer, name, source = consumer) {
     const registry = createRegistry(join(core, 'schemas'), ['paved/v1']);
     const version = coreManifest(core).version;
     const runtime = readRuntimeSelection(consumer);
     if (runtime && runtime.version !== version)
         throw new Error(`Runtime ${runtime.version} is incompatible with Core ${version}.`);
-    const detected = detectAdapters(consumer, loadAdapters(core), discoverSources(consumer));
+    const detected = detectAdapters(source, loadAdapters(core), discoverSources(source));
     const adapters = detected.filter(d => d.confidence === 'strong' || (d.adapter.id === 'infrastructure/git' && d.confidence !== 'unknown')).map(d => d.adapter);
     const dir = join(consumer, '.paved');
     mkdirSync(dir, { recursive: true });
@@ -272,7 +272,7 @@ function features(contract, sources, evidence, at, rev) {
     }
     return outputs;
 }
-function verificationProposal(contract, sources, evidence, root, core, at, rev, dryRun) {
+function verificationProposal(contract, sources, evidence, root, source, core, at, rev, dryRun) {
     const draft = '.paved/generated/proposals/verification/profile.yaml';
     if (existsSync(safe(root, '.paved/verification/profile.yaml')) || answeredDecisionInputs(core, root, 'verification.adopt').size > 0) {
         withdrawProposal(root, draft, dryRun);
@@ -282,7 +282,7 @@ function verificationProposal(contract, sources, evidence, root, core, at, rev, 
     const observations = [];
     for (const s of sources.filter(s => /package\.json$/.test(s.path))) {
         try {
-            const pkg = JSON.parse(readFileSync(safe(root, s.path), 'utf8'));
+            const pkg = JSON.parse(readFileSync(safe(source, s.path), 'utf8'));
             for (const name of Object.keys(pkg.scripts ?? {}).sort())
                 if (/^[a-z0-9:_-]+$/i.test(name) && !/secret|token|password|credential|key/i.test(name))
                     observations.push(`# Observed script: ${s.path} -> npm run ${name}`);
@@ -338,10 +338,10 @@ function withdrawProposal(root, path, dryRun) {
     for (const file of [path, `${path}.paved.yaml`])
         rmSync(safe(root, file), { force: true });
 }
-function ruleProposals(contract, sources, root, core, at, rev, dryRun) {
+function ruleProposals(contract, sources, root, source, core, at, rev, dryRun) {
     const outputs = [];
     const answered = answeredDecisionInputs(core, root, 'rules.adopt');
-    for (const item of detectCheckstyleModules(root, sources)) {
+    for (const item of detectCheckstyleModules(source, sources)) {
         const path = `.paved/generated/proposals/rules/${item.module}.yaml`;
         if (existsSync(safe(root, item.rulePath)) || answered.has(`candidate:${item.candidate}`)) {
             withdrawProposal(root, path, dryRun);
@@ -514,12 +514,15 @@ function runGeneratorsUnlocked(core, consumer, options = {}) {
     const info = coreManifest(core);
     const manifest = parse(readFileSync(join(consumer, '.paved/manifest.yaml'), 'utf8'));
     validate(registry, manifest);
-    const allSources = discoverSources(consumer);
+    const sourceRoot = options.sourceRoot ?? consumer;
+    // A linked worktree sharing this state is recorded, so drift is later judged against the checkout the context describes.
+    const sourceWorktree = realpathSync(sourceRoot) === realpathSync(consumer) ? undefined : sourceRoot;
+    const allSources = discoverSources(sourceRoot);
     const timestamp = new Date().toISOString();
-    const sourceRevision = revision(consumer);
-    const detected = detectAdapters(consumer, loadAdapters(core), allSources);
+    const sourceRevision = revision(sourceRoot);
+    const detected = detectAdapters(sourceRoot, loadAdapters(core), allSources);
     const resolved = resolveAdapters(detected, manifest.adapters ?? [], info.version);
-    const capabilities = capabilityEvidence(consumer, allSources, resolved.adapters, manifest.capability_providers, answeredProviders(consumer, core));
+    const capabilities = capabilityEvidence(sourceRoot, allSources, resolved.adapters, manifest.capability_providers, answeredProviders(consumer, core));
     const adapterDiagnostics = [...resolved.diagnostics, ...Object.values(capabilities.resolutions).flatMap(r => r.diagnostics).filter(d => d.code !== 'missing-provider')];
     const adapterWarnings = adapterDiagnostics.map(d => d.message);
     const selectedIds = new Set(resolved.adapters.map(d => d.adapter.id));
@@ -545,7 +548,7 @@ function runGeneratorsUnlocked(core, consumer, options = {}) {
         const entry = { generator: contract.id, version: contract.version,
             contractSha256: hashLocalTree(core, [`generators/${contract.id}`]),
             engineSha256: hashLocalTree(core, ['manifest.yaml', 'cli/lib/generator-runtime.ts', 'schemas/project-context.schema.yaml', 'schemas/feature.schema.yaml', 'schemas/provenance.schema.yaml']),
-            manifestSha256: hashSource(consumer, '.paved/manifest.yaml'),
+            manifestSha256: hashSource(consumer, '.paved/manifest.yaml'), ...(sourceWorktree === undefined ? {} : { sourceWorktree }),
             status: 'unchanged', sources: [], outputs: [], outputHashes: {}, proposals: [], unknowns: [], warnings: [], errors: [] };
         result.executions.push(entry);
         try {
@@ -580,16 +583,16 @@ function runGeneratorsUnlocked(core, consumer, options = {}) {
             }
             const outputs = [];
             if (contract.id.startsWith('project-context/') && !contract.id.endsWith('/feature-map')) {
-                const generated = context(contract, sources, relevant, consumer, timestamp, sourceRevision);
+                const generated = context(contract, sources, relevant, sourceRoot, timestamp, sourceRevision);
                 outputs.push(generated.output);
                 entry.unknowns = generated.unknowns;
             }
             else if (contract.id.endsWith('/feature-map'))
                 outputs.push(...features(contract, sources, relevant, timestamp, sourceRevision));
             else if (contract.id === 'verification')
-                outputs.push(...verificationProposal(contract, sources, relevant, consumer, core, timestamp, sourceRevision, options.dryRun === true));
+                outputs.push(...verificationProposal(contract, sources, relevant, consumer, sourceRoot, core, timestamp, sourceRevision, options.dryRun === true));
             else if (contract.id === 'rules')
-                outputs.push(...ruleProposals(contract, sources, consumer, core, timestamp, sourceRevision, options.dryRun === true));
+                outputs.push(...ruleProposals(contract, sources, consumer, sourceRoot, core, timestamp, sourceRevision, options.dryRun === true));
             else
                 entry.warnings.push('No explicit, schema-safe project policy was established; no proposal emitted.');
             for (const output of outputs) {
