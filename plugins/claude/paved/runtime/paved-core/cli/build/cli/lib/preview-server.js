@@ -6,6 +6,14 @@ import MarkdownIt from "markdown-it";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { addComment, agentWatching, digest, previewTarget, readReview, reviewPath, targetDocument, unresolved, writeReview } from "./preview-review.js";
 const markdown = new MarkdownIt({ html: false, linkify: true, breaks: false });
+const defaultFence = markdown.renderer.rules.fence;
+markdown.renderer.rules.fence = (tokens, index, options, env, renderer) => {
+    const token = tokens[index];
+    if (token.info.trim().split(/\s+/, 1)[0] === "mermaid") {
+        return `<pre class="mermaid">${markdown.utils.escapeHtml(token.content)}</pre>\n`;
+    }
+    return defaultFence(tokens, index, options, env, renderer);
+};
 export function serverInfoPath(root, target) {
     return `${reviewPath(root, target)}.server.json`;
 }
@@ -52,7 +60,7 @@ export async function servePreview(root, coreRoot, name) {
     const server = createServer(async (request, response) => {
         response.setHeader("x-content-type-options", "nosniff");
         response.setHeader("referrer-policy", "no-referrer");
-        response.setHeader("content-security-policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'");
+        response.setHeader("content-security-policy", "default-src 'none'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'");
         try {
             const url = new URL(request.url ?? "/", `http://127.0.0.1:${serverPort}`);
             const cookieName = `paved_preview_${serverPort}`;
