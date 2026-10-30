@@ -13,9 +13,21 @@ The `request` input is the anchor: without it the run stops as `input-missing`.
 - **discovery:** find the sibling feature closest to this one; it is the pattern that
   `core.architecture.follow-existing-patterns` asks you to follow.
 - **planning:** write claims as observable behavior ("the export includes archived
-  items when requested"), not as implementation steps. If the plan crosses a declared
-  boundary, the `boundary-exception` gate needs a human. For visible frontend changes,
-  `frontend-design` records a brief-grounded visual direction in the plan before coding.
+  items when requested"), not as implementation steps. Choose the lightest planning
+  track whose conditions hold:
+  - **Lightweight:** use only when the request and acceptance behavior are clear, the
+    change is bounded to one area, and it is reversible without crossing an
+    architectural boundary. Record a concise approach, observable claims and how each
+    will be checked. Do not create separate specs or task breakdowns unless they reduce
+    ambiguity or help coordinate the work.
+  - **Expanded:** use when any lightweight condition does not hold, including unclear
+    acceptance behavior, multiple areas, high impact or an architectural boundary.
+    Resolve uncertainty and make alternatives, tradeoffs, dependencies and decomposition
+    explicit before implementation.
+  Both tracks require human plan approval. Neither may skip verification, evidence or
+  review. The `boundary-exception` gate still needs a human. For visible frontend
+  changes, `frontend-design` records a brief-grounded visual direction in the plan
+  before coding.
 - **implementation:** `feature-development` hands test writing to the testing skills.
   For visible frontend changes, use `frontend-design` to inspect the rendered result and
   check responsive and accessible interaction states.

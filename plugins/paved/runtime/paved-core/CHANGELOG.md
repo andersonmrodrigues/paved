@@ -5,6 +5,19 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- A curated catalog makes existing adapters, workflows and examples easier to discover.
+- Feature plans now scale to the change: bounded work can use a concise plan, while
+  broad, ambiguous or high-impact work gets deeper planning. Approval, verification,
+  evidence and review remain required.
+
+### Fixed
+
+- Verification proposals no longer execute repository commands during generation,
+  feature-map generation no longer requires optional product context, and the adapter
+  guide links to the correct template.
+
 ## [2.17.1] - 2026-10-30
 
 ### Fixed
