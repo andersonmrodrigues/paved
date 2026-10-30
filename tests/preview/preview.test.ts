@@ -89,6 +89,27 @@ describe("Markdown preview", () => {
     }
   });
 
+  it("serves Mermaid fences as diagrams and provides the local renderer", async () => {
+    const root = temporaryDirectory("preview-mermaid");
+    writeFileSync(join(root, "plan.md"), "```mermaid\ngraph TD\n  A --> B\n```\n\n```mermaid\nstateDiagram-v2\n  [*] --> PENDING\n```\n");
+    const server = await servePreview(root, at("."), "plan.md");
+    try {
+      const pageResponse = await api(server.port, server.token, "/");
+      const page = await pageResponse.text();
+      assert.match(page, /<script src="\/preview\.js" defer><\/script>/);
+      assert.match(pageResponse.headers.get("content-security-policy") ?? "", /script-src 'self' https:\/\/cdn\.jsdelivr\.net/);
+      const document = await (await api(server.port, server.token, "/api/document?path=plan.md")).json() as { html: string };
+      assert.match(document.html, /<pre class="mermaid">graph TD\n  A --&gt; B\n<\/pre>/);
+      assert.match(document.html, /<pre class="mermaid">stateDiagram-v2\n  \[\*\] --&gt; PENDING\n<\/pre>/);
+      const script = await (await api(server.port, server.token, "/preview.js")).text();
+      assert.match(script, /mermaid@12\.2\.0\/dist\/mermaid\.min\.js/);
+      assert.match(script, /https:\/\/cdn\.jsdelivr\.net/);
+      assert.match(script, /script\.integrity = 'sha384-[^']+'/);
+    } finally {
+      await api(server.port, server.token, "/api/stop", {});
+    }
+  });
+
   it("shows the reviewer when the agent receives, works on and resolves each comment", async () => {
     const root = epic("preview-lifecycle");
     const call = cli(root);

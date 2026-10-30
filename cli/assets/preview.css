@@ -26,6 +26,8 @@ article h2 { border-bottom: 1px solid #e4e9e4; padding-bottom: .35em; }
 article pre { overflow: auto; padding: 16px; background: #f1f4f1; border-radius: 7px; }
 article code { background: #f1f4f1; padding: .1em .25em; border-radius: 3px; }
 article pre code { padding: 0; }
+article pre.mermaid { text-align: center; }
+article pre.mermaid svg { max-width: 100%; }
 article blockquote { border-left: 3px solid #b2c9bb; margin-left: 0; padding-left: 18px; color: #50645a; }
 article table { border-collapse: collapse; width: 100%; }
 article th, article td { padding: 8px 12px; border: 1px solid #dae2da; }

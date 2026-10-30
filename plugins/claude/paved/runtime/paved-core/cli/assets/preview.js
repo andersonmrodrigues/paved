@@ -6,6 +6,23 @@ const STALE_MS = 30_000;
 let state;
 let current = { path: '', sha: '', html: '' };
 let selected;
+let mermaidPromise;
+
+function loadMermaid() {
+  if (window.mermaid) return Promise.resolve(window.mermaid);
+  if (!mermaidPromise) {
+    mermaidPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/mermaid@12.2.0/dist/mermaid.min.js';
+      script.integrity = 'sha384-8xUhuLNMjW/cI2Dacg3DR4WliYznvIg0LVG1stctThKD/YVrJFI9TNCFxft5NYgp';
+      script.crossOrigin = 'anonymous';
+      script.onload = () => resolve(window.mermaid);
+      script.onerror = () => { mermaidPromise = null; reject(new Error('Mermaid could not be loaded.')); };
+      document.head.append(script);
+    });
+  }
+  return mermaidPromise;
+}
 
 let messageTimer;
 function message(text) {
@@ -173,6 +190,15 @@ async function refresh() {
       const changedDocument = entry.path !== current.path;
       current = await request(`/api/document?path=${encodeURIComponent(entry.path)}`);
       article.innerHTML = current.html;
+      const diagrams = article.querySelectorAll('pre.mermaid');
+      if (diagrams.length > 0) {
+        try {
+          const mermaid = await loadMermaid();
+          mermaid.initialize({ startOnLoad: false, securityLevel: 'strict' });
+          await mermaid.run({ nodes: diagrams });
+        }
+        catch { message('Um diagrama Mermaid não pôde ser renderizado.'); }
+      }
       for (const link of article.querySelectorAll('a')) { link.rel = 'noreferrer noopener'; link.target = '_blank'; }
       compose.hidden = true;
       if (changedDocument) window.scrollTo(0, 0);

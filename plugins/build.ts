@@ -126,6 +126,12 @@ export function packRuntime(root: string, options: { build: boolean }): RuntimeA
     const unpacked = spawnSync("tar", ["-xzf", artifact.filename], { cwd: workspace, encoding: "utf8", shell: false });
     if (unpacked.status !== 0) throw new Error(`tar failed to unpack the runtime: ${unpacked.stderr}`);
     const files = readTree(join(workspace, "package"));
+    // npm may include dependency changelogs in bundled packages on one host and omit
+    // them on another. They are not runtime files, so normalize them out for stable
+    // generated plugin output and provenance digests.
+    for (const path of files.keys()) {
+      if (path.startsWith("node_modules/") && /\/CHANGELOG\.md$/i.test(path)) files.delete(path);
+    }
     return { version: artifact.version, files, integrity: directoryIntegrity(files) };
   } finally {
     rmSync(workspace, { recursive: true, force: true });

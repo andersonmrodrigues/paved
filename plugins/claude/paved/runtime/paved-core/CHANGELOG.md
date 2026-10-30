@@ -5,6 +5,12 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Fixed
+
+- Markdown previews render fenced Mermaid diagrams with a version-pinned browser bundle,
+  Subresource Integrity and strict security settings. The bundle loads only when a
+  document contains a Mermaid diagram.
+
 ## [2.17.0] - 2026-10-26
 
 ### Added
