@@ -7,6 +7,9 @@ inside the CLI.
 
 ## Extension points
 
+For an index of the built-in adapters, workflows and examples, see the
+[component catalog](../catalog.md).
+
 | Extension point | Who | Mechanism | Validated by |
 |---|---|---|---|
 | Skills, workflows, rules, tools (Core) | Core maintainers | Filesystem + declarative (`*.yaml` + Markdown) | Schemas, Core tests |

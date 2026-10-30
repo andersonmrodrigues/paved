@@ -27,11 +27,14 @@ README and contribution guides.
    merges) over documentation.
 2. Classify each by check type using adapter knowledge.
 3. Add adapter suggestions only for check types with no existing command.
-4. Where possible, run each proposed command once and record whether it succeeded.
+4. Record proposed commands as unverified. Generation must not execute repository
+   commands; a human can validate them later through a project-declared Tool and
+   implementation.
 
 ## Limitations
 
-CI steps that need secrets or infrastructure cannot be run locally. Classification of
+Command availability and behavior are not verified during generation. CI steps that
+need secrets or infrastructure may also be unavailable locally, and classification of
 custom scripts may be wrong.
 
 ## Unknown information

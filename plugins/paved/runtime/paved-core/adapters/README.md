@@ -66,4 +66,4 @@ Technology knowledge ages quickly. To keep adapters from shipping outdated guida
 | Adapter | "This framework registers HTTP handlers through annotations; find them with this pattern." |
 | Project | "Our billing module must not call the reporting module." |
 
-Start from `core/templates/adapter.yaml`.
+Start from the [Core adapter template](../core/templates/adapter.yaml).

@@ -86,7 +86,8 @@ before implementation. You can also run the steps separately with `intent`, `pla
 The plugin carries its own runtime and installs it under `.paved/runtime/`, so nothing is
 added to your application's dependencies. The [installation guide](docs/getting-started/installing-the-plugin.md)
 covers updates and troubleshooting, and [Integrating a repository](docs/getting-started/integrating-a-repository.md)
-covers project context and verification.
+covers project context and verification. The [component catalog](docs/catalog.md) helps
+you find the included adapters, workflows and examples.
 
 Besides the three main commands there are `status`, `update`, `preview`, and CLI-only
 subcommands (`test`, `verify`, `doctor`, `gardener`, `generate`) meant for CI. The

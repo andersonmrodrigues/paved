@@ -2,8 +2,8 @@
 
 ## Input
 
-Entrypoints (routes, handlers, commands, screens), tests, module boundaries; architecture
-and product context.
+Entrypoints (routes, handlers, commands, screens), tests, module boundaries, architecture
+context and, when available, product context.
 
 ## Output
 

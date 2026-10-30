@@ -12,6 +12,9 @@ How to change this repository without breaking consumers.
 
 ## Adding content
 
+When adding or renaming a built-in adapter, workflow or example, update the
+[component catalog](../catalog.md) in the same change.
+
 | To add | Do | Tests that will hold you to the contract |
 |---|---|---|
 | Skill | `core/skills/<category>/<name>/` with `SKILL.md` from `core/templates/skill.md` and `skill.yaml` from `core/templates/skill.yaml`: id `core.<category>.<name>`, `version: 0.1.0`, `status: experimental`. Detail in `references/`, examples in `examples/`, each listed in `references`. Bump the version of every skill you change ([skills](../concepts/skills.md#versioning)); add the skill to `core/skills/README.md` | `tests/skills/`, `tests/core/references.test.ts` |
