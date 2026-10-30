@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.17.1] - 2026-10-30
+
 ### Fixed
 
 - Markdown previews render fenced Mermaid diagrams with a version-pinned browser bundle,
