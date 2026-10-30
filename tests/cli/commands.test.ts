@@ -1232,8 +1232,6 @@ describe("init and generate commands", () => {
       assert.deepEqual(snapshotFiles(project), beforeDryRun);
       assert.deepEqual(dryRunData.executions?.map((entry) => entry.generator), [
         "project-context/architecture",
-        "project-context/domain",
-        "project-context/product",
         "project-context/feature-map",
       ]);
 
@@ -1243,8 +1241,6 @@ describe("init and generate commands", () => {
       assert.equal(exitCode(generated), 0);
       assert.deepEqual(generatedData.executions?.map((entry) => entry.generator), [
         "project-context/architecture",
-        "project-context/domain",
-        "project-context/product",
         "project-context/feature-map",
       ]);
       assert.equal(existsSync(join(project, ".paved/project/feature-map/web-courses.yaml")), true);

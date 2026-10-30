@@ -54,7 +54,7 @@ describe("generators", () => {
 
   it("verification proposals never execute repository commands", () => {
     const instructions = loadMarkdown(at("generators/verification/GENERATOR.md")).body;
-    assert.match(instructions, /Generation must not execute repository commands/);
+    assert.match(instructions, /Generation must not execute repository\s+commands/);
   });
 
   it("feature-map generation does not require optional product context", () => {

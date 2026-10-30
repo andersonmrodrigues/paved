@@ -40,9 +40,6 @@ namespace is `adapter-git`.
 
 ## How adapters are used
 
-For a cross-cutting index of the included adapters, workflows and examples, see the
-[component catalog](../docs/catalog.md).
-
 1. **Detection.** The local initialization library evaluates each adapter's `detect` signals and records confidence.
 2. **Selection.** The consumer manifest records the chosen adapters and ranges.
 3. **Resolution.** The local resolver records exact versions in `.paved/paved.lock` and

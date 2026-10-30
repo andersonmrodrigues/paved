@@ -135,7 +135,6 @@ test('selected generators run with dependency closure in topological order', () 
   assert.equal(result.errors.length, 0);
   assert.deepEqual(result.executions.map(e => e.generator), [
     'project-context/architecture',
-    'project-context/domain',
     'project-context/feature-map',
   ]);
   assert.ok(existsSync(join(dir, '.paved/project/feature-map')));
