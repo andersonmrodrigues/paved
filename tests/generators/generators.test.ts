@@ -52,6 +52,16 @@ describe("generators", () => {
     }
   });
 
+  it("verification proposals never execute repository commands", () => {
+    const instructions = loadMarkdown(at("generators/verification/GENERATOR.md")).body;
+    assert.match(instructions, /Generation must not execute repository commands/);
+  });
+
+  it("feature-map generation does not require optional product context", () => {
+    const featureMap = contracts.find((contract) => contract.generator.id === "project-context/feature-map");
+    assert.deepEqual(featureMap?.generator.depends_on, ["project-context/architecture"]);
+  });
+
   for (const { file, dir, generator } of contracts) {
     describe(generator.id, () => {
       it("generator.yaml is valid and its id matches its directory", () => {

@@ -37,3 +37,6 @@ Projects never copy a Core workflow. Through `.paved/overrides/overrides.yaml` t
 reason, targeting it by id (`core.<name>`). A project that needs a different procedure
 disables the Core workflow and adds its own under `.paved/workflows/<name>/` with id
 `project.<name>`. Adapters do not add workflows.
+
+See the [component catalog](../../docs/catalog.md) for a cross-cutting index of the
+included workflows, adapters and examples.
