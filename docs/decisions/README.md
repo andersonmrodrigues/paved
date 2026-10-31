@@ -41,11 +41,12 @@ writing a new record that supersedes it, not by editing the old one.
 | [0034](0034-unpacked-plugin-runtime.md) | Unpacked plugin runtime | Accepted; amended by 0035 |
 | [0035](0035-host-specific-plugin-directories.md) | Host-specific plugin directories | Accepted |
 | [0036](0036-intent-plan-execute.md) | Intent, plan and execute | Accepted |
-| [0037](0037-session-scoped-prompt-guidance.md) | Session-scoped prompt guidance | Accepted |
+| [0037](0037-session-scoped-prompt-guidance.md) | Session-scoped prompt guidance | Superseded by 0042 |
 | [0038](0038-local-workbench-and-hook-activity.md) | Local workbench and hook activity | Accepted |
 | [0039](0039-host-native-task-delegation.md) | Host-native task delegation and model policy | Accepted |
 | [0040](0040-task-level-harness-experiments.md) | Task-level harness experiments | Accepted |
 | [0041](0041-shared-state-across-worktrees.md) | Shared state across linked worktrees | Accepted |
+| [0042](0042-natural-language-routing.md) | Natural-language routing on every prompt | Accepted |
 
 ## Format
 

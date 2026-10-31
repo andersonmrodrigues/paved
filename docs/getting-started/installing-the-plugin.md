@@ -93,9 +93,17 @@ offline from the verified local copy. See the
 The plugin includes a `UserPromptSubmit` hook for Codex and Claude Code. On each
 submitted prompt it checks the nearest repository boundary and, when both
 `.paved/manifest.yaml` and `.paved/paved.lock` exist, adds short Paved routing guidance
-the first time in each session. This also covers the next prompt in the same session after
-`paved init` completes. Because the guidance stays in the conversation, later prompts do
-not repeat it; a `SessionStart` hook restores it after the context is compacted or cleared.
+on every prompt. This also covers the next prompt in the same session after
+`paved init` completes; a `SessionStart` hook restores it after the context is compacted
+or cleared.
+
+You do not need to name a Paved command: ask for development, a plan, a correction,
+debugging or a refactor in ordinary language. The guidance tells the agent to inspect
+Paved status, resume a matching run or start `intent`, then follow `plan` and `execute`
+only as far as requested. Planning-only and investigation-only requests do not authorize
+implementation; approval of the current plan still happens in the conversation.
+Questions use relevant context without starting a workflow, and unrelated requests
+proceed normally. Explicit user direction takes precedence.
 
 Review and trust the plugin's hook when Codex or Claude Code asks. Codex skips plugin
 hooks until you review and trust their current definition; Claude Code applies its
@@ -233,9 +241,8 @@ next action:
 - A different runtime is activated only by `update` (newer runtimes only) or `runtime upgrade`, never by other commands.
 - The prompt hook reads the event's `cwd` and checks Paved state marker paths. It never
   stores, transmits, or logs the prompt; it emits routing guidance only for initialized
-  repositories and exits successfully without output otherwise. To add the guidance once
-  per session it records an empty file named by a SHA-256 of the session id and repository
-  path under the system temporary directory; when that fails, it adds the guidance again.
+  repositories and exits successfully without output otherwise. Routing is stateless:
+  no session markers or prompt files are written.
 
 ## Local development
 

@@ -165,9 +165,14 @@ and must not silently upgrade Core, consumer state, or adapters.
 The installable Codex and Claude Code plugin also projects a shared `UserPromptSubmit`
 hook. When the nearest repository boundary has both a Paved manifest and lock, the
 hook adds advisory routing context so the agent can select the relevant existing Paved
-command or workflow. It adds the context once per session, and a `SessionStart` hook adds
-it again after compaction or clear ([ADR 0037](../decisions/0037-session-scoped-prompt-guidance.md)).
-The hook never runs commands, persists prompt text, or blocks a prompt; it fails open when
+command or workflow even when the user does not name Paved. It adds the context on every
+prompt, and a `SessionStart` hook adds it again after compaction or clear
+([ADR 0042](../decisions/0042-natural-language-routing.md)). The agent consults state
+and reuses a matching run rather than creating a duplicate. Planning-only requests stop
+at the plan; investigation-only requests do not implement a fix; implementation still
+requires explicit approval of the current plan. Questions and unrelated conversation
+do not start workflows.
+The hook never runs commands, writes session markers, persists prompt text, or blocks a prompt; it fails open when
 state is incomplete or input is invalid.
 Host trust controls determine whether the hook runs. See the
 [plugin installation guide](../getting-started/installing-the-plugin.md#keep-paved-in-context)

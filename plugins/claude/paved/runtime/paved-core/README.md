@@ -83,6 +83,12 @@ Cursor:      /init, then /execute Add a health check endpoint
 before implementation. You can also run the steps separately with `intent`, `plan` and
 `execute`; see the [command reference](docs/concepts/agent-commands.md).
 
+In initialized repositories, Claude Code and Codex also receive guidance to use this
+flow for ordinary requests, without a Paved command. Planning-only requests stop at the
+plan, investigations do not authorize fixes, and implementation still needs your plan
+approval. This is agent guidance, not a host-level tool restriction; trust and enable
+the plugin hooks for per-prompt reminders.
+
 The plugin carries its own runtime and installs it under `.paved/runtime/`, so nothing is
 added to your application's dependencies. The [installation guide](docs/getting-started/installing-the-plugin.md)
 covers updates and troubleshooting, and [Integrating a repository](docs/getting-started/integrating-a-repository.md)

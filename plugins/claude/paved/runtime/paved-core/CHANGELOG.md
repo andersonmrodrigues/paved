@@ -5,6 +5,13 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Changed
+
+- Claude Code and Codex receive Paved routing guidance on every prompt in initialized
+  repositories, including natural-language development, planning and debugging requests.
+  Managed agent instructions reinforce matching-run reuse, scope limits and human plan
+  approval; the hook no longer writes temporary session markers.
+
 ## [2.18.1] - 2026-10-31
 
 ### Fixed
