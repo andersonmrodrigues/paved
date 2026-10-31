@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.20.0] - 2026-10-31
+
 ### Changed
 
 - An explicit Paved update request in Claude Code or Codex guides the agent to refresh
