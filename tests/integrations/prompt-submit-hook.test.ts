@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -140,15 +140,30 @@ describe("prompt submit hook", () => {
     assert.equal(stderr, "");
   });
 
-  it("adds the guidance once per session and repository", () => {
-    const cwd = repository("once");
+  it("routes natural-language requests on every prompt without writing session state", () => {
+    const cwd = repository("every-prompt");
     initialize(cwd);
-    const state = repository("once-state");
-    const prompt = (session: string) => runHook(JSON.stringify({ cwd, session_id: session, hook_event_name: "UserPromptSubmit" }), state);
+    const state = repository("stateless");
+    const requests = [
+      "Explique a estrutura do projeto",
+      "Implemente a nova funcionalidade",
+      "Planeje a alteração, sem implementar",
+      "Investigue o erro, sem corrigir ainda",
+      "Continue o desenvolvimento",
+    ];
 
-    assert.match(prompt("s-1").stdout, /hookSpecificOutput/);
-    assert.equal(prompt("s-1").stdout, "");
-    assert.match(prompt("s-2").stdout, /hookSpecificOutput/);
+    for (const prompt of requests) {
+      const result = runHook(JSON.stringify({ cwd, session_id: "s-1", hook_event_name: "UserPromptSubmit", prompt }), state);
+      assert.equal(result.status, 0, result.stderr);
+      const context = JSON.parse(result.stdout).hookSpecificOutput.additionalContext as string;
+      assert.match(context, /without an explicit Paved command/);
+      assert.match(context, /resume the matching run.*do not create a duplicate/);
+      assert.match(context, /planning-only.*stop.*plan/);
+      assert.match(context, /investigation-only.*do not implement a fix/);
+      assert.match(context, /explicit human approval/);
+      assert.doesNotMatch(result.stdout, new RegExp(prompt));
+    }
+    assert.deepEqual(readdirSync(state), [], "routing does not persist session markers or prompts");
   });
 
   it("adds the guidance again after compaction or clear in the same session", () => {
@@ -163,7 +178,7 @@ describe("prompt submit hook", () => {
       assert.equal(output.hookSpecificOutput.hookEventName, "SessionStart");
       assert.ok(output.hookSpecificOutput.additionalContext.includes("Paved `intent` command"));
     }
-    assert.equal(runHook(JSON.stringify({ cwd, session_id: "s-1", hook_event_name: "UserPromptSubmit" }), state).stdout, "");
+    assert.match(runHook(JSON.stringify({ cwd, session_id: "s-1", hook_event_name: "UserPromptSubmit" }), state).stdout, /hookSpecificOutput/);
   });
 
   it("ignores a session start that is not a compaction or clear", () => {
@@ -174,7 +189,7 @@ describe("prompt submit hook", () => {
     }
   });
 
-  it("still adds the guidance when the session state cannot be recorded", () => {
+  it("does not depend on a writable temporary directory", () => {
     const cwd = repository("unwritable");
     initialize(cwd);
     const blocked = join(repository("unwritable-state"), "file");

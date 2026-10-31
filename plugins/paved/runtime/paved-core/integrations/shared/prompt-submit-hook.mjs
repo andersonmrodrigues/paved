@@ -1,11 +1,12 @@
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 const context = [
   "Paved routing for this repository:",
-  "- For repository changes (a feature, a bug fix or a refactor), start with the Paved `intent` command and the user's request verbatim, then follow its next action through `plan` and `execute`. For testing, review or state, consult Paved state and use the matching available Paved command.",
+  "- Use Paved by default for development, planning, fixes, debugging and refactoring, even without an explicit Paved command. Before starting, consult Paved status and resume the matching run when continuing the same request; do not create a duplicate or reuse an unrelated run.",
+  "- For a new repository change, start with the Paved `intent` command and the user's request verbatim, then follow its next action through `plan` and `execute`. Classify from evidence, not keywords alone; present any unresolved decisions to the user.",
+  "- For planning-only requests, stop at the plan; for investigation-only requests, use the bug investigation guidance and do not implement a fix. Implementation requires explicit human approval of the current plan; a request to develop or debug is not that approval.",
+  "- For testing, review or state, consult Paved state and use the matching available Paved command.",
   "- To write, fill in, or review a task, issue, ticket, story, bug, or epic for this repository, including one given by link, use paved:task-specification to write or fill it in and paved:task-review to review it.",
   "- For repository-specific questions, consult only the relevant Paved context and answer directly; do not create a workflow when none is needed.",
   "- For requests unrelated to this repository, proceed normally without invoking Paved.",
@@ -21,24 +22,6 @@ function nearestRepository(cwd) {
     const parent = dirname(current);
     if (parent === current) return undefined;
     current = parent;
-  }
-}
-
-/**
- * Records that this session already received the guidance for this repository and
- * reports whether it is the first time. The marker holds no prompt text. When it cannot
- * be recorded, the guidance is repeated rather than lost.
- */
-function firstInSession(sessionId, repository) {
-  if (typeof sessionId !== "string" || sessionId === "") return true;
-  const key = createHash("sha256").update(`${sessionId}\0${repository}`).digest("hex");
-  try {
-    const directory = join(tmpdir(), "paved-hook-sessions");
-    mkdirSync(directory, { recursive: true });
-    writeFileSync(join(directory, key), "", { flag: "wx" });
-    return true;
-  } catch (error) {
-    return error?.code !== "EEXIST";
   }
 }
 
@@ -63,10 +46,9 @@ try {
   if (event.hook_event_name === "SessionStart") {
     // Compaction and clear drop earlier context, so the guidance is restored there.
     if (event.source === "compact" || event.source === "clear") {
-      firstInSession(event.session_id, repository);
       emit("SessionStart");
     }
-  } else if (firstInSession(event.session_id, repository)) {
+  } else if (event.hook_event_name === undefined || event.hook_event_name === "UserPromptSubmit") {
     emit("UserPromptSubmit");
   }
 } catch {

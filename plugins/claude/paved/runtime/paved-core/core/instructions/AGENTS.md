@@ -12,6 +12,16 @@ follow its next action through `/paved:plan` and `/paved:execute`. Manage Paved 
 Paved runtime is unavailable, report that blocker; do not install an unpinned runtime or
 substitute arbitrary shell commands.
 
+Use this flow by default even when the request is in natural language and does not
+name Paved. Before starting a run, consult status: resume the matching run for the
+same request rather than creating a duplicate, and never reuse an unrelated run.
+For planning-only requests, stop at the plan. For investigation-only requests,
+follow the bug investigation guidance without implementing a fix. Implementation
+requires explicit human approval of the current plan, not merely a request to
+develop or debug. Answer repository questions from relevant context without
+starting a workflow, handle unrelated conversation normally, and respect explicit
+user direction.
+
 The three steps share one run, and each owns a fixed range of its workflow's phases:
 `intent` classifies the request and runs `context` and `discovery`, `plan` runs `planning`,
 and `execute` runs `implementation` through `completion`. Tests and verification run inside
