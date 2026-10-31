@@ -180,9 +180,12 @@ and must not silently upgrade Core, consumer state, or adapters.
 The installable Codex and Claude Code plugin also projects a shared `UserPromptSubmit`
 hook. When the nearest repository boundary has both a Paved manifest and lock, the
 hook adds advisory routing context so the agent can select the relevant existing Paved
-command or workflow even when the user does not name Paved. It adds the context on every
-prompt, and a `SessionStart` hook adds it again after compaction or clear
-([ADR 0042](../decisions/0042-natural-language-routing.md)). The agent consults state
+command or workflow even when the user does not name Paved. Every prompt gets a one-line
+reminder; a `SessionStart` hook adds the full guidance when a session starts or resumes
+and after compaction or clear
+([ADR 0044](../decisions/0044-phase-routing-and-token-economy.md)). Each step result
+also carries the current phase's `routing`, telling the agent whether to keep the work,
+hand it to a subagent at a capacity tier and effort, or only relay a Paved result. The agent consults state
 and reuses a matching run rather than creating a duplicate. Planning-only requests stop
 at the plan; investigation-only requests do not implement a fix; implementation still
 requires explicit approval of the current plan. Questions and unrelated conversation

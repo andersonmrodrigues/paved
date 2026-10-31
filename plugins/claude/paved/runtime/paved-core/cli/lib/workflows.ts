@@ -20,6 +20,14 @@ export interface Gate {
   approval?: string;
 }
 
+/** Who does a phase's work and at which capability tier; the host maps tiers to its models. */
+export interface PhaseRouting {
+  mode: "primary" | "subagent" | "cli";
+  capacity: "economy" | "balanced" | "frontier";
+  reasoning_effort: "low" | "medium" | "high";
+  rationale: string;
+}
+
 export interface WorkflowPhase {
   phase: string;
   goal: string;
@@ -29,6 +37,7 @@ export interface WorkflowPhase {
   gates?: Gate[];
   skip_when?: string;
   retry?: { class: string; max_attempts?: number };
+  routing?: PhaseRouting;
 }
 
 export interface WorkflowContract {

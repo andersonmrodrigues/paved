@@ -92,10 +92,9 @@ offline from the verified local copy. See the
 
 The plugin includes a `UserPromptSubmit` hook for Codex and Claude Code. On each
 submitted prompt it checks the nearest repository boundary and, when both
-`.paved/manifest.yaml` and `.paved/paved.lock` exist, adds short Paved routing guidance
-on every prompt. This also covers the next prompt in the same session after
-`paved init` completes; a `SessionStart` hook restores it after the context is compacted
-or cleared.
+`.paved/manifest.yaml` and `.paved/paved.lock` exist, adds a one-line Paved routing
+reminder. A `SessionStart` hook adds the full guidance when a session starts or resumes
+and again after the context is compacted or cleared.
 
 You do not need to name a Paved command: ask for development, a plan, a correction,
 debugging or a refactor in ordinary language. The guidance tells the agent to inspect

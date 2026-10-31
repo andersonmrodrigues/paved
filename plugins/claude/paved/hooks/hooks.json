@@ -1,5 +1,5 @@
 {
-  "description": "Adds advisory Paved routing context for initialized repositories on every prompt and after compaction.",
+  "description": "Adds advisory Paved routing context for initialized repositories at session start and after compaction, and a one-line reminder on every prompt.",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -14,7 +14,7 @@
     ],
     "SessionStart": [
       {
-        "matcher": "compact|clear",
+        "matcher": "startup|resume|compact|clear",
         "hooks": [
           {
             "type": "command",

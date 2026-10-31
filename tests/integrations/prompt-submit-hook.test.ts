@@ -33,21 +33,39 @@ function runHook(input: string, state = repository("state")): { status: number |
 }
 
 describe("prompt submit hook", () => {
-  it("adds only routing guidance for an initialized Paved repository", () => {
+  it("adds the full routing guidance when a session starts", () => {
     const cwd = repository("initialized");
     initialize(cwd);
 
-    const result = runHook(JSON.stringify({ cwd, prompt: "private user prompt" }));
+    const result = runHook(JSON.stringify({ cwd, hook_event_name: "SessionStart", source: "startup" }));
 
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stderr, "");
     const output = JSON.parse(result.stdout) as { hookSpecificOutput: { hookEventName: string; additionalContext: string } };
+    assert.equal(output.hookSpecificOutput.hookEventName, "SessionStart");
+    const context = output.hookSpecificOutput.additionalContext;
+    assert.match(context, /unrelated/i);
+    assert.match(context, /paved:task-specification/);
+    assert.match(context, /paved:task-review/);
+    assert.ok(context.includes("Paved `intent` command"));
+    assert.match(context, /`routing`.*subagent.*capacity and reasoning effort/);
+    assert.match(context, /without an explicit Paved command/);
+    assert.match(context, /resume the matching run.*do not create a duplicate/);
+    assert.match(context, /planning-only.*stop.*plan/);
+    assert.match(context, /investigation-only.*do not implement a fix/);
+  });
+
+  it("keeps the per-prompt reminder to one short line without echoing the prompt", () => {
+    const cwd = repository("reminder");
+    initialize(cwd);
+    const result = runHook(JSON.stringify({ cwd, prompt: "private user prompt" }));
+    const output = JSON.parse(result.stdout) as { hookSpecificOutput: { hookEventName: string; additionalContext: string } };
     assert.equal(output.hookSpecificOutput.hookEventName, "UserPromptSubmit");
-    assert.match(output.hookSpecificOutput.additionalContext, /Paved/i);
-    assert.match(output.hookSpecificOutput.additionalContext, /unrelated/i);
-    assert.match(output.hookSpecificOutput.additionalContext, /paved:task-specification/);
-    assert.match(output.hookSpecificOutput.additionalContext, /paved:task-review/);
-    assert.ok(output.hookSpecificOutput.additionalContext.includes("Paved `intent` command"));
+    const reminder = output.hookSpecificOutput.additionalContext;
+    assert.ok(!reminder.includes("\n") && reminder.length < 400, reminder);
+    assert.match(reminder, /intent, plan and execute/);
+    assert.match(reminder, /explicit human approval/);
+    assert.match(reminder, /`routing`/);
     assert.doesNotMatch(result.stdout, /private user prompt/);
   });
 
@@ -156,23 +174,21 @@ describe("prompt submit hook", () => {
       const result = runHook(JSON.stringify({ cwd, session_id: "s-1", hook_event_name: "UserPromptSubmit", prompt }), state);
       assert.equal(result.status, 0, result.stderr);
       const context = JSON.parse(result.stdout).hookSpecificOutput.additionalContext as string;
-      assert.match(context, /without an explicit Paved command/);
-      assert.match(context, /resume the matching run.*do not create a duplicate/);
-      assert.match(context, /planning-only.*stop.*plan/);
-      assert.match(context, /investigation-only.*do not implement a fix/);
+      assert.match(context, /development, planning, fixes, debugging and refactoring/);
+      assert.match(context, /resume the matching run/);
       assert.match(context, /explicit human approval/);
       assert.doesNotMatch(result.stdout, new RegExp(prompt));
     }
     assert.deepEqual(readdirSync(state), [], "routing does not persist session markers or prompts");
   });
 
-  it("adds the guidance again after compaction or clear in the same session", () => {
+  it("adds the full guidance at every session start, including after compaction or clear", () => {
     const cwd = repository("compact");
     initialize(cwd);
     const state = repository("compact-state");
     runHook(JSON.stringify({ cwd, session_id: "s-1", hook_event_name: "UserPromptSubmit" }), state);
 
-    for (const source of ["compact", "clear"]) {
+    for (const source of ["startup", "resume", "compact", "clear"]) {
       const started = runHook(JSON.stringify({ cwd, session_id: "s-1", hook_event_name: "SessionStart", source }), state);
       const output = JSON.parse(started.stdout) as { hookSpecificOutput: { hookEventName: string; additionalContext: string } };
       assert.equal(output.hookSpecificOutput.hookEventName, "SessionStart");
@@ -181,10 +197,10 @@ describe("prompt submit hook", () => {
     assert.match(runHook(JSON.stringify({ cwd, session_id: "s-1", hook_event_name: "UserPromptSubmit" }), state).stdout, /hookSpecificOutput/);
   });
 
-  it("ignores a session start that is not a compaction or clear", () => {
+  it("ignores a session start from an unknown source", () => {
     const cwd = repository("startup");
     initialize(cwd);
-    for (const source of ["startup", "resume", undefined]) {
+    for (const source of ["other", undefined]) {
       assert.equal(runHook(JSON.stringify({ cwd, session_id: "s-1", hook_event_name: "SessionStart", source })).stdout, "", String(source));
     }
   });

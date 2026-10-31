@@ -69,15 +69,23 @@ changes how a failure is reported; it never lets a run pass.
 
 When the plan is approved and nothing has changed yet, Paved runs the testing Tool once
 and records the outcome as the run's baseline (a `tool-invoked` event in `planning` with
-`baseline status=passed|failed|environment-unavailable`). If validation later fails and
-the baseline had failed too, the failure carries `PAVED_WORKFLOW_BASELINE_FAILING`
-naming the baseline evidence, so it is not attributed to the change by itself.
+`baseline status=passed|failed|environment-unavailable`, followed by `; failing=<ids>` and
+`; unavailable=<ids>` for the Tools of a suite). A baseline that did not pass is reported
+with the approval itself as a `PAVED_WORKFLOW_BASELINE_FAILING` finding naming each Tool,
+its working directory and its evidence, so the user decides before implementation whether
+to fix those tests in this change, exclude them, or make their environment available.
+Approval is not blocked: in a test-first change the tests are expected to fail.
 
-Limits: the testing Tool reports one exit code and text output, so the baseline compares
-whole runs, not individual tests, and a failure on a failing baseline still spends an
-attempt. Comparing failing tests one by one (for example from JUnit reports), applying
-the same baseline to verification checks, and having onboarding detect tests that need
-external infrastructure and propose excluding or tagging them are follow-up work.
+If validation later fails and the baseline had failed too, the failure carries
+`PAVED_WORKFLOW_BASELINE_FAILING` again. For a suite it separates the Tools that passed at
+approval and fail now, which the change likely broke, from the Tools that were already
+failing. Validation still requires every Tool to pass.
+
+Limits: each testing Tool reports one exit code and text output, so the baseline compares
+Tools, not individual tests, and a failure on a failing baseline still spends an attempt.
+Comparing failing tests one by one (for example from JUnit reports), applying the same
+baseline to verification checks, and having onboarding detect tests that need external
+infrastructure and propose excluding or tagging them are follow-up work.
 
 The bug workflow's guidance adds a domain-specific stop: two failed fix attempts mean the
 cause was not confirmed, so discovery is repeated rather than a third fix attempted.

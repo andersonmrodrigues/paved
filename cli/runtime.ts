@@ -35,6 +35,7 @@ export interface CliFlags {
   readonly approve?: boolean;
   readonly amend?: boolean;
   readonly abandon?: boolean;
+  readonly checkpoint?: boolean;
   readonly auto?: boolean;
   readonly reply?: string;
   readonly note?: string;
@@ -212,7 +213,7 @@ function commandUsage(command: CommandName | undefined): string {
     if (STEP_COMMANDS.includes(command)) commandOptions.push("  --run <id> --advance --note <text> --evidence <path>  Advance the run within this step's phases.");
     if (STEP_COMMANDS.includes(command)) commandOptions.push("  --run <id> --abandon [--note <reason>]  Cancel the run so the same request can start again.");
     if (command === "plan") commandOptions.push("  --approve        Record the user's approval of the current plan, given in the conversation.", "  --run <id> --amend --note <change> [--evidence <plan>]  Ask approval for a revised plan mid-run.");
-    if (command === "execute") commandOptions.push("  \"<request>\"      Start new work: initialize Paved if needed and record the request.", "  --approve        Record the user's approval of the current plan, given in the conversation.", "  --auto           Advance through every phase that needs no human input.");
+    if (command === "execute") commandOptions.push("  \"<request>\"      Start new work: initialize Paved if needed and record the request.", "  --approve        Record the user's approval of the current plan, given in the conversation.", "  --auto           Advance through every phase that needs no human input.", "  --run <id> --checkpoint --note <progress>  Record a finished part of the plan without leaving implementation.");
     if (command === "tool") commandOptions.push("  --scope <dir>    Run the command from this project directory.", "  -- <executable> [args...]  The exact command; everything after -- is passed as argv.");
     if (command === "delegation") commandOptions.push("  plan --run <id> --file <path>; approve --run <id> --approve after showing the exact graph to the user.", "  start --run <id> --task <id> --host <codex|claude-code> --model <name> --effort <value> --isolation <shared-workspace|isolated-worktree>.", "  finish --run <id> --task <id> --outcome <completed|blocked|failed> [--result <path>] [--usage <json>] [--changed-path <path> ...].", "  recover --run <id> --task <id> --confirmed-stopped --note <reason>; capabilities --host <codex|claude-code>.", "  Session ids are hashed; usage and isolated-worktree changed paths are host-reported.");
     return [
@@ -290,6 +291,7 @@ function parse(argv: readonly string[]): Parsed {
   let approve = false;
   let amend = false;
   let abandon = false;
+  let checkpoint = false;
   let auto = false;
   let reply: string | undefined;
   let note: string | undefined;
@@ -477,6 +479,11 @@ function parse(argv: readonly string[]): Parsed {
       auto = true;
       continue;
     }
+    if (token === "--checkpoint") {
+      if (command !== "execute") return { kind: "error", result: usage(command ?? "cli", "--checkpoint is supported only by execute.") };
+      checkpoint = true;
+      continue;
+    }
     if (token === "--abandon") {
       if (!command || !STEP_COMMANDS.includes(command)) return { kind: "error", result: usage(command ?? "cli", "--abandon is supported only by intent, plan and execute.") };
       abandon = true;
@@ -570,6 +577,7 @@ function parse(argv: readonly string[]): Parsed {
     approve,
     amend,
     abandon,
+    checkpoint,
     auto,
     answers,
     parts,

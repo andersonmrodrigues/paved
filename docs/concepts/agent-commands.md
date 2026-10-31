@@ -85,9 +85,14 @@ of their own, the step returns them and passes the user's answers through when i
   `PAVED_WORKFLOW_SETUP_INVALID` and does not consume a phase attempt.
 - Tests that cannot reach their environment (a refused connection, no container engine,
   a missing program) block with `PAVED_WORKFLOW_ENVIRONMENT_UNAVAILABLE` and do not
-  consume a phase attempt either. Approving the plan runs the tests once as a baseline;
-  a validation failure on tests that already failed then carries
-  `PAVED_WORKFLOW_BASELINE_FAILING`.
+  consume a phase attempt either. Approving the plan runs the tests once as a baseline
+  and reports `PAVED_WORKFLOW_BASELINE_FAILING` with the approval when they already fail;
+  a later validation failure on those tests carries it again, separating Tools that
+  started failing from Tools that already failed.
+- `execute --run <id> --checkpoint --note <part>` records a finished part of a multi-part
+  plan without leaving implementation; advancing implementation starts validation.
+- `status` reports `PAVED_WORKFLOW_EVIDENCE_STALE` when files changed after the latest
+  completed run was verified.
 - When a phase runs out of attempts, the step asks whether to `retry` (a new round of
   attempts), `amend` the plan or `abandon` the run.
 - `plan --amend --note <what changed>` re-submits an edited plan for approval mid-run.

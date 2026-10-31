@@ -8,6 +8,7 @@ import { parse, stringify } from "yaml";
 import { initializeConsumer, runGenerators } from "../../cli/lib/generator-runtime.ts";
 import { hasContextDrift, inspectConsumer } from "../../cli/lib/consumer-state.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
+import { analyzeGardener } from "../../cli/lib/gardener.ts";
 import type { CommandResult } from "../../cli/result.ts";
 import { cleanupTemporaryDirectories, temporaryDirectory } from "../helpers.ts";
 
@@ -66,7 +67,7 @@ function commitAll(root: string, message: string): void {
   git(root, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm", message);
 }
 
-async function approvedRun(root: string, plan = "docs/plan.md"): Promise<{ id: string; invoke: (...argv: string[]) => Promise<CommandResult> }> {
+async function approvedRun(root: string, plan = "docs/plan.md"): Promise<{ id: string; invoke: (...argv: string[]) => Promise<CommandResult>; approved: CommandResult }> {
   const invoke = (...argv: string[]) => dispatchCli({ argv: [...argv, "--project", root, "--json"] });
   const id = ((await invoke("intent", "Enable the behavior", "--workflow", "feature", "--because", "New behavior.")).data as { run: string }).run;
   await invoke("intent", "--run", id, "--advance", "--note", "Scope is clear");
@@ -75,7 +76,7 @@ async function approvedRun(root: string, plan = "docs/plan.md"): Promise<{ id: s
   await invoke("plan", "--run", id, "--advance", "--note", "Plan", "--evidence", plan);
   const approved = await invoke("plan", "--run", id, "--approve");
   assert.equal((approved.data as { currentPhase: string }).currentPhase, "implementation", JSON.stringify(approved));
-  return { id, invoke };
+  return { id, invoke, approved };
 }
 
 const runState = (root: string, id: string) => parse(readFileSync(join(root, ".paved/generated/runs", `${id}.yaml`), "utf8")) as {
@@ -328,7 +329,7 @@ describe("telling regressions from the environment", () => {
     write(root, "check.mjs", 'console.error("Error: connect ECONNREFUSED 127.0.0.1:5432");\nprocess.exit(1);\n');
     commitAll(root, "tests need a database");
     const { id, invoke } = await approvedRun(root);
-    assert.equal(events(root, id).find((event) => event.phase === "planning" && event.type === "tool-invoked")?.detail, "baseline status=environment-unavailable");
+    assert.equal(events(root, id).find((event) => event.phase === "planning" && event.type === "tool-invoked")?.detail, "baseline status=environment-unavailable; unavailable=project.testing.run");
     write(root, "feature.js", "export const enabled = true;\n");
     assert.equal((await invoke("execute", "--run", id, "--advance", "--note", "Enabled the behavior")).status, "success");
     for (let call = 0; call < 4; call += 1) {
@@ -348,7 +349,7 @@ describe("telling regressions from the environment", () => {
     const root = project();
     const { id, invoke } = await approvedRun(root);
     const recorded = events(root, id).find((event) => event.phase === "planning" && event.type === "tool-invoked");
-    assert.equal(recorded?.detail, "baseline status=failed");
+    assert.equal(recorded?.detail, "baseline status=failed; failing=project.testing.run");
     assert.match(recorded?.ref ?? "", /^\.paved\/generated\/evidence\//);
     write(root, "feature.js", "export const enabled = 'no';\n");
     await invoke("execute", "--run", id, "--advance", "--note", "Tried something");
@@ -358,6 +359,124 @@ describe("telling regressions from the environment", () => {
     const attribution = failed.diagnostics.find((item) => item.code === "PAVED_WORKFLOW_BASELINE_FAILING");
     assert.ok(attribution, JSON.stringify(failed));
     assert.ok(attribution.message.includes(recorded!.ref!));
+  });
+});
+
+/** Two module Tools: a.mjs passes while a.js says ok, check.mjs needs the behavior enabled. */
+function suiteProject(): string {
+  const root = project(false);
+  rmSync(join(root, ".paved/tools/testing/run.yaml"));
+  rmSync(join(root, ".paved/tool-implementations/testing/run.yaml"));
+  write(root, "a.js", "ok\n");
+  write(root, "a.mjs", 'import { readFileSync } from "node:fs";\nprocess.exit(readFileSync("a.js", "utf8").includes("ok") ? 0 : 1);\n');
+  for (const [name, script] of [["a", "a.mjs"], ["b", "check.mjs"]] as const) {
+    const id = `project.testing-detected-${name}.run`;
+    write(root, `.paved/tools/testing-${name}.yaml`, stringify({ ...TOOL, id }));
+    write(root, `.paved/tool-implementations/testing-${name}.yaml`, stringify({
+      apiVersion: "paved/v1", kind: "ToolImplementation", id: `project.testing-binding-${name}.run`, tool: id,
+      version: "0.1.0", contract: "^0.1.0", source: "project", environments: ["local"],
+      invocation: { type: "command", executable: process.execPath, arguments: [script], timeout_seconds: 30 }, availability: "available",
+    }));
+  }
+  const check = parse(readFileSync(join(root, ".paved/verification/checks/unit.yaml"), "utf8")) as Record<string, unknown>;
+  write(root, ".paved/verification/checks/unit.yaml", stringify({ ...check, tool: "project.testing-detected-b.run" }));
+  commitAll(root, "base");
+  return root;
+}
+
+describe("baseline per testing Tool", () => {
+  it("reports Tools that already fail with the approval, before anything is implemented", async () => {
+    const root = suiteProject();
+    const { id, approved } = await approvedRun(root);
+    const warning = approved.diagnostics.find((item) => item.code === "PAVED_WORKFLOW_BASELINE_FAILING");
+    assert.ok(warning, JSON.stringify(approved));
+    assert.match(warning.message, /project\.testing-detected-b\.run/);
+    assert.doesNotMatch(warning.message, /detected-a/);
+    assert.equal(approved.status, "success");
+    const recorded = (parse(readFileSync(join(root, ".paved/generated/runs", `${id}.yaml`), "utf8")) as { events: { phase?: string; type: string; detail?: string }[] })
+      .events.find((event) => event.phase === "planning" && event.type === "tool-invoked");
+    assert.equal(recorded?.detail, "baseline status=failed; failing=project.testing-detected-b.run");
+  });
+
+  it("separates Tools the change broke from Tools that were already failing", async () => {
+    const root = suiteProject();
+    const { id, invoke } = await approvedRun(root);
+    write(root, "a.js", "fail\n");
+    await invoke("execute", "--run", id, "--advance", "--note", "Changed a.js");
+    const failed = await invoke("execute", "--run", id, "--advance");
+    const attribution = failed.diagnostics.find((item) => item.code === "PAVED_WORKFLOW_BASELINE_FAILING");
+    assert.ok(attribution, JSON.stringify(failed));
+    assert.match(attribution.message, /Newly failing since approval, likely caused by this change: project\.testing-detected-a\.run/);
+    assert.match(attribution.message, /Already failing at approval.*project\.testing-detected-b\.run/);
+
+    const tested = await invoke("test");
+    assert.match(tested.diagnostics.find((item) => item.code === "PAVED_TEST_TOOL_FAILED")?.message ?? "", /2 of 2 testing Tools failed/);
+  });
+});
+
+describe("implementation checkpoints", () => {
+  it("records a finished part of the plan without starting validation", async () => {
+    const root = project();
+    const { id, invoke, approved } = await approvedRun(root);
+    assert.match(String((approved.data as { nextAction: string }).nextAction), /--checkpoint/);
+    const missingNote = await invoke("execute", "--run", id, "--checkpoint");
+    assert.equal(missingNote.diagnostics[0]?.code, "PAVED_WORKFLOW_OBSERVATION_REQUIRED");
+    const recorded = await invoke("execute", "--run", id, "--checkpoint", "--note", "Part 1: flag added");
+    assert.equal(recorded.status, "success", JSON.stringify(recorded));
+    assert.equal((recorded.data as { currentPhase: string }).currentPhase, "implementation");
+    assert.equal(runState(root, id).phases.find((phase) => phase.phase === "validation")?.status, "pending");
+  });
+
+  it("refuses a checkpoint outside implementation", async () => {
+    const root = project();
+    const invoke = (...argv: string[]) => dispatchCli({ argv: [...argv, "--project", root, "--json"] });
+    const id = ((await invoke("intent", "Enable the behavior", "--workflow", "feature", "--because", "New behavior.")).data as { run: string }).run;
+    const refused = await invoke("execute", "--run", id, "--checkpoint", "--note", "Too early");
+    assert.equal(refused.diagnostics[0]?.code, "PAVED_WORKFLOW_CHECKPOINT_UNAVAILABLE", JSON.stringify(refused));
+  });
+});
+
+describe("phase routing", () => {
+  it("tells the agent who does the current phase and at which tier", async () => {
+    const root = project();
+    const invoke = (...argv: string[]) => dispatchCli({ argv: [...argv, "--project", root, "--json"] });
+    const started = await invoke("intent", "Enable the behavior", "--workflow", "feature", "--because", "New behavior.");
+    const id = (started.data as { run: string }).run;
+    assert.deepEqual((started.data as { routing?: { phase: string; mode: string } }).routing?.mode, "primary");
+    const discovery = await invoke("intent", "--run", id, "--advance", "--note", "Scope stated");
+    const routing = (discovery.data as { routing?: { phase: string; mode: string; capacity: string; reasoning_effort: string } }).routing;
+    assert.deepEqual({ phase: routing?.phase, mode: routing?.mode, capacity: routing?.capacity, effort: routing?.reasoning_effort },
+      { phase: "discovery", mode: "subagent", capacity: "economy", effort: "low" });
+  });
+
+  it("maps the tiers to host models", async () => {
+    const result = await dispatchCli({ argv: ["delegation", "capabilities", "--host", "claude-code", "--json"] });
+    assert.deepEqual((result.data as { tiers: Record<string, unknown> }).tiers.frontier, { model: "opus" });
+  });
+});
+
+describe("refactor baseline", () => {
+  it("pins behavior with a passing test run when no evidence path is given", async () => {
+    const root = project(false);
+    write(root, "feature.js", "export const enabled = true;\n");
+    commitAll(root, "base");
+    const invoke = (...argv: string[]) => dispatchCli({ argv: [...argv, "--project", root, "--json"] });
+    const id = ((await invoke("intent", "Simplify feature.js", "--workflow", "refactor", "--because", "Structure only.")).data as { run: string }).run;
+    await invoke("intent", "--run", id, "--advance", "--note", "Behavior must remain stable");
+    const pinned = await invoke("intent", "--run", id, "--advance", "--note", "Callers and tests mapped");
+    assert.equal(pinned.status, "success", JSON.stringify(pinned));
+    assert.equal((pinned.data as { currentPhase: string }).currentPhase, "planning");
+  });
+
+  it("names the failing Tools and how to reclassify when the baseline fails", async () => {
+    const root = project();
+    const invoke = (...argv: string[]) => dispatchCli({ argv: [...argv, "--project", root, "--json"] });
+    const id = ((await invoke("intent", "Simplify feature.js", "--workflow", "refactor", "--because", "Structure only.")).data as { run: string }).run;
+    await invoke("intent", "--run", id, "--advance", "--note", "Behavior must remain stable");
+    const failed = await invoke("intent", "--run", id, "--advance", "--note", "Callers and tests mapped");
+    assert.equal(failed.diagnostics[0]?.code, "PAVED_WORKFLOW_BASELINE_FAILED");
+    assert.match(failed.diagnostics[0]?.message ?? "", /project\.testing\.run/);
+    assert.match(failed.diagnostics[0]?.remediation ?? "", /--abandon/);
   });
 });
 
@@ -547,5 +666,25 @@ describe("starting work with execute", () => {
     write(root, `.paved/generated/delegation-results/${id}/edit.md`, "Created feature.js.\n");
     const finished = await invoke("delegation", "finish", "--run", id, "--task", "edit", "--outcome", "completed", "--result", `.paved/generated/delegation-results/${id}/edit.md`, "--changed-path", "feature.js");
     assert.equal(finished.status, "success", JSON.stringify(finished));
+  });
+});
+
+describe("after completion", () => {
+  it("reports evidence as stale when the code changes after the run was verified", async () => {
+    const root = project();
+    const { id, invoke, stopped } = await inReview(root);
+    const completed = await reviewClean(root, id, invoke, stopped);
+    assert.equal(runState(root, id).status, "completed", JSON.stringify(completed));
+    const stale = (result: CommandResult) => result.diagnostics.some((item) => item.code === "PAVED_WORKFLOW_EVIDENCE_STALE");
+    assert.equal(stale(await invoke("status")), false);
+    write(root, "feature.js", "export const enabled = true; // tweaked after review\n");
+    assert.equal(stale(await invoke("status")), true);
+  });
+
+  it("does not turn testing Tool logs into missing-verification proposals", async () => {
+    const root = project();
+    await inReview(root);
+    const proposals = analyzeGardener({ projectRoot: root, coreRoot: core }).proposals;
+    assert.deepEqual(proposals.filter((item) => item.problem.includes('"unit"')).map((item) => item.problem), []);
   });
 });

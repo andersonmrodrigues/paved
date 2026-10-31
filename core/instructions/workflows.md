@@ -94,7 +94,8 @@ never approve your own run, and an approval covers only what was shown.
 For a Markdown plan awaiting approval, use the canonical plan path above. Present the
 preview URL and keep the agent turn active with `paved preview wait <target> <revision>
 --json`. Comments reach you only while `wait` runs, so call it again after every timeout
-until the user says in the conversation that the review is finished. Each comment names
+until the user says in the conversation that the review is finished, or until `wait`
+returns `closed: true` (no preview server is running; approving the plan stops it). Each comment names
 its document: mark it with `paved preview working <target> <comment-id> --json`, apply
 it, then `paved preview resolve <target> <comment-id> --reply "<what changed>" --json`.
 After editing, run `paved plan --run <run-id> --advance` once to request approval for the
@@ -155,6 +156,19 @@ Keep the evidence of every attempt. When the limit is reached, the run fails as
   gaps say why.
 - **failed** or **blocked:** the evidence record is `incomplete` or `blocked`, and the
   run's failure says what happens next.
+
+## Who does each phase
+
+Every phase declares `routing`, and each `intent`, `plan` and `execute` result returns it
+for the current phase. `primary`: do the work in this session, which holds the
+conversation. `subagent`: start a host subagent with its own context at the given
+`capacity` and `reasoning_effort`, give it only a bounded brief (the request, the paths
+in scope, the question to answer) and ask for findings with file and line references, not
+file contents; then continue from its report. `cli`: Paved runs the work; relay the
+result. Tiers are relative: `paved delegation capabilities --host <host>` maps them to the
+host's models. A host without subagents or per-subagent models runs the phase here.
+Apply the same economy outside runs: search-heavy or mechanical work with an easy to
+check result belongs to a light subagent, while decisions the user approves stay here.
 
 ## The run record
 

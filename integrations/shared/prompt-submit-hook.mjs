@@ -11,7 +11,11 @@ const context = [
   "- For repository-specific questions, consult only the relevant Paved context and answer directly; do not create a workflow when none is needed.",
   "- For requests unrelated to this repository, proceed normally without invoking Paved.",
   "- Respect explicit user direction. If a required Paved command is unavailable, explain the blocker rather than silently substituting an undeclared process.",
+  "- Each intent, plan and execute result carries `routing` for the current phase: run a `subagent` phase in a host subagent at that capacity and reasoning effort, giving it only a bounded brief and asking for findings rather than file contents; keep a `primary` phase in this session; only relay a `cli` phase. `paved delegation capabilities --host <host>` maps the tiers to the host's models.",
 ].join("\n");
+
+// Every prompt gets this line; the full guidance above comes once per session and after compaction.
+const reminder = "Paved: route repository development, planning, fixes, debugging and refactoring through intent, plan and execute (explicit human approval of the plan before implementing), resume the matching run, and follow each result's `routing`. Unrelated requests proceed normally.";
 
 function nearestRepository(cwd) {
   let current = resolve(cwd);
@@ -25,8 +29,8 @@ function nearestRepository(cwd) {
   }
 }
 
-function emit(hookEventName) {
-  process.stdout.write(`${JSON.stringify({ hookSpecificOutput: { hookEventName, additionalContext: context } })}\n`);
+function emit(hookEventName, additionalContext) {
+  process.stdout.write(`${JSON.stringify({ hookSpecificOutput: { hookEventName, additionalContext } })}\n`);
 }
 
 try {
@@ -44,12 +48,12 @@ try {
     process.exit(0);
   }
   if (event.hook_event_name === "SessionStart") {
-    // Compaction and clear drop earlier context, so the guidance is restored there.
-    if (event.source === "compact" || event.source === "clear") {
-      emit("SessionStart");
+    // A new or resumed session, compaction and clear each start without earlier guidance.
+    if (["startup", "resume", "compact", "clear"].includes(event.source)) {
+      emit("SessionStart", context);
     }
   } else if (event.hook_event_name === undefined || event.hook_event_name === "UserPromptSubmit") {
-    emit("UserPromptSubmit");
+    emit("UserPromptSubmit", reminder);
   }
 } catch {
   // This hook only adds guidance; any input or filesystem failure must leave the prompt unaffected.

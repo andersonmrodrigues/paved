@@ -25,15 +25,30 @@ rules: [core.architecture.follow-existing-patterns]
 phases:
   - phase: context
     goal: Restate the requested behavior, its scope and what is out of scope.
+    routing:
+      mode: primary
+      capacity: balanced
+      reasoning_effort: low
+      rationale: "Restating the request needs the conversation, which only the primary session holds, and it is short work."
     skills: [core.discovery.context-discovery]
     gates:
       - id: scope-clear
         condition: Acceptance behavior is stated, and ambiguous points are resolved by a human or listed as out of scope.
   - phase: discovery
     goal: Locate the affected code, the pattern to follow, the rules in scope and the unknowns.
+    routing:
+      mode: subagent
+      capacity: economy
+      reasoning_effort: low
+      rationale: "Locating code is search-heavy and output-light: a subagent keeps file contents out of the primary context, and a light model suffices when it returns paths and findings."
     skills: [core.discovery.context-discovery]
   - phase: planning
     goal: List the claims the feature will make and the check that will prove each one.
+    routing:
+      mode: primary
+      capacity: frontier
+      reasoning_effort: high
+      rationale: "The plan is what the user approves; it needs the whole conversation and the strongest reasoning available."
     skills: [core.development.feature-development, core.development.frontend-design]
     gates:
       - id: claims-planned
@@ -47,23 +62,53 @@ phases:
         approval: implementation-plan
   - phase: implementation
     goal: Implement the claims following the chosen pattern, with tests.
+    routing:
+      mode: primary
+      capacity: balanced
+      reasoning_effort: medium
+      rationale: "The primary session owns the change against the approved plan; independent, mechanical parts go to subagents through a DelegationPlan at economy capacity."
     skills: [core.development.feature-development, core.development.frontend-design]
   - phase: validation
     goal: Build, lint and run targeted tests while working.
+    routing:
+      mode: cli
+      capacity: economy
+      reasoning_effort: low
+      rationale: "Paved runs the tests; the agent relays the result and needs no strong model."
     verification:
       recommended: [build, static-analysis, unit]
   - phase: verification
     goal: Run the profile checks that prove each claim.
+    routing:
+      mode: cli
+      capacity: economy
+      reasoning_effort: low
+      rationale: "Paved runs the profile checks; the agent relays the result and needs no strong model."
     verification:
       required: [unit]
       recommended: [integration, e2e]
   - phase: evidence
     goal: Record claims, check results, artifacts and gaps.
+    routing:
+      mode: cli
+      capacity: economy
+      reasoning_effort: low
+      rationale: "Paved writes the evidence record from the verified results."
   - phase: review
     goal: Review scope, correctness, patterns, security impact and evidence.
+    routing:
+      mode: subagent
+      capacity: balanced
+      reasoning_effort: high
+      rationale: "Independence needs a separate context; a balanced model at high effort finds defects at a fraction of a frontier model's cost."
     skills: [core.code-review.change-review]
   - phase: completion
     goal: Confirm every completion criterion and report the outcome.
+    routing:
+      mode: cli
+      capacity: economy
+      reasoning_effort: low
+      rationale: "Paved confirms the recorded gates and evidence."
     gates:
       - id: criteria-met
         condition: The evidence record is complete and valid.

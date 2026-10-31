@@ -21,6 +21,9 @@ plan; for investigation-only requests, investigate without implementing a fix.
 Implementation requires explicit human approval of the current plan. Answer
 repository questions using relevant context without starting a workflow; handle
 unrelated conversation normally. Respect explicit user direction.
+Each Paved step result names the phase's `routing`: hand `subagent` phases to a
+subagent at the given capacity and effort with a bounded brief, keep `primary`
+phases in this session, and only relay `cli` phases.
 
 Do not edit this block by hand; `paved init` and `paved update` maintain it. Write
 project-specific instructions for agents outside it.

@@ -155,7 +155,7 @@ describe("generated plugins", () => {
       assert.equal(command!.command, 'node "${CLAUDE_PLUGIN_ROOT}/hooks/paved-prompt-submit.mjs"');
       assert.equal(command!.timeout, 5);
       const restored = (hooks.hooks as unknown as { SessionStart: { matcher: string; hooks: { command: string }[] }[] }).SessionStart;
-      assert.deepEqual(restored.filter((item) => item.matcher).map((item) => [item.matcher, item.hooks[0]!.command]), [["compact|clear", command!.command]], "guidance is restored after compaction or clear");
+      assert.deepEqual(restored.filter((item) => item.matcher).map((item) => [item.matcher, item.hooks[0]!.command]), [["startup|resume|compact|clear", command!.command]], "guidance is added at session start and after compaction or clear");
       assert.deepEqual(readFileSync(join(plugin, "hooks", "paved-prompt-submit.mjs")), readFileSync(join(ROOT, "integrations", "shared", "prompt-submit-hook.mjs")));
       const activity = hooks.hooks as unknown as Record<string, { hooks: { command: string; async?: boolean; timeout: number }[] }[]>;
       for (const event of ["PostToolUse", "Stop", "SessionEnd"]) {

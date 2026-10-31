@@ -2,7 +2,7 @@ import { remediationFor } from "../lib/lifecycle-remediation.ts";
 import { createDiagnostic, createResult, type CommandResult, type Diagnostic } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
 import { inspectConsumer } from "../lib/consumer-state.ts";
-import { runTestingTool } from "../lib/test-runner.ts";
+import { runTestingTool, type TestToolOutcome } from "../lib/test-runner.ts";
 import { acquireConsumerOperationLock, ConsumerOperationLockedError } from "../lib/operation-lock.ts";
 import { runDecisionGate } from "../lib/decisions/gate.ts";
 import { testingProvider } from "../lib/decisions/providers/testing.ts";
@@ -11,6 +11,14 @@ import { testingHandler } from "../lib/decisions/handlers/testing.ts";
 function statusFor(diagnostics: readonly Diagnostic[], failed: boolean): "success" | "warning" | "failed" {
   if (failed || diagnostics.some((item) => item.severity === "error")) return "failed";
   return diagnostics.length > 0 ? "warning" : "success";
+}
+
+/** Names each Tool that did not pass, so a suite failure says which modules to look at. */
+function failureMessage(outcomes: readonly TestToolOutcome[] | undefined): string {
+  const failing = (outcomes ?? []).filter((item) => item.status !== "passed");
+  if (failing.length === 0 || (outcomes ?? []).length < 2) return "The declared testing Tool failed or timed out.";
+  const list = failing.map((item) => `${item.tool} in ${item.workingDirectory}${item.evidence ? ` (${item.evidence})` : ""}`).join("; ");
+  return `${failing.length} of ${outcomes!.length} testing Tools failed or timed out: ${list}.`;
 }
 
 export async function testHandler(invocation: CommandInvocation): Promise<CommandResult> {
@@ -97,6 +105,7 @@ export async function testHandler(invocation: CommandInvocation): Promise<Comman
           evidence: result.evidence,
           ...(result.tools === undefined ? {} : { tools: result.tools }),
           ...(result.evidences === undefined ? {} : { evidences: result.evidences }),
+          ...(result.outcomes === undefined ? {} : { outcomes: result.outcomes }),
           verification: "not-run",
         },
         diagnostics: [
@@ -107,7 +116,7 @@ export async function testHandler(invocation: CommandInvocation): Promise<Comman
                 category: "verification",
                 code: "PAVED_TEST_TOOL_FAILED",
                 component: "cli.commands.test",
-                message: "The declared testing Tool failed or timed out.",
+                message: failureMessage(result.outcomes),
                 remediation: "Inspect the recorded Tool result and sanitized evidence log, then address the test failure.",
               })]
             : []),

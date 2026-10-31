@@ -8,12 +8,14 @@ import { discoverSources } from "../generator-runtime.js";
 import { localApprover } from "../local-identity.js";
 import { resolveSafePath } from "../safe-path.js";
 import { createRegistry } from "../schemas.js";
-import { ENVIRONMENT_UNAVAILABLE } from "../test-runner.js";
+import { ENVIRONMENT_UNAVAILABLE, isTestingToolEvidence } from "../test-runner.js";
 import { sanitizeToolOutput } from "../tools.js";
 import { writeWorkflowEvidence } from "../workflow-evidence.js";
 import { assessWorkflowEvidence, UNCHANGED_HANDLER } from "../workflows.js";
 import { runSourceRoot } from "../workflow-runs.js";
 import { createDiagnostic } from "../../result.js";
+import { previewTarget } from "../preview-review.js";
+import { stopPreview } from "../preview-server.js";
 export const SHARED_GATES = ["plan-approved", "criteria-met"];
 export const sha = (value) => createHash("sha256").update(value).digest("hex");
 export const now = () => new Date().toISOString();
@@ -26,6 +28,20 @@ export function fingerprint(projectRoot) {
     return sha(JSON.stringify(discoverSources(projectRoot)
         .filter((source) => source.kind === "source-module" || source.kind === "test")
         .map((source) => [source.path, source.sha256])));
+}
+const VERIFIED_SOURCE = "source_sha256=";
+/**
+ * True when a completed run's source and test files differ from what its verification saw,
+ * so the recorded evidence no longer describes the code. Runs from before the digest was
+ * recorded are never reported.
+ */
+export function changedSinceVerification(projectRoot, run) {
+    if (run.status !== "completed")
+        return false;
+    const recorded = run.events.findLast((event) => event.type === "verification-executed" && event.detail?.startsWith(VERIFIED_SOURCE))?.detail;
+    if (recorded === undefined)
+        return false;
+    return fingerprint(runSourceRoot(projectRoot, run)) !== recorded.slice(VERIFIED_SOURCE.length);
 }
 export function recordObservation(context, ref) {
     const location = ref ?? (context.evidence ? projectRelative(context.projectRoot, context.evidence) : undefined);
@@ -95,7 +111,7 @@ export function failedTestingEvidence(roots, path, run) {
     if (!validation.valid)
         return false;
     const record = raw;
-    if (record.producer?.agent !== "paved-cli" || !record.change?.summary?.startsWith("Executed testing Tool ")
+    if (!isTestingToolEvidence(record)
         || record.change.revision !== run.revision || !record.created_at || Date.parse(record.created_at) < Date.parse(run.started_at))
         return false;
     const source = raw.artifacts?.[0]?.source;
@@ -140,26 +156,52 @@ function recordApproval(projectRoot, run, planSha) {
         decided_by: localApprover(), decided_at: now() }, null, 2)}\n`);
 }
 const BASELINE = "baseline status=";
+export function testOutcomes(result) {
+    return result.data?.outcomes ?? [];
+}
+const describeTools = (outcomes) => outcomes.map((item) => `${item.tool} in ${item.workingDirectory}${item.evidence ? ` (${item.evidence})` : ""}`).join("; ");
 /**
  * Runs the testing Tool once when the plan is approved and nothing has changed yet, so a
  * later validation failure can be told apart from tests that were already failing.
- * A baseline that cannot run is skipped; it never blocks the approval.
+ * A baseline that cannot run is skipped; it never blocks the approval, but a failing one
+ * is reported right away instead of surfacing only after the change is implemented.
  */
 async function recordBaseline(context) {
     const { run, projectRoot } = context;
     if (run.events.some((event) => event.type === "tool-invoked") || !sourceUnchanged(projectRoot, run))
-        return;
+        return [];
     const tested = await context.tools.test();
     const ref = tested.data?.evidence;
     if (tested.status === "awaiting_input" || ref === undefined)
-        return;
+        return [];
     const outcome = tested.status === "success" ? "passed" : environmentProblem(tested.diagnostics) ? "environment-unavailable" : "failed";
-    run.events.push({ at: now(), type: "tool-invoked", phase: "planning", ref, detail: `${BASELINE}${outcome}` });
+    const outcomes = testOutcomes(tested);
+    const failing = outcomes.filter((item) => item.status === "failed").map((item) => item.tool);
+    const unavailable = outcomes.filter((item) => item.status === "environment-unavailable").map((item) => item.tool);
+    const detail = [`${BASELINE}${outcome}`, ...(failing.length ? [`failing=${failing.join(",")}`] : []),
+        ...(unavailable.length ? [`unavailable=${unavailable.join(",")}`] : [])].join("; ");
+    run.events.push({ at: now(), type: "tool-invoked", phase: "planning", ref, detail });
+    if (outcome === "passed")
+        return [];
+    const broken = outcomes.filter((item) => item.status !== "passed");
+    const which = broken.length > 0 ? describeTools(broken) : ref;
+    return [createDiagnostic({
+            severity: "info", category: "findings", code: "PAVED_WORKFLOW_BASELINE_FAILING", component: "workflow.runtime",
+            message: outcome === "failed"
+                ? `The tests already fail before any change: ${which}. Validation requires them to pass, so this run cannot complete until they do.`
+                : `The tests cannot reach their environment before any change: ${which}. Validation blocks until they can.`,
+            remediation: "Tell the user now, before implementing: either include fixing these tests in the plan (paved plan --amend), "
+                + "or exclude the tests that cannot pass here from the testing Tool, or make their environment available.",
+        })];
 }
 /** The baseline recorded at plan approval, when one ran. */
 export function baseline(run) {
     const event = run.events.find((item) => item.type === "tool-invoked" && item.phase === "planning" && item.detail?.startsWith(BASELINE));
-    return event === undefined ? undefined : { outcome: event.detail.slice(BASELINE.length), ...(event.ref === undefined ? {} : { ref: event.ref }) };
+    if (event === undefined)
+        return undefined;
+    const [status, ...fields] = event.detail.slice(BASELINE.length).split("; ");
+    const failing = fields.find((field) => field.startsWith("failing="))?.slice("failing=".length).split(",").filter(Boolean) ?? [];
+    return { outcome: status, failing, ...(event.ref === undefined ? {} : { ref: event.ref }) };
 }
 // The testing Tool could not reach what it needs; neither a regression nor a setup mistake.
 const ENVIRONMENT_CODES = new Set([ENVIRONMENT_UNAVAILABLE, "PAVED_TEST_LAUNCH_FAILED"]);
@@ -173,11 +215,23 @@ export function environmentBlocked(diagnostics) {
         return undefined;
     return blocked("PAVED_WORKFLOW_ENVIRONMENT_UNAVAILABLE", `${problem.message} This is not attributed to the change.`, `${problem.remediation ?? "Make the test environment available."} Advance again afterwards; an unavailable environment does not consume a phase attempt.`);
 }
+/** An approved plan takes no more comments, so its preview stops instead of waiting on nobody. */
+async function closePlanPreview(context) {
+    const planRef = context.run.events.findLast((event) => event.type === "approval-requested" && event.phase === "planning")?.ref;
+    if (planRef === undefined)
+        return;
+    try {
+        await stopPreview(context.projectRoot, previewTarget(context.projectRoot, planRef).relative);
+    }
+    catch { /* A preview that cannot be reached is already closed for the reviewer. */ }
+}
 const planning = async (context) => {
     const outcome = approvePlan(context);
-    if (outcome.kind === "pass")
-        await recordBaseline(context);
-    return outcome;
+    if (outcome.kind !== "pass")
+        return outcome;
+    await closePlanPreview(context);
+    const warnings = await recordBaseline(context);
+    return warnings.length > 0 ? { ...outcome, warnings } : outcome;
 };
 function approvePlan(context) {
     const { run, phase, projectRoot } = context;
@@ -262,13 +316,24 @@ const validation = async (context) => {
             return setupBlocked("testing", tested.diagnostics);
         const before = baseline(context.run);
         if (before?.outcome === "failed") {
+            const failing = testOutcomes(tested).filter((item) => item.status === "failed");
+            const known = new Set(before.failing);
+            // Per-Tool attribution needs a baseline that recorded which Tools failed.
+            const fresh = known.size === 0 ? [] : failing.filter((item) => !known.has(item.tool));
+            const still = known.size === 0 ? [] : failing.filter((item) => known.has(item.tool));
+            const attribution = known.size === 0 || failing.length === 0
+                ? `The testing Tool already failed when the plan was approved${before.ref ? ` (${before.ref})` : ""}; this failure is not attributed to the change by itself.`
+                : [fresh.length ? `Newly failing since approval, likely caused by this change: ${describeTools(fresh)}.` : "No testing Tool that passed at approval fails now.",
+                    still.length ? `Already failing at approval${before.ref ? ` (${before.ref})` : ""}: ${describeTools(still)}.` : ""].filter(Boolean).join(" ");
             return {
                 kind: "fail",
-                reason: "The governed tests did not pass, and they already failed before implementation started, so the failure may not come from this change.",
+                reason: fresh.length
+                    ? "The governed tests did not pass, and some of them passed before implementation started."
+                    : "The governed tests did not pass, and they already failed before implementation started, so the failure may not come from this change.",
                 nextAction: "Compare the failure with the baseline evidence, fix what this change broke or make the pre-existing failures pass, then resume this run with paved execute --advance.",
                 diagnostics: [...tested.diagnostics, createDiagnostic({
                         severity: "warning", category: "findings", code: "PAVED_WORKFLOW_BASELINE_FAILING", component: "workflow.runtime",
-                        message: `The testing Tool already failed when the plan was approved${before.ref ? ` (${before.ref})` : ""}; this failure is not attributed to the change by itself.`,
+                        message: attribution,
                         remediation: "Make the baseline pass, or exclude the tests that were already failing from the testing Tool.",
                     })],
             };
@@ -298,7 +363,9 @@ const verification = async (context) => {
         };
     }
     context.run.evidence = data.evidence[0];
-    context.run.events.push({ at: now(), type: "verification-executed", phase: "verification", ref: context.run.evidence });
+    // The digest lets paved status tell when the code changed after it was verified.
+    context.run.events.push({ at: now(), type: "verification-executed", phase: "verification", ref: context.run.evidence,
+        detail: `${VERIFIED_SOURCE}${fingerprint(runSourceRoot(context.projectRoot, context.run))}` });
     return { kind: "pass" };
 };
 const evidence = (context) => {
