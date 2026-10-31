@@ -5,7 +5,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 
@@ -380,7 +380,11 @@ function addDependencies(root, target, scratch) {
   }
   for (const path of packages) {
     noSymlinks(join(source, path), source === root ? packageRoot : source);
-    cpSync(join(source, path), join(target, path), { recursive: true, verbatimSymlinks: true });
+    // Match packRuntime's dependency normalization before checking the pinned tree.
+    cpSync(join(source, path), join(target, path), {
+      recursive: true, verbatimSymlinks: true,
+      filter: (file) => basename(file).toLowerCase() !== 'changelog.md' || !lstatSync(file).isFile(),
+    });
   }
   rmSync(scratch, { recursive: true, force: true });
 }

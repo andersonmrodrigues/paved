@@ -134,6 +134,18 @@ describe("plugin launcher failure modes", () => {
     notActivated(target);
   });
 
+  it("normalizes dependency changelogs restored by the Claude host before verifying the runtime", () => {
+    const dir = claudeWithDependencies(join(ROOT, CLAUDE_PLUGIN_DIRECTORY), join(plugin, RUNTIME_DIRECTORY), join(root, "claude-changelogs", "paved"));
+    const dependency = join(dir, "node_modules", "argparse");
+    writeFileSync(join(dependency, "CHANGELOG.md"), "# Installed dependency history\n");
+    mkdirSync(join(dependency, "docs"));
+    writeFileSync(join(dependency, "docs", "changelog.MD"), "# Nested dependency history\n");
+    const target = project();
+    const initialized = launcher(dir, npmCache)(target, "init", "--json");
+    assert.ok(initialized.status === 0 || initialized.status === 1, initialized.stdout + initialized.stderr);
+    assert.ok(existsSync(join(dependency, "CHANGELOG.md")), "the host installation is not modified");
+  });
+
   it("rejects a missing or corrupt local runtime archive before extraction", () => {
     const target = project();
     const bytes = readFileSync(tarball);

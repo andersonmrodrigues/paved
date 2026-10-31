@@ -5,6 +5,12 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Fixed
+
+- Claude plugin activation applies the build's dependency changelog normalization
+  before integrity verification, so npm-installed documentation does not reject an
+  otherwise unchanged runtime. Modified runtime code still blocks activation.
+
 ## [2.18.0] - 2026-10-30
 
 ### Added
