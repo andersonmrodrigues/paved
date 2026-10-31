@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.18.0] - 2026-10-30
+
 ### Added
 
 - A curated catalog makes existing adapters, workflows and examples easier to discover.
