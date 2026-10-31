@@ -39,6 +39,29 @@ const assertSquarePng = (icon: Buffer) => {
 };
 
 describe("generated plugins", () => {
+  it("ships host-scoped plugin refresh before repository update", () => {
+    const runtime = packRuntime(ROOT, { build: false });
+    for (const plan of planPlugins(ROOT, runtime)) {
+      const content = plan.files.get("skills/update/SKILL.md")!.toString("utf8");
+      assert.match(content, /## Host plugin refresh/);
+      assert.match(content, /Do not update another host/);
+      assert.match(content, /--dry-run.*skip.*marketplace.*plugin/);
+      if (plan.target === PLUGIN_TARGETS.claude) {
+        assert.match(content, /claude plugin marketplace update paved/);
+        assert.match(content, /claude plugin update paved@paved/);
+        assert.doesNotMatch(content, /codex plugin/);
+      } else {
+        assert.match(content, /In Codex only/);
+        assert.match(content, /codex plugin marketplace upgrade paved/);
+        assert.match(content, /codex plugin add paved@paved/);
+        assert.match(content, /In Cursor.*do not run Codex or Claude commands/);
+        assert.doesNotMatch(content, /claude plugin/);
+      }
+      const status = plan.files.get("skills/status/SKILL.md")!.toString("utf8");
+      assert.doesNotMatch(status, /## Host plugin refresh/);
+    }
+  });
+
   it("projects Claude eval fixtures only into the Claude plugin", () => {
     const plans = planPlugins(ROOT, packRuntime(ROOT, { build: false }));
     const claudePlan = plans.find((plan) => plan.target === PLUGIN_TARGETS.claude)!;

@@ -47,6 +47,7 @@ writing a new record that supersedes it, not by editing the old one.
 | [0040](0040-task-level-harness-experiments.md) | Task-level harness experiments | Accepted |
 | [0041](0041-shared-state-across-worktrees.md) | Shared state across linked worktrees | Accepted |
 | [0042](0042-natural-language-routing.md) | Natural-language routing on every prompt | Accepted |
+| [0043](0043-initiating-host-plugin-update.md) | Plugin update scoped to the initiating host | Accepted |
 
 ## Format
 

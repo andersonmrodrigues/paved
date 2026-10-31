@@ -154,6 +154,24 @@ read-only: approvals and workflow decisions remain in the conversation and Paved
 - Claude Code: `claude plugin marketplace update paved`, then
   `claude plugin update paved@paved`.
 
+An explicit `paved:update` request in Claude Code or Codex now instructs the agent to
+run those steps for the initiating host only, then discover the newly installed
+plugin launcher and use it for the repository update. It checks that Paved is already
+installed and preserves its installation scope. It does not install another host's
+plugin or update unrelated marketplaces. The portable plugin also serves Cursor:
+in Cursor, plugin refresh stays in Cursor's plugin manager, never the Codex CLI.
+
+The agent skips marketplace and plugin writes for `--dry-run`; automatic project
+repairs do not refresh the host plugin. The direct CLI and project shim remain local:
+they do not run host management commands themselves. Host refresh is agent guidance,
+subject to host permissions, not an additional CLI update operation.
+
+If Paved is not installed in that host, a host command fails or refreshed launcher
+discovery fails, the agent reports that stage
+and stops before changing project state. Host plugin changes cannot be rolled back by
+`runtime rollback`, so a partial update must report completed host steps separately.
+If refreshed skills or hooks need a session restart, the agent reports that as well.
+
 Updating the plugin never changes a repository's runtime by itself. The lock in
 each repository stays authoritative; when the plugin carries a different runtime,
 commands keep using the locked one and print a `PAVED_RUNTIME_UPDATE_AVAILABLE`

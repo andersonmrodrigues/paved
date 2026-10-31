@@ -13,10 +13,21 @@ Plan and apply a compatible local Paved Core, adapter or input update. Use when 
 **Required context:** .paved/manifest.yaml, .paved/paved.lock
 **Required capabilities:** none declared
 **Allowed side effects:** Paved lock through update transaction, affected generated context and proposals
+**Host side effects:** refresh only the initiating host's installed Paved marketplace/plugin on an explicit update request; no host writes in dry-run.
+
+## Host plugin refresh
+
+An explicit request to update Paved includes refreshing its installed plugin in the initiating host before updating this repository. Do not update another host, install a missing plugin, add a marketplace or change the installation scope.
+For `--dry-run`, skip all marketplace and plugin writes; report the refresh steps and run only the existing launcher's local `update --dry-run --json`. Automatic lifecycle repairs and retries update local project state only; do not repeat this host refresh.
+1. Check the current host's plugin inventory with `claude plugin list --json`. Confirm `paved@paved` is already installed in the current scope and note its version and path. If it is not installed, explain that plugin refresh is unavailable and stop before updating project state; do not install it.
+2. Run `claude plugin marketplace update paved`, and only if it succeeds run `claude plugin update paved@paved`. Respect host permissions and keep the existing installation scope; if the host needs an explicit scope option, use the one reported by its inventory. Never update all marketplaces.
+3. Locate the newly installed plugin's `scripts/paved.mjs` from `installPath` in a fresh `claude plugin list --json` result. Do not use the old launcher, a cached environment path or the project shim for this first update. Quote the discovered path when invoking Node; do not guess it.
+4. Use that launcher for the repository update below, preserving the user's supported arguments and explicit `--project` target. Verify the outcome with the same launcher's `runtime status --json` and `status --json`. Report the installed plugin version separately from the project's pinned runtime version.
+If refresh, installation or path discovery fails, stop and report the failed stage before updating project state. A host refresh is not part of the project's rollback transaction: report any completed host steps, do not claim that nothing changed, and never bypass runtime integrity or compatibility checks. If the host needs a session restart to load refreshed hooks or skills, tell the user; do not claim those are already active.
 
 ## Execution contract
 
-1. Invoke `node "${CLAUDE_PLUGIN_ROOT}/scripts/paved.mjs" update --json` from the repository root, passing the user's command inputs as supported CLI arguments. The launcher loads the pinned project-local runtime and returns the canonical structured result. Always run it from the repository being worked on, never from the plugin directory.
+1. Invoke `node "<newly discovered plugin>/scripts/paved.mjs" update --json` from the repository root after host refresh, passing the user's supported inputs. When refresh is skipped as described above, use the existing launcher `node "${CLAUDE_PLUGIN_ROOT}/scripts/paved.mjs" update --json` instead. Always run it from the repository being worked on, never from the plugin directory. The launcher verifies the runtime and applies the transactional repository update.
 2. Follow the structured result's status, diagnostics, evidence, and next action. When `data.remediation` names a Paved command, run it right away, present any decisions it returns, then repeat the original command. Stop only when the runtime blocks on something it cannot remediate.
 
 ## Failure behavior

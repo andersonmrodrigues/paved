@@ -12,20 +12,20 @@
     "package": "paved-core",
     "version": "2.19.0",
     "directory": "runtime/paved-core",
-    "integrity": "sha512-Yk6I13KF71tz/EWnJvl59N7O1E78LpMu6UpVz2xC/cpp2/MfWmp5ES4lXVganxHetW0eFF2cECvQDCfu6LEzMA==",
+    "integrity": "sha512-DHOh48V9zKoDN2lyr9ngGXVUnbzPbys70+9OC9JlrdO/KUZYaSxCEOLZfhpPev53lf6z4RKZCNGGUn1iVoo3/w==",
     "files": 1361
   },
   "files": {
     ".codex-plugin/plugin.json": "6ffdbfbf54267c4a5925c1cec284e8bdd4f53329470d466df0a2bc3a74805fa5",
     ".cursor-plugin/plugin.json": "47ac4eea6902d38cd3fc069cd7328a3d31b172fa7a0286d85469d07047e5e417",
-    "README.md": "8966f60aa256e9e9e5fe95be8b6b1ecc67021e9fcca1b7bf68c932bd7237ac1e",
+    "README.md": "04084e1b5db768e5ea99a309b343f7c4969aa43aad85bbc6ff76f51725f8d9df",
     "VERSION": "d19ebea47621c7f2b10e9d52ac2d1d253ffd453b2638e7f85068c3cdf51802b4",
     "assets/icon.png": "7329011229d8217f77bdb856691f0c1123b998d2d9c21c7be3201d59d043f409",
     "hooks/hooks.json": "d25a32022ca683b9335e12177b0dd88156206a2e86a1bf7d3f4d356e6211e12c",
     "hooks/paved-prompt-submit.mjs": "3e41545d5bda8c5086171ad46c0deba2759548f4e9edc3d03e0598081b3729aa",
     "hooks/paved-workbench.mjs": "5a3d341eee38d6bc57459604f32e10cc9a19a05a6ca17eb3b963f2353b181897",
     "plugin.json": "e954ac491d1eab9a68cb49dac8735a9c242caa8e71caa532f250cadf215a7774",
-    "runtime/paved-core/CHANGELOG.md": "730f576c58c2fc879f34e268914bb246cda7253fd9713ecfc407d72b8b0a30a2",
+    "runtime/paved-core/CHANGELOG.md": "ebb4964b22b09ca5cee2af753c5594658827ced8946d88e25a94d6ebd438fc47",
     "runtime/paved-core/LICENSE": "57b0722c205458e19b1391cae15fb501664b071392f26cfb70636c34f9a3c3bf",
     "runtime/paved-core/README.md": "49e1390fdebadfd25ad3c15671c0ce29563cd83e65971b0b03a1d2f593a9589f",
     "runtime/paved-core/SECURITY.md": "8efcbcb1f823a795cc3062400cf5c0e6780f0be4b69c6db3db6dc6f73d6e06ad",
@@ -147,7 +147,7 @@
     "runtime/paved-core/cli/build/integrations/codex/index.js": "419bc7ea57c214e77c73b26c35997a4efee2dec56eb79c48f05c36ea27b617c6",
     "runtime/paved-core/cli/build/integrations/shared/catalog.js": "f40843aa072584f2e187ccc37715e60ee5e9a6c8dee5cbac0491acabd98e0bad",
     "runtime/paved-core/cli/build/integrations/shared/commands.js": "9cf5525de5349c35436856e2489a5788658f0071812a4624066040e91f9cdb27",
-    "runtime/paved-core/cli/build/integrations/shared/projection.js": "220e0177f83378fc543d037e8672a16417b62608657916087261682f19f06c67",
+    "runtime/paved-core/cli/build/integrations/shared/projection.js": "9e9ae0f315d8700ad161cfe15fa5d9803030f6b210c2d24cf1f88ec33dfac440",
     "runtime/paved-core/cli/build/integrations/shared/types.js": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
     "runtime/paved-core/cli/commands/agent.ts": "0b389ece9dfa1244b54bdf1c4782d9cd79e3984919ab3010acec31cda877c4fc",
     "runtime/paved-core/cli/commands/decision.ts": "3b4fb31b4f9264a4102b9ea125a02bfe3de54fba9f3805c8307acce0674076b1",
@@ -410,7 +410,7 @@
     "runtime/paved-core/integrations/shared/catalog.ts": "ea659f66d725b52dc91e008742c99ddf9713a17e5cc728f65cceed8d3997dad5",
     "runtime/paved-core/integrations/shared/commands.ts": "0bf9370a0508f2b42d921ed66ee18cca87a200a4d1afbf07885ba04ed4f7a0c8",
     "runtime/paved-core/integrations/shared/hooks.json": "d25a32022ca683b9335e12177b0dd88156206a2e86a1bf7d3f4d356e6211e12c",
-    "runtime/paved-core/integrations/shared/projection.ts": "68130f54fa5256c2d05aee3ba7ebf6f02199f50dd981cb63999e26816816441c",
+    "runtime/paved-core/integrations/shared/projection.ts": "cdfddb10f51a3b0eab9acd9c10545c98cd33c536038180f34bc104f52c668618",
     "runtime/paved-core/integrations/shared/prompt-submit-hook.mjs": "3e41545d5bda8c5086171ad46c0deba2759548f4e9edc3d03e0598081b3729aa",
     "runtime/paved-core/integrations/shared/types.ts": "9bd1c9dc60a28f0fcfc902cf0741b4cb727f30b36fe06c1453f62a13948c46d1",
     "runtime/paved-core/integrations/shared/workbench-hook.mjs": "5a3d341eee38d6bc57459604f32e10cc9a19a05a6ca17eb3b963f2353b181897",
@@ -1386,7 +1386,7 @@
     "runtime/paved-core/schemas/verification.schema.yaml": "d137df191aef13176ea11afe899c61b721df76528d6a229ce261f71f687be269",
     "runtime/paved-core/schemas/workflow-run.schema.yaml": "8bb56489c363bb155fc326ca92a17dd26753b9e977b658da1002a65786cb3fc8",
     "runtime/paved-core/schemas/workflow.schema.yaml": "32f69651134106bd4f5af7ebd3338f48ba9ef3556d944822214e1bd0f7a94a7f",
-    "scripts/bootstrap.json": "37cb7623b221c09ac17112a3da0356da29ea4d9e30c8c1c6e69026d65341e96e",
+    "scripts/bootstrap.json": "95e5fa68b33df78e84edc0d5a21e7918bdff9873b9d9dd06cfb2d78659447f20",
     "scripts/paved.mjs": "f47327acb98eed6ce3f16b3a981bd0c972877f91c9c4485850afb26fa09ed082",
     "skills/app-verification/SKILL.md": "ae3208f9473ef8339e65510054754abf990718bd3ff7ae7dedeeddc2d3b131ed",
     "skills/app-verification/references/project-skill-layout.md": "a57c55118aaaeea721d203770e59f7ddee0863eae5b4a922e73b7896b86c3259",
@@ -1435,6 +1435,6 @@
     "skills/threat-modeling/examples/threat-model.md": "2392c1e75e4f8eb35078cbc5b260e523943ffef79cd1dc3d5b7ea46d8314a837",
     "skills/threat-modeling/references/stride.md": "b485065f3d6d86e26abe82585c616c20b9ed5e32a3365dd3cfded8408a4d53fd",
     "skills/unit-testing/SKILL.md": "3892da52a4848d340c8959a551111c693bdc6c04a0df7a46c58363fd4e622f2c",
-    "skills/update/SKILL.md": "cc3e3ef4a1453827efd0b2228d21b7e68f913f91e7a17fc410f143ca234e6551"
+    "skills/update/SKILL.md": "0a26c8b94377e3960f33b2d9a1bff53f0369c0d8132317da98f4fe38baa2d08c"
   }
 }

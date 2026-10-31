@@ -3,13 +3,44 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { describe, it } from "node:test";
-import { applyProjection, metadata, planProjection, removeProjection } from "../../integrations/shared/projection.ts";
+import { applyProjection, metadata, planProjection, removeProjection, renderCommand } from "../../integrations/shared/projection.ts";
 import { AGENT_COMMANDS } from "../../integrations/shared/commands.ts";
 import { at } from "../helpers.ts";
 
 const coreRoot = at(".");
 
 describe("agent projections", () => {
+  it("keeps update local when no host integration is selected", () => {
+    const update = AGENT_COMMANDS.find((command) => command.name === "update")!;
+    const text = renderCommand(update, {
+      headerLine: "<!-- h -->", title: "Update", launcher: { command: "node local.mjs" },
+    });
+    assert.match(text, /node local\.mjs update --json/);
+    assert.doesNotMatch(text, /## Host plugin refresh|plugin marketplace/);
+  });
+
+  it("updates only the initiating host before invoking the refreshed plugin launcher", () => {
+    for (const agent of ["codex", "claude-code"] as const) {
+      const plan = planProjection(agent, at("."), at("."));
+      const file = plan.files.find((entry) => entry.relativePath === (agent === "codex"
+        ? join("paved-update", "SKILL.md")
+        : join(".claude", "commands", "paved", "update.md")))!;
+      const marketplace = agent === "codex" ? "codex plugin marketplace upgrade paved" : "claude plugin marketplace update paved";
+      const install = agent === "codex" ? "codex plugin add paved@paved" : "claude plugin update paved@paved";
+      assert.ok(file.content.includes(marketplace));
+      assert.ok(file.content.includes(install));
+      assert.ok(file.content.indexOf(marketplace) < file.content.indexOf(install));
+      assert.ok(file.content.indexOf(install) < file.content.indexOf("## Execution contract"));
+      assert.match(file.content, /Do not update another host/);
+      assert.match(file.content, /--dry-run.*skip.*marketplace.*plugin/);
+      assert.match(file.content, /newly installed.*scripts\/paved\.mjs/);
+      assert.match(file.content, /Do not use the old launcher/);
+      assert.match(file.content, /If it is not installed,.*stop before updating project state/);
+      assert.match(file.content, /stop.*report.*stage/i);
+      assert.doesNotMatch(file.content, agent === "codex" ? /claude plugin/ : /codex plugin/);
+    }
+  });
+
   describe("conversational contract parity", () => {
     it("emits the same conversational interaction for Codex and Claude Code", async () => {
       const { renderCommand } = await import("../../integrations/shared/projection.ts");
