@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.18.1] - 2026-10-31
+
 ### Fixed
 
 - Claude plugin activation applies the build's dependency changelog normalization
