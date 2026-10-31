@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.19.0] - 2026-10-31
+
 ### Changed
 
 - Claude Code and Codex receive Paved routing guidance on every prompt in initialized
