@@ -77,7 +77,17 @@ export function delegationHandler(invocation) {
         const host = invocation.flags.host;
         if (host !== "claude-code" && host !== "codex")
             return failure("capabilities requires --host codex or --host claude-code.", "Pass the host you are currently using.");
-        return createResult({ command: "delegation", status: "success", data: { host, nativeSessions: "host-managed", modelSelection: host === "claude-code" ? "per-subagent model and effort controls; inspect host catalog" : "host-dependent; may inherit parent model", isolation: "use host-native isolated worktrees for parallel writers when available", permissionBoundary: "Paved records task scopes; host permissions remain authoritative" } });
+        return createResult({ command: "delegation", status: "success", data: {
+                host, nativeSessions: "host-managed",
+                modelSelection: host === "claude-code" ? "per-subagent model and effort controls; inspect host catalog" : "host-dependent; may inherit parent model",
+                // How the routing and model_policy tiers map to this host. Aliases follow the host's catalog, not a fixed model.
+                tiers: host === "claude-code"
+                    ? { economy: { model: "haiku" }, balanced: { model: "sonnet" }, frontier: { model: "opus" }, reasoningEffort: "pass as the subagent effort" }
+                    : { economy: "host-dependent", balanced: "host-dependent", frontier: "host-dependent", reasoningEffort: "guidance when the host cannot set it" },
+                primarySession: "A primary phase runs on the session's own model; Paved does not switch it.",
+                isolation: "use host-native isolated worktrees for parallel writers when available",
+                permissionBoundary: "Paved records task scopes; host permissions remain authoritative",
+            } });
     }
     if (!runId)
         return failure("--run is required.", "Pass the current workflow run id.");

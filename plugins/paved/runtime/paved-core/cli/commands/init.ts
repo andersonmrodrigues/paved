@@ -259,6 +259,7 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
     component: "cli.init", message,
     remediation: "Answer with one of the offered option ids.",
   })));
+  const testsAdopted = outcome.applied.some((decision) => decision.handler === "testing.adopt" && decision.answer !== "none");
   const lifecycleState = inspectConsumer({ projectRoot: invocation.paths.projectRoot, sourceRoot: invocation.paths.sourceRoot, coreRoot: invocation.paths.coreRoot }).lifecycleState;
   const data = {
     initialized: true, dryRun: false, projectName,
@@ -266,6 +267,7 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
     capabilityProviders: plan.capabilityProviders, generated: generation !== undefined, lifecycleState,
     agentsBlock: agents.status,
     ...(generation === undefined ? {} : { generation: generateData(generation, false) }),
+    ...(testsAdopted ? { nextAction: "The adopted test commands have not run here yet. Run paved test --json once and show the user each module that fails or cannot reach its environment, so they fix or exclude it before work starts instead of finding out at validation." } : {}),
   };
   if (outcome.status === "awaiting-input" && statusFor(diagnostics) !== "failed") {
     return createResult({

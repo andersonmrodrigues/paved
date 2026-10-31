@@ -6,7 +6,8 @@ import { runDecisionGate } from "../lib/decisions/gate.js";
 import { DecisionStoreError } from "../lib/decisions/store.js";
 import { repairProvider } from "../lib/decisions/providers/repair.js";
 import { repairHandler } from "../lib/decisions/handlers/repair.js";
-import { isOpen, scanRuns } from "../lib/workflow-runs.js";
+import { isOpen, runBelongsTo, scanRuns } from "../lib/workflow-runs.js";
+import { changedSinceVerification } from "../lib/workflow-gates/shared.js";
 import { inspectVerificationConfig } from "../lib/verification-runner.js";
 function statusFor(diagnostics) {
     if (diagnostics.some((diagnostic) => diagnostic.category !== "findings"))
@@ -78,7 +79,19 @@ function agentsBlockFindings(inspection) {
             remediation: "Run paved update to rewrite the managed block; text outside it is never changed.",
         })];
 }
-function openRuns(inspection) {
+/** The latest run in this checkout, when it completed and its code changed afterwards. */
+function staleCompletion(inspection, runs, sourceRoot) {
+    const latest = runs.filter((run) => runBelongsTo(inspection.projectRoot, run, sourceRoot))
+        .sort((a, b) => a.started_at.localeCompare(b.started_at)).at(-1);
+    if (latest === undefined || !changedSinceVerification(inspection.projectRoot, latest))
+        return [];
+    return [createDiagnostic({
+            severity: "warning", category: "findings", code: "PAVED_WORKFLOW_EVIDENCE_STALE", component: "consumer.runs",
+            message: `Source or test files changed after run ${latest.id} was verified and reviewed, so its evidence does not describe the current code.`,
+            remediation: "If the later edits belong to that change, start a new run for them (or run paved verify) so tests, verification and review cover the code that ships.",
+        })];
+}
+function openRuns(inspection, sourceRoot) {
     if (!inspection.initialized)
         return { runs: [], diagnostics: [] };
     const scanned = scanRuns(inspection.projectRoot, inspection.coreRoot);
@@ -87,11 +100,11 @@ function openRuns(inspection) {
         ...(run.worktree === undefined ? {} : { worktree: run.worktree }),
         currentPhase: run.phases.find((phase) => phase.status === "running")?.phase,
     }));
-    return { runs, diagnostics: scanned.unreadable.map((run) => createDiagnostic({
-            severity: "warning", category: "findings", code: "PAVED_WORKFLOW_RUN_INVALID", component: "consumer.runs",
-            message: `Workflow run ${run.id} could not be read: ${run.reason}`,
-            remediation: "Inspect .paved/generated/runs/ and restore or remove the invalid run document.",
-        })) };
+    return { runs, diagnostics: [...scanned.unreadable.map((run) => createDiagnostic({
+                severity: "warning", category: "findings", code: "PAVED_WORKFLOW_RUN_INVALID", component: "consumer.runs",
+                message: `Workflow run ${run.id} could not be read: ${run.reason}`,
+                remediation: "Inspect .paved/generated/runs/ and restore or remove the invalid run document.",
+            })), ...staleCompletion(inspection, scanned.runs, sourceRoot)] };
 }
 /** An unreadable decision store is already reported by the inspection; repairs then wait for it to be fixed. */
 function repairs(invocation) {
@@ -140,7 +153,7 @@ export function diagnose(invocation, command) {
         component: `cli.${command}`, message,
         remediation: "Use the offered option id and provide the required human-authored approval.",
     }));
-    const runs = openRuns(inspection);
+    const runs = openRuns(inspection, invocation.paths.sourceRoot);
     const diagnostics = [...inspection.diagnostics, ...agentsBlockFindings(inspection), ...runs.diagnostics,
         ...verificationFindings(invocation, inspection), ...decisionDiagnostics];
     return createResult({

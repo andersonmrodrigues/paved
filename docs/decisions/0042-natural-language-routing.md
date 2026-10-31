@@ -1,6 +1,6 @@
 # ADR 0042: Natural-language routing on every prompt
 
-- **Status:** Accepted
+- **Status:** Superseded by [0044](0044-phase-routing-and-token-economy.md)
 - **Date:** 2026-10-31
 - **Supersedes:** [0037](0037-session-scoped-prompt-guidance.md)
 

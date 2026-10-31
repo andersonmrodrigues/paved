@@ -4,6 +4,7 @@ import { join, relative, sep } from "node:path";
 import { parse } from "yaml";
 import { assessEvidence, coveredTypes, loadEvidenceRegistry } from "./evidence.js";
 import { createRegistry } from "./schemas.js";
+import { isTestingToolEvidence } from "./test-runner.js";
 export class GardenerInputError extends Error {
 }
 const hash = (value) => createHash("sha256").update(value).digest("hex");
@@ -95,7 +96,8 @@ function evidenceIncidents(projectRoot, coreRoot, skipped) {
                 continue;
             found.push({ ...base, category: "rule-violation", subject: rule.id, pattern: `rule:${rule.id}`, state: "documented", item: rule.id });
         }
-        for (const type of record.plan.required) {
+        // A testing Tool log never claims verification, so its uncovered plan is not an omission.
+        for (const type of isTestingToolEvidence(record) ? [] : record.plan.required) {
             const covering = record.checks.filter((check) => coveredTypes(check).includes(type));
             if (covering.some((check) => ["passed", "failed", "error"].includes(check.status)))
                 continue;
@@ -128,6 +130,14 @@ function generatorIncidents(projectRoot) {
         ];
     });
 }
+const PROBLEM_LABELS = {
+    "missing-verification": "Required verification type with no passing or failing check:",
+    "verification-failure": "Failing check",
+    "rule-violation": "Violated rule",
+    "generator-conflict": "Conflicting generator output from",
+    "generator-unknown": "Unresolved project fact reported by",
+    "implementation-pattern": "Implementation pattern in",
+};
 function diagnosis(observation) {
     if (observation.category === "missing-verification")
         return {
@@ -205,7 +215,7 @@ export function analyzeGardener(input) {
         proposals.push({
             apiVersion: "paved/v1", kind: "GardenerProposal", id: proposalId,
             scope: { consumer: name, target: "consumer" }, status: currentReview?.status ?? "CANDIDATE",
-            problem: `${first.subject} recurred in ${unique.length} distinct evidence items.`, observation: observation.id,
+            problem: `${PROBLEM_LABELS[first.category]} "${first.subject}" recurred in ${unique.length} distinct evidence items.`, observation: observation.id,
             evidence: observation.evidence, evidence_sha256: evidenceSha, ...base, affected_components: [first.subject], provenance: observation.provenance,
             ...(currentReview === undefined ? {} : { review: { by: currentReview.by, at: currentReview.at, reason: currentReview.reason, ...(currentReview.superseded_by === undefined ? {} : { superseded_by: currentReview.superseded_by }) } }),
         });

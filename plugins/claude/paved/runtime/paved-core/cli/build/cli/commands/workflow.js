@@ -60,6 +60,9 @@ function nextStepAction(run) {
         return "Inspect the run; it has no active phase.";
     if (phase.phase === "review")
         return "Have the change reviewed by a reviewer that did not write it.";
+    if (phase.phase === "implementation") {
+        return `Implement the whole approved plan; record each finished part with paved execute --run ${run.id} --checkpoint --note <part> --json. Advancing starts validation, so run paved execute --run ${run.id} --auto --note <what was implemented> --json only when everything is done.`;
+    }
     return `Continue ${phase.phase}, then run paved ${owner} --run ${run.id} --advance --note <observation> --json.`;
 }
 export function runSummary(run) {
@@ -420,6 +423,23 @@ function abandon(invocation, step, run) {
     writeRun(projectRoot, coreRoot, run);
     return result(projectRoot, step, run, `Run ${run.id} was cancelled. Start new work with paved intent "<request>" --json; the same request opens a new run.`);
 }
+/**
+ * Records progress on a plan with several parts while implementation stays open: advancing
+ * implementation starts validation, so it waits until the whole approved plan is done.
+ */
+function checkpoint(invocation, run) {
+    const { projectRoot, coreRoot } = invocation.paths;
+    const phase = run.status === "running" ? activePhase(run) : undefined;
+    if (phase?.phase !== "implementation" || phase.status !== "running") {
+        return blocked("execute", "PAVED_WORKFLOW_CHECKPOINT_UNAVAILABLE", `Run ${run.id} is not implementing an approved plan.`, nextStepAction(run), { run: run.id });
+    }
+    const note = invocation.flags.note?.trim();
+    if (!note)
+        return blocked("execute", "PAVED_WORKFLOW_OBSERVATION_REQUIRED", "A checkpoint needs a note on what was finished.", `Run paved execute --run ${run.id} --checkpoint --note <what was finished> --json.`, { run: run.id });
+    run.events.push({ at: now(), type: "evidence-recorded", phase: "implementation", detail: `checkpoint: ${note.slice(0, 4000)}` });
+    writeRun(projectRoot, coreRoot, run);
+    return result(projectRoot, "execute", run, `Checkpoint recorded; implementation stays open. Verify this part as the plan says, continue with the next one, and once the whole approved plan is implemented run paved execute --run ${run.id} --auto --note <what was implemented> --json.`);
+}
 const RECOVERY_OPTIONS = [
     { id: "retry", label: "Retry", description: "Fix the failure and try the phase again.", consequence: "The phase gets a fresh set of attempts." },
     { id: "amend", label: "Amend the plan", description: "The approved plan needs to change before this phase can pass.", consequence: "Revise the plan and ask approval with paved plan --amend; the phase restarts once it is approved." },
@@ -629,7 +649,7 @@ async function resume(invocation, step, run, answers) {
             completeAndStartNext(run, phase);
             writeRun(projectRoot, coreRoot, run);
             if (run.status !== "completed")
-                return result(projectRoot, step, run, nextStepAction(run));
+                return result(projectRoot, step, run, nextStepAction(run), outcome.warnings ?? []);
             // Advisory only: a gardener failure or proposal never changes the outcome.
             const gardener = reportNewProposals(projectRoot, coreRoot);
             const refresh = refreshContext(invocation);
@@ -685,7 +705,33 @@ async function deliver(invocation, run, answers) {
         pending = [];
     }
 }
+/**
+ * Adds the active phase's routing, so the agent knows whether to do the work itself, hand
+ * it to a subagent, or only relay a Paved result, and at which capability tier.
+ */
+function withRouting(invocation, outcome) {
+    const data = outcome.data;
+    const id = typeof data?.run === "string" ? data.run : undefined;
+    if (id === undefined)
+        return outcome;
+    try {
+        const { projectRoot, coreRoot } = invocation.paths;
+        const run = readRun(projectRoot, coreRoot, id);
+        const phase = run?.workflow === undefined || TERMINAL_STATUSES.has(run.status) ? undefined : activePhase(run);
+        if (run?.workflow === undefined || phase === undefined)
+            return outcome;
+        const routing = loadContract(coreRoot, run.workflow.id).phases.find((item) => item.phase === phase.phase)?.routing;
+        return routing === undefined ? outcome : { ...outcome, data: { ...data, routing: { phase: phase.phase, ...routing } } };
+    }
+    catch {
+        // Routing is advice; a contract that cannot be read leaves the result unchanged.
+        return outcome;
+    }
+}
 export async function stepHandler(invocation) {
+    return withRouting(invocation, await dispatchStep(invocation));
+}
+async function dispatchStep(invocation) {
     const step = invocation.command;
     try {
         if (step === "intent" && !invocation.flags.run && invocation.selectors.length > 0)
@@ -704,6 +750,8 @@ export async function stepHandler(invocation) {
             return selected.result;
         if (flags.abandon)
             return abandon(invocation, step, selected.run);
+        if (flags.checkpoint)
+            return checkpoint(invocation, selected.run);
         const owner = owningStep(selected.run);
         if (step === "execute" && owner !== undefined && owner !== "execute" && !TERMINAL_STATUSES.has(selected.run.status)) {
             return await resume({ ...invocation, command: owner }, owner, selected.run, selected.answers);

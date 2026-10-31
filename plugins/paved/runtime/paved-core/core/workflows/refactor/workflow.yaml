@@ -23,9 +23,19 @@ rules: [core.architecture.respect-declared-boundaries]
 phases:
   - phase: context
     goal: State the structural goal and confirm that behavior must not change.
+    routing:
+      mode: primary
+      capacity: balanced
+      reasoning_effort: low
+      rationale: "Restating the request needs the conversation, which only the primary session holds, and it is short work."
     skills: [core.discovery.context-discovery]
   - phase: discovery
     goal: Map the code in scope, its callers, and the invariants its tests pin.
+    routing:
+      mode: subagent
+      capacity: economy
+      reasoning_effort: low
+      rationale: "Locating code is search-heavy and output-light: a subagent keeps file contents out of the primary context, and a light model suffices when it returns paths and findings."
     skills: [core.discovery.context-discovery]
     gates:
       - id: behavior-pinned
@@ -36,6 +46,11 @@ phases:
         approval: risk-acceptance
   - phase: planning
     goal: Split the refactor into small steps that each keep tests passing.
+    routing:
+      mode: primary
+      capacity: frontier
+      reasoning_effort: high
+      rationale: "The plan is what the user approves; it needs the whole conversation and the strongest reasoning available."
     skills: [core.development.refactoring]
     gates:
       - id: plan-approved
@@ -43,24 +58,54 @@ phases:
         approval: implementation-plan
   - phase: implementation
     goal: Apply the steps, running the covering tests after each one.
+    routing:
+      mode: primary
+      capacity: balanced
+      reasoning_effort: medium
+      rationale: "The primary session owns the change against the approved plan; independent, mechanical parts go to subagents through a DelegationPlan at economy capacity."
     skills: [core.development.refactoring]
     retry: { class: retryable, max_attempts: 3 }
   - phase: validation
     goal: Build, lint and run the tests covering the code in scope.
+    routing:
+      mode: cli
+      capacity: economy
+      reasoning_effort: low
+      rationale: "Paved runs the tests; the agent relays the result and needs no strong model."
     verification:
       recommended: [build, static-analysis, unit]
   - phase: verification
     goal: Prove behavior is unchanged and the structural goal is reached.
+    routing:
+      mode: cli
+      capacity: economy
+      reasoning_effort: low
+      rationale: "Paved runs the profile checks; the agent relays the result and needs no strong model."
     verification:
       required: [unit]
       recommended: [integration, architecture]
   - phase: evidence
     goal: Record the baseline, the non-regression and structure claims, and their support.
+    routing:
+      mode: cli
+      capacity: economy
+      reasoning_effort: low
+      rationale: "Paved writes the evidence record from the verified results."
   - phase: review
     goal: Confirm no behavior change slipped in and nothing is left unused.
+    routing:
+      mode: subagent
+      capacity: balanced
+      reasoning_effort: high
+      rationale: "Independence needs a separate context; a balanced model at high effort finds defects at a fraction of a frontier model's cost."
     skills: [core.code-review.change-review]
   - phase: completion
     goal: Confirm the structural goal and non-regression.
+    routing:
+      mode: cli
+      capacity: economy
+      reasoning_effort: low
+      rationale: "Paved confirms the recorded gates and evidence."
     gates:
       - id: criteria-met
         condition: The evidence record is complete and valid.

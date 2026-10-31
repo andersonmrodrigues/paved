@@ -30,7 +30,8 @@ export interface PhaseContext {
 }
 
 export type PhaseOutcome =
-  | { readonly kind: "pass"; readonly ref?: string }
+  /** `warnings` are findings for the user that do not stop the phase. */
+  | { readonly kind: "pass"; readonly ref?: string; readonly warnings?: readonly Diagnostic[] }
   | { readonly kind: "blocked"; readonly code: string; readonly message: string; readonly remediation: string }
   | { readonly kind: "fail"; readonly reason: string; readonly nextAction: string; readonly diagnostics: readonly Diagnostic[] }
   | { readonly kind: "wait"; readonly nextAction: string }
@@ -88,5 +89,5 @@ export async function runPhase(input: Omit<PhaseContext, "gates">): Promise<Phas
   const outcome = hook ? await hook(context) : { kind: "pass" as const };
   if (outcome.kind !== "pass") return outcome;
   recordObservation(context, outcome.ref);
-  return { kind: "pass" };
+  return { kind: "pass", ...(outcome.warnings === undefined ? {} : { warnings: outcome.warnings }) };
 }

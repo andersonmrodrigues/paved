@@ -138,6 +138,14 @@ describe("Markdown preview", () => {
     }
   });
 
+  it("stops waiting when no preview server is running, since no comment can arrive", () => {
+    const root = temporaryDirectory("preview-closed");
+    writeFileSync(join(root, "plan.md"), "# Plan\n");
+    const waited = cli(root)("wait", "plan.md", "0");
+    assert.equal(waited.data.closed, true, JSON.stringify(waited));
+    assert.match(String(waited.data.next_action), /Stop waiting/);
+  });
+
   it("tells the reviewer whether an agent is waiting for comments", async () => {
     const root = temporaryDirectory("preview-watch");
     writeFileSync(join(root, "plan.md"), "# Plan\n");

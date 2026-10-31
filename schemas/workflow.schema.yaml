@@ -200,6 +200,22 @@ $defs:
           $ref: "urn:paved:schema:common:v1#/$defs/gate"
           type: object
           unevaluatedProperties: false
+      routing:
+        description: >
+          Who does the phase's work, so the primary session's context and its strongest
+          model are spent only where they are needed. `primary`: the session that holds
+          the conversation. `subagent`: a host subagent with its own context, given only a
+          bounded brief; it returns findings, not file contents. `cli`: Paved runs the
+          work and the agent relays the result. `capacity` and `reasoning_effort` are
+          relative tiers each host maps to its own models; they are not model names.
+        type: object
+        additionalProperties: false
+        required: [mode, capacity, reasoning_effort, rationale]
+        properties:
+          mode: { enum: [primary, subagent, cli] }
+          capacity: { enum: [economy, balanced, frontier] }
+          reasoning_effort: { enum: [low, medium, high] }
+          rationale: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
       skip_when:
         description: >
           The only condition under which this phase may be skipped. A phase without it

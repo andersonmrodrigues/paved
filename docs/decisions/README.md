@@ -46,8 +46,9 @@ writing a new record that supersedes it, not by editing the old one.
 | [0039](0039-host-native-task-delegation.md) | Host-native task delegation and model policy | Accepted |
 | [0040](0040-task-level-harness-experiments.md) | Task-level harness experiments | Accepted |
 | [0041](0041-shared-state-across-worktrees.md) | Shared state across linked worktrees | Accepted |
-| [0042](0042-natural-language-routing.md) | Natural-language routing on every prompt | Accepted |
+| [0042](0042-natural-language-routing.md) | Natural-language routing on every prompt | Superseded by 0044 |
 | [0043](0043-initiating-host-plugin-update.md) | Plugin update scoped to the initiating host | Accepted |
+| [0044](0044-phase-routing-and-token-economy.md) | Phase routing and a one-line prompt reminder | Accepted |
 
 ## Format
 

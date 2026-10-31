@@ -333,6 +333,15 @@ function currentRevision(projectRoot) {
         worktreeSha: sha(`${status.stdout}\n${diff.stdout}`),
     };
 }
+const TESTING_SUMMARY = "Executed testing Tool ";
+/**
+ * A record the test runner wrote for one Tool run. It is a log, not a verification result:
+ * its plan names a test type that, by design, no Check in it covers.
+ */
+export function isTestingToolEvidence(record) {
+    const { producer, change } = record;
+    return producer?.agent === "paved-cli" && typeof change?.summary === "string" && change.summary.startsWith(TESTING_SUMMARY);
+}
 function resultEvidence(args) {
     const createdAt = new Date().toISOString();
     const id = `test-${Date.now()}-${randomBytes(4).toString("hex")}`;
@@ -346,7 +355,7 @@ function resultEvidence(args) {
         producer: { agent: "paved-cli" },
         retention: "local",
         change: {
-            summary: `Executed testing Tool ${args.tool.id} via ${args.implementation.id}.`,
+            summary: `${TESTING_SUMMARY}${args.tool.id} via ${args.implementation.id}.`,
             revision: args.revision.revision,
             ...(args.revision.uncommitted ? { uncommitted_changes: true, worktree_sha256: args.revision.worktreeSha } : {}),
         },
@@ -470,7 +479,8 @@ async function runOneTestingTool(input, selected) {
         ? environmentFailure(processResult.exitCode, `${sanitizeToolOutput(processResult.stdout)}\n${sanitizeToolOutput(processResult.stderr)}`)
         : undefined;
     if (unavailable !== undefined) {
-        diagnostics.push(diagnostic(ENVIRONMENT_UNAVAILABLE, "environment", `The tests could not run against their environment: ${unavailable}.`, "Start the missing service or install the missing program, or exclude the tests that need external infrastructure from the testing Tool, then run the tests again."));
+        const where = implementation.invocation.working_directory ?? ".";
+        diagnostics.push(diagnostic(ENVIRONMENT_UNAVAILABLE, "environment", `Testing Tool ${tool.id} in ${where === "." ? "the repository root" : where} could not run against its environment: ${unavailable}.`, "Start the missing service or install the missing program, or exclude the tests that need external infrastructure from the testing Tool, then run the tests again."));
     }
     const execution = captureToolExecution({
         tool,
@@ -545,13 +555,25 @@ async function runOneTestingTool(input, selected) {
         evidence: relative(realpathSync(input.projectRoot), realpathSync(recordPath)).split(sep).join("/"),
     };
 }
+function outcomeOf(selected, result) {
+    const status = result.tool === undefined ? "not-run"
+        : result.status === "success" ? "passed"
+            : result.diagnostics.some((item) => item.code === ENVIRONMENT_UNAVAILABLE) ? "environment-unavailable" : "failed";
+    return {
+        tool: selected.tool.id, status, workingDirectory: selected.implementation.invocation.working_directory ?? ".",
+        ...(result.evidence === undefined ? {} : { evidence: result.evidence }),
+    };
+}
 export async function runTestingTool(input) {
     const selected = resolveTestingTool(input.projectRoot, input.coreRoot, input.sourceRoot);
     if (selected.status === "unavailable" || selected.status === "ambiguous") {
         return { status: "failed", diagnostics: [diagnostic(selected.code, "config", selected.message, selected.remediation)] };
     }
-    if (selected.status === "resolved")
-        return runOneTestingTool(input, selected);
+    if (selected.status === "resolved") {
+        const result = await runOneTestingTool(input, selected);
+        return { ...result, outcomes: [outcomeOf(selected, result)] };
+    }
+    // Every member runs, so one run reports every module that fails, not only the first.
     const results = [];
     for (const member of selected.members)
         results.push(await runOneTestingTool(input, member));
@@ -559,6 +581,7 @@ export async function runTestingTool(input) {
     const representative = failed ?? results[0];
     return {
         status: failed ? "failed" : "success",
+        outcomes: selected.members.map((member, index) => outcomeOf(member, results[index])),
         diagnostics: results.flatMap((result) => result.diagnostics),
         ...(representative?.tool === undefined ? {} : { tool: representative.tool }),
         ...(representative?.evidence === undefined ? {} : { evidence: representative.evidence }),

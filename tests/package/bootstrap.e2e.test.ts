@@ -162,7 +162,12 @@ describe("project-local agent bootstrap", () => {
       writeFileSync(join(consumer, ".paved", "approvals", `${runId}.json`), JSON.stringify({
         run: runId, plan_sha256: planSha, decision: "approved", decided_by: "maintainer", decided_at: new Date().toISOString(),
       }));
-      assert.equal(advance().status, 0);
+      {
+        // The test fails until feature.js is enabled: approval reports the baseline without failing.
+        const approvedStep = advance();
+        assert.equal(approvedStep.status, 0, approvedStep.stdout + approvedStep.stderr);
+        assert.match(approvedStep.stdout, /PAVED_WORKFLOW_BASELINE_FAILING/);
+      }
       writeFileSync(join(consumer, "src", "feature.js"), "export const enabled = true;\n");
       const implemented = advance("--note", "Implemented approved behavior");
       assert.equal(implemented.status, 0, implemented.stdout + implemented.stderr);

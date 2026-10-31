@@ -40,5 +40,5 @@ export async function runPhase(input) {
     if (outcome.kind !== "pass")
         return outcome;
     recordObservation(context, outcome.ref);
-    return { kind: "pass" };
+    return { kind: "pass", ...(outcome.warnings === undefined ? {} : { warnings: outcome.warnings }) };
 }

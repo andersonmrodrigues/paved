@@ -64,7 +64,9 @@ export const testingAdoptProvider: DecisionProvider = (context) => {
     question: "Which detected test commands should Paved run when a workflow tests a change?",
     reason:
       "feature, fix, refactor, implement and test run the selected governed testing commands. "
-      + "Without it those commands stay unavailable.",
+      + "Without it those commands stay unavailable. A selected command must pass on this machine for a run to complete: "
+      + "tests that need a database, container engine or other service block validation until it is available, "
+      + "so leave out, or narrow later, the commands that cannot run here (for example ones your CI also skips).",
     options: [
       ...(candidates.length > 1 ? [{
         id: "all", label: "All detected module tests",

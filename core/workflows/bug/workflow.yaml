@@ -28,18 +28,33 @@ rules: [core.testing.regression-test-for-bug-fix]
 phases:
   - phase: context
     goal: Capture the reported behavior, the expected behavior and the raw failure data.
+    routing:
+      mode: primary
+      capacity: balanced
+      reasoning_effort: low
+      rationale: "Restating the request needs the conversation, which only the primary session holds, and it is short work."
     skills: [core.discovery.context-discovery]
     gates:
       - id: expected-behavior-known
         condition: Expected behavior is stated by the report, the tests or a human.
   - phase: discovery
     goal: Reproduce the defect, isolate it and confirm its root cause.
+    routing:
+      mode: subagent
+      capacity: balanced
+      reasoning_effort: medium
+      rationale: "Reproducing and isolating a defect needs judgment, but its logs and traces belong in a separate context; the primary session receives the confirmed cause."
     skills: [core.debugging.bug-investigation]
     gates:
       - id: cause-confirmed
         condition: The root cause is confirmed by an observation, not only hypothesized.
   - phase: planning
     goal: Plan the fix at the cause and the regression test that proves it.
+    routing:
+      mode: primary
+      capacity: frontier
+      reasoning_effort: high
+      rationale: "The plan is what the user approves; it needs the whole conversation and the strongest reasoning available."
     skills: [core.debugging.bug-investigation, core.development.frontend-design]
     gates:
       - id: plan-approved
@@ -47,26 +62,56 @@ phases:
         approval: implementation-plan
   - phase: implementation
     goal: Write the failing regression test, then the fix.
+    routing:
+      mode: primary
+      capacity: balanced
+      reasoning_effort: medium
+      rationale: "The primary session owns the change against the approved plan; independent, mechanical parts go to subagents through a DelegationPlan at economy capacity."
     skills: [core.debugging.bug-investigation, core.development.frontend-design]
     gates:
       - id: test-failed-first
         condition: The regression test failed on the unfixed code for the reported reason.
   - phase: validation
     goal: Build, lint and confirm the regression test now passes.
+    routing:
+      mode: cli
+      capacity: economy
+      reasoning_effort: low
+      rationale: "Paved runs the tests; the agent relays the result and needs no strong model."
     verification:
       recommended: [build, static-analysis, unit]
   - phase: verification
     goal: Run the suites covering the affected code.
+    routing:
+      mode: cli
+      capacity: economy
+      reasoning_effort: low
+      rationale: "Paved runs the profile checks; the agent relays the result and needs no strong model."
     verification:
       required: [unit]
       recommended: [integration, e2e]
   - phase: evidence
     goal: Record the reproduction, the cause, the regression test results and the diff.
+    routing:
+      mode: cli
+      capacity: economy
+      reasoning_effort: low
+      rationale: "Paved writes the evidence record from the verified results."
   - phase: review
     goal: Check the fix explains the cause and look for the same cause elsewhere.
+    routing:
+      mode: subagent
+      capacity: balanced
+      reasoning_effort: high
+      rationale: "Independence needs a separate context; a balanced model at high effort finds defects at a fraction of a frontier model's cost."
     skills: [core.code-review.change-review]
   - phase: completion
     goal: Confirm every completion criterion and report the outcome.
+    routing:
+      mode: cli
+      capacity: economy
+      reasoning_effort: low
+      rationale: "Paved confirms the recorded gates and evidence."
     gates:
       - id: criteria-met
         condition: The evidence record is complete and valid.

@@ -11,6 +11,14 @@ function statusFor(diagnostics, failed) {
         return "failed";
     return diagnostics.length > 0 ? "warning" : "success";
 }
+/** Names each Tool that did not pass, so a suite failure says which modules to look at. */
+function failureMessage(outcomes) {
+    const failing = (outcomes ?? []).filter((item) => item.status !== "passed");
+    if (failing.length === 0 || (outcomes ?? []).length < 2)
+        return "The declared testing Tool failed or timed out.";
+    const list = failing.map((item) => `${item.tool} in ${item.workingDirectory}${item.evidence ? ` (${item.evidence})` : ""}`).join("; ");
+    return `${failing.length} of ${outcomes.length} testing Tools failed or timed out: ${list}.`;
+}
 export async function testHandler(invocation) {
     let inputs = {};
     if (invocation.flags.inputs !== undefined) {
@@ -95,6 +103,7 @@ export async function testHandler(invocation) {
                     evidence: result.evidence,
                     ...(result.tools === undefined ? {} : { tools: result.tools }),
                     ...(result.evidences === undefined ? {} : { evidences: result.evidences }),
+                    ...(result.outcomes === undefined ? {} : { outcomes: result.outcomes }),
                     verification: "not-run",
                 },
                 diagnostics: [
@@ -105,7 +114,7 @@ export async function testHandler(invocation) {
                                 category: "verification",
                                 code: "PAVED_TEST_TOOL_FAILED",
                                 component: "cli.commands.test",
-                                message: "The declared testing Tool failed or timed out.",
+                                message: failureMessage(result.outcomes),
                                 remediation: "Inspect the recorded Tool result and sanitized evidence log, then address the test failure.",
                             })]
                         : []),

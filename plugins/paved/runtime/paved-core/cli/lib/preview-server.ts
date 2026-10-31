@@ -22,6 +22,34 @@ export function serverInfoPath(root: string, target: string): string {
   return `${reviewPath(root, target)}.server.json`;
 }
 
+function serverInfo(root: string, target: string): PreviewServerInfo | undefined {
+  const path = serverInfoPath(root, target);
+  if (!existsSync(path)) return undefined;
+  return JSON.parse(readFileSync(path, "utf8")) as PreviewServerInfo;
+}
+
+/** The running preview server for a target, when one answers. */
+export async function livePreview(root: string, target: string): Promise<PreviewServerInfo | undefined> {
+  const value = serverInfo(root, target);
+  if (value === undefined) return undefined;
+  try {
+    const response = await fetch(`http://127.0.0.1:${value.port}/api/state`, {
+      headers: { authorization: `Bearer ${value.token}` }, signal: AbortSignal.timeout(1000),
+    });
+    return response.ok ? value : undefined;
+  } catch { return undefined; }
+}
+
+/** Stops the target's preview server; true when one was running. */
+export async function stopPreview(root: string, target: string): Promise<boolean> {
+  const value = await livePreview(root, target);
+  if (value === undefined) return false;
+  await fetch(`http://127.0.0.1:${value.port}/api/stop`, {
+    method: "POST", headers: { authorization: `Bearer ${value.token}` }, signal: AbortSignal.timeout(1000),
+  });
+  return true;
+}
+
 function json(response: ServerResponse, code: number, value: unknown): void {
   response.writeHead(code, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
   response.end(JSON.stringify(value));

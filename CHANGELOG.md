@@ -5,6 +5,45 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- `paved execute --run <id> --checkpoint --note <part>` records a finished part of a
+  multi-part plan while implementation stays open; advancing still starts validation.
+- `paved status` reports `PAVED_WORKFLOW_EVIDENCE_STALE` when source or test files
+  changed after the latest completed run was verified, so a fix made after review is not
+  shipped under the old evidence.
+- Workflow phases declare `routing` (`primary`, `subagent` or `cli`, a capacity tier and a
+  reasoning effort), and `intent`, `plan` and `execute` return it for the current phase:
+  discovery and review go to subagents, planning stays in the primary session at the
+  strongest tier, and Paved-run phases are only relayed. `paved delegation capabilities`
+  maps the tiers to host models (ADR 0044).
+
+### Changed
+
+- The prompt hook sends the full routing guidance when a session starts or resumes and
+  after compaction or clear; each prompt gets a one-line reminder instead of the full text
+  (about 1.5 KB to 0.3 KB per prompt). ADR 0044 supersedes ADR 0042.
+
+- Approving a plan reports `PAVED_WORKFLOW_BASELINE_FAILING` right away when the tests
+  already fail or cannot reach their environment, naming each testing Tool and its
+  evidence, instead of surfacing only at validation after the change is implemented.
+- The baseline records which testing Tools failed. A validation failure on a suite now
+  separates Tools that started failing since approval from Tools that already failed, and
+  `paved test` names every failing Tool of a suite with its working directory.
+- `PAVED_TEST_ENVIRONMENT_UNAVAILABLE` names the testing Tool and its working directory.
+- A refactor's discovery pins behavior with a passing run of the governed tests; the
+  `--evidence` pointer is optional, and a failing or unreachable baseline says which Tools
+  failed and how to reclassify the request.
+- Approving a plan stops its preview server, and `paved preview wait` returns
+  `closed: true` when no preview server is running instead of timing out repeatedly.
+- `paved init` asks to run the adopted test commands once, and the testing decision
+  explains that commands needing unavailable services block validation.
+
+### Fixed
+
+- The Gardener no longer proposes a "missing verification" workflow fix from the logs the
+  testing Tool writes, and proposal problems name the kind of recurring problem.
+
 ## [2.20.0] - 2026-10-31
 
 ### Changed
