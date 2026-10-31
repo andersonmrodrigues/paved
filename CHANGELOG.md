@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.21.0] - 2026-10-31
+
 ### Added
 
 - `paved execute --run <id> --checkpoint --note <part>` records a finished part of a
