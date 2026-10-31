@@ -5,6 +5,13 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Changed
+
+- An explicit Paved update request in Claude Code or Codex guides the agent to refresh
+  only its own installed marketplace/plugin, discover the new launcher and then update
+  the repository. Dry-run and automatic repairs keep host installations unchanged;
+  direct CLI updates remain local.
+
 ## [2.19.0] - 2026-10-31
 
 ### Changed

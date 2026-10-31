@@ -46,11 +46,36 @@ export interface CommandRendering {
   readonly title: string;
   readonly launcher: LauncherReference;
   readonly frontmatter?: { readonly name: string; readonly description: string };
+  readonly host?: AgentId | "codex-cursor";
+}
+
+function hostPluginRefresh(host: NonNullable<CommandRendering["host"]>): string[] {
+  const claude = host === "claude-code";
+  const refresh = claude ? "claude plugin marketplace update paved" : "codex plugin marketplace upgrade paved";
+  const install = claude ? "claude plugin update paved@paved" : "codex plugin add paved@paved --json";
+  return [
+    "## Host plugin refresh",
+    "",
+    "An explicit request to update Paved includes refreshing its installed plugin in the initiating host before updating this repository. Do not update another host, install a missing plugin, add a marketplace or change the installation scope.",
+    "For `--dry-run`, skip all marketplace and plugin writes; report the refresh steps and run only the existing launcher's local `update --dry-run --json`. Automatic lifecycle repairs and retries update local project state only; do not repeat this host refresh.",
+    ...(host === "codex-cursor" ? [
+      "In Codex only, follow the commands below. In Cursor, do not run Codex or Claude commands; explain that plugin refresh uses Cursor's plugin manager and keep the repository update local to the available launcher.",
+    ] : []),
+    `1. Check the current host's plugin inventory with \`${claude ? "claude plugin list --json" : "codex plugin list --json"}\`. Confirm \`paved@paved\` is already installed in the current scope and note its version and path. If it is not installed, explain that plugin refresh is unavailable and stop before updating project state; do not install it.`,
+    `2. Run \`${refresh}\`, and only if it succeeds run \`${install}\`. Respect host permissions and keep the existing installation scope; if the host needs an explicit scope option, use the one reported by its inventory. Never update all marketplaces.`,
+    `3. Locate the newly installed plugin's \`scripts/paved.mjs\` from ${claude ? "`installPath` in a fresh `claude plugin list --json` result" : "`installedPath` in the `codex plugin add paved@paved --json` result"}. Do not use the old launcher, a cached environment path or the project shim for this first update. Quote the discovered path when invoking Node; do not guess it.`,
+    "4. Use that launcher for the repository update below, preserving the user's supported arguments and explicit `--project` target. Verify the outcome with the same launcher's `runtime status --json` and `status --json`. Report the installed plugin version separately from the project's pinned runtime version.",
+    "If refresh, installation or path discovery fails, stop and report the failed stage before updating project state. A host refresh is not part of the project's rollback transaction: report any completed host steps, do not claim that nothing changed, and never bypass runtime integrity or compatibility checks. If the host needs a session restart to load refreshed hooks or skills, tell the user; do not claim those are already active.",
+    "",
+  ];
 }
 
 export function renderCommand(command: AgentCommandContract, rendering: CommandRendering): string {
   const location = rendering.launcher.location === undefined ? "" : ` ${rendering.launcher.location}`;
-  const cli = `Invoke \`${rendering.launcher.command} ${command.name} --json\` from the repository root, passing the user's command inputs as supported CLI arguments. The launcher loads the pinned project-local runtime and returns the canonical structured result.${location}`;
+  const refreshHost = command.name === "update" ? rendering.host : undefined;
+  const cli = refreshHost === undefined
+    ? `Invoke \`${rendering.launcher.command} ${command.name} --json\` from the repository root, passing the user's command inputs as supported CLI arguments. The launcher loads the pinned project-local runtime and returns the canonical structured result.${location}`
+    : `Invoke \`node "<newly discovered plugin>/scripts/paved.mjs" update --json\` from the repository root after host refresh, passing the user's supported inputs. When refresh is skipped as described above, use the existing launcher \`${rendering.launcher.command} update --json\` instead.${location} The launcher verifies the runtime and applies the transactional repository update.`;
   const body = [
     rendering.headerLine,
     `# ${rendering.title}`,
@@ -63,7 +88,9 @@ export function renderCommand(command: AgentCommandContract, rendering: CommandR
     `**Required context:** ${command.requiredContext.join(", ")}`,
     `**Required capabilities:** ${command.requiredCapabilities.length === 0 ? "none declared" : command.requiredCapabilities.join(", ")}`,
     `**Allowed side effects:** ${command.allowedSideEffects.join(", ")}`,
+    ...(refreshHost === undefined ? [] : ["**Host side effects:** refresh only the initiating host's installed Paved marketplace/plugin on an explicit update request; no host writes in dry-run."]),
     "",
+    ...(refreshHost === undefined ? [] : hostPluginRefresh(refreshHost)),
     "## Execution contract",
     "",
     `1. ${cli}`,
@@ -123,6 +150,7 @@ function commandContent(integration: IntegrationMetadata, command: AgentCommandC
     headerLine: `<!-- Generated by Paved ${integration.id}@${integration.version}; edit the canonical command contract in Paved Core instead. -->`,
     title: integration.target === "codex" ? `$paved-${command.name}` : `/paved:${command.name}`,
     launcher: projectLauncher(integration.target),
+    host: integration.target,
     ...(integration.target === "codex" ? { frontmatter: { name: `paved-${command.name}`, description: command.description } } : {}),
   });
 }

@@ -134,6 +134,21 @@ adapter implementation details, persistence and transaction helpers, temporary
 staging directories, and disposable generated state. Integrations must not
 import or depend on them.
 
+## Host plugin updates
+
+For an explicit Paved update request, Claude Code and Codex command projections
+guide the agent to refresh only the initiating host's already-installed Paved
+marketplace and plugin, then resolve the new plugin launcher before updating the
+consumer. Installation scope and host permissions remain authoritative.
+Dry-run and automatic lifecycle repairs perform no host refresh. Direct CLI updates
+stay local; they do not manage host installations.
+
+Host changes are outside the consumer update transaction. Report failed stages and
+completed host steps separately, stop before consumer updates if refresh fails, and
+preserve runtime integrity, compatibility and rollback checks. The portable plugin
+must not invoke Codex management commands when used in Cursor.
+See [ADR 0043](../decisions/0043-initiating-host-plugin-update.md).
+
 ## Security boundary
 
 Paved does not grant an integration capabilities beyond the declared Tool and
