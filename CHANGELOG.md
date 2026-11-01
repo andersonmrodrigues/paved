@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.22.0] - 2026-11-01
+
 ### Added
 
 - Opt-in, project-specific automatic plugin/runtime updates through the plugin
