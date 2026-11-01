@@ -3,11 +3,12 @@ import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
-import { stringify } from "yaml";
+import { parse, stringify } from "yaml";
 import { ROOT, schemas } from "../helpers.ts";
 import { consumer, pluginVariant, repackRuntime } from "./support.ts";
 
 const workspace = join(ROOT, "node_modules/.auto-update-tests");
+const runtimeVersion = JSON.parse(readFileSync(join(ROOT, "plugins/paved/runtime/paved-core/package.json"), "utf8")).version as string;
 mkdirSync(workspace, { recursive: true });
 after(() => rmSync(workspace, { recursive: true, force: true }));
 let sequence = 0;
@@ -21,7 +22,7 @@ function fixture() {
   for (const [source, target] of [["bootstrap.mjs", "paved.mjs"], ["auto-update.mjs", "auto-update.mjs"]]) {
     if (existsSync(join(ROOT, "integrations/shared", source!))) cpSync(join(ROOT, "integrations/shared", source!), join(plugin, "scripts", target!));
   }
-  writeFileSync(join(plugin, "scripts/bootstrap.json"), JSON.stringify({ package: "paved-core", version: "2.21.0", runtime: "../runtime", integrity: `sha512-${Buffer.alloc(64).toString("base64")}` }));
+  writeFileSync(join(plugin, "scripts/bootstrap.json"), JSON.stringify({ package: "paved-core", version: runtimeVersion, runtime: "../runtime", integrity: `sha512-${Buffer.alloc(64).toString("base64")}` }));
   writeFileSync(join(project, ".paved/manifest.yaml"), "apiVersion: paved/v1\nkind: Project\n");
   writeFileSync(join(project, ".paved/paved.lock"), "apiVersion: paved/v1\nkind: Lock\n");
   const log = join(root, "commands.jsonl");
@@ -319,7 +320,10 @@ describe("authorized plugin automatic updates", () => {
     assert.equal(f.commands().filter(args => args.includes("marketplace")).length, 1);
   });
   it("the real refreshed launcher upgrades transactionally and rejects corrupt/incompatible runtimes", () => {
-    for (const candidate of ["2.21.1", "3.0.0", "corrupt"]) {
+    const [major, minor, patch] = runtimeVersion.split(".").map(Number) as [number, number, number];
+    const compatibleVersion = `${major}.${minor}.${patch + 1}`;
+    const incompatibleVersion = `${major + 1}.0.0`;
+    for (const candidate of ["compatible", "incompatible", "corrupt"]) {
       const f = fixture();
       rmSync(join(f.project, ".paved"), { recursive: true });
       consumer(f.root, "project");
@@ -329,16 +333,18 @@ describe("authorized plugin automatic updates", () => {
       assert.equal(existsSync(join(f.project, ".paved/auto-update.json")), false, "ordinary init never opts in");
       const beforeLock = readFileSync(join(f.project, ".paved/paved.lock"), "utf8");
       const beforeSelection = readFileSync(join(f.project, ".paved/runtime/selection.json"), "utf8");
-      const version = candidate === "corrupt" ? "2.21.1" : candidate;
+      const version = candidate === "incompatible" ? incompatibleVersion : compatibleVersion;
       const runtime = repackRuntime(join(f.plugin, "runtime/paved-core"), version, f.root);
       rmSync(f.refreshed, { recursive: true });
       pluginVariant(f.plugin, f.root, "refreshed", { ...runtime, version });
       if (candidate === "corrupt") writeFileSync(join(f.refreshed, "runtime/paved-core/VERSION"), "tampered\n");
       f.configure();
       const updated = f.run(["check", "--host", "claude-code"]);
-      if (candidate === "2.21.1") {
+      if (candidate === "compatible") {
         assert.equal(updated.json.status, "success", updated.stdout + updated.stderr);
-        assert.match(readFileSync(join(f.project, ".paved/paved.lock"), "utf8"), /version: 2\.21\.1/);
+        const lock = parse(readFileSync(join(f.project, ".paved/paved.lock"), "utf8"));
+        assert.equal(lock.core.version, compatibleVersion);
+        assert.equal(lock.runtime.version, compatibleVersion);
         assert.equal(existsSync(join(f.project, ".paved-operation-lock")), false);
       } else {
         assert.equal(updated.json.status, "failed", updated.stdout);
