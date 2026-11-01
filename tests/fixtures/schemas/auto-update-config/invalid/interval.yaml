@@ -1,0 +1,6 @@
+# expect-error: >= 1
+apiVersion: paved/v1
+kind: AutoUpdateConfig
+mode: notify
+host: codex
+intervalHours: 0

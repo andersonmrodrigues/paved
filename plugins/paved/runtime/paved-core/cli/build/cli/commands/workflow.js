@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { inspectConsumer } from "../lib/consumer-state.js";
+import { acquireConsumerOperationLock, ConsumerOperationLockedError, withConsumerOperationScope } from "../lib/operation-lock.js";
 import { refreshFor, remediationFor } from "../lib/lifecycle-remediation.js";
 import { runDecisionGate, toProjection } from "../lib/decisions/gate.js";
 import { decisionId, transition } from "../lib/decisions/record.js";
@@ -729,7 +730,20 @@ function withRouting(invocation, outcome) {
     }
 }
 export async function stepHandler(invocation) {
-    return withRouting(invocation, await dispatchStep(invocation));
+    let release;
+    try {
+        release = acquireConsumerOperationLock(invocation.paths.projectRoot, "workflow");
+        return await withConsumerOperationScope(invocation.paths.projectRoot, async () => withRouting(invocation, await dispatchStep(invocation)));
+    }
+    catch (error) {
+        if (error instanceof ConsumerOperationLockedError) {
+            return blocked(invocation.command, "PAVED_OPERATION_IN_PROGRESS", error.message, "Wait for the active Paved operation to finish before starting or resuming a workflow.");
+        }
+        throw error;
+    }
+    finally {
+        release?.();
+    }
 }
 async function dispatchStep(invocation) {
     const step = invocation.command;

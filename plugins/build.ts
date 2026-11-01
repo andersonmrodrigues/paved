@@ -131,6 +131,9 @@ export function packRuntime(root: string, options: { build: boolean }): RuntimeA
     // generated plugin output and provenance digests.
     for (const path of files.keys()) {
       if (path.startsWith("node_modules/") && /\/CHANGELOG\.md$/i.test(path)) files.delete(path);
+      // Claude has a 512-file ceiling. Integration execution uses compiled twins;
+      // keep the standalone launchers and assets, not duplicate TypeScript sources.
+      if (path.startsWith("integrations/") && path.endsWith(".ts") && files.has(`cli/build/${path.replace(/\.ts$/, ".js")}`)) files.delete(path);
     }
     return { version: artifact.version, files, integrity: directoryIntegrity(files) };
   } finally {
@@ -211,6 +214,7 @@ function readme(source: PluginSource, runtime: RuntimeArtifact, hosts: string, d
     `- Runtime integrity: \`${runtime.integrity}\`, checked over the runtime and its dependencies before activation`,
     `- Launcher: \`${LAUNCHER_DIRECTORY}/paved.mjs\``,
     "- Prompt routing: `hooks/hooks.json` adds advisory Paved context on every prompt in repositories initialized with Paved, and again after compaction.",
+    `- Optional automatic update: from an initialized project, explicitly run \`node "<plugin>/scripts/paved.mjs" auto-update configure --host ${hosts === "Claude Code" ? "claude-code" : "codex"} --mode auto --interval-hours 24 --json\`; use \`auto-update status --json\`, \`auto-update check --host <host> --json\`, or configure \`--mode off\` / \`--mode notify\`. Defaults are off; trusted session/prompt hooks check due updates. Cursor remains manual.`,
     "- Workbench: `paved workbench start` opens the local run dashboard; optional lifecycle hooks show recent agent activity only while it is running.",
     `- Skills: ${skills}`,
     "",
@@ -294,7 +298,19 @@ function commonFiles(root: string, source: PluginSource, launcher: LauncherRefer
     files.set(`skills/${command.name}/SKILL.md`, Buffer.from(`${rendered}${guidance}`));
   }
   files.set(`${LAUNCHER_DIRECTORY}/paved.mjs`, readFileSync(join(root, "integrations", "shared", "bootstrap.mjs")));
-  files.set("hooks/hooks.json", readFileSync(join(root, "integrations", "shared", "hooks.json")));
+  files.set(`${LAUNCHER_DIRECTORY}/auto-update.mjs`, readFileSync(join(root, "integrations", "shared", "auto-update.mjs")));
+  const hooks = JSON.parse(readFileSync(join(root, "integrations", "shared", "hooks.json"), "utf8")) as {
+    hooks: Record<string, { hooks: { command: string; timeout: number }[] }[]>;
+  };
+  for (const entries of Object.values(hooks.hooks)) {
+    for (const entry of entries) for (const hook of entry.hooks) {
+      if (hook.command.includes("paved-prompt-submit.mjs")) {
+        hook.command += ` --host ${host === "claude-code" ? "claude-code" : "codex"}`;
+        hook.timeout = 450;
+      }
+    }
+  }
+  files.set("hooks/hooks.json", json(hooks));
   files.set("hooks/paved-prompt-submit.mjs", readFileSync(join(root, "integrations", "shared", "prompt-submit-hook.mjs")));
   files.set("hooks/paved-workbench.mjs", readFileSync(join(root, "integrations", "shared", "workbench-hook.mjs")));
   files.set("VERSION", Buffer.from(`${source.version}\n`));

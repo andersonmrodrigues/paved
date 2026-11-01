@@ -1,0 +1,18 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:auto-update-config:v1
+title: Project plugin automatic update authorization
+description: Explicit opt-in authorization at .paved/auto-update.json. No paths or executable commands are accepted.
+type: object
+additionalProperties: false
+required: [apiVersion, kind, mode, intervalHours]
+properties:
+  apiVersion: { const: paved/v1 }
+  kind: { const: AutoUpdateConfig }
+  mode: { enum: [off, notify, auto] }
+  intervalHours: { type: integer, minimum: 1, maximum: 8760 }
+  host: { enum: [claude-code, codex, cursor] }
+allOf:
+  - if:
+      properties: { mode: { enum: [notify, auto] } }
+    then:
+      required: [host]

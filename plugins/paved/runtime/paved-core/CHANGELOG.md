@@ -5,6 +5,16 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- Opt-in, project-specific automatic plugin/runtime updates through the plugin
+  launcher `auto-update configure|status|check`, with a configurable 24-hour default.
+  Trusted Claude Code/Codex session-start and prompt hooks run checks deterministically;
+  Cursor stays manual. Host refresh preserves installation scope and is throttled
+  across projects without starving independent runtime adoption. Busy workflows
+  defer, CI/dry-run suppress writes, failures back off, and notify-only reports
+  installed inventory without claiming upstream freshness (ADR 0045).
+
 ## [2.21.0] - 2026-10-31
 
 ### Added

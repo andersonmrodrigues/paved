@@ -13,7 +13,7 @@ import { UNCHANGED_HANDLER, type WorkflowContract } from "./workflows.ts";
 interface ChangeDiff { readonly files: string[]; readonly patch: string }
 
 // Paved state is not part of the change it records.
-const PATHSPEC = ["--", ".", ":(exclude).paved", ":(exclude).paved.update-backup"];
+const PATHSPEC = ["--", ".", ":(exclude).paved", ":(exclude).paved.update-backup", ":(exclude).paved-operation-lock"];
 
 function git(projectRoot: string, args: readonly string[]): { ok: boolean; stdout: string } {
   const result = spawnSync("git", args, { cwd: projectRoot, encoding: "utf8", shell: false, maxBuffer: 64 * 1024 * 1024 });

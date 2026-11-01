@@ -1,0 +1,4 @@
+apiVersion: paved/v1
+kind: AutoUpdateConfig
+mode: off
+intervalHours: 24

@@ -40,3 +40,11 @@ Claude Code and Codex also load plugin-bundled lifecycle hooks from
 session-scoped routing guidance; the Workbench hook sends minimal lifecycle activity
 only to a running loopback dashboard. The dashboard and run inspection live in the
 packaged CLI, not in either host projection.
+
+Explicit project authorization can enable `shared/auto-update.mjs` through the
+plugin launcher `auto-update configure|status|check`. Trusted session/prompt hooks
+then run due checks deterministically, preserving routing reminders. Host commands
+are hardcoded and host/scope-specific; project adoption delegates to the existing
+transactional local runtime. Defaults are off, Cursor is manual, and CI/dry-run
+never refresh hosts. Authorization and throttle contracts have schemas; templates
+are `shared/auto-update-config.template.yaml` and `shared/auto-update-state.template.yaml`.

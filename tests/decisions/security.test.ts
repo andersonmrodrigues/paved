@@ -216,7 +216,7 @@ describe("security invariants an answer cannot override", () => {
     ], cwd: root, executablePath: join(coreRoot, "cli/index.ts") });
     assert.equal(raised.status, "success", JSON.stringify(raised));
     const id = (raised.data as { id: string }).id;
-    const payload = `touch ${marker}`;
+    const payload = "touch should-not-be-created-by-free-text";
     const resumed = await dispatchCli({ argv: [
       "intent", "--run", run, "--advance", "--note", "Retain the user note.",
       "--answer", `${id}=${payload}`, "--answered-by", "tester@example.com", "--project", root, "--json",

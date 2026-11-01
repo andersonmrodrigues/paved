@@ -15,7 +15,7 @@ interface StackDecision {
 }
 
 function initializeThroughDecisions(paved: (cwd: string, ...args: string[]) => Invocation, project: string): { result: Invocation; questions: StackDecision[] } {
-  let result = paved(project, "init", "--json");
+  let result = paved(project, "init", "--project", project, "--json");
   const questions = [...(result.json.decisions ?? [])] as StackDecision[];
   for (let round = 0; round < 5 && result.json.status === "awaiting_input"; round += 1) {
     const decisions = (result.json.decisions ?? []) as StackDecision[];
@@ -25,7 +25,7 @@ function initializeThroughDecisions(paved: (cwd: string, ...args: string[]) => I
     if (decisions.filter((decision) => decision.required).some((decision) => decision.answerChannel !== "relayed")) {
       throw new Error("Stack initialization offered a non-relayed decision.");
     }
-    result = paved(project, "init", ...answers, "--answered-by", "tester@example.com", "--json");
+    result = paved(project, "init", "--project", project, ...answers, "--answered-by", "tester@example.com", "--json");
   }
   return { result, questions };
 }
