@@ -1,0 +1,5 @@
+apiVersion: paved/v1
+kind: AutoUpdateState
+failures: 0
+nextAttempt: 0
+completed: []

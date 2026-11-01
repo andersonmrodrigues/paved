@@ -10,7 +10,7 @@ import { resolveSafePath } from "./safe-path.js";
 import { runSourceRoot } from "./workflow-runs.js";
 import { UNCHANGED_HANDLER } from "./workflows.js";
 // Paved state is not part of the change it records.
-const PATHSPEC = ["--", ".", ":(exclude).paved", ":(exclude).paved.update-backup"];
+const PATHSPEC = ["--", ".", ":(exclude).paved", ":(exclude).paved.update-backup", ":(exclude).paved-operation-lock"];
 function git(projectRoot, args) {
     const result = spawnSync("git", args, { cwd: projectRoot, encoding: "utf8", shell: false, maxBuffer: 64 * 1024 * 1024 });
     // `git diff --no-index` exits 1 when the files differ, which is the expected case.

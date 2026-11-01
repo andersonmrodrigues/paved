@@ -106,11 +106,90 @@ proceed normally. Explicit user direction takes precedence.
 
 Review and trust the plugin's hook when Codex or Claude Code asks. Codex skips plugin
 hooks until you review and trust their current definition; Claude Code applies its
-workspace trust rules. Hook activation is advisory: it does not run Paved commands,
-inspect prompt text, or change files. Invalid input, missing state, or hook errors fail
+workspace trust rules. Routing remains advisory and never inspects prompt text.
+By default hooks do not change files or run Paved commands. Explicit automatic-update
+authorization enables the deterministic update check described below; it does not
+authorize implementing your application changes. Invalid input, missing state, or hook errors fail
 open and leave the prompt unaffected. If the hook is disabled, untrusted, or unsupported
 by the host, the existing Paved skills and the `AGENTS.md` guidance remain available
 where that host loads them.
+
+### Optional automatic updates
+
+Automatic updates are **off by default**, project-specific, and never enabled by
+ordinary `init` or `update`. From an initialized consumer repository, explicitly
+authorize the plugin launcher (replace `<plugin>` with its installed root):
+
+```bash
+# Claude Code; use --host codex for Codex
+node "<plugin>/scripts/paved.mjs" auto-update configure --host claude-code --mode auto --interval-hours 24 --json
+node "<plugin>/scripts/paved.mjs" auto-update status --json
+node "<plugin>/scripts/paved.mjs" auto-update check --host claude-code --json
+
+# Read-only host inventory notification, or disable authorization
+node "<plugin>/scripts/paved.mjs" auto-update configure --host claude-code --mode notify --interval-hours 24 --json
+node "<plugin>/scripts/paved.mjs" auto-update configure --mode off --json
+```
+
+`configure` accepts `--mode off|notify|auto`, `--interval-hours 1..8760` (default
+24) and `--host claude-code|codex|cursor`. `status` is read-only. `check` requires
+the initiating `--host`, respects the interval, and also accepts `--dry-run`.
+All three accept `--project <repository>` and `--json`. Cursor can store a
+preference, but automatic host management is unsupported: use Cursor's plugin
+manager. Never run Codex management commands from Cursor.
+
+Trusted Claude Code and Codex `SessionStart` and `UserPromptSubmit` hooks call the
+checker directly, not through an LLM instruction. Prompts in a long session are
+therefore covered, even when you never invoke a Paved command. Claude's generated
+hook passes its own host identity; the portable hook additionally requires Codex's
+injected `PLUGIN_ROOT` to match its physically installed hook under
+`$CODEX_HOME/plugins/cache/paved/paved/`. Merely setting `CODEX_HOME` is not host
+identification. Older/custom Codex installations without this context fail closed;
+the explicit launcher `check --host codex` still works. Cursor declares no shared
+hooks, so there is no automatic Cursor event support. Disabling or not trusting
+host hooks also disables automatic checks.
+
+`auto` checks only an already installed, enabled `paved@paved` in the initiating
+host. Claude refreshes `paved` then updates the plugin with its existing
+`user|project|local` scope; Codex refreshes `paved` then re-adds the already
+installed plugin. No other host or marketplace is managed, and a missing plugin
+is never installed. The first adoption uses the authoritative refreshed inventory
+path (Claude) or install result (Codex), never the old launcher. A project adopts
+through the existing integrity-checked, compatibility-checked runtime transaction;
+an incompatible or corrupt release leaves its prior pinned runtime working.
+
+`notify` only inspects installed inventory and records check metadata. It does not
+refresh marketplaces/plugins or acquire/select/migrate a runtime. Inventory is
+**not upstream freshness**: the result explicitly reports `upstream: "unknown"`,
+rather than claiming that a locally installed version is the latest release.
+Notification failures also back off.
+
+Authorization is `.paved/auto-update.json`; check metadata is
+`.paved/auto-update-state.json`. Neither contract accepts external paths or commands,
+and symlinked configuration/state is rejected. Configuration is an explicit local
+authorization: review it rather than blindly importing another project's opt-in.
+Only `configure` persists or changes the preference.
+
+Host refresh has a cross-project lock and throttle under
+`~/.cache/paved/auto-update/`, keyed by host home, plugin id, scope and (for
+project/local scope) project identity. Each project has a separate adoption clock:
+a second project still adopts the newest already-refreshed installation.
+Linked worktrees sharing `.paved/` also share authorization and the adoption clock,
+while host inventory/refresh runs from the initiating checkout and preserves its scope.
+Existing project operation locks, runtime bootstrap locks, and resumable/unknown workflow
+runs defer adoption **without consuming its next opportunity**. Only completed,
+completed-with-warnings or cancelled runs allow automatic migration; failed/blocked
+runs conservatively require resolution first. No stale lock is automatically
+deleted: inspect its owner and confirm that no updater is active before removing it.
+
+Checks in CI (`CI` or `GITHUB_ACTIONS`), with `PAVED_DRY_RUN=true`, or with
+`--dry-run` do not run host commands or write update state. Host subprocesses time
+out after 30 seconds; local adoption is bounded separately. Failure backoff starts
+at one hour and doubles to at most 24 hours, rather than retrying on every prompt.
+Results report completed stages and whether a **session restart is required**.
+Host refresh is outside project rollback: reverting a project runtime does not
+undo a marketplace/plugin update. New skills/hooks are not claimed to replace the
+current session's already loaded definitions. No background service is started.
 
 ## Run Paved from a terminal
 

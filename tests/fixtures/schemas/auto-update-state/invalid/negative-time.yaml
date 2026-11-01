@@ -1,0 +1,6 @@
+# expect-error: >= 0
+apiVersion: paved/v1
+kind: AutoUpdateState
+failures: 1
+nextAttempt: -1
+completed: [inventory]

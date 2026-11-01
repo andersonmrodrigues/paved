@@ -1,0 +1,6 @@
+# expect-error: allowed values
+apiVersion: paved/v1
+kind: AutoUpdateConfig
+mode: auto
+host: arbitrary
+intervalHours: 24

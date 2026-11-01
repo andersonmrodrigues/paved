@@ -17,7 +17,9 @@ launcher, and invoke the repository update through it. Claude and Codex have
 host-specific commands; the shared portable plugin limits Codex commands to Codex
 and directs Cursor to its plugin manager.
 
-Host refresh applies only to an explicit Paved update request. Dry-run skips host
+Host refresh applies to an explicit Paved update request, or to the project owner's
+explicit persistent automatic-update authorization described in [ADR 0045](0045-authorized-automatic-plugin-updates.md).
+Ordinary init/update never enables that authorization. Dry-run skips host
 writes, automatic repairs remain local, and missing plugins are not installed.
 Keep existing scope and host permissions. Stop if the plugin is missing or on refresh or path discovery failure
 before changing consumer state; report already completed host steps.

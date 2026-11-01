@@ -47,7 +47,7 @@ describe("project-local agent bootstrap", () => {
       const rejectedIntegration = join(rejectedConsumer, ".agents", "skills", "paved-runtime");
       mkdirSync(join(rejectedConsumer, ".agents", "skills"), { recursive: true });
       cpSync(integration, rejectedIntegration, { recursive: true });
-      const rejectInvoke = () => spawnSync(process.execPath, [join(rejectedIntegration, "bootstrap.mjs"), "--version", "--json"], {
+      const rejectInvoke = () => spawnSync(process.execPath, [join(rejectedIntegration, "bootstrap.mjs"), "--version", "--project", rejectedConsumer, "--json"], {
         cwd: rejectedConsumer, encoding: "utf8", shell: false, env: { ...process.env, npm_config_offline: "true" },
       });
       writeFileSync(join(rejectedIntegration, "bootstrap.json"), JSON.stringify({

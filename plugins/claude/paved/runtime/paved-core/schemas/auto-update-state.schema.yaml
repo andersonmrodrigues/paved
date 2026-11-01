@@ -1,0 +1,19 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:auto-update-state:v1
+title: Plugin automatic update throttle and failure state
+description: >
+  Project metadata at .paved/auto-update-state.json and per-installation host metadata
+  under the user's .cache/paved/auto-update/. Timestamps are Unix milliseconds.
+  No paths are executable through this contract.
+type: object
+additionalProperties: false
+required: [apiVersion, kind, failures, nextAttempt, completed]
+properties:
+  apiVersion: { const: paved/v1 }
+  kind: { const: AutoUpdateState }
+  lastSuccess: { type: integer, minimum: 0, maximum: 9007199254740991 }
+  nextAttempt: { type: integer, minimum: 0, maximum: 9007199254740991 }
+  failures: { type: integer, minimum: 0, maximum: 20 }
+  completed:
+    type: array
+    items: { enum: [inventory, marketplace, plugin, adoption] }

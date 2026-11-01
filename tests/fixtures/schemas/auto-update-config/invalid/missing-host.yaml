@@ -1,0 +1,5 @@
+# expect-error: host
+apiVersion: paved/v1
+kind: AutoUpdateConfig
+mode: auto
+intervalHours: 24

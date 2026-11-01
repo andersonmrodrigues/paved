@@ -496,6 +496,8 @@ function installProjectCommand(ctx, config) {
     ensureIgnored(ctx);
     const integration = { ...readJson(configPath), launcher_dir: launcherDir };
     writeIfChanged(script, readFileSync(launcherPath));
+    const autoUpdateModule = join(launcherDir, 'auto-update.mjs');
+    if (existsSync(autoUpdateModule)) writeIfChanged(join(bin, 'auto-update.mjs'), readFileSync(autoUpdateModule));
     writeIfChanged(join(bin, 'bootstrap.json'), `${JSON.stringify(integration, null, 2)}\n`);
     // The runtime already runs from the project root, so entering it first changes no paths.
     // The caller's directory goes along so a linked worktree sharing this state stays the source.
@@ -572,9 +574,13 @@ function runtimeStatus(ctx, config) {
 // Activates the plugin's runtime and lets that runtime move paved.lock through the Core's
 // transactional update. The previous runtime and lock bytes are kept for rollback. A legacy
 // lock has no previous runtime; adopting one records `previous: null`.
-function runtimeUpgrade(ctx, config, command = 'runtime') {
+function runtimeUpgrade(ctx, config, command = 'runtime', operationToken) {
   const locked = lockedRuntime(ctx);
   if (locked === undefined) fail('PAVED_RUNTIME_UPGRADE_UNAVAILABLE', 'Runtime upgrade requires an initialized project.', 'Run init first.');
+  if (operationToken && locked && compareVersions(config.version, locked.version) < 0) {
+    emit(command, 'success', { changed: false, runtime: locked, reason: 'no-downgrade' });
+    process.exit(0);
+  }
   withBootstrapLock(ctx, () => {
     let current = null;
     // A fresh clone has no runtime state (.paved/runtime/ is ignored). It upgrades like a legacy
@@ -597,7 +603,7 @@ function runtimeUpgrade(ctx, config, command = 'runtime') {
     writeAtomic(ctx.rollbackPath, { previous: current, lock_sha256: sha256(lockBytes), created_at: new Date().toISOString() });
     writeAtomic(ctx.selectionPath, next);
     const executable = validateSelection(ctx, next, next);
-    const child = spawnSync(process.execPath, [executable, 'update', '--json', '--project', ctx.sourceRoot], { cwd: ctx.sourceRoot, shell: false, encoding: 'utf8', env: process.env, maxBuffer: 16 * 1024 * 1024 });
+    const child = spawnSync(process.execPath, [executable, 'update', '--json', '--project', ctx.sourceRoot], { cwd: ctx.sourceRoot, shell: false, encoding: 'utf8', env: { ...process.env, ...(operationToken ? { PAVED_PARENT_OPERATION_TOKEN: operationToken } : {}) }, ...(operationToken ? { timeout: 120000, killSignal: 'SIGKILL' } : {}), maxBuffer: 16 * 1024 * 1024 });
     let result;
     try { result = JSON.parse(child.stdout); } catch { result = undefined; }
     const after = lockedRuntime(ctx);
@@ -657,6 +663,15 @@ try {
     rollbackPath: join(runtimeDir, 'rollback.json'),
     rollbackLockPath: join(runtimeDir, 'rollback.lock'),
   };
+  if (argv[0] === 'auto-update') {
+    const { autoUpdate } = await import('./auto-update.mjs');
+    const result = autoUpdate({
+      projectRoot, sourceRoot, pluginRoot: packageRoot, argv: argv.slice(1),
+      adopt: (token) => runtimeUpgrade(ctx, config, 'update', token),
+    });
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+    process.exit(result.status === 'failed' ? 5 : 0);
+  }
   prepareRuntimeDir(ctx);
   if (argv[0] === 'runtime') {
     const [, action = 'status', ...rest] = argv;

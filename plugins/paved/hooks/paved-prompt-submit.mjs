@@ -1,5 +1,7 @@
-import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const context = [
   "Paved routing for this repository:",
@@ -33,6 +35,44 @@ function emit(hookEventName, additionalContext) {
   process.stdout.write(`${JSON.stringify({ hookSpecificOutput: { hookEventName, additionalContext } })}\n`);
 }
 
+function stateRepository(repository) {
+  if (existsSync(join(repository, ".paved/manifest.yaml"))) return repository;
+  try {
+    const dotGit = join(repository, ".git");
+    if (!lstatSync(dotGit).isFile()) return repository;
+    const pointer = /^gitdir:\s*(.+?)\s*$/m.exec(readFileSync(dotGit, "utf8"))?.[1];
+    if (!pointer) return repository;
+    const gitDir = resolve(repository, pointer);
+    const common = realpathSync(resolve(gitDir, readFileSync(join(gitDir, "commondir"), "utf8").trim()));
+    if (common.split(sep).at(-1) !== ".git") return repository;
+    const main = dirname(common);
+    return existsSync(join(main, ".paved/manifest.yaml")) ? main : repository;
+  } catch { return repository; }
+}
+
+async function checkAuthorizedUpdate(repository, sourceRoot) {
+  // Identity comes from the installed hook declaration, never a repository setting.
+  const host = process.argv[2] === "--host" ? process.argv[3] : undefined;
+  if (!["claude-code", "codex"].includes(host)) return;
+  const pluginRoot = realpathSync(dirname(dirname(fileURLToPath(import.meta.url))));
+  if (host === "codex") {
+    // Codex supplies PLUGIN_ROOT for plugin hooks. CODEX_HOME by itself can be
+    // inherited by Cursor and is not proof of the initiating host.
+    const cache = resolve(process.env.CODEX_HOME ?? join(homedir(), ".codex"), "plugins/cache/paved/paved");
+    const rel = relative(cache, pluginRoot);
+    if (process.env.PLUGIN_ROOT !== pluginRoot || !rel || rel.startsWith(`..${sep}`) || rel === ".." || resolve(cache, rel) !== pluginRoot) return;
+  }
+  if (!existsSync(join(repository, ".paved/auto-update.json"))) return;
+  const { autoUpdate } = await import("../scripts/auto-update.mjs");
+  const result = autoUpdate({ projectRoot: repository, sourceRoot, pluginRoot, argv: ["check", "--host", host] });
+  if (result.status === "failed" || ["updated", "notification"].includes(result.data.reason)) {
+    process.stderr.write(`${JSON.stringify({ autoUpdate: result })}\n`);
+  }
+  if (result.data.reason === "updated") return "Paved automatic update finished. Restart this agent session to load refreshed skills/hooks; current-session definitions have not been replaced.";
+  if (result.data.reason === "notification") return "Paved update notification checked installed inventory only; upstream freshness is unknown. No plugin or runtime was updated.";
+  if (result.status === "failed") return `Paved automatic update failed after [${result.data.completed.join(", ")}]. Project adoption was not confirmed; inspect the diagnostics. Completed host refresh steps are not rolled back.`;
+}
+
 try {
   process.stdin.setEncoding("utf8");
   let input = "";
@@ -41,19 +81,24 @@ try {
   if (event === null || typeof event !== "object" || Array.isArray(event) || typeof event.cwd !== "string") {
     process.exit(0);
   }
-  const repository = nearestRepository(event.cwd);
+  const sourceRoot = nearestRepository(event.cwd);
+  const repository = sourceRoot === undefined ? undefined : stateRepository(sourceRoot);
   if (repository === undefined ||
       !existsSync(join(repository, ".paved", "manifest.yaml")) ||
       !existsSync(join(repository, ".paved", "paved.lock"))) {
     process.exit(0);
   }
+  let updateNotice;
+  if (event.hook_event_name === undefined || ["SessionStart", "UserPromptSubmit"].includes(event.hook_event_name)) {
+    try { updateNotice = await checkAuthorizedUpdate(repository, sourceRoot); } catch { /* Update failures must not suppress routing guidance. */ }
+  }
   if (event.hook_event_name === "SessionStart") {
     // A new or resumed session, compaction and clear each start without earlier guidance.
     if (["startup", "resume", "compact", "clear"].includes(event.source)) {
-      emit("SessionStart", context);
+      emit("SessionStart", updateNotice ? `${context}\n${updateNotice}` : context);
     }
   } else if (event.hook_event_name === undefined || event.hook_event_name === "UserPromptSubmit") {
-    emit("UserPromptSubmit", reminder);
+    emit("UserPromptSubmit", updateNotice ? `${reminder}\n${updateNotice}` : reminder);
   }
 } catch {
   // This hook only adds guidance; any input or filesystem failure must leave the prompt unaffected.

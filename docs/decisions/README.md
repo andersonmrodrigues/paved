@@ -49,6 +49,7 @@ writing a new record that supersedes it, not by editing the old one.
 | [0042](0042-natural-language-routing.md) | Natural-language routing on every prompt | Superseded by 0044 |
 | [0043](0043-initiating-host-plugin-update.md) | Plugin update scoped to the initiating host | Accepted |
 | [0044](0044-phase-routing-and-token-economy.md) | Phase routing and a one-line prompt reminder | Accepted |
+| [0045](0045-authorized-automatic-plugin-updates.md) | Authorized automatic plugin updates | Accepted |
 
 ## Format
 

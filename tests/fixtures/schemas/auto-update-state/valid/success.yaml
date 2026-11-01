@@ -1,0 +1,6 @@
+apiVersion: paved/v1
+kind: AutoUpdateState
+lastSuccess: 1793543500000
+failures: 0
+nextAttempt: 0
+completed: [inventory, marketplace, plugin, adoption]

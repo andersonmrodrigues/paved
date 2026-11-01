@@ -37,6 +37,8 @@ schemas:
   AgentIntegration: schemas/agent-integration.schema.yaml
   PreviewReview: schemas/preview-review.schema.yaml
   ChangeReview: schemas/change-review.schema.yaml
+  AutoUpdateConfig: schemas/auto-update-config.schema.yaml
+  AutoUpdateState: schemas/auto-update-state.schema.yaml
 
 # Schemas that define shared structures, not a document kind.
 schema_definitions:
@@ -90,7 +92,7 @@ components:
     path: integrations
     distributed: false
     depends_on: [schemas, core]
-    responsibility: Thin agent-specific projections of the public Paved integration contract.
+    responsibility: Agent-specific projections and explicitly authorized host plugin update transport.
   - name: plugins
     path: plugins
     distributed: false

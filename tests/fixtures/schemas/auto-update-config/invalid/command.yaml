@@ -1,0 +1,7 @@
+# expect-error: additional properties
+apiVersion: paved/v1
+kind: AutoUpdateConfig
+mode: auto
+host: claude-code
+intervalHours: 24
+command: /arbitrary/command
