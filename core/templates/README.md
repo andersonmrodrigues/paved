@@ -12,6 +12,7 @@ real skills and workflows contain them).
 | `AGENTS.md` | Consumer agent entrypoint | Consumer root `AGENTS.md` (inside the Paved block) |
 | `skill.md` + `skill.yaml` | Skill | `<skills root>/<category>/<name>/SKILL.md` and `skill.yaml` |
 | `workflow.md` + `workflow.yaml` | Workflow | `<workflows root>/<name>/WORKFLOW.md` and `workflow.yaml` |
+| `workflow-fragment.md` + `workflow-fragment.yaml` | WorkflowFragment | `core/workflow-fragments/<name>/FRAGMENT.md` and `fragment.yaml` |
 | `feature.yaml` | Feature map entry | `.paved/project/feature-map/<id>.yaml` |
 | `context-document.md` | Project Context document (frontmatter + managed blocks) | `.paved/project/<area>/<name>.md` |
 | `rule.yaml` | Rule | `core/rules/<category>/<name>.yaml` or `.paved/rules/<category>/<name>.yaml` |

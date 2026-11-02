@@ -16,6 +16,7 @@ schemas:
   Rule: schemas/rule.schema.yaml
   Skill: schemas/skill.schema.yaml
   Workflow: schemas/workflow.schema.yaml
+  WorkflowFragment: schemas/workflow-fragment.schema.yaml
   WorkflowRun: schemas/workflow-run.schema.yaml
   DelegationPlan: schemas/delegation-plan.schema.yaml
   HarnessEvaluation: schemas/harness-evaluation.schema.yaml
@@ -50,6 +51,7 @@ content:
   instructions: core/instructions
   skills: core/skills
   workflows: core/workflows
+  workflow_fragments: core/workflow-fragments
   rules: core/rules
   tools: core/tools
   tool_implementations: core/tool-implementations

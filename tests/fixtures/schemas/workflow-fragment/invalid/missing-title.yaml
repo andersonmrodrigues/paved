@@ -1,0 +1,9 @@
+# expect-error: must have required property 'title'
+apiVersion: paved/v1
+kind: WorkflowFragment
+id: core.fragment.example
+version: 0.1.0
+status: experimental
+inputs: [goal]
+skills: [core.discovery.context-discovery]
+tools: [core.repository.status]

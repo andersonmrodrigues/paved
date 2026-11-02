@@ -135,6 +135,13 @@ export function packRuntime(root: string, options: { build: boolean }): RuntimeA
       // keep the standalone launchers and assets, not duplicate TypeScript sources.
       if (path.startsWith("integrations/") && path.endsWith(".ts") && files.has(`cli/build/${path.replace(/\.ts$/, ".js")}`)) files.delete(path);
     }
+    // These catalogs describe Core maintenance; consumer execution uses the contracts
+    // beneath them. Keep verification/README.md, which consumer guidance references.
+    // Exclude the same catalogs from both hosts before computing runtime integrity.
+    for (const path of [
+      "core/skills/README.md", "core/rules/README.md", "core/tools/README.md",
+      "core/workflows/README.md", "core/workflow-fragments/README.md", "core/templates/README.md",
+    ]) files.delete(path);
     return { version: artifact.version, files, integrity: directoryIntegrity(files) };
   } finally {
     rmSync(workspace, { recursive: true, force: true });

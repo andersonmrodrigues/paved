@@ -15,6 +15,7 @@ they are built and how validation is layered. What each contract means is in
 | `adapter` | `Adapter` | `adapter.yaml` of an adapter package |
 | `skill` | `Skill` | `skill.yaml` next to a `SKILL.md` |
 | `workflow` | `Workflow` | `workflow.yaml` next to a `WORKFLOW.md` |
+| `workflow-fragment` | `WorkflowFragment` | `fragment.yaml` next to a `FRAGMENT.md` under `core/workflow-fragments/<name>/` |
 | `workflow-run` | `WorkflowRun` | `.paved/generated/runs/<id>.yaml` |
 | `rule` | `Rule` | One rule per file |
 | `tool` | `Tool` | One tool contract per file |
@@ -31,6 +32,13 @@ they are built and how validation is layered. What each contract means is in
 `manifest.yaml` maps each kind to its schema (`schemas`) and lists the shared definition
 files (`schema_definitions`). `cli/lib/schemas.ts` holds the same mapping; a test keeps
 them equal.
+
+Workflow fragment metadata declares `apiVersion`, `kind`, a `core.fragment.<name>` id,
+`title`, `version`, `status`, and unique arrays of `inputs`, `skills` and `tools`. Inputs
+are kebab-case ids; skills and tools use the existing qualified reference formats. All
+three arrays may be empty. `FRAGMENT.md` contains the reusable guidance and may
+interpolate only declared `{{ inputs.<id> }}` values. Body interpolation and binding
+validation belong to the fragment loader, since the schema reads only the metadata.
 
 ## Format
 

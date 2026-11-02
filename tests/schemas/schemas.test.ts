@@ -110,6 +110,19 @@ describe("schema fixtures", () => {
   }
 });
 
+describe("workflow fragment metadata", () => {
+  it("requires the complete metadata contract", () => {
+    const document = loadYaml(at("tests", "fixtures", "schemas", "workflow-fragment", "valid", "example.yaml")) as Record<string, unknown>;
+    for (const field of ["id", "title", "version", "status", "inputs", "skills", "tools"]) {
+      const incomplete = { ...document };
+      delete incomplete[field];
+      const result = schemas().validate(incomplete);
+      assert.equal(result.valid, false, `missing ${field} must fail`);
+      assert.ok(result.errors.some((error) => error.includes(`must have required property '${field}'`)), result.errors.join("\n"));
+    }
+  });
+});
+
 describe("apiVersion compatibility", () => {
   const supported = ["paved/v1"];
 

@@ -1,0 +1,10 @@
+# expect-error: must match pattern
+apiVersion: paved/v1
+kind: WorkflowFragment
+id: project.fragment.example
+title: Example fragment
+version: 0.1.0
+status: experimental
+inputs: [goal]
+skills: [core.discovery.context-discovery]
+tools: [core.repository.status]
