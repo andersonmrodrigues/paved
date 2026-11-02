@@ -75,6 +75,8 @@ function firstRequiredInput(coreRoot, workflowId) {
 /** Gives a pending or new run its workflow, phases and request input. */
 export function classify(coreRoot, run, workflowId, because, decidedBy, decision) {
     const contract = loadContract(coreRoot, workflowId);
+    if (run.autonomy_profile === undefined && contract.autonomy !== undefined)
+        run.autonomy_profile = contract.autonomy.default_profile;
     const request = run.inputs.find((input) => input.id === "request") ?? run.inputs[0];
     const first = firstRequiredInput(coreRoot, workflowId);
     run.inputs = [{ ...request, id: first }, ...run.inputs.filter((input) => input !== request && input.id !== first)];
@@ -90,6 +92,9 @@ export function classify(coreRoot, run, workflowId, because, decidedBy, decision
 }
 /** `worktree` is the linked worktree the run works on when it shares the state of projectRoot. */
 export function createIntentRun(projectRoot, coreRoot, input, revision, worktree) {
+    if (input.autonomy !== undefined && !["guided", "balanced", "autonomous"].includes(input.autonomy)) {
+        throw new IntentError("PAVED_AUTONOMY_PROFILE_INVALID", `Unknown autonomy profile: ${input.autonomy}.`, "Choose guided, balanced or autonomous.");
+    }
     const request = input.request.trim();
     if (!request)
         throw new IntentError("PAVED_WORKFLOW_INPUT_REQUIRED", "intent requires the user's request.", "Run paved intent \"<request>\" --json.");
@@ -114,6 +119,7 @@ export function createIntentRun(projectRoot, coreRoot, input, revision, worktree
         apiVersion: "paved/v1", kind: "WorkflowRun",
         id: `intent-${sha(`${request}\0${revision}`).slice(0, 20)}`,
         revision, ...(worktree === undefined ? {} : { worktree }), started_at: created, status: "awaiting-input",
+        ...(input.autonomy === undefined ? {} : { autonomy_profile: input.autonomy }),
         classification: input.parts.length > 0 ? { parts: [...input.parts] } : {},
         inputs: [{ id: "request", value: request, source: "human" }],
         phases: [],

@@ -67,13 +67,18 @@ function commitAll(root: string, message: string): void {
   git(root, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm", message);
 }
 
-async function approvedRun(root: string, plan = "docs/plan.md"): Promise<{ id: string; invoke: (...argv: string[]) => Promise<CommandResult>; approved: CommandResult }> {
+async function approvedRun(root: string, plan = "docs/plan.md", autonomy?: string): Promise<{ id: string; invoke: (...argv: string[]) => Promise<CommandResult>; approved: CommandResult }> {
   const invoke = (...argv: string[]) => dispatchCli({ argv: [...argv, "--project", root, "--json"] });
-  const id = ((await invoke("intent", "Enable the behavior", "--workflow", "feature", "--because", "New behavior.")).data as { run: string }).run;
+  const id = ((await invoke("intent", "Enable the behavior", "--workflow", "feature", "--because", "New behavior.", ...(autonomy === undefined ? [] : ["--autonomy", autonomy]))).data as { run: string }).run;
   await invoke("intent", "--run", id, "--advance", "--note", "Scope is clear");
   await invoke("intent", "--run", id, "--advance", "--note", "Architecture inspected");
   write(root, plan, "Enable the behavior in feature.js.\n");
   await invoke("plan", "--run", id, "--advance", "--note", "Plan", "--evidence", plan);
+  if (autonomy !== undefined) {
+    const stopped = await invoke("execute", "--run", id, "--auto");
+    assert.equal((stopped.data as { status: string }).status, "awaiting-approval", JSON.stringify(stopped));
+    assert.equal((stopped.data as { autonomy_profile?: string }).autonomy_profile, autonomy);
+  }
   const approved = await invoke("plan", "--run", id, "--approve");
   assert.equal((approved.data as { currentPhase: string }).currentPhase, "implementation", JSON.stringify(approved));
   return { id, invoke, approved };
@@ -687,4 +692,58 @@ describe("after completion", () => {
     const proposals = analyzeGardener({ projectRoot: root, coreRoot: core }).proposals;
     assert.deepEqual(proposals.filter((item) => item.problem.includes('"unit"')).map((item) => item.problem), []);
   });
+});
+
+
+describe("autonomy continuation and hard stops", () => {
+  for (const autonomy of ["guided", "balanced", "autonomous"]) {
+    it(`${autonomy} preserves approval, input and failure stops`, async () => {
+      const root = project();
+      const { id, invoke } = await approvedRun(root, "docs/plan.md", autonomy);
+      write(root, "feature.js", "export const enabled = false; // Attempted implementation\n");
+      const approvedState = runState(root, id);
+      assert.equal(approvedState.phases.find((phase) => phase.phase === "planning")?.status, "completed");
+      const raised = await invoke("decision", "raise", "--decision", JSON.stringify({
+        run: id, question: "Which behavior?", reason: "The behavior is unspecified.",
+        options: [
+          { id: "first", label: "First", description: "First.", consequence: "First." },
+          { id: "second", label: "Second", description: "Second.", consequence: "Second." },
+        ],
+        evidence: [{ type: "file", location: "README.md", sha256: "f7b27b47e3ca3d057af86e814a1b701586f60144a417c5a731412e0b081ef296" }],
+        required: true, requiredAnswer: { type: "single-choice" }, effect: "record-only", candidates: ["first", "second"],
+      }));
+      assert.equal(raised.status, "success", JSON.stringify(raised));
+      const waiting = await invoke("execute", "--run", id, "--auto", "--note", "Implemented");
+      assert.equal(waiting.status, "awaiting_input", JSON.stringify(waiting));
+      assert.equal((waiting.data as { currentPhase: string }).currentPhase, "implementation");
+      const answered = await invoke("execute", "--run", id, "--auto", "--note", "Implemented",
+        "--answer", `${waiting.decisions![0]!.id}=first`, "--answered-by", "owner");
+      const failure = autonomy === "guided" ? await invoke("execute", "--run", id, "--auto") : answered;
+      assert.equal(failure.status, "failed", JSON.stringify(failure));
+      assert.equal(runState(root, id).phases.find((phase) => phase.phase === "validation")?.status, "failed");
+      assert.equal(runState(root, id).phases.find((phase) => phase.phase === "verification")?.status, "pending");
+      assert.equal((failure.data as { autonomy_profile?: string }).autonomy_profile, autonomy);
+    });
+
+    it(`${autonomy} follows its phase-boundary continuation policy`, async () => {
+      const root = project();
+      const { id, invoke } = await approvedRun(root, "docs/plan.md", autonomy);
+      write(root, "feature.js", "export const enabled = true;\n");
+      let outcome = await invoke("execute", "--run", id, "--auto", "--note", "Enabled the behavior");
+      assert.equal((outcome.data as { currentPhase: string }).currentPhase, autonomy === "guided" ? "validation" : "review", JSON.stringify(outcome));
+      if (autonomy === "guided") {
+        assert.match((outcome.data as { nextAction: string }).nextAction, /wait for the user to advance/i);
+        for (const next of ["verification", "evidence", "review"]) {
+          outcome = await invoke("execute", "--run", id, "--auto");
+          assert.equal((outcome.data as { currentPhase: string }).currentPhase, next, JSON.stringify(outcome));
+        }
+      }
+      assert.equal(runState(root, id).status, "running");
+      assert.ok(runState(root, id).evidence, "verification and evidence remain required");
+      const withoutReview = await invoke("execute", "--run", id, "--auto");
+      assert.equal(runState(root, id).phases.find((phase) => phase.status === "running")?.phase, "review");
+      assert.equal((withoutReview.data as { autonomy_profile?: string }).autonomy_profile, autonomy);
+      assert.notEqual(runState(root, id).status, "completed");
+    });
+  }
 });

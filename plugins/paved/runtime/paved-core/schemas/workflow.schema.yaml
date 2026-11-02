@@ -45,6 +45,13 @@ properties:
   change_type:
     description: The trigger. A task of this kind of change selects this workflow.
     $ref: "urn:paved:schema:common:v1#/$defs/changeType"
+  autonomy:
+    description: Optional default for new runs; absence preserves existing continuation behavior. Profiles never relax gates or host permissions.
+    type: object
+    additionalProperties: false
+    required: [default_profile]
+    properties:
+      default_profile: { enum: [guided, balanced, autonomous] }
   inputs:
     description: >
       What the task must provide. A missing `required` input stops the run

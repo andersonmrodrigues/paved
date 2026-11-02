@@ -68,7 +68,7 @@ function nextStepAction(run) {
 }
 export function runSummary(run) {
     return {
-        run: run.id, workflow: run.workflow, classification: run.classification, status: run.status,
+        run: run.id, ...(run.autonomy_profile === undefined ? {} : { autonomy_profile: run.autonomy_profile }), workflow: run.workflow, classification: run.classification, status: run.status,
         currentPhase: run.phases.find((phase) => phase.status === "running")?.phase,
         evidence: run.evidence,
         evidenceProduced: run.events.flatMap((event) => event.ref?.startsWith(".paved/generated/evidence/") ? [event.ref] : []),
@@ -84,9 +84,12 @@ function result(projectRoot, step, run, nextAction, diagnostics = [], extras = {
     const review = failed ? undefined : reviewFor(projectRoot, run);
     const independentText = review?.independent === undefined ? "" : ` Start a subagent with its own context, give it only ${review.independent.brief}, and let it write ${review.independent.record}; then run paved execute --run ${run.id} --auto --evidence ${review.independent.record} --json.`;
     const reviewText = review === undefined ? "" : `${independentText} Summarize ${review.target}${review.companions.length ? ` and ${review.companions.join(", ")}` : ""} for the user and ask in the conversation. If the user wants to comment inline, open it in the preview (${review.preview}) and keep paved preview wait running until they say the review is finished; the preview approves nothing.`;
+    const guidedStop = run.autonomy_profile === "guided" && run.status === "running"
+        && run.events.at(-1)?.type === "phase-started" && run.events.at(-2)?.type === "phase-completed"
+        ? "Wait for the user to advance before starting the next phase. Then: " : "";
     return createResult({
         command: step, status, ...(open.length ? { decisions: open } : {}),
-        data: { ...runSummary(run), ...extras.data, ...(review === undefined ? {} : { review }), nextAction: `${nextAction}${reviewText}` }, diagnostics: retained,
+        data: { ...runSummary(run), ...extras.data, ...(review === undefined ? {} : { review }), nextAction: `${guidedStop}${nextAction}${reviewText}` }, diagnostics: retained,
     });
 }
 function load(invocation, id) {
@@ -267,6 +270,7 @@ function startIntent(invocation) {
     const run = createIntentRun(projectRoot, coreRoot, {
         request: invocation.selectors.join(" "), parts: flags.parts, inputs: flags.intentInputs,
         ...(flags.workflow === undefined ? {} : { workflow: flags.workflow }),
+        ...(flags.autonomy === undefined ? {} : { autonomy: flags.autonomy }),
         ...(flags.recommend === undefined ? {} : { recommend: flags.recommend }),
         ...(flags.because === undefined ? {} : { because: flags.because }),
     }, revision(invocation.paths.sourceRoot), linkedWorktree(invocation));
@@ -281,6 +285,9 @@ function startIntent(invocation) {
         if (!isOpen(existing)) {
             run.id = `${baseId}-${attempt}`;
             continue;
+        }
+        if (flags.autonomy !== undefined && existing.autonomy_profile !== flags.autonomy) {
+            return blocked("intent", "PAVED_AUTONOMY_PROFILE_IMMUTABLE", `Run ${existing.id} already exists; its autonomy profile cannot change.`, "Resume without --autonomy, or start a different request.", { run: existing.id });
         }
         if (contradicts(existing, run)) {
             const decision = existing.workflow === undefined ? existing.decisions?.[0]?.id : undefined;
@@ -696,7 +703,7 @@ async function deliver(invocation, run, answers) {
         const outcome = await resume(current, "execute", currentRun, pending);
         const next = readRun(projectRoot, coreRoot, currentRun.id);
         const phase = next === undefined ? undefined : activePhase(next);
-        if (outcome.status !== "success" || !next || next.status !== "running" || !phase || phase.phase === before
+        if (currentRun.autonomy_profile === "guided" || outcome.status !== "success" || !next || next.status !== "running" || !phase || phase.phase === before
             || ownerOf(phase.phase) !== "execute" || sharedPhase(phase.phase) === undefined)
             return outcome;
         // An observation and evidence describe the phase they were given for, not the next one.
@@ -712,20 +719,23 @@ async function deliver(invocation, run, answers) {
  */
 function withPhaseContext(invocation, outcome) {
     const data = outcome.data;
-    const id = typeof data?.run === "string" ? data.run : undefined;
+    const id = typeof data?.run === "string" ? data.run : invocation.flags.run;
     if (id === undefined)
         return outcome;
     try {
         const { projectRoot, coreRoot } = invocation.paths;
         const run = readRun(projectRoot, coreRoot, id);
+        if (typeof data?.run !== "string" && run?.autonomy_profile === undefined)
+            return outcome;
+        const enriched = run?.autonomy_profile === undefined ? outcome : { ...outcome, data: { ...data, run: id, autonomy_profile: run.autonomy_profile } };
         const phase = run?.workflow === undefined || TERMINAL_STATUSES.has(run.status) ? undefined : activePhase(run);
         if (run?.workflow === undefined || phase === undefined)
-            return outcome;
+            return enriched;
         const resolved = loadContract(coreRoot, run.workflow.id).phases.find((item) => item.phase === phase.phase);
         if (resolved === undefined)
-            return outcome;
-        return { ...outcome, data: {
-                ...data,
+            return enriched;
+        return { ...enriched, data: {
+                ...enriched.data,
                 phaseContext: {
                     phase: resolved.phase,
                     goal: resolved.goal,
@@ -749,7 +759,7 @@ export async function stepHandler(invocation) {
     }
     catch (error) {
         if (error instanceof ConsumerOperationLockedError) {
-            return blocked(invocation.command, "PAVED_OPERATION_IN_PROGRESS", error.message, "Wait for the active Paved operation to finish before starting or resuming a workflow.");
+            return withPhaseContext(invocation, blocked(invocation.command, "PAVED_OPERATION_IN_PROGRESS", error.message, "Wait for the active Paved operation to finish before starting or resuming a workflow."));
         }
         throw error;
     }
@@ -774,6 +784,9 @@ async function dispatchStep(invocation) {
         const selected = selectRun(invocation, step);
         if ("result" in selected)
             return selected.result;
+        if (flags.autonomy !== undefined && flags.autonomy !== selected.run.autonomy_profile) {
+            return blocked(step, "PAVED_AUTONOMY_PROFILE_IMMUTABLE", `Run ${selected.run.id} autonomy profile cannot change after creation.`, "Resume without --autonomy; a new profile needs a new run.", { run: selected.run.id });
+        }
         if (flags.abandon)
             return abandon(invocation, step, selected.run);
         if (flags.checkpoint)

@@ -116,7 +116,7 @@ function commandUsage(command) {
         if (command === "preview")
             commandOptions.push("  --reply <text>   With resolve, tell the reviewer what changed.");
         if (command === "intent" || command === "execute")
-            commandOptions.push("  --workflow <feature|bug|refactor> --because <evidence>  Classify the request.", "  --recommend <workflow> --because <evidence>  Suggest a workflow and let the user decide.", "  --part <request>  Propose one part of a split; repeat per part.", "  --input <id>=<value>  Supply another declared workflow input; repeatable.");
+            commandOptions.push("  --workflow <feature|bug|refactor> --because <evidence>  Classify the request.", "  --recommend <workflow> --because <evidence>  Suggest a workflow and let the user decide.", "  --part <request>  Propose one part of a split; repeat per part.", "  --input <id>=<value>  Supply another declared workflow input; repeatable.", "  --autonomy <guided|balanced|autonomous>  Select a profile for the new run; fixed on resume.");
         if (STEP_COMMANDS.includes(command))
             commandOptions.push("  --run <id> --advance --note <text> --evidence <path>  Advance the run within this step's phases.");
         if (STEP_COMMANDS.includes(command))
@@ -209,6 +209,7 @@ function parse(argv) {
     let answeredBy;
     let decision;
     let workflow;
+    let autonomy;
     let because;
     let recommend;
     const parts = [];
@@ -347,12 +348,17 @@ function parse(argv) {
             confirmedStopped = true;
             continue;
         }
-        if (["--workflow", "--because", "--recommend", "--part", "--input"].includes(token)) {
+        if (["--workflow", "--because", "--recommend", "--part", "--input", "--autonomy"].includes(token)) {
             if (command !== "intent" && command !== "execute")
                 return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by intent and execute.`) };
             const value = takeValue(argv, index, token, command);
             if (typeof value !== "string")
                 return { kind: "error", result: value };
+            if (token === "--autonomy") {
+                if (!["guided", "balanced", "autonomous"].includes(value))
+                    return { kind: "error", result: usage(command, "--autonomy must be guided, balanced or autonomous.") };
+                autonomy = value;
+            }
             if (token === "--workflow")
                 workflow = value;
             if (token === "--because")
@@ -511,6 +517,7 @@ function parse(argv) {
         parts,
         intentInputs,
         ...(workflow === undefined ? {} : { workflow }),
+        ...(autonomy === undefined ? {} : { autonomy }),
         ...(because === undefined ? {} : { because }),
         ...(recommend === undefined ? {} : { recommend }),
         ...(reply === undefined ? {} : { reply }),

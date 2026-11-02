@@ -24,6 +24,28 @@ several open runs they ask which one. A bug's failing regression test and a refa
 passing baseline run inside `intent`; tests and verification run inside `execute`. When a
 step returns their decisions, present them and repeat the same call with the answers.
 
+## Run autonomy
+
+At creation, `intent` and `execute "<request>"` accept
+`--autonomy <guided|balanced|autonomous>`. An explicit selection overrides
+`workflow.yaml`'s optional `autonomy.default_profile`. While classification is pending,
+keep the explicit selection; apply the chosen workflow's default only if none was
+selected. The run records `autonomy_profile`, and every result for that run exposes it
+in `data.autonomy_profile`. Resume with the recorded profile; it cannot change. If both
+selection and default are absent, leave the field absent and preserve current behavior.
+
+- **guided:** stop after each completed phase and wait for the user to advance. Even
+  `execute --auto` completes at most one phase per call; do not immediately call it again
+  without the user's instruction to advance.
+- **balanced:** continue through phases that need no new input, using `execute --auto`.
+- **autonomous:** use balanced continuation and automatically dispatch only ready tasks
+  from an approved delegation plan through the host's native agent tools. Tasks must
+  satisfy the plan's dependencies and scope before dispatch; the CLI creates no sessions.
+
+Every profile stops for gates, approvals, required input and failures. All verification,
+evidence and completion requirements still apply, and host permissions remain
+authoritative. A profile never constitutes an approval or grants tool permission.
+
 ## Before the first phase
 
 Check the standard preconditions, then the workflow's own `preconditions`:

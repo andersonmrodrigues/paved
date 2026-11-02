@@ -8,6 +8,9 @@ description: >-
 version: 0.1.0
 status: experimental
 change_type: feature
+# Optional: default for new runs; omit to preserve existing continuation behavior.
+# autonomy:
+#   default_profile: guided # guided | balanced | autonomous; never bypasses gates.
 inputs:
   - id: request
     description: What the task asks for.

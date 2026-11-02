@@ -5,7 +5,7 @@ import { atomicWriteFileSync } from "./atomic-write.ts";
 import { loadMarkdown, loadYaml } from "./documents.ts";
 import { resolveSafePath } from "./safe-path.ts";
 import { createRegistry, type SchemaRegistry } from "./schemas.ts";
-import { assessRun, resolveWorkflowFragments, type ResolvedWorkflowContract, type WorkflowContract, type WorkflowFragmentContract, type WorkflowFragmentMetadata, type WorkflowRunRecord } from "./workflows.ts";
+import { assessRun, resolveWorkflowFragments, type AutonomyProfile, type ResolvedWorkflowContract, type WorkflowContract, type WorkflowFragmentContract, type WorkflowFragmentMetadata, type WorkflowRunRecord } from "./workflows.ts";
 import { indexArtifacts, resolveReferences, type LabeledDocument } from "./references.ts";
 import type { Decision } from "./decisions/record.ts";
 
@@ -22,6 +22,7 @@ export interface Run {
   apiVersion: "paved/v1"; kind: "WorkflowRun"; id: string;
   workflow?: { id: string; version: string };
   classification?: Classification;
+  autonomy_profile?: AutonomyProfile;
   revision: string; started_at: string; status: string;
   /** The linked worktree the run works on, when it shares the state of another checkout. */
   worktree?: string;
@@ -137,6 +138,14 @@ export function readRun(projectRoot: string, coreRoot: string, id: string): Run 
 export function writeRun(projectRoot: string, coreRoot: string, run: Run): void {
   validateRun(coreRoot, run);
   const path = runPath(projectRoot, run.id);
+  if (existsSync(path)) {
+    const existing = loadYaml(path) as Run;
+    // A pending run without an explicit choice may adopt its workflow default once.
+    const classifying = existing.workflow === undefined && existing.autonomy_profile === undefined && run.workflow !== undefined;
+    if (!classifying && existing.autonomy_profile !== run.autonomy_profile) {
+      throw new Error(`Workflow run ${run.id} autonomy profile cannot change after creation.`);
+    }
+  }
   mkdirSync(dirname(path), { recursive: true });
   atomicWriteFileSync(path, stringify(run));
 }

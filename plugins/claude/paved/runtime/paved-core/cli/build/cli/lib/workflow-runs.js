@@ -124,6 +124,14 @@ export function readRun(projectRoot, coreRoot, id) {
 export function writeRun(projectRoot, coreRoot, run) {
     validateRun(coreRoot, run);
     const path = runPath(projectRoot, run.id);
+    if (existsSync(path)) {
+        const existing = loadYaml(path);
+        // A pending run without an explicit choice may adopt its workflow default once.
+        const classifying = existing.workflow === undefined && existing.autonomy_profile === undefined && run.workflow !== undefined;
+        if (!classifying && existing.autonomy_profile !== run.autonomy_profile) {
+            throw new Error(`Workflow run ${run.id} autonomy profile cannot change after creation.`);
+        }
+    }
     mkdirSync(dirname(path), { recursive: true });
     atomicWriteFileSync(path, stringify(run));
 }

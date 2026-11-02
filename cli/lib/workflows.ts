@@ -41,12 +41,15 @@ export interface WorkflowPhase {
   fragments?: { id: string; with?: Record<string, string> }[];
 }
 
+export type AutonomyProfile = "guided" | "balanced" | "autonomous";
+
 export interface WorkflowContract {
   id: string;
   version: string;
   status: string;
   description: string;
   change_type: string;
+  autonomy?: { default_profile: AutonomyProfile };
   inputs: { id: string; required: boolean }[];
   rules?: string[];
   phases: WorkflowPhase[];
@@ -300,6 +303,7 @@ export function assessWorkflowQuality(files: WorkflowFiles, context: WorkflowCon
 }
 
 export interface WorkflowRunRecord {
+  autonomy_profile?: AutonomyProfile;
   workflow: { id: string; version: string };
   status: string;
   inputs: { id: string }[];

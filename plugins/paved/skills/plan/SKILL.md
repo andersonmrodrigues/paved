@@ -20,6 +20,12 @@ Draft and preview a plan for an open Intent, then record the user's explicit app
 2. Follow the structured result's status, diagnostics, evidence, and next action. When `data.remediation` names a Paved command, run it right away, present any decisions it returns, then repeat the original command. Stop only when the runtime blocks on something it cannot remediate.
 3. Read the run's Intent document at `.paved/documents/intents/<run-id>.md`, then write a plan that answers it and links to it. Save the plan at `.paved/documents/plans/<run-id>.md` and run this command with `--advance --evidence <plan> --note <summary>`. When the result carries a `review` block, start the preview on its target (with its companions) and follow the `paved.preview` review loop without ending your turn: resolve each comment after editing and advance once after edits so the approval request covers the current plan. When the user approves the plan in the conversation with an explicit yes, run `paved plan --run <run-id> --approve --json`; never approve on your own or on an ambiguous reply.
 
+## Run autonomy
+
+For a new intent or execute request, pass the user's explicit `--autonomy <guided|balanced|autonomous>` selection. It overrides the workflow's optional `autonomy.default_profile`; pending classification preserves the explicit selection. The recorded `data.autonomy_profile` is fixed on resume. If no selection or workflow default exists, leave the profile absent and keep current behavior.
+For `guided`, stop after every completed phase and wait for the user to advance; do not immediately repeat `--auto` or another advance call. For `balanced`, continue through ready phases with `execute --auto`. For `autonomous`, use balanced continuation and automatically dispatch only ready tasks from an approved delegation plan, respecting its dependencies and bounded scope, through native host tools. The CLI creates no sessions.
+Every profile preserves gates, human approvals, required input stops, failures, verification, evidence and completion requirements. Host permissions remain authoritative; an autonomy profile is never an approval or tool permission. Apply this policy to the continuation and routing guidance above.
+
 ## Failure behavior
 
 - A plan file and summary are required before approval.

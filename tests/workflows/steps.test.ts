@@ -45,6 +45,7 @@ describe("intent, plan and execute", () => {
       writeFileSync(fragmentFile, stringify(fragment));
       const workflowFile = join(fixtureCore, "core/workflows/feature/workflow.yaml");
       const workflow = parse(readFileSync(workflowFile, "utf8"));
+      workflow.autonomy = { default_profile: "guided" };
       const discovery = workflow.phases.find((phase: { phase: string }) => phase.phase === "discovery");
       delete discovery.routing;
       discovery.tools = { required: ["core.repository.status"], optional: ["core.repository.files", "core.repository.diff"] };
@@ -58,7 +59,9 @@ describe("intent, plan and execute", () => {
       assert.equal(started.status, "success", JSON.stringify(started));
       const advanced = await invokeFixture("intent", "--run", runOf(started), "--advance", "--note", "Scope is clear");
       assert.equal(advanced.status, "success", JSON.stringify(advanced));
-      const data = advanced.data as { phaseContext?: unknown; routing?: unknown };
+      const data = advanced.data as { phaseContext?: unknown; routing?: unknown; autonomy_profile?: string };
+      assert.equal(data.autonomy_profile, "guided");
+      assert.equal(readRunFile(runOf(started)).autonomy_profile, "guided");
       assert.equal(data.routing, undefined, "phase context does not depend on routing metadata");
       assert.deepEqual(data.phaseContext, {
         phase: "discovery", goal: "Locate the affected code, the pattern to follow, the rules in scope and the unknowns.",
@@ -68,6 +71,12 @@ describe("intent, plan and execute", () => {
       });
       const resumed = await invokeFixture("intent", "--run", runOf(started));
       assert.deepEqual((resumed.data as { phaseContext?: unknown }).phaseContext, data.phaseContext);
+      assert.equal((resumed.data as { autonomy_profile?: string }).autonomy_profile, "guided");
+      const pending = await invokeFixture("intent", "Choose a format");
+      assert.equal((pending.data as { autonomy_profile?: string }).autonomy_profile, undefined);
+      const classified = await invokeFixture("intent", "--run", runOf(pending), "--answer", `${pending.decisions![0]!.id}=feature`, "--answered-by", "owner");
+      assert.equal((classified.data as { autonomy_profile?: string }).autonomy_profile, "guided");
+      assert.equal(readRunFile(runOf(pending)).autonomy_profile, "guided");
     } finally { rmSync(fixtureCore, { recursive: true, force: true }); }
   });
 
@@ -285,5 +294,52 @@ describe("intent, plan and execute", () => {
     assert.ok(!(answered.decisions ?? []).some((item) => item.id === toolDecision!.id));
     const stray = await invoke("plan", "--run", id, "--answer", `${toolDecision!.id}=x`, "--answered-by", "maintainer@example.com");
     assert.equal(stray.diagnostics[0]?.code, "PAVED_DECISION_ANSWER_INVALID", JSON.stringify(stray));
+  });
+});
+
+
+describe("workflow command autonomy", () => {
+  for (const profile of ["guided", "balanced", "autonomous"]) {
+    it(`${profile} is serialized, resumes unchanged and rejects a different selection`, async () => {
+      const started = await invoke("intent", "Add CSV export", "--workflow", "feature", "--because", "New format.", "--autonomy", profile);
+      assert.equal(started.status, "success", JSON.stringify(started));
+      const id = runOf(started);
+      assert.equal((started.data as { autonomy_profile?: string }).autonomy_profile, profile);
+      assert.equal((readRunFile(id) as Run & { autonomy_profile?: string }).autonomy_profile, profile);
+      const resumed = await invoke("execute", "--run", id);
+      assert.equal((resumed.data as { autonomy_profile?: string }).autonomy_profile, profile);
+      const advanced = await invoke("intent", "--run", id, "--advance", "--note", "Scope is clear");
+      assert.equal((advanced.data as { autonomy_profile?: string }).autonomy_profile, profile);
+      const wrongStep = await invoke("plan", "--run", id);
+      assert.equal((wrongStep.data as { autonomy_profile?: string }).autonomy_profile, profile);
+      const invalidFlags = await invoke("execute", "--run", id, "--workflow", "bug", "--because", "Changed classification.");
+      assert.equal((invalidFlags.data as { autonomy_profile?: string } | undefined)?.autonomy_profile, profile);
+      const changed = await invoke("intent", "--run", id, "--autonomy", profile === "guided" ? "balanced" : "guided");
+      assert.equal(changed.diagnostics[0]?.code, "PAVED_AUTONOMY_PROFILE_IMMUTABLE", JSON.stringify(changed));
+      assert.equal((changed.data as { autonomy_profile?: string }).autonomy_profile, profile);
+      const repeated = await invoke("intent", "Add CSV export", "--workflow", "feature", "--because", "New format.", "--autonomy", profile === "guided" ? "balanced" : "guided");
+      assert.equal(repeated.diagnostics[0]?.code, "PAVED_AUTONOMY_PROFILE_IMMUTABLE", JSON.stringify(repeated));
+    });
+  }
+
+  it("preserves an explicit pending profile through the classification answer", async () => {
+    const pending = await invoke("intent", "Make exports work", "--autonomy", "autonomous");
+    assert.equal(pending.status, "awaiting_input", JSON.stringify(pending));
+    assert.equal((pending.data as { autonomy_profile?: string }).autonomy_profile, "autonomous");
+    const classified = await invoke("intent", "--run", runOf(pending), "--answer", `${pending.decisions![0]!.id}=feature`, "--answered-by", "owner");
+    assert.equal((classified.data as { autonomy_profile?: string }).autonomy_profile, "autonomous");
+    assert.equal((readRunFile(runOf(pending)) as Run & { autonomy_profile?: string }).autonomy_profile, "autonomous");
+  });
+
+  it("leaves new and resumed runs without a profile unchanged and rejects adding one on resume", async () => {
+    const started = await invoke("intent", "Add CSV export", "--workflow", "feature", "--because", "New format.");
+    const id = runOf(started);
+    assert.equal(Object.hasOwn(started.data!, "autonomy_profile"), false);
+    assert.equal(Object.hasOwn(readRunFile(id), "autonomy_profile"), false);
+    const resumed = await invoke("intent", "--run", id);
+    assert.equal(Object.hasOwn(resumed.data!, "autonomy_profile"), false);
+    const changed = await invoke("execute", "--run", id, "--autonomy", "balanced");
+    assert.equal(changed.diagnostics[0]?.code, "PAVED_AUTONOMY_PROFILE_IMMUTABLE", JSON.stringify(changed));
+    assert.equal(Object.hasOwn(readRunFile(id), "autonomy_profile"), false);
   });
 });

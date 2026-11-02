@@ -7,6 +7,11 @@ releases, not the development sequence used to build them.
 
 ### Added
 
+- Optional per-run autonomy profiles: guided phase-by-phase continuation, balanced
+  automatic continuation and autonomous dispatch guidance for ready tasks in an approved
+  delegation plan. Explicit creation-time selection overrides workflow defaults and
+  persists across classification and resume; all existing stops and permissions apply.
+
 - Reusable workflow fragments with schema-validated metadata, exact string input
   bindings and composed skill/tool references. Core workflow loading rejects unknown
   references, missing or extra bindings, unresolved templates and nested fragments.
