@@ -2,6 +2,8 @@ import { join } from "node:path";
 import { loadMarkdown, loadYaml } from "../../cli/lib/documents.ts";
 import { loadEvidenceRegistry } from "../../cli/lib/evidence.ts";
 import type { SkillContract } from "../../cli/lib/skills.ts";
+import { loadWorkflowFragments } from "../../cli/lib/workflow-runs.ts";
+import { resolveWorkflowFragments } from "../../cli/lib/workflows.ts";
 import type { WorkflowContext, WorkflowContract, WorkflowFiles } from "../../cli/lib/workflows.ts";
 import { coreSkills, coreTools } from "../core/registries.ts";
 import { at } from "../helpers.ts";
@@ -29,8 +31,11 @@ export function coreWorkflowContext(): WorkflowContext {
 }
 
 export function loadWorkflow(dir: string): WorkflowFiles {
+  const contract = loadYaml(join(dir, "workflow.yaml")) as WorkflowContract;
+  const resolved = resolveWorkflowFragments(contract, loadWorkflowFragments(at()));
+  if (resolved.problems.length) throw new Error(resolved.problems.join("; "));
   return {
-    contract: loadYaml(join(dir, "workflow.yaml")) as WorkflowContract,
+    contract: { ...contract, phases: resolved.phases },
     body: loadMarkdown(join(dir, "WORKFLOW.md")).body,
   };
 }

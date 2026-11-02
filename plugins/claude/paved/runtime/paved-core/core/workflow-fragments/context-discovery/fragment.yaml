@@ -1,0 +1,9 @@
+apiVersion: paved/v1
+kind: WorkflowFragment
+id: core.fragment.context-discovery
+title: Context discovery
+version: 0.1.0
+status: experimental
+inputs: [subject]
+skills: [core.discovery.context-discovery]
+tools: []

@@ -47,6 +47,7 @@ export function coreDocuments(): LabeledDocument[] {
     ...filesRecursive(at("core", "tools"), (f) => f.endsWith(".yaml")),
     ...filesRecursive(at("core", "tool-implementations"), (f) => f.endsWith(".yaml")),
     ...filesRecursive(at("core", "verification", "checks"), (f) => f.endsWith(".yaml")),
+    ...filesRecursive(at("core", "workflow-fragments"), (f) => f.endsWith("fragment.yaml")),
     ...coreSkills().map((skill) => join(skill.dir, "skill.yaml")),
     ...subdirectories(at("core", "workflows")).map((name) => at("core", "workflows", name, "workflow.yaml")),
   ];

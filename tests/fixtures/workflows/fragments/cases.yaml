@@ -1,0 +1,61 @@
+fragment:
+  contract:
+    apiVersion: paved/v1
+    kind: WorkflowFragment
+    id: core.fragment.sample
+    title: Sample
+    version: 0.1.0
+    status: experimental
+    inputs: [subject]
+    skills: [core.discovery.context-discovery]
+    tools: [core.repository.search]
+  body: |
+    Locate {{ inputs.subject }}. Return paths and findings.
+cases:
+  - name: interpolates a valid fragment and composes its references
+    inclusions: [{ id: core.fragment.sample, with: { subject: payment rules } }]
+  - name: rejects an unknown fragment
+    inclusions: [{ id: core.fragment.missing }]
+    problem: unknown fragment
+  - name: rejects a missing input
+    inclusions: [{ id: core.fragment.sample }]
+    problem: missing input subject
+  - name: rejects an extra input
+    inclusions: [{ id: core.fragment.sample, with: { subject: rules, extra: ignored } }]
+    problem: unknown input extra
+  - name: rejects an undeclared body placeholder
+    inclusions: [{ id: core.fragment.sample, with: { subject: rules } }]
+    body: 'Locate {{ inputs.unknown }}.'
+    problem: undeclared input unknown
+  - name: rejects an unsupported placeholder
+    inclusions: [{ id: core.fragment.sample, with: { subject: rules } }]
+    body: 'Locate {{ environment.subject }}.'
+    problem: unresolved placeholder
+  - name: rejects malformed placeholder spacing
+    inclusions: [{ id: core.fragment.sample, with: { subject: rules } }]
+    body: 'Locate {{inputs.subject}}.'
+    problem: unresolved placeholder
+  - name: rejects an unclosed placeholder
+    inclusions: [{ id: core.fragment.sample, with: { subject: rules } }]
+    body: 'Locate {{ inputs.subject.'
+    problem: unresolved placeholder
+  - name: rejects interpolation in a bound value
+    inclusions: [{ id: core.fragment.sample, with: { subject: '{{ inputs.subject }}' } }]
+    problem: invalid value for input subject
+  - name: rejects a non-string bound value
+    inclusions: [{ id: core.fragment.sample, with: { subject: 42 } }]
+    problem: invalid value for input subject
+  - name: rejects duplicate inclusion ids in one phase
+    inclusions: [{ id: core.fragment.sample, with: { subject: rules } }, { id: core.fragment.sample, with: { subject: other } }]
+    problem: duplicate fragment
+  - name: rejects nested fragment metadata
+    inclusions: [{ id: core.fragment.sample, with: { subject: rules } }]
+    metadata: { fragments: [{ id: core.fragment.sample }] }
+    problem: nested fragment
+  - name: rejects a nested fragment placeholder
+    inclusions: [{ id: core.fragment.sample, with: { subject: rules } }]
+    body: '{{ fragments.sample }}'
+    problem: unresolved placeholder
+  - name: rejects a whitespace-only bound value
+    inclusions: [{ id: core.fragment.sample, with: { subject: '   ' } }]
+    problem: invalid value for input subject

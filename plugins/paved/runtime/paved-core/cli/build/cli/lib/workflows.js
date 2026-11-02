@@ -3,6 +3,70 @@
 // whether a run record is consistent with its workflow. Run after schema validation and
 // reference resolution. See docs/concepts/workflows.md.
 import { dependencyCycles, duplicatedSentences, genericityProblems, planCoverageProblems, saysWhenToUse, } from "./skills.js";
+/** Resolve one level of guidance; no expressions, recursive templates or host execution. */
+export function resolveWorkflowFragments(workflow, fragments) {
+    const problems = [];
+    const phases = workflow.phases.map((phase) => {
+        const { fragments: inclusions, ...base } = phase;
+        if (inclusions === undefined)
+            return base;
+        const resolved = [];
+        const seen = new Set();
+        const skills = new Set(phase.skills ?? []);
+        const requiredTools = new Set(phase.tools?.required ?? []);
+        for (const inclusion of inclusions) {
+            const at = `phase ${phase.phase} fragment ${inclusion.id}`;
+            if (seen.has(inclusion.id))
+                problems.push(`${at}: duplicate fragment inclusion`);
+            seen.add(inclusion.id);
+            const fragment = fragments.get(inclusion.id);
+            if (fragment === undefined) {
+                problems.push(`${at}: unknown fragment`);
+                continue;
+            }
+            const { contract, body } = fragment;
+            if ("fragments" in contract)
+                problems.push(`${at}: nested fragment references are not allowed`);
+            const bindings = inclusion.with ?? {};
+            const inputs = new Set(contract.inputs);
+            for (const id of inputs) {
+                if (!Object.hasOwn(bindings, id))
+                    problems.push(`${at}: missing input ${id}`);
+            }
+            for (const [id, value] of Object.entries(bindings)) {
+                if (!inputs.has(id))
+                    problems.push(`${at}: unknown input ${id}`);
+                if (typeof value !== "string" || value.trim().length === 0 || /\{\{|\}\}/.test(value)) {
+                    problems.push(`${at}: invalid value for input ${id}`);
+                }
+            }
+            const interpolated = body.replace(/\{\{ inputs\.([a-z0-9]+(?:-[a-z0-9]+)*) \}\}/g, (placeholder, id) => {
+                if (!inputs.has(id)) {
+                    problems.push(`${at}: undeclared input ${id}`);
+                    return placeholder;
+                }
+                const value = bindings[id];
+                return typeof value === "string" ? value : placeholder;
+            });
+            if (/\{\{|\}\}/.test(interpolated))
+                problems.push(`${at}: unresolved placeholder`);
+            resolved.push({ ...inclusion, body: interpolated });
+            for (const skill of contract.skills)
+                skills.add(skill);
+            for (const tool of contract.tools)
+                requiredTools.add(tool);
+        }
+        return {
+            ...phase,
+            fragments: resolved,
+            skills: [...skills],
+            tools: { ...phase.tools, required: [...requiredTools],
+                ...(phase.tools?.optional === undefined ? {} : { optional: phase.tools.optional.filter((id) => !requiredTools.has(id)) }) },
+        };
+    });
+    // Fail closed: callers cannot accidentally execute a partially interpolated phase.
+    return { phases: problems.length > 0 ? [] : phases, problems };
+}
 export const WORKFLOW_MAX_LINES = 80;
 export const SKILLS_PER_PHASE = 3;
 export const DEFAULT_RETRY = { class: "retryable", max_attempts: 2 };

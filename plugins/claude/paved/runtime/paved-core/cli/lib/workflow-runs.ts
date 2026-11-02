@@ -2,10 +2,11 @@ import { existsSync, mkdirSync, readdirSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { stringify } from "yaml";
 import { atomicWriteFileSync } from "./atomic-write.ts";
-import { loadYaml } from "./documents.ts";
+import { loadMarkdown, loadYaml } from "./documents.ts";
 import { resolveSafePath } from "./safe-path.ts";
-import { createRegistry } from "./schemas.ts";
-import { assessRun, type WorkflowContract, type WorkflowRunRecord } from "./workflows.ts";
+import { createRegistry, type SchemaRegistry } from "./schemas.ts";
+import { assessRun, resolveWorkflowFragments, type ResolvedWorkflowContract, type WorkflowContract, type WorkflowFragmentContract, type WorkflowFragmentMetadata, type WorkflowRunRecord } from "./workflows.ts";
+import { indexArtifacts, resolveReferences, type LabeledDocument } from "./references.ts";
 import type { Decision } from "./decisions/record.ts";
 
 export type PhaseStatus = "pending" | "running" | "completed" | "failed" | "blocked";
@@ -58,14 +59,57 @@ export function coreWorkflowIds(coreRoot: string): string[] {
     .sort();
 }
 
-export function loadContract(coreRoot: string, workflowId: string): WorkflowContract {
+/** Load Core fragment metadata, bodies and their skill/tool reference closure. */
+export function loadWorkflowFragments(
+  coreRoot: string, registry: SchemaRegistry = createRegistry(join(coreRoot, "schemas"), ["paved/v1"]),
+): Map<string, WorkflowFragmentContract> {
+  const root = join(coreRoot, "core/workflow-fragments");
+  const fragments = new Map<string, WorkflowFragmentContract>();
+  if (!existsSync(root)) return fragments;
+  const documents: LabeledDocument[] = [];
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const file = join(root, entry.name, "fragment.yaml");
+    const document = loadYaml(file);
+    const validation = registry.validate(document);
+    if (!validation.valid) throw new Error(`Workflow fragment ${entry.name} is invalid: ${validation.errors.join("; ")}`);
+    const contract = document as WorkflowFragmentMetadata;
+    if (contract.id !== `core.fragment.${entry.name}`) throw new Error(`Workflow fragment ${entry.name} declares mismatched id ${contract.id}.`);
+    fragments.set(contract.id, { contract, body: loadMarkdown(join(root, entry.name, "FRAGMENT.md")).body });
+    documents.push({ label: file, document: document as Record<string, unknown> });
+  }
+  // Reference resolution uses declared ids, never path guesses from input bindings.
+  const dependencies: LabeledDocument[] = [];
+  const collect = (dir: string): void => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const file = join(dir, entry.name);
+      if (entry.isDirectory()) collect(file);
+      else if (entry.isFile() && entry.name.endsWith(".yaml")) {
+        dependencies.push({ label: file, document: loadYaml(file) as Record<string, unknown> });
+      }
+    }
+  };
+  collect(join(coreRoot, "core/skills"));
+  collect(join(coreRoot, "core/tools"));
+  const problems = resolveReferences(documents, indexArtifacts([...documents, ...dependencies]));
+  if (problems.length) throw new Error(`Workflow fragments are invalid: ${problems.join("; ")}`);
+  return fragments;
+}
+
+export function loadContract(coreRoot: string, workflowId: string): ResolvedWorkflowContract {
   const name = /^core\.([a-z][a-z0-9-]*)$/.exec(workflowId)?.[1];
   if (!name) throw new Error(`Workflow ${workflowId} is not a Core workflow.`);
   const path = join(coreRoot, "core/workflows", name, "workflow.yaml");
   if (!existsSync(path)) throw new Error(`Workflow ${workflowId} does not exist in this Core.`);
   const contract = loadYaml(path) as WorkflowContract;
   if (contract.id !== workflowId) throw new Error(`Workflow file ${name} declares ${contract.id}, not ${workflowId}.`);
-  return contract;
+  const registry = createRegistry(join(coreRoot, "schemas"), ["paved/v1"]);
+  const validation = registry.validate(contract);
+  if (!validation.valid) throw new Error(`Workflow ${workflowId} is invalid: ${validation.errors.join("; ")}`);
+  const resolved = resolveWorkflowFragments(contract, loadWorkflowFragments(coreRoot, registry));
+  if (resolved.problems.length) throw new Error(`Workflow ${workflowId} has invalid fragments: ${resolved.problems.join("; ")}`);
+  return { ...contract, phases: resolved.phases };
 }
 
 export function validateRun(coreRoot: string, run: Run): void {

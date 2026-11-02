@@ -200,6 +200,19 @@ $defs:
           $ref: "urn:paved:schema:common:v1#/$defs/gate"
           type: object
           unevaluatedProperties: false
+      fragments:
+        description: Reusable guidance, resolved with exact declared string bindings before execution.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [id]
+          properties:
+            id: { $ref: "urn:paved:schema:common:v1#/$defs/workflowFragmentRef" }
+            with:
+              type: object
+              propertyNames: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+              additionalProperties: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
       routing:
         description: >
           Who does the phase's work, so the primary session's context and its strongest

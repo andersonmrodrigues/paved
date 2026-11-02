@@ -10,6 +10,7 @@ const KIND_OF_DOCUMENT = {
     ToolImplementation: "tool-implementation",
     Skill: "skill",
     Workflow: "workflow",
+    WorkflowFragment: "workflow-fragment",
     Check: "check",
 };
 export const namespaceOf = (id) => id.split(".")[0] ?? "";
@@ -44,10 +45,16 @@ export function referencesIn(document) {
             for (const phase of entries(document["phases"])) {
                 const at = `phases.${String(phase["phase"])}`;
                 const tools = fields(phase["tools"]);
+                for (const fragment of entries(phase["fragments"]))
+                    add("workflow-fragment", `${at}.fragments`, fragment["id"]);
                 add("skill", `${at}.skills`, phase["skills"]);
                 add("tool", `${at}.tools.required`, tools["required"]);
                 add("tool", `${at}.tools.optional`, tools["optional"], true);
             }
+            break;
+        case "WorkflowFragment":
+            add("skill", "skills", document["skills"]);
+            add("tool", "tools", document["tools"]);
             break;
         case "Rule":
             add("workflow", "applies_to.workflows", fields(document["applies_to"])["workflows"]);

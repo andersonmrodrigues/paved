@@ -28,7 +28,7 @@ describe("references", () => {
   });
 
   it("Core ids are unique per kind", () => {
-    for (const kind of ["Rule", "Tool", "ToolImplementation", "Check", "Skill", "Workflow"]) {
+    for (const kind of ["Rule", "Tool", "ToolImplementation", "Check", "Skill", "Workflow", "WorkflowFragment"]) {
       const ids = core.filter(({ document }) => document["kind"] === kind).map(({ document }) => document["id"]);
       assert.equal(new Set(ids).size, ids.length, `duplicate ${kind} id`);
     }
@@ -79,6 +79,21 @@ describe("references", () => {
         problems.some((problem) => problem.includes(expected)),
         `${rel(file)}: no problem contains "${expected}"\n  ${problems.join("\n  ")}`,
       );
+    }
+  });
+});
+
+
+describe("workflow fragment references", () => {
+  it("indexes fragments and checks workflow inclusions and fragment dependencies", () => {
+    const fragment = { label: "fragment", document: { kind: "WorkflowFragment", id: "core.fragment.sample", skills: ["core.discovery.missing"], tools: ["core.repository.missing"] } };
+    const workflow = { label: "workflow", document: { kind: "Workflow", id: "core.sample", phases: [{ phase: "discovery", fragments: [{ id: "core.fragment.missing" }] }] } };
+    const documents = [fragment, workflow];
+    const index = indexArtifacts(documents);
+    assert.ok(index.get("workflow-fragment")?.has("core.fragment.sample"));
+    const problems = resolveReferences(documents, index);
+    for (const text of ['unknown skill "core.discovery.missing"', 'unknown tool "core.repository.missing"', 'unknown workflow-fragment "core.fragment.missing"']) {
+      assert.ok(problems.some((problem) => problem.includes(text)), JSON.stringify(problems));
     }
   });
 });

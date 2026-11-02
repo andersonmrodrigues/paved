@@ -38,6 +38,7 @@ export interface WorkflowPhase {
   skip_when?: string;
   retry?: { class: string; max_attempts?: number };
   routing?: PhaseRouting;
+  fragments?: { id: string; with?: Record<string, string> }[];
 }
 
 export interface WorkflowContract {
@@ -53,6 +54,92 @@ export interface WorkflowContract {
   outputs: string[];
   completion: { criteria: string[] };
   references?: string[];
+}
+
+export interface WorkflowFragmentMetadata {
+  apiVersion: string;
+  kind: "WorkflowFragment";
+  id: string;
+  title: string;
+  version: string;
+  status: string;
+  inputs: string[];
+  skills: string[];
+  tools: string[];
+}
+
+/** Validated metadata paired with its separate FRAGMENT.md body. */
+export interface WorkflowFragmentContract {
+  contract: WorkflowFragmentMetadata;
+  body: string;
+}
+
+export interface ResolvedWorkflowPhase extends WorkflowPhase {
+  fragments?: { id: string; with?: Record<string, string>; body: string }[];
+}
+
+export interface ResolvedWorkflowContract extends WorkflowContract {
+  phases: ResolvedWorkflowPhase[];
+}
+
+/** Resolve one level of guidance; no expressions, recursive templates or host execution. */
+export function resolveWorkflowFragments(
+  workflow: WorkflowContract,
+  fragments: ReadonlyMap<string, WorkflowFragmentContract>,
+): { phases: ResolvedWorkflowPhase[]; problems: string[] } {
+  const problems: string[] = [];
+  const phases = workflow.phases.map((phase): ResolvedWorkflowPhase => {
+    const { fragments: inclusions, ...base } = phase;
+    if (inclusions === undefined) return base;
+    const resolved: NonNullable<ResolvedWorkflowPhase["fragments"]> = [];
+    const seen = new Set<string>();
+    const skills = new Set(phase.skills ?? []);
+    const requiredTools = new Set(phase.tools?.required ?? []);
+    for (const inclusion of inclusions) {
+      const at = `phase ${phase.phase} fragment ${inclusion.id}`;
+      if (seen.has(inclusion.id)) problems.push(`${at}: duplicate fragment inclusion`);
+      seen.add(inclusion.id);
+      const fragment = fragments.get(inclusion.id);
+      if (fragment === undefined) {
+        problems.push(`${at}: unknown fragment`);
+        continue;
+      }
+      const { contract, body } = fragment;
+      if ("fragments" in contract) problems.push(`${at}: nested fragment references are not allowed`);
+      const bindings = inclusion.with ?? {};
+      const inputs = new Set(contract.inputs);
+      for (const id of inputs) {
+        if (!Object.hasOwn(bindings, id)) problems.push(`${at}: missing input ${id}`);
+      }
+      for (const [id, value] of Object.entries(bindings)) {
+        if (!inputs.has(id)) problems.push(`${at}: unknown input ${id}`);
+        if (typeof value !== "string" || value.trim().length === 0 || /\{\{|\}\}/.test(value)) {
+          problems.push(`${at}: invalid value for input ${id}`);
+        }
+      }
+      const interpolated = body.replace(/\{\{ inputs\.([a-z0-9]+(?:-[a-z0-9]+)*) \}\}/g, (placeholder, id: string) => {
+        if (!inputs.has(id)) {
+          problems.push(`${at}: undeclared input ${id}`);
+          return placeholder;
+        }
+        const value = bindings[id];
+        return typeof value === "string" ? value : placeholder;
+      });
+      if (/\{\{|\}\}/.test(interpolated)) problems.push(`${at}: unresolved placeholder`);
+      resolved.push({ ...inclusion, body: interpolated });
+      for (const skill of contract.skills) skills.add(skill);
+      for (const tool of contract.tools) requiredTools.add(tool);
+    }
+    return {
+      ...phase,
+      fragments: resolved,
+      skills: [...skills],
+      tools: { ...phase.tools, required: [...requiredTools],
+        ...(phase.tools?.optional === undefined ? {} : { optional: phase.tools.optional.filter((id) => !requiredTools.has(id)) }) },
+    };
+  });
+  // Fail closed: callers cannot accidentally execute a partially interpolated phase.
+  return { phases: problems.length > 0 ? [] : phases, problems };
 }
 
 export interface WorkflowFiles {
