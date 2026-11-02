@@ -5,7 +5,8 @@ import { loadYaml } from "./documents.ts";
 import { intentDocumentPath } from "./intent.ts";
 import { resolveSafePath } from "./safe-path.ts";
 import { planRef, reviewBriefPath, reviewedState, reviewRecordPath, type ChangeReview, type ReviewedState } from "./workflow-gates/review.ts";
-import type { Run } from "./workflow-runs.ts";
+import { loadContract, type Run } from "./workflow-runs.ts";
+import { phaseContext } from "./workflows.ts";
 
 /** Where a separate reviewer reads its brief and writes its findings, and what it must have read. */
 export interface IndependentReview { readonly brief: string; readonly record: string; readonly reviewed: ReviewedState }
@@ -82,10 +83,12 @@ export function writeReviewDocument(projectRoot: string, run: Run): string {
 }
 
 /** Everything a reviewer with its own context needs, and nothing from the conversation that wrote the change. */
-export function writeReviewBrief(projectRoot: string, run: Run, reviewed: ReviewedState): string {
+export function writeReviewBrief(projectRoot: string, run: Run, reviewed: ReviewedState, coreRoot: string): string {
   const evidence = loadEvidence(projectRoot, run);
   const plan = planRef(run);
   const intent = intentDocumentPath(run.id);
+  const workflow = run.workflow === undefined ? undefined : loadContract(coreRoot, run.workflow.id);
+  const phase = workflow?.phases.find((item) => item.phase === "review" && run.phases.some((active) => active.phase === item.phase && active.status === "running"));
   const diff = evidence.artifacts?.find((artifact) => artifact.kind === "diff")?.source?.location;
   const lines = [
     `# Review brief for ${run.id}`, "",
@@ -96,6 +99,8 @@ export function writeReviewBrief(projectRoot: string, run: Run, reviewed: Review
     `- Evidence record: ${run.evidence ? `\`${run.evidence}\`` : "none recorded"}`,
     `- Diff: ${diff ? `\`${diff}\`` : "see the evidence record"}`,
     `- Rules in scope: ${evidence.rules?.length ? evidence.rules.map((rule) => `\`${rule.id}\``).join(", ") : "none recorded"}`, "",
+    ...(workflow && phase ? ["## Active review phase context", "", "Apply these composed skills, Tool requirements, fragment instructions and phase policies.",
+      "Tool policies never grant host permission; the host enforces its own permissions independently.", "", "```json", JSON.stringify(phaseContext(workflow, phase), null, 2), "```", ""] : []),
     "Follow the change-review skill: run the rules, diff and change passes, then keep only",
     "findings you validated against the code. A blocking finding is a defect you can demonstrate;",
     "anything else is a note. Use `findings: []` when nothing survives.", "",
@@ -123,14 +128,14 @@ export function writeReviewBrief(projectRoot: string, run: Run, reviewed: Review
 }
 
 /** The document a person must review for this run's current state, if any. */
-export function reviewFor(projectRoot: string, run: Run): ReviewBlock | undefined {
+export function reviewFor(projectRoot: string, run: Run, coreRoot: string): ReviewBlock | undefined {
   if (!run.workflow && run.status === "awaiting-input") return reviewBlock(intentDocumentPath(run.id));
   const awaitingPlan = run.phases.some((phase) => phase.gates?.some((gate) => gate.id === "plan-approved" && gate.status === "awaiting-approval"));
   const plan = planRef(run);
   if (awaitingPlan && plan) return reviewBlock(plan, companionDocuments(projectRoot, run.id, plan));
   if (run.phases.some((phase) => phase.phase === "review" && phase.status === "running")) {
     const reviewed = reviewedState(projectRoot, run);
-    const independent = reviewed && { brief: writeReviewBrief(projectRoot, run, reviewed), record: reviewRecordPath(run.id), reviewed };
+    const independent = reviewed && { brief: writeReviewBrief(projectRoot, run, reviewed, coreRoot), record: reviewRecordPath(run.id), reviewed };
     return reviewBlock(writeReviewDocument(projectRoot, run), [], independent);
   }
   return undefined;

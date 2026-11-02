@@ -34,6 +34,10 @@ the Core itself: a rule that is only documented is a candidate for a check. Stat
 | Inline generator metadata only for outputs whose schema has `provenance` | Enforced | `tests/generators/` |
 | Workflows follow the canonical phase order, which equals `lifecycle.md` | Enforced | `tests/workflows/` |
 | Workflows gate destructive tools, carry their change type's approval, require provable checks and do not duplicate skill activation | Enforced | `tests/workflows/` (`assessWorkflowQuality`) |
+| Fragment metadata, exact bindings, references and one-level composition resolve before execution | Schema + runtime loader + tests | `schemas/workflow-fragment.schema.yaml`, `cli/lib/workflow-runs.ts`, `tests/workflows/` |
+| Selected autonomy persists across classification/resume, is immutable and preserves mandatory stops | Runtime + integration contract tests | `cli/lib/intent.ts`, `cli/lib/workflow-runs.ts`, `cli/commands/workflow.ts`, `tests/workflows/`, `tests/docs/agent-integration.test.ts` |
+| Local Tool policies reject unknown references, cross-action conflicts and denied composed required Tools before dispatch; same-action duplicates resolve once | Runtime + authoring checks | `assessWorkflowToolPolicies`, `loadContract`, `tests/workflows/` |
+| Host integrations apply phase Tool restrictions and profile dispatch guidance without overriding host permissions | Integration responsibility; documented and projection-tested, not host permission enforcement | `tests/docs/agent-integration.test.ts`, `tests/plugins/` |
 | Failure codes are documented in `instructions/workflows.md` and match the schema enum | Enforced | `tests/workflows/` |
 | Run records are consistent with their workflow | Library + fixtures; planned in `paved doctor` | `assessRun` |
 | Approvals are made by an authenticated person | Candidate (runner or CI integration) | |

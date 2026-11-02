@@ -27,6 +27,9 @@ properties:
     properties:
       id: { $ref: "urn:paved:schema:common:v1#/$defs/workflowRef" }
       version: { $ref: "urn:paved:schema:common:v1#/$defs/semver" }
+  autonomy_profile:
+    description: Immutable run profile selected explicitly at creation or from the workflow default at classification. Absent preserves existing behavior.
+    enum: [guided, balanced, autonomous]
   classification:
     description: >
       How the run's workflow was chosen. `workflow` is absent while the choice is

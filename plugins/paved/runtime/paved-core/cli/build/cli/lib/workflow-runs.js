@@ -2,10 +2,11 @@ import { existsSync, mkdirSync, readdirSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { stringify } from "yaml";
 import { atomicWriteFileSync } from "./atomic-write.js";
-import { loadYaml } from "./documents.js";
+import { loadMarkdown, loadYaml } from "./documents.js";
 import { resolveSafePath } from "./safe-path.js";
 import { createRegistry } from "./schemas.js";
-import { assessRun } from "./workflows.js";
+import { assessWorkflowToolPolicies, assessRun, resolveWorkflowFragments } from "./workflows.js";
+import { indexArtifacts, resolveReferences } from "./references.js";
 /** `failed` is not terminal: a failed phase may be retried. */
 export const TERMINAL_STATUSES = new Set(["completed", "completed-with-warnings", "blocked", "cancelled"]);
 export function runPath(projectRoot, id) {
@@ -34,6 +35,55 @@ export function coreWorkflowIds(coreRoot) {
         .map((entry) => `core.${entry.name}`)
         .sort();
 }
+/** Load Core fragment metadata, bodies and their skill/tool reference closure. */
+export function loadWorkflowFragments(coreRoot, registry = createRegistry(join(coreRoot, "schemas"), ["paved/v1"])) {
+    const root = join(coreRoot, "core/workflow-fragments");
+    const fragments = new Map();
+    if (!existsSync(root))
+        return fragments;
+    const documents = [];
+    for (const entry of readdirSync(root, { withFileTypes: true })) {
+        if (!entry.isDirectory())
+            continue;
+        const file = join(root, entry.name, "fragment.yaml");
+        const document = loadYaml(file);
+        const validation = registry.validate(document);
+        if (!validation.valid)
+            throw new Error(`Workflow fragment ${entry.name} is invalid: ${validation.errors.join("; ")}`);
+        const contract = document;
+        if (contract.id !== `core.fragment.${entry.name}`)
+            throw new Error(`Workflow fragment ${entry.name} declares mismatched id ${contract.id}.`);
+        fragments.set(contract.id, { contract, body: loadMarkdown(join(root, entry.name, "FRAGMENT.md")).body });
+        documents.push({ label: file, document: document });
+    }
+    // Reference resolution uses declared ids, never path guesses from input bindings.
+    const dependencies = loadWorkflowDependencies(coreRoot);
+    const problems = resolveReferences(documents, indexArtifacts([...documents, ...dependencies]));
+    if (problems.length)
+        throw new Error(`Workflow fragments are invalid: ${problems.join("; ")}`);
+    return fragments;
+}
+/** Core skill and Tool contracts used by fragments and policy validation. */
+function loadWorkflowDependencies(coreRoot) {
+    const dependencies = [];
+    const collect = (dir) => {
+        if (!existsSync(dir))
+            return;
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+            const file = join(dir, entry.name);
+            if (entry.isDirectory())
+                collect(file);
+            else if (entry.isFile() && entry.name.endsWith(".yaml")) {
+                dependencies.push({ label: file, document: loadYaml(file) });
+            }
+        }
+    };
+    collect(join(coreRoot, "core/skills"));
+    collect(join(coreRoot, "core/tools"));
+    return dependencies;
+}
+export class WorkflowToolPolicyError extends Error {
+}
 export function loadContract(coreRoot, workflowId) {
     const name = /^core\.([a-z][a-z0-9-]*)$/.exec(workflowId)?.[1];
     if (!name)
@@ -44,7 +94,25 @@ export function loadContract(coreRoot, workflowId) {
     const contract = loadYaml(path);
     if (contract.id !== workflowId)
         throw new Error(`Workflow file ${name} declares ${contract.id}, not ${workflowId}.`);
-    return contract;
+    const registry = createRegistry(join(coreRoot, "schemas"), ["paved/v1"]);
+    const validation = registry.validate(contract);
+    if (!validation.valid)
+        throw new Error(`Workflow ${workflowId} is invalid: ${validation.errors.join("; ")}`);
+    const resolved = resolveWorkflowFragments(contract, loadWorkflowFragments(coreRoot, registry));
+    if (resolved.problems.length)
+        throw new Error(`Workflow ${workflowId} has invalid fragments: ${resolved.problems.join("; ")}`);
+    const workflow = { ...contract, phases: resolved.phases };
+    if ((workflow.tool_policies?.length ?? 0) > 0 || workflow.phases.some((phase) => (phase.tool_policies?.length ?? 0) > 0)) {
+        const dependencies = loadWorkflowDependencies(coreRoot);
+        const skills = new Map(dependencies.filter(({ document }) => document.kind === "Skill")
+            .map(({ document }) => [String(document.id), document]));
+        const toolSafety = new Map(dependencies.filter(({ document }) => document.kind === "Tool")
+            .map(({ document }) => [String(document.id), String(document.safety)]));
+        const problems = assessWorkflowToolPolicies(workflow, { skills, toolSafety });
+        if (problems.length)
+            throw new WorkflowToolPolicyError(`Workflow ${workflowId} has invalid tool policies: ${problems.join("; ")}`);
+    }
+    return workflow;
 }
 export function validateRun(coreRoot, run) {
     const schema = createRegistry(join(coreRoot, "schemas"), ["paved/v1"]).validate(run);
@@ -74,6 +142,14 @@ export function readRun(projectRoot, coreRoot, id) {
 export function writeRun(projectRoot, coreRoot, run) {
     validateRun(coreRoot, run);
     const path = runPath(projectRoot, run.id);
+    if (existsSync(path)) {
+        const existing = loadYaml(path);
+        // A pending run without an explicit choice may adopt its workflow default once.
+        const classifying = existing.workflow === undefined && existing.autonomy_profile === undefined && run.workflow !== undefined;
+        if (!classifying && existing.autonomy_profile !== run.autonomy_profile) {
+            throw new Error(`Workflow run ${run.id} autonomy profile cannot change after creation.`);
+        }
+    }
     mkdirSync(dirname(path), { recursive: true });
     atomicWriteFileSync(path, stringify(run));
 }

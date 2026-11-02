@@ -564,8 +564,8 @@ function outcomeOf(selected, result) {
         ...(result.evidence === undefined ? {} : { evidence: result.evidence }),
     };
 }
-export async function runTestingTool(input) {
-    const selected = resolveTestingTool(input.projectRoot, input.coreRoot, input.sourceRoot);
+/** A pre-resolved snapshot lets a phase guard inspect the exact suite before any member runs. */
+export async function runTestingTool(input, selected = resolveTestingTool(input.projectRoot, input.coreRoot, input.sourceRoot)) {
     if (selected.status === "unavailable" || selected.status === "ambiguous") {
         return { status: "failed", diagnostics: [diagnostic(selected.code, "config", selected.message, selected.remediation)] };
     }

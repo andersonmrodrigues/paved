@@ -6,12 +6,20 @@ documents (tests validate them against their schemas); replace every `example` v
 Markdown templates define the required sections (tests check that
 real skills and workflows contain them).
 
+The WorkflowFragment pair declares a Core-owned `core.fragment.<name>` id, version,
+status, unique input ids, skill ids and Tool ids. Keep guidance in `FRAGMENT.md`; bind
+inputs from the workflow phase's `fragments[].with` map using nonblank strings and the
+exact `{{ inputs.<id> }}` syntax. No expressions, nested fragments, phases or gates are
+supported. The loader validates references, binding completeness and the rendered body;
+see `docs/concepts/workflows.md`.
+
 | Template | Instantiates | Where it lives when used |
 |---|---|---|
 | `manifest.yaml` | Project manifest | `.paved/manifest.yaml` |
 | `AGENTS.md` | Consumer agent entrypoint | Consumer root `AGENTS.md` (inside the Paved block) |
 | `skill.md` + `skill.yaml` | Skill | `<skills root>/<category>/<name>/SKILL.md` and `skill.yaml` |
-| `workflow.md` + `workflow.yaml` | Workflow | `<workflows root>/<name>/WORKFLOW.md` and `workflow.yaml` |
+| `workflow.md` + `workflow.yaml` | Workflow (optional autonomy default, phase fragments and local Tool policies) | `<workflows root>/<name>/WORKFLOW.md` and `workflow.yaml` |
+| `workflow-fragment.md` + `workflow-fragment.yaml` | WorkflowFragment | `core/workflow-fragments/<name>/FRAGMENT.md` and `fragment.yaml` |
 | `feature.yaml` | Feature map entry | `.paved/project/feature-map/<id>.yaml` |
 | `context-document.md` | Project Context document (frontmatter + managed blocks) | `.paved/project/<area>/<name>.md` |
 | `rule.yaml` | Rule | `core/rules/<category>/<name>.yaml` or `.paved/rules/<category>/<name>.yaml` |

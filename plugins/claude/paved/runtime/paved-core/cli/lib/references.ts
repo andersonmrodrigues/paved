@@ -5,7 +5,7 @@
 // `<namespace>.<path>`. The field a reference appears in fixes the kind it points to.
 // See docs/concepts/references.md. Run after schema validation.
 
-export type ArtifactKind = "rule" | "tool" | "tool-implementation" | "skill" | "workflow" | "check";
+export type ArtifactKind = "rule" | "tool" | "tool-implementation" | "skill" | "workflow" | "check" | "workflow-fragment";
 
 export interface Reference {
   kind: ArtifactKind;
@@ -27,6 +27,7 @@ const KIND_OF_DOCUMENT: Readonly<Record<string, ArtifactKind>> = {
   ToolImplementation: "tool-implementation",
   Skill: "skill",
   Workflow: "workflow",
+  WorkflowFragment: "workflow-fragment",
   Check: "check",
 };
 
@@ -62,15 +63,25 @@ export function referencesIn(document: Fields): Reference[] {
       break;
     }
     case "Workflow":
+      for (const policy of entries(document["tool_policies"])) {
+        for (const action of ["allow", "ask", "deny"]) {
+          add("tool", `tool_policies.${String(policy["id"])}.${action}`, policy[action]);
+        }
+      }
       add("rule", "rules", document["rules"]);
       add("workflow", "deprecation.replaced_by", fields(document["deprecation"])["replaced_by"]);
       for (const phase of entries(document["phases"])) {
         const at = `phases.${String(phase["phase"])}`;
         const tools = fields(phase["tools"]);
+        for (const fragment of entries(phase["fragments"])) add("workflow-fragment", `${at}.fragments`, fragment["id"]);
         add("skill", `${at}.skills`, phase["skills"]);
         add("tool", `${at}.tools.required`, tools["required"]);
         add("tool", `${at}.tools.optional`, tools["optional"], true);
       }
+      break;
+    case "WorkflowFragment":
+      add("skill", "skills", document["skills"]);
+      add("tool", "tools", document["tools"]);
       break;
     case "Rule":
       add("workflow", "applies_to.workflows", fields(document["applies_to"])["workflows"]);

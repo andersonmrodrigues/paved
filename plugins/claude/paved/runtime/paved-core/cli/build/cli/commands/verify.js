@@ -1,5 +1,6 @@
 import { realpathSync } from "node:fs";
 import { relative, sep } from "node:path";
+import { ToolInvocationStopped } from "../lib/tools.js";
 import { runVerification } from "../lib/verification-runner.js";
 import { ConsumerOperationLockedError } from "../lib/operation-lock.js";
 import { runDecisionGate } from "../lib/decisions/gate.js";
@@ -15,7 +16,7 @@ function statusFor(diagnostics) {
 function rel(projectRoot, path) {
     return relative(realpathSync(projectRoot), realpathSync(path)).split(sep).join("/");
 }
-export async function verifyHandler(invocation) {
+export async function verifyHandler(invocation, beforeRun) {
     let result;
     try {
         const outcome = runDecisionGate({
@@ -48,6 +49,11 @@ export async function verifyHandler(invocation) {
             sourceRoot: invocation.paths.sourceRoot,
             coreRoot: invocation.paths.coreRoot,
             adapterSelections: invocation.flags.adapters,
+            ...(beforeRun ? { beforeRun: (selected) => {
+                    const stopped = beforeRun(selected);
+                    if (stopped)
+                        throw new ToolInvocationStopped(stopped);
+                } } : {}),
         });
     }
     catch (error) {

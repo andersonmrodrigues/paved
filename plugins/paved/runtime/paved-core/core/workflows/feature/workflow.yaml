@@ -5,7 +5,7 @@ title: Feature
 description: >-
   Adds behavior or changes existing behavior on purpose, from request to reviewed,
   verified change. Use when a task asks the software to do something it does not do yet.
-version: 0.4.0
+version: 0.5.0
 status: experimental
 change_type: feature
 inputs:
@@ -41,7 +41,10 @@ phases:
       capacity: economy
       reasoning_effort: low
       rationale: "Locating code is search-heavy and output-light: a subagent keeps file contents out of the primary context, and a light model suffices when it returns paths and findings."
-    skills: [core.discovery.context-discovery]
+    fragments:
+      - id: core.fragment.context-discovery
+        with:
+          subject: the sibling feature closest to this one
   - phase: planning
     goal: List the claims the feature will make and the check that will prove each one.
     routing:

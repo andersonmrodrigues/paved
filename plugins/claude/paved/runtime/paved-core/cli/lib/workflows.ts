@@ -28,17 +28,29 @@ export interface PhaseRouting {
   rationale: string;
 }
 
+/** Host-neutral recommendations; allow is never an execution permission. */
+export interface WorkflowToolPolicy {
+  id: string;
+  allow: string[];
+  ask: string[];
+  deny: string[];
+}
+
 export interface WorkflowPhase {
   phase: string;
   goal: string;
   skills?: string[];
   tools?: { required?: string[]; optional?: string[] };
+  tool_policies?: string[];
   verification?: { required?: string[]; recommended?: string[]; optional?: string[] };
   gates?: Gate[];
   skip_when?: string;
   retry?: { class: string; max_attempts?: number };
   routing?: PhaseRouting;
+  fragments?: { id: string; with?: Record<string, string> }[];
 }
+
+export type AutonomyProfile = "guided" | "balanced" | "autonomous";
 
 export interface WorkflowContract {
   id: string;
@@ -46,6 +58,8 @@ export interface WorkflowContract {
   status: string;
   description: string;
   change_type: string;
+  autonomy?: { default_profile: AutonomyProfile };
+  tool_policies?: WorkflowToolPolicy[];
   inputs: { id: string; required: boolean }[];
   rules?: string[];
   phases: WorkflowPhase[];
@@ -53,6 +67,92 @@ export interface WorkflowContract {
   outputs: string[];
   completion: { criteria: string[] };
   references?: string[];
+}
+
+export interface WorkflowFragmentMetadata {
+  apiVersion: string;
+  kind: "WorkflowFragment";
+  id: string;
+  title: string;
+  version: string;
+  status: string;
+  inputs: string[];
+  skills: string[];
+  tools: string[];
+}
+
+/** Validated metadata paired with its separate FRAGMENT.md body. */
+export interface WorkflowFragmentContract {
+  contract: WorkflowFragmentMetadata;
+  body: string;
+}
+
+export interface ResolvedWorkflowPhase extends WorkflowPhase {
+  fragments?: { id: string; with?: Record<string, string>; body: string }[];
+}
+
+export interface ResolvedWorkflowContract extends WorkflowContract {
+  phases: ResolvedWorkflowPhase[];
+}
+
+/** Resolve one level of guidance; no expressions, recursive templates or host execution. */
+export function resolveWorkflowFragments(
+  workflow: WorkflowContract,
+  fragments: ReadonlyMap<string, WorkflowFragmentContract>,
+): { phases: ResolvedWorkflowPhase[]; problems: string[] } {
+  const problems: string[] = [];
+  const phases = workflow.phases.map((phase): ResolvedWorkflowPhase => {
+    const { fragments: inclusions, ...base } = phase;
+    if (inclusions === undefined) return base;
+    const resolved: NonNullable<ResolvedWorkflowPhase["fragments"]> = [];
+    const seen = new Set<string>();
+    const skills = new Set(phase.skills ?? []);
+    const requiredTools = new Set(phase.tools?.required ?? []);
+    for (const inclusion of inclusions) {
+      const at = `phase ${phase.phase} fragment ${inclusion.id}`;
+      if (seen.has(inclusion.id)) problems.push(`${at}: duplicate fragment inclusion`);
+      seen.add(inclusion.id);
+      const fragment = fragments.get(inclusion.id);
+      if (fragment === undefined) {
+        problems.push(`${at}: unknown fragment`);
+        continue;
+      }
+      const { contract, body } = fragment;
+      if ("fragments" in contract) problems.push(`${at}: nested fragment references are not allowed`);
+      const bindings = inclusion.with ?? {};
+      const inputs = new Set(contract.inputs);
+      for (const id of inputs) {
+        if (!Object.hasOwn(bindings, id)) problems.push(`${at}: missing input ${id}`);
+      }
+      for (const [id, value] of Object.entries(bindings)) {
+        if (!inputs.has(id)) problems.push(`${at}: unknown input ${id}`);
+        if (typeof value !== "string" || value.trim().length === 0 || /\{\{|\}\}/.test(value)) {
+          problems.push(`${at}: invalid value for input ${id}`);
+        }
+      }
+      const interpolated = body.replace(/\{\{ inputs\.([a-z0-9]+(?:-[a-z0-9]+)*) \}\}/g, (placeholder, id: string) => {
+        if (!inputs.has(id)) {
+          problems.push(`${at}: undeclared input ${id}`);
+          return placeholder;
+        }
+        const value = bindings[id];
+        return typeof value === "string" ? value : placeholder;
+      });
+      if (/\{\{|\}\}/.test(interpolated)) problems.push(`${at}: unresolved placeholder`);
+      resolved.push({ ...inclusion, body: interpolated });
+      for (const skill of contract.skills) skills.add(skill);
+      for (const tool of contract.tools) requiredTools.add(tool);
+    }
+    return {
+      ...phase,
+      fragments: resolved,
+      skills: [...skills],
+      tools: { ...phase.tools, required: [...requiredTools],
+        ...(phase.tools?.optional === undefined ? {} : { optional: phase.tools.optional.filter((id) => !requiredTools.has(id)) }) },
+    };
+  });
+  // Fail closed: callers cannot accidentally execute a partially interpolated phase.
+  return { phases: problems.length > 0 ? [] : phases, problems };
 }
 
 export interface WorkflowFiles {
@@ -110,10 +210,92 @@ function requiredClosure(id: string, skills: WorkflowContext["skills"], seen = n
   return seen;
 }
 
+const POLICY_ACTIONS = ["allow", "ask", "deny"] as const;
+
+/** Resolve selected policies without adding phase Tools; first same-action occurrence wins. */
+export function resolvePhaseToolPolicies(workflow: WorkflowContract, phase: WorkflowPhase): {
+  policies: WorkflowToolPolicy[]; problems: string[];
+} {
+  const policies: WorkflowToolPolicy[] = [];
+  const problems: string[] = [];
+  const actions = new Map<string, typeof POLICY_ACTIONS[number]>();
+  for (const id of phase.tool_policies ?? []) {
+    const policy = workflow.tool_policies?.find((item) => item.id === id);
+    if (policy === undefined) {
+      problems.push(`phase ${phase.phase}: unknown tool policy ${id}`);
+      continue;
+    }
+    const effective: WorkflowToolPolicy = { id, allow: [], ask: [], deny: [] };
+    for (const action of POLICY_ACTIONS) {
+      for (const tool of policy[action]) {
+        const existing = actions.get(tool);
+        if (existing !== undefined && existing !== action) {
+          problems.push(`phase ${phase.phase}: tool ${tool} has conflicting actions ${existing} and ${action}`);
+        } else if (existing === undefined) {
+          effective[action].push(tool);
+        }
+        actions.set(tool, action);
+      }
+    }
+    policies.push(effective);
+  }
+  return { policies, problems };
+}
+
+/** The active phase's composed guidance and effective policies, for hosts and isolated reviewers. */
+export function phaseContext(workflow: WorkflowContract, phase: ResolvedWorkflowPhase) {
+  return {
+    phase: phase.phase,
+    goal: phase.goal,
+    skills: phase.skills ?? [],
+    tools: { required: phase.tools?.required ?? [], optional: phase.tools?.optional ?? [] },
+    toolPolicies: resolvePhaseToolPolicies(workflow, phase).policies,
+    fragments: (phase.fragments ?? []).map(({ id, body }) => ({ id, body })),
+  };
+}
+
+/** Policy checks shared by authoring quality assessment and runtime workflow loading. */
+export function assessWorkflowToolPolicies(
+  contract: WorkflowContract,
+  context: Pick<WorkflowContext, "skills" | "toolSafety">,
+): string[] {
+  const problems: string[] = [];
+  const policyIds = new Set<string>();
+  for (const policy of contract.tool_policies ?? []) {
+    if (policyIds.has(policy.id)) problems.push(`duplicate tool policy ${policy.id}`);
+    policyIds.add(policy.id);
+    const actions = new Map<string, typeof POLICY_ACTIONS[number]>();
+    for (const action of POLICY_ACTIONS) {
+      for (const tool of policy[action]) {
+        if (!context.toolSafety.has(tool)) problems.push(`tool policy ${policy.id}: unknown tool ${tool}`);
+        const existing = actions.get(tool);
+        if (existing !== undefined && existing !== action) {
+          problems.push(`tool policy ${policy.id}: tool ${tool} has conflicting actions ${existing} and ${action}`);
+        }
+        actions.set(tool, action);
+      }
+    }
+  }
+  for (const phase of contract.phases) {
+    const selected = resolvePhaseToolPolicies(contract, phase);
+    problems.push(...selected.problems);
+    const denied = new Set(selected.policies.flatMap((policy) => policy.deny));
+    const skills = new Set(phase.skills ?? []);
+    for (const id of [...skills]) for (const dep of requiredClosure(id, context.skills)) skills.add(dep);
+    const requiredTools = new Set([...(phase.tools?.required ?? []),
+      ...[...skills].flatMap((id) => context.skills.get(id)?.tools?.required ?? [])]);
+    for (const tool of requiredTools) {
+      if (denied.has(tool)) problems.push(`phase ${phase.phase}: required tool ${tool} is denied`);
+    }
+  }
+
+  return problems;
+}
+
 /** Problems with one workflow's structure, safety, verifiability and use of skills. */
 export function assessWorkflowQuality(files: WorkflowFiles, context: WorkflowContext): string[] {
   const { contract, body } = files;
-  const problems: string[] = [];
+  const problems = assessWorkflowToolPolicies(contract, context);
   const phases = contract.phases;
 
   const indexes = phases.map((p) => context.phaseOrder.indexOf(p.phase));
@@ -213,6 +395,7 @@ export function assessWorkflowQuality(files: WorkflowFiles, context: WorkflowCon
 }
 
 export interface WorkflowRunRecord {
+  autonomy_profile?: AutonomyProfile;
   workflow: { id: string; version: string };
   status: string;
   inputs: { id: string }[];

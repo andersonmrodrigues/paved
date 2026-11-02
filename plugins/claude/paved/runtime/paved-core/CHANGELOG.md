@@ -5,6 +5,31 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- Reusable Core workflow fragments with schema-validated metadata, exact string input
+  bindings and composed skill/Tool requirements. Loading rejects unknown references,
+  missing or extra bindings, unresolved templates and nested fragments. Active phase
+  context exposes bound guidance and composed requirements. Feature workflow `0.5.0`
+  adopts context-discovery fragment guidance (ADR 0046).
+- Optional per-run autonomy profiles: guided phase-by-phase continuation, balanced
+  automatic continuation and autonomous dispatch guidance for ready tasks in an approved
+  delegation plan. Creation-time selection overrides workflow defaults and stays fixed
+  across classification and resume; mandatory stops, approvals, verification, evidence,
+  independent review and host permissions still apply.
+- Optional phase-scoped Tool policies with workflow-local definitions and effective actions
+  in active phase context. Runtime validation rejects unknown references, conflicting
+  actions and denied required Tools before workflow dispatch. Same-action duplicates
+  resolve once; deny excludes use, ask requires host approval and allow recommends use
+  subject to host permissions. Unspecified Tools retain existing host behavior.
+  CLI-owned testing suites and verification Check Tools enforce the active phase's
+  policies before invocation; ask suspends automatic delivery for a bounded host-mediated
+  acknowledgment without granting host permission. Isolated review briefs carry the
+  active review phase's composed guidance and effective policies. Approval requests expose
+  only safe capability and invocation summaries: sensitive inputs/defaults and opaque
+  implementation arguments never enter the public request or its digest. The acknowledgment
+  covers visible parameters; host permissions govern actual execution.
+
 ## [2.22.0] - 2026-11-01
 
 ### Added

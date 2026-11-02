@@ -39,6 +39,19 @@ const assertSquarePng = (icon: Buffer) => {
 };
 
 describe("generated plugins", () => {
+  it("omits maintainer catalogs while retaining consumer verification guidance", () => {
+    const runtime = packRuntime(ROOT, { build: false });
+    for (const path of [
+      "core/skills/README.md", "core/rules/README.md", "core/tools/README.md",
+      "core/workflows/README.md", "core/workflow-fragments/README.md", "core/templates/README.md",
+    ]) {
+      assert.equal(runtime.files.has(path), false, `${path} is a maintainer-only catalog`);
+    }
+    assert.deepEqual(runtime.files.get("core/verification/README.md"), readFileSync(join(ROOT, "core/verification/README.md")));
+    const claudePlan = planPlugins(ROOT, runtime).find((plan) => plan.target === PLUGIN_TARGETS.claude)!;
+    assert.ok(claudePlan.files.size <= 512, `${claudePlan.files.size} files`);
+  });
+
   it("ships host-scoped plugin refresh before repository update", () => {
     const runtime = packRuntime(ROOT, { build: false });
     for (const plan of planPlugins(ROOT, runtime)) {

@@ -96,6 +96,68 @@ finishing. No agent-specific verification mechanism is introduced.
 families in this release. An integration must report them unavailable rather
 than pretending they are executable.
 
+## Active workflow context and controls
+
+`intent`, `plan` and `execute` expose an active phase in `data.phaseContext` when one is
+available. Consume `phase`, `goal`, composed `skills`, `tools` (`required`, `optional`),
+ordered `fragments` (`id`, `body`) containing bound fragment guidance, and effective
+`toolPolicies` (`id`, `allow`, `ask`, `deny`). `data.routing` separately describes who does
+the work and the recommended capacity/effort. Empty fragment or policy lists mean there
+is no additional guidance or restriction. Do not interpolate fragment bodies again.
+
+A selected `data.autonomy_profile` is the run's immutable choice, originating from
+creation-time `--autonomy` or `workflow.autonomy.default_profile`. With neither present,
+the value stays absent and existing behavior applies. Integrations use the same protocol
+for every host:
+
+- `guided`: wait for the user after each completed phase; `execute --auto` completes at
+  most one phase per call. Do not immediately invoke it again to bypass the stop.
+- `balanced`: continue eligible phases with `execute --auto`, stopping for new input or
+  observations, gates and failures; the host chooses whether to dispatch ready tasks.
+- `autonomous`: use balanced continuation and automatically dispatch only ready tasks
+  from an approved delegation plan, respecting its dependencies and scope. The CLI does
+  not create agent sessions.
+
+All profiles preserve mandatory stops, required input, approvals, verification, evidence,
+independent review, completion requirements and Tool safety; host permissions remain
+authoritative.
+A profile never supplies approval or permission to execute a Tool.
+
+Apply selected Tool actions through host controls: `deny` excludes use; `ask` requires
+the host's own approval flow; `allow` recommends a capability and never authorizes it.
+Host policy may be stricter. Policies do not add Tools, and unspecified Tools retain
+existing host behavior.
+Same-action duplicates appear once in selection order. Cross-action conflicts and
+unknown references are invalid, as is denying a Tool required by the phase, a fragment,
+an active skill or its required dependencies. Runtime validation and composition fail closed
+before phase dispatch, including on resume. Report diagnostics and correct the contract; do not continue by
+ignoring unavailable policy context. Paved validates and projects these declarations;
+it does not enforce host-level permissions. See [workflows](workflows.md) for authoring
+and [workflow state](workflow-state.md) for persistence.
+
+CLI-owned testing and verification invocations check the active phase's policies against
+resolved Tool ids before running any selected suite member or Check Tool. Deny returns
+`PAVED_WORKFLOW_TOOL_DENIED`. Ask stops `--auto` with status `warning`, diagnostic
+`PAVED_WORKFLOW_TOOL_APPROVAL_REQUIRED`, and `data.toolApproval`: a digest `id` plus the
+run, workflow, phase, attempt, source roots/digest and effective phase policies. Tools
+carry explicit capability/safety/input metadata, implementation identity and visible
+executable, working directory, timeout and input-binding names/flags, plus selected
+override execution controls. Sensitive input values are `[REDACTED]`, including effective
+defaults; sensitive defaults are omitted from contract metadata. Opaque argument literals,
+synthetic results and configuration prose are omitted. The public `id` hashes only this
+safe representation, never hidden values or raw configuration. The host uses this bounded
+context to approve the capability and visible safe parameters, then repeats the phase
+command with
+`--host-tool-approval <id>` and the same flags. This is an invocation acknowledgment,
+not a Paved Decision or proof of native approval; it grants and attests no host or OS
+permission. The host must enforce its permissions independently. The acknowledgment is
+not stored, does not carry to the next automatic phase, and stops matching if the
+source, phase, policies or visible invocation summary changes. Hidden values and opaque
+configuration are outside this acknowledgment: it does not claim that they were presented
+or independently host-authorized. The host must enforce permission for actual execution.
+A repeat without it suspends again. The isolated review brief carries the active review phase's composed context
+and effective policies so its reviewer receives the same guidance and restrictions.
+
 ## Diagnostics, errors and compatibility
 
 Each diagnostic contains `severity`, `category`, `code`, `component`, `message`,

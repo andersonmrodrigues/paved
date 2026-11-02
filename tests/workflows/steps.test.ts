@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { createHash } from "node:crypto";
 import { parse, stringify } from "yaml";
+import { acquireConsumerOperationLock } from "../../cli/lib/operation-lock.ts";
 import { initializeConsumer } from "../../cli/lib/generator-runtime.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
 import { loadContract, writeRun, type Run } from "../../cli/lib/workflow-runs.ts";
@@ -30,8 +31,140 @@ describe("intent, plan and execute", () => {
     const run = readRunFile(runOf(started));
     assert.equal(run.workflow?.id, "core.feature");
     assert.equal(run.phases[0]?.status, "running");
+    assert.deepEqual((started.data as { phaseContext: { toolPolicies: unknown[] } }).phaseContext.toolPolicies, []);
     assert.match(readFileSync(join(project, `.paved/documents/intents/${run.id}.md`), "utf8"), /Add CSV export/);
   });
+
+  it("returns active bound fragment guidance and composed refs in command JSON", async () => {
+    const fixtureCore = mkdtempSync(join(tmpdir(), "paved-phase-context-"));
+    try {
+      for (const path of ["manifest.yaml", "package.json", "VERSION", "schemas", "core", "generators", "adapters"]) {
+        cpSync(join(core, path), join(fixtureCore, path), { recursive: true });
+      }
+      const fragmentFile = join(fixtureCore, "core/workflow-fragments/context-discovery/fragment.yaml");
+      const fragment = parse(readFileSync(fragmentFile, "utf8"));
+      fragment.tools = ["core.repository.files"];
+      writeFileSync(fragmentFile, stringify(fragment));
+      const workflowFile = join(fixtureCore, "core/workflows/feature/workflow.yaml");
+      const workflow = parse(readFileSync(workflowFile, "utf8"));
+      workflow.autonomy = { default_profile: "guided" };
+      workflow.tool_policies = [
+        { id: "inspect", allow: ["core.repository.status"], ask: ["core.repository.diff"], deny: ["core.repository.history"] },
+        { id: "more", allow: ["core.repository.status", "core.repository.files"], ask: ["core.repository.diff"], deny: ["core.repository.history"] },
+        { id: "inactive", allow: [], ask: [], deny: ["core.repository.status"] },
+      ];
+      const discovery = workflow.phases.find((phase: { phase: string }) => phase.phase === "discovery");
+      delete discovery.routing;
+      discovery.tool_policies = ["inspect", "more"];
+      discovery.tools = { required: ["core.repository.status"], optional: ["core.repository.files", "core.repository.diff"] };
+      writeFileSync(workflowFile, stringify(workflow));
+      rmSync(join(project, ".paved"), { recursive: true });
+      initializeConsumer(fixtureCore, project, "consumer");
+      const invokeFixture = (...argv: string[]) => dispatchCli({
+        argv: [...argv, "--project", project, "--json"], cwd: project, executablePath: join(fixtureCore, "package.json"),
+      });
+      const started = await invokeFixture("intent", "Add CSV export", "--workflow", "feature", "--because", "A new format is requested.");
+      assert.equal(started.status, "success", JSON.stringify(started));
+      assert.deepEqual((started.data as { phaseContext: { toolPolicies: unknown[] } }).phaseContext.toolPolicies, []);
+      const advanced = await invokeFixture("intent", "--run", runOf(started), "--advance", "--note", "Scope is clear");
+      assert.equal(advanced.status, "success", JSON.stringify(advanced));
+      const data = advanced.data as { phaseContext?: unknown; routing?: unknown; autonomy_profile?: string };
+      assert.equal(data.autonomy_profile, "guided");
+      assert.equal(readRunFile(runOf(started)).autonomy_profile, "guided");
+      assert.equal(data.routing, undefined, "phase context does not depend on routing metadata");
+      assert.deepEqual(data.phaseContext, {
+        phase: "discovery", goal: "Locate the affected code, the pattern to follow, the rules in scope and the unknowns.",
+        skills: ["core.discovery.context-discovery"],
+        tools: { required: ["core.repository.status", "core.repository.files"], optional: ["core.repository.diff"] },
+        toolPolicies: [
+          { id: "inspect", allow: ["core.repository.status"], ask: ["core.repository.diff"], deny: ["core.repository.history"] },
+          { id: "more", allow: ["core.repository.files"], ask: [], deny: [] },
+        ],
+        fragments: [{ id: "core.fragment.context-discovery", body: "Find the sibling feature closest to this one; it is the pattern that\n`core.architecture.follow-existing-patterns` asks you to follow.\n" }],
+      });
+      const resumed = await invokeFixture("intent", "--run", runOf(started));
+      assert.deepEqual((resumed.data as { phaseContext?: unknown }).phaseContext, data.phaseContext);
+      assert.equal((resumed.data as { autonomy_profile?: string }).autonomy_profile, "guided");
+      const pending = await invokeFixture("intent", "Choose a format");
+      assert.equal((pending.data as { autonomy_profile?: string }).autonomy_profile, undefined);
+      const classified = await invokeFixture("intent", "--run", runOf(pending), "--answer", `${pending.decisions![0]!.id}=feature`, "--answered-by", "owner");
+      assert.equal((classified.data as { autonomy_profile?: string }).autonomy_profile, "guided");
+      assert.equal(readRunFile(runOf(pending)).autonomy_profile, "guided");
+    } finally { rmSync(fixtureCore, { recursive: true, force: true }); }
+  });
+
+  for (const invalid of [
+    { name: "unknown selected policy", policies: [], selected: ["missing"], error: /unknown tool policy missing/ },
+    { name: "conflicting selected actions", policies: [
+      { id: "inspect", allow: ["core.repository.diff"], ask: [], deny: [] },
+      { id: "confirm", allow: [], ask: ["core.repository.diff"], deny: [] },
+    ], selected: ["inspect", "confirm"], error: /conflicting actions allow and ask/ },
+    { name: "unknown policy Tool", policies: [
+      { id: "inspect", allow: ["core.repository.missing"], ask: [], deny: [] },
+    ], selected: ["inspect"], error: /unknown tool core.repository.missing/ },
+    { name: "denied fragment Tool", policies: [
+      { id: "inspect", allow: [], ask: [], deny: ["core.repository.files"] },
+    ], selected: ["inspect"], error: /required tool core.repository.files is denied/ },
+    { name: "denied skill dependency Tool", policies: [
+      { id: "inspect", allow: [], ask: [], deny: ["core.repository.diff"] },
+    ], selected: ["inspect"], error: /required tool core.repository.diff is denied/ },
+  ]) {
+    it(`refuses ${invalid.name} before advancing or exposing phase policy`, async () => {
+      const fixtureCore = mkdtempSync(join(tmpdir(), "paved-invalid-policy-"));
+      try {
+        for (const path of ["manifest.yaml", "package.json", "VERSION", "schemas", "core", "generators", "adapters"]) {
+          cpSync(join(core, path), join(fixtureCore, path), { recursive: true });
+        }
+        const fragmentFile = join(fixtureCore, "core/workflow-fragments/context-discovery/fragment.yaml");
+        const fragment = parse(readFileSync(fragmentFile, "utf8"));
+        fragment.tools = ["core.repository.files"];
+        writeFileSync(fragmentFile, stringify(fragment));
+        const skillFile = join(fixtureCore, "core/skills/discovery/context-discovery/skill.yaml");
+        const skill = parse(readFileSync(skillFile, "utf8"));
+        skill.depends_on = { required: ["core.development.feature-development"], optional: [] };
+        writeFileSync(skillFile, stringify(skill));
+        rmSync(join(project, ".paved"), { recursive: true });
+        initializeConsumer(fixtureCore, project, "consumer");
+        const invokeFixture = (...argv: string[]) => dispatchCli({
+          argv: [...argv, "--project", project, "--json"], cwd: project, executablePath: join(fixtureCore, "package.json"),
+        });
+        const started = await invokeFixture("intent", "Add CSV export", "--workflow", "feature", "--because", "A new format is requested.");
+        assert.equal(started.status, "success", JSON.stringify(started));
+        const id = runOf(started);
+        const before = readRunFile(id);
+        const workflowFile = join(fixtureCore, "core/workflows/feature/workflow.yaml");
+        const workflow = parse(readFileSync(workflowFile, "utf8"));
+        workflow.tool_policies = invalid.policies;
+        workflow.phases.find((phase: { phase: string }) => phase.phase === "discovery").tool_policies = invalid.selected;
+        writeFileSync(workflowFile, stringify(workflow));
+
+        const failed = await invokeFixture("intent", "--run", id, "--advance", "--note", "Scope is clear");
+        assert.equal(failed.status, "failed", JSON.stringify(failed));
+        assert.equal(failed.diagnostics[0]?.code, "PAVED_WORKFLOW_STATE_INVALID", JSON.stringify(failed));
+        assert.match(failed.diagnostics[0]?.message ?? "", invalid.error);
+        assert.equal((failed.data as { phaseContext?: unknown } | undefined)?.phaseContext, undefined);
+        assert.deepEqual(readRunFile(id), before, "invalid policy must not advance or write the run");
+
+        // This response is enriched without dispatching: policy failures must not disappear
+        // into withPhaseContext's best-effort handling of unreadable run state.
+        const release = acquireConsumerOperationLock(project, "fixture");
+        try {
+          const locked = await invokeFixture("intent", "--run", id);
+          assert.equal(locked.diagnostics[0]?.code, "PAVED_WORKFLOW_STATE_INVALID", JSON.stringify(locked));
+          assert.match(locked.diagnostics[0]?.message ?? "", invalid.error);
+          assert.equal((locked.data as { phaseContext?: unknown } | undefined)?.phaseContext, undefined);
+        } finally { release(); }
+
+        // Refresh the Core lock so creation reaches policy validation rather than drift.
+        rmSync(join(project, ".paved"), { recursive: true });
+        initializeConsumer(fixtureCore, project, "consumer");
+        const newRun = await invokeFixture("intent", "Add PDF export", "--workflow", "feature", "--because", "A new format is requested.");
+        assert.equal(newRun.status, "failed", JSON.stringify(newRun));
+        assert.match(newRun.diagnostics[0]?.message ?? "", invalid.error);
+        assert.equal((newRun.data as { phaseContext?: unknown } | undefined)?.phaseContext, undefined);
+      } finally { rmSync(fixtureCore, { recursive: true, force: true }); }
+    });
+  }
 
   it("intent without --because is refused", async () => {
     const result = await invoke("intent", "Add CSV export", "--workflow", "feature");
@@ -46,6 +179,7 @@ describe("intent, plan and execute", () => {
   it("uncertain intent waits for a classification decision, then classifies on the answer", async () => {
     const pending = await invoke("intent", "Make exports work for archived items", "--recommend", "bug", "--because", "The report says it fails.");
     assert.equal(pending.status, "awaiting_input", JSON.stringify(pending));
+    assert.equal((pending.data as { phaseContext?: unknown }).phaseContext, undefined);
     const decision = pending.decisions?.[0];
     assert.deepEqual(decision?.options.map((option) => option.id), ["bug", "feature", "refactor"]);
     assert.equal(decision?.recommended, "bug");
@@ -86,6 +220,7 @@ describe("intent, plan and execute", () => {
     assert.equal(decision?.recommended, "split");
     const split = await invoke("intent", "--run", runOf(pending), "--answer", `${decision!.id}=split`, "--answered-by", "maintainer@example.com");
     assert.equal(readRunFile(runOf(pending)).status, "cancelled");
+    assert.equal((split.data as { phaseContext?: unknown }).phaseContext, undefined);
     const next = (split.data as { nextAction: string }).nextAction;
     assert.match(next, /paved intent "Add CSV export"/);
     assert.match(next, /paved intent "Fix the archived-items crash"/);
@@ -245,5 +380,70 @@ describe("intent, plan and execute", () => {
     assert.ok(!(answered.decisions ?? []).some((item) => item.id === toolDecision!.id));
     const stray = await invoke("plan", "--run", id, "--answer", `${toolDecision!.id}=x`, "--answered-by", "maintainer@example.com");
     assert.equal(stray.diagnostics[0]?.code, "PAVED_DECISION_ANSWER_INVALID", JSON.stringify(stray));
+  });
+});
+
+
+describe("workflow command autonomy", () => {
+  for (const profile of ["guided", "balanced", "autonomous"]) {
+    it(`${profile} is serialized, resumes unchanged and rejects a different selection`, async () => {
+      const started = await invoke("intent", "Add CSV export", "--workflow", "feature", "--because", "New format.", "--autonomy", profile);
+      assert.equal(started.status, "success", JSON.stringify(started));
+      const id = runOf(started);
+      assert.equal((started.data as { autonomy_profile?: string }).autonomy_profile, profile);
+      assert.equal((readRunFile(id) as Run & { autonomy_profile?: string }).autonomy_profile, profile);
+      const resumed = await invoke("execute", "--run", id);
+      assert.equal((resumed.data as { autonomy_profile?: string }).autonomy_profile, profile);
+      const advanced = await invoke("intent", "--run", id, "--advance", "--note", "Scope is clear");
+      assert.equal((advanced.data as { autonomy_profile?: string }).autonomy_profile, profile);
+      const wrongStep = await invoke("plan", "--run", id);
+      assert.equal((wrongStep.data as { autonomy_profile?: string }).autonomy_profile, profile);
+      const invalidFlags = await invoke("execute", "--run", id, "--workflow", "bug", "--because", "Changed classification.");
+      assert.equal((invalidFlags.data as { autonomy_profile?: string } | undefined)?.autonomy_profile, profile);
+      const changed = await invoke("intent", "--run", id, "--autonomy", profile === "guided" ? "balanced" : "guided");
+      assert.equal(changed.diagnostics[0]?.code, "PAVED_AUTONOMY_PROFILE_IMMUTABLE", JSON.stringify(changed));
+      assert.equal((changed.data as { autonomy_profile?: string }).autonomy_profile, profile);
+      const repeated = await invoke("intent", "Add CSV export", "--workflow", "feature", "--because", "New format.", "--autonomy", profile === "guided" ? "balanced" : "guided");
+      assert.equal(repeated.diagnostics[0]?.code, "PAVED_AUTONOMY_PROFILE_IMMUTABLE", JSON.stringify(repeated));
+    });
+  }
+
+  it("retains profile and phase context when an implicitly selected run fails on missing evidence", async () => {
+    const started = await invoke("intent", "Add CSV export", "--workflow", "feature", "--because", "New format.", "--autonomy", "guided");
+    assert.equal(started.status, "success", JSON.stringify(started));
+    const id = runOf(started);
+    const before = readRunFile(id);
+    const failed = await invoke("intent", "--advance", "--note", "Scope is clear", "--evidence", "missing.md");
+    assert.equal(failed.status, "failed", JSON.stringify(failed));
+    assert.equal(failed.diagnostics[0]?.code, "PAVED_WORKFLOW_STATE_INVALID");
+    assert.equal(failed.diagnostics[0]?.message, "Evidence file does not exist: missing.md");
+    const data = failed.data as { run?: string; autonomy_profile?: string; phaseContext?: { phase: string }; routing?: unknown } | undefined;
+    assert.equal(data?.run, id);
+    assert.equal(data?.autonomy_profile, "guided");
+    assert.equal(data?.phaseContext?.phase, "context");
+    assert.deepEqual(data?.phaseContext, (started.data as { phaseContext: unknown }).phaseContext);
+    assert.deepEqual(data?.routing, (started.data as { routing: unknown }).routing);
+    assert.deepEqual(readRunFile(id), before, "invalid evidence must not advance or change the persisted run");
+  });
+
+  it("preserves an explicit pending profile through the classification answer", async () => {
+    const pending = await invoke("intent", "Make exports work", "--autonomy", "autonomous");
+    assert.equal(pending.status, "awaiting_input", JSON.stringify(pending));
+    assert.equal((pending.data as { autonomy_profile?: string }).autonomy_profile, "autonomous");
+    const classified = await invoke("intent", "--run", runOf(pending), "--answer", `${pending.decisions![0]!.id}=feature`, "--answered-by", "owner");
+    assert.equal((classified.data as { autonomy_profile?: string }).autonomy_profile, "autonomous");
+    assert.equal((readRunFile(runOf(pending)) as Run & { autonomy_profile?: string }).autonomy_profile, "autonomous");
+  });
+
+  it("leaves new and resumed runs without a profile unchanged and rejects adding one on resume", async () => {
+    const started = await invoke("intent", "Add CSV export", "--workflow", "feature", "--because", "New format.");
+    const id = runOf(started);
+    assert.equal(Object.hasOwn(started.data!, "autonomy_profile"), false);
+    assert.equal(Object.hasOwn(readRunFile(id), "autonomy_profile"), false);
+    const resumed = await invoke("intent", "--run", id);
+    assert.equal(Object.hasOwn(resumed.data!, "autonomy_profile"), false);
+    const changed = await invoke("execute", "--run", id, "--autonomy", "balanced");
+    assert.equal(changed.diagnostics[0]?.code, "PAVED_AUTONOMY_PROFILE_IMMUTABLE", JSON.stringify(changed));
+    assert.equal(Object.hasOwn(readRunFile(id), "autonomy_profile"), false);
   });
 });

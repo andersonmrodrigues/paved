@@ -25,7 +25,7 @@ describe("review block", () => {
   });
 
   it("points a pending classification to the Intent document", () => {
-    assert.equal(reviewFor(projectRoot, base)?.target, `.paved/documents/intents/${id}.md`);
+    assert.equal(reviewFor(projectRoot, base, join(import.meta.dirname, "../.."))?.target, `.paved/documents/intents/${id}.md`);
   });
 
   it("points a plan awaiting approval to the plan file and lists the run's other documents", () => {
@@ -41,7 +41,7 @@ describe("review block", () => {
       phases: [{ phase: "planning", status: "running", gates: [{ id: "plan-approved", status: "awaiting-approval" }] }],
       events: [{ at: "2026-10-04T10:00:00Z", type: "approval-requested", phase: "planning", ref: `.paved/documents/plans/${id}.md` }],
     };
-    const block = reviewFor(projectRoot, run);
+    const block = reviewFor(projectRoot, run, join(import.meta.dirname, "../.."));
     assert.equal(block?.target, `.paved/documents/plans/${id}.md`);
     assert.deepEqual(block?.companions, [`.paved/documents/intents/${id}.md`, `.paved/documents/specs/${id}-export.md`]);
     assert.deepEqual(companionDocuments(projectRoot, id, `.paved/documents/plans/${id}.md`), block?.companions);
@@ -67,6 +67,6 @@ describe("review block", () => {
     for (const expected of ["Enabled the export.", "project.unit", "passed", "diff.md", "No browser available.", "core.rule", "satisfied", `plans/${id}.md`]) {
       assert.ok(text.includes(expected), `missing ${expected}`);
     }
-    assert.equal(reviewFor(projectRoot, run)?.target, path);
+    assert.equal(reviewFor(projectRoot, run, join(import.meta.dirname, "../.."))?.target, path);
   });
 });

@@ -8,11 +8,13 @@ import type { DecisionCandidate } from "./decisions/gate.ts";
 import type { Decision } from "./decisions/record.ts";
 import { executableWorkflows } from "./workflow-gates/index.ts";
 import { fingerprint, now, sha } from "./workflow-gates/shared.ts";
+import type { AutonomyProfile } from "./workflows.ts";
 import { coreWorkflowIds, loadContract, type Run, type RunInput } from "./workflow-runs.ts";
 
 export interface IntentRequest {
   readonly request: string;
   readonly workflow?: string;
+  readonly autonomy?: string;
   readonly recommend?: string;
   readonly because?: string;
   readonly parts: readonly string[];
@@ -92,6 +94,7 @@ function firstRequiredInput(coreRoot: string, workflowId: string): string {
 /** Gives a pending or new run its workflow, phases and request input. */
 export function classify(coreRoot: string, run: Run, workflowId: string, because: string, decidedBy: "agent" | "human", decision?: string): void {
   const contract = loadContract(coreRoot, workflowId);
+  if (run.autonomy_profile === undefined && contract.autonomy !== undefined) run.autonomy_profile = contract.autonomy.default_profile;
   const request = run.inputs.find((input) => input.id === "request") ?? run.inputs[0]!;
   const first = firstRequiredInput(coreRoot, workflowId);
   run.inputs = [{ ...request, id: first }, ...run.inputs.filter((input) => input !== request && input.id !== first)];
@@ -108,6 +111,9 @@ export function classify(coreRoot: string, run: Run, workflowId: string, because
 
 /** `worktree` is the linked worktree the run works on when it shares the state of projectRoot. */
 export function createIntentRun(projectRoot: string, coreRoot: string, input: IntentRequest, revision: string, worktree?: string): Run {
+  if (input.autonomy !== undefined && !["guided", "balanced", "autonomous"].includes(input.autonomy)) {
+    throw new IntentError("PAVED_AUTONOMY_PROFILE_INVALID", `Unknown autonomy profile: ${input.autonomy}.`, "Choose guided, balanced or autonomous.");
+  }
   const request = input.request.trim();
   if (!request) throw new IntentError("PAVED_WORKFLOW_INPUT_REQUIRED", "intent requires the user's request.", "Run paved intent \"<request>\" --json.");
   if ((input.workflow !== undefined || input.recommend !== undefined) && !input.because?.trim()) {
@@ -128,6 +134,7 @@ export function createIntentRun(projectRoot: string, coreRoot: string, input: In
     apiVersion: "paved/v1", kind: "WorkflowRun",
     id: `intent-${sha(`${request}\0${revision}`).slice(0, 20)}`,
     revision, ...(worktree === undefined ? {} : { worktree }), started_at: created, status: "awaiting-input",
+    ...(input.autonomy === undefined ? {} : { autonomy_profile: input.autonomy as AutonomyProfile }),
     classification: input.parts.length > 0 ? { parts: [...input.parts] } : {},
     inputs: [{ id: "request", value: request, source: "human" }],
     phases: [],

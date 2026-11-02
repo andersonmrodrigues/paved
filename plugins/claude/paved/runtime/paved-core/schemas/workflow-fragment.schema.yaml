@@ -1,0 +1,35 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:workflow-fragment:v1
+title: Paved workflow fragment contract
+description: >
+  `fragment.yaml` next to a FRAGMENT.md. A fragment provides reusable workflow guidance
+  and declares its input ids, skill references and tool references. The Markdown body
+  may interpolate only declared `{{ inputs.<id> }}` values; the fragment loader validates
+  the separate body and bindings. Fragments do not define phases or weaken workflow gates.
+type: object
+additionalProperties: false
+required: [apiVersion, kind, id, title, version, status, inputs, skills, tools]
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { const: WorkflowFragment }
+  id:
+    description: Core-owned fragment id; the last segment matches its directory name.
+    $ref: "urn:paved:schema:common:v1#/$defs/workflowFragmentRef"
+  title: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  version: { $ref: "urn:paved:schema:common:v1#/$defs/semver" }
+  status: { $ref: "urn:paved:schema:common:v1#/$defs/lifecycleStatus" }
+  inputs:
+    description: Unique input ids available to FRAGMENT.md as `{{ inputs.<id> }}`.
+    type: array
+    uniqueItems: true
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+  skills:
+    description: Skills referenced by the reusable guidance, without copying their procedures.
+    type: array
+    uniqueItems: true
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/skillRef" }
+  tools:
+    description: Tools referenced by the guidance; their existing safety classes still apply.
+    type: array
+    uniqueItems: true
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/toolRef" }

@@ -653,8 +653,8 @@ function outcomeOf(selected: ResolvedTestingTool, result: TestRunResult): TestTo
   };
 }
 
-export async function runTestingTool(input: TestRunInput): Promise<TestRunResult> {
-  const selected = resolveTestingTool(input.projectRoot, input.coreRoot, input.sourceRoot);
+/** A pre-resolved snapshot lets a phase guard inspect the exact suite before any member runs. */
+export async function runTestingTool(input: TestRunInput, selected = resolveTestingTool(input.projectRoot, input.coreRoot, input.sourceRoot)): Promise<TestRunResult> {
   if (selected.status === "unavailable" || selected.status === "ambiguous") {
     return { status: "failed", diagnostics: [diagnostic(selected.code, "config", selected.message, selected.remediation)] };
   }

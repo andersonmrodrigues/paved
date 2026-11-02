@@ -62,6 +62,7 @@ $defs:
           instructions: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
           skills: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
           workflows: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+          workflow_fragments: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
           rules: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
           tools: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
           tool_implementations: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }

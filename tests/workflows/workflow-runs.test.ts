@@ -71,3 +71,35 @@ describe("workflow runs", () => {
     } finally { rmSync(projectRoot, { recursive: true, force: true }); }
   });
 });
+
+
+describe("autonomy run persistence", () => {
+  it("round trips each selected profile without forcing a profile on old runs", () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), "paved-profile-runs-"));
+    try {
+      for (const autonomy_profile of [undefined, "guided", "balanced", "autonomous"] as const) {
+        const run = { ...pending(`intent-profile-${autonomy_profile ?? "absent"}`), ...(autonomy_profile === undefined ? {} : { autonomy_profile }) };
+        writeRun(projectRoot, coreRoot, run);
+        assert.deepEqual(readRun(projectRoot, coreRoot, run.id), run);
+      }
+      assert.throws(() => validateRun(coreRoot, { ...pending(), autonomy_profile: "unchecked" } as unknown as Run), /autonomy_profile/);
+    } finally { rmSync(projectRoot, { recursive: true, force: true }); }
+  });
+});
+
+
+it("refuses changing a persisted selection while allowing default selection at classification", () => {
+  const projectRoot = mkdtempSync(join(tmpdir(), "paved-profile-immutable-"));
+  try {
+    for (const profile of [undefined, "guided", "balanced", "autonomous"] as const) {
+      const run = { ...pending(`intent-immutable-${profile ?? "absent"}`), ...(profile === undefined ? {} : { autonomy_profile: profile }) };
+      writeRun(projectRoot, coreRoot, run);
+      assert.throws(() => writeRun(projectRoot, coreRoot, { ...run, autonomy_profile: profile === "guided" ? "balanced" : "guided" }), /autonomy profile.*cannot change/i);
+      if (profile !== undefined) {
+        const cleared = { ...run };
+        delete cleared.autonomy_profile;
+        assert.throws(() => writeRun(projectRoot, coreRoot, cleared), /autonomy profile.*cannot change/i);
+      }
+    }
+  } finally { rmSync(projectRoot, { recursive: true, force: true }); }
+});

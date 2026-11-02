@@ -12,7 +12,7 @@ For an index of the built-in adapters, workflows and examples, see the
 
 | Extension point | Who | Mechanism | Validated by |
 |---|---|---|---|
-| Skills, workflows, rules, tools (Core) | Core maintainers | Filesystem + declarative (`*.yaml` + Markdown) | Schemas, Core tests |
+| Skills, workflows, workflow fragments, rules, tools (Core) | Core maintainers | Filesystem + declarative (`*.yaml` + Markdown) | Schemas, Core tests |
 | Check types | Core maintainers | Declarative: `core/verification/registry.yaml` and the `checkType` enum | Registry sync test |
 | Custom check types (`x-*`) | Projects | Declarative: profile entries | Schema; they support no claims until registered in the Core |
 | Document kinds | Core maintainers | A new schema + manifest entry + `KIND_TO_SCHEMA` | Schema tests |
@@ -23,6 +23,20 @@ For an index of the built-in adapters, workflows and examples, see the
 | Generators | Core maintainers | Executable with a contract (`generator.yaml`) | Schema; write-permission test |
 | Tools | Everyone (by layer) | Executable with a contract (tool YAML: inputs, safety class) | Schema; runtime checks later |
 | CLI commands | Core maintainers | Code in `cli/` | Tests |
+
+Workflow fragments are Core-owned `WorkflowFragment` documents under
+`core/workflow-fragments/`, included by workflow phases with exact string bindings.
+They add reusable guidance, skills and required Tools, never phases, gates or nested
+runs. New fragments follow the [maintenance guide](../maintenance/evolving-the-core.md)
+and [catalog](../catalog.md#workflow-fragments).
+
+Workflow `autonomy.default_profile` selects only a default for new runs; explicit
+creation-time selection wins and the selected profile is immutable on resume. The
+`guided`, `balanced` and `autonomous` presets are defined by Core, not user-defined
+permission levels. Workflow-local `tool_policies` are selected per phase: they restrict
+Tool use through `allow`, `ask` and `deny`, with runtime consistency checks before
+dispatch. Neither extension weakens mandatory stops, approvals, verification, evidence,
+independent review, Tool safety or host permissions. See [workflows](workflows.md).
 
 ## What is deliberately not extensible
 

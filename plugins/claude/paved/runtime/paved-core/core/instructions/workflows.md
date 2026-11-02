@@ -24,6 +24,28 @@ several open runs they ask which one. A bug's failing regression test and a refa
 passing baseline run inside `intent`; tests and verification run inside `execute`. When a
 step returns their decisions, present them and repeat the same call with the answers.
 
+## Run autonomy
+
+At creation, `intent` and `execute "<request>"` accept
+`--autonomy <guided|balanced|autonomous>`. An explicit selection overrides
+`workflow.yaml`'s optional `autonomy.default_profile`. While classification is pending,
+keep the explicit selection; apply the chosen workflow's default only if none was
+selected. The run records `autonomy_profile`, and every result for that run exposes it
+in `data.autonomy_profile`. Resume with the recorded profile; it cannot change. If both
+selection and default are absent, leave the field absent and preserve current behavior.
+
+- **guided:** stop after each completed phase and wait for the user to advance. Even
+  `execute --auto` completes at most one phase per call; do not immediately call it again
+  without the user's instruction to advance.
+- **balanced:** continue through phases that need no new input, using `execute --auto`.
+- **autonomous:** use balanced continuation and automatically dispatch only ready tasks
+  from an approved delegation plan through the host's native agent tools. Tasks must
+  satisfy the plan's dependencies and scope before dispatch; the CLI creates no sessions.
+
+Every profile stops for gates, approvals, required input and failures. All verification,
+evidence and completion requirements still apply, and host permissions remain
+authoritative. A profile never constitutes an approval or grants tool permission.
+
 ## Before the first phase
 
 Check the standard preconditions, then the workflow's own `preconditions`:
@@ -44,6 +66,13 @@ its goal is met and its gates hold. Skip a phase only when its `skip_when` condi
 holds, and record how it holds; `verification`, `evidence` and `completion` are never
 skipped.
 
+When a command returns `data.phaseContext`, follow its active `phase` and `goal`,
+activate its composed `skills`, respect its required and optional `tools`, and apply
+all listed fragment `body` guidance. Fragment inputs are already bound and validated;
+do not interpolate those bodies again or replace their values from the conversation.
+The payload adds reusable guidance to WORKFLOW.md; declared gates, approvals and Tool
+safety still apply. An empty `fragments` list means the phase has no fragment guidance.
+
 - **Skills.** Activate the phase's skills in the listed order. A skill already active
   from an earlier phase continues where it was; it is never started twice. A skill whose
   "When to use" does not fit the task is recorded as not applicable, with the reason.
@@ -51,6 +80,28 @@ skipped.
   grant execution permission: resolve a compatible ToolImplementation, check permissions,
   environment, preconditions and approval first. A Tool's `safety` class holds unchanged
   inside a workflow.
+- **Tool policies.** Apply every selected `phaseContext.toolPolicies` entry's effective
+  `allow`, `ask` and `deny` Tool ids. `deny` excludes use; `ask` requires the host's own
+  approval flow before use. `allow` is a workflow recommendation only: it never grants
+  execution permission or replaces host approval, and host policy can always be stricter.
+  Policies do not add Tools to the phase's declared tool set. Same-action duplicates
+  across selected policies appear once, in selection order; conflicting actions are
+  invalid, as is denying a required Tool, including one introduced by a fragment or
+  active skill. A Tool omitted from all selected actions is unspecified and retains
+  existing host behavior. An empty `toolPolicies` list preserves existing behavior.
+  Paved also checks the concrete Tools used by its testing and verification phase hooks,
+  including every suite member and Check Tool. A deny stops before invocation. An ask
+  suspends automatic delivery with `PAVED_WORKFLOW_TOOL_APPROVAL_REQUIRED` and a bounded
+  `data.toolApproval` request. Present its phase, capability, implementation identity and
+  visible safe parameters through the host's own approval flow. Sensitive input values
+  and defaults are hidden; opaque argument literals and configuration prose are omitted.
+  The request id binds only this safe representation, so never claim hidden values were
+  presented or independently host-authorized. Host permissions govern actual execution.
+  After that step, repeat the phase command with
+  `--host-tool-approval <request-id>` and the same phase flags. This caller acknowledgment
+  only resumes Paved's suspension: it neither grants nor attests host or OS permission.
+  Never supply it from plan approval, a Paved decision answer or an `allow` policy. It is
+  not persisted and automatic delivery drops it before entering another phase.
 - **Rules.** The run respects the workflow's `rules`, the rules of every active skill,
   and every rule whose `applies_to` matches the change, with the project's overrides
   applied. A workflow never changes a rule's severity.

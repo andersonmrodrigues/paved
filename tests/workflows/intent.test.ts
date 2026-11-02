@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
@@ -123,5 +123,43 @@ describe("intent classification", () => {
     assert.match(text, /Export fails for archived items/);
     assert.match(text, /core\.bug/);
     assert.match(text, /It crashes\./);
+  });
+});
+
+
+describe("intent autonomy profiles", () => {
+  const profileOf = (run: unknown) => (run as { autonomy_profile?: string }).autonomy_profile;
+
+  it("keeps omission absent and records each explicit selection before classification", () => {
+    assert.equal(profileOf(createIntentRun(projectRoot, coreRoot, base, "abc")), undefined);
+    for (const autonomy of ["guided", "balanced", "autonomous"]) {
+      const run = createIntentRun(projectRoot, coreRoot, { ...base, autonomy }, "abc");
+      assert.equal(profileOf(run), autonomy);
+      applyClassificationAnswer(projectRoot, coreRoot, run, { id: "d-0123456789abcdef0123", answer: "feature", answered_by: "owner" } as Decision);
+      assert.equal(profileOf(run), autonomy);
+      validateRun(coreRoot, run);
+    }
+  });
+
+  it("uses the chosen workflow default only when no explicit selection exists", () => {
+    const fixture = mkdtempSync(join(tmpdir(), "paved-autonomy-core-"));
+    try {
+      for (const name of ["schemas", "core"]) cpSync(join(coreRoot, name), join(fixture, name), { recursive: true });
+      const path = join(fixture, "core/workflows/feature/workflow.yaml");
+      writeFileSync(path, readFileSync(path, "utf8") + "\nautonomy:\n  default_profile: guided\n");
+      for (const autonomy of [undefined, "balanced", "autonomous"]) {
+        const input = { ...base, ...(autonomy === undefined ? {} : { autonomy }) };
+        const classified = createIntentRun(projectRoot, fixture, { ...input, workflow: "feature", because: "New." }, "abc");
+        assert.equal(profileOf(classified), autonomy ?? "guided");
+        const pending = createIntentRun(projectRoot, fixture, input, "abc");
+        applyClassificationAnswer(projectRoot, fixture, pending, { id: "d-0123456789abcdef0123", answer: "feature", answered_by: "owner" } as Decision);
+        assert.equal(profileOf(pending), autonomy ?? "guided");
+      }
+    } finally { rmSync(fixture, { recursive: true, force: true }); }
+  });
+
+  it("refuses unknown profiles even before a workflow is chosen", () => {
+    assert.throws(() => createIntentRun(projectRoot, coreRoot, { ...base, autonomy: "unchecked" }, "abc"),
+      (error: unknown) => error instanceof IntentError && error.code === "PAVED_AUTONOMY_PROFILE_INVALID");
   });
 });

@@ -18,6 +18,23 @@ planning. Every feature still requires plan approval, verification, evidence and
 | `bug` | Actual behavior differs from intended behavior | [workflow.yaml](../core/workflows/bug/workflow.yaml) · [WORKFLOW.md](../core/workflows/bug/WORKFLOW.md) |
 | `refactor` | Changing structure without changing behavior | [workflow.yaml](../core/workflows/refactor/workflow.yaml) · [WORKFLOW.md](../core/workflows/refactor/WORKFLOW.md) |
 
+## Workflow fragments
+
+Fragments reuse Core phase guidance, skills and required Tools without adding lifecycle
+phases or nested runs. Bind the declared inputs from `phases[].fragments[].with`; see
+[authoring and exact interpolation](concepts/workflows.md#reusable-workflow-fragments)
+and the [fragment README](../core/workflow-fragments/README.md).
+
+| Fragment | Use when | Contract and guidance |
+|---|---|---|
+| `core.fragment.context-discovery` | Locating affected code, a nearby pattern and verification for a named `subject` | [fragment.yaml](../core/workflow-fragments/context-discovery/fragment.yaml) · [FRAGMENT.md](../core/workflow-fragments/context-discovery/FRAGMENT.md) |
+
+Workflows may also declare an optional autonomy default (`guided`, `balanced` or
+`autonomous`) and phase-selected local Tool policies (`allow`, `ask`, `deny`). Existing
+workflows without these fields retain their behavior. Explicit run selection overrides
+the default, and profiles and policies preserve mandatory gates, approvals,
+verification, evidence and host permissions; see [workflow controls](concepts/workflows.md).
+
 ## Adapters
 
 Select adapters supported by repository evidence. Dependencies are resolved from the
@@ -52,5 +69,5 @@ shapes to adapt, not project facts or required templates.
 For project-specific needs, add skills, workflows, tools and rules under `.paved/`;
 for technology-specific knowledge, propose an adapter. Follow the [extensibility
 guide](concepts/extensibility.md) and the [Core maintenance guide](maintenance/evolving-the-core.md).
-New or renamed built-in adapters, workflows or examples should update this index and
+New or renamed built-in adapters, workflows, workflow fragments or examples should update this index and
 their owning README or contract in the same change.

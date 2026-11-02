@@ -3,6 +3,70 @@
 // whether a run record is consistent with its workflow. Run after schema validation and
 // reference resolution. See docs/concepts/workflows.md.
 import { dependencyCycles, duplicatedSentences, genericityProblems, planCoverageProblems, saysWhenToUse, } from "./skills.js";
+/** Resolve one level of guidance; no expressions, recursive templates or host execution. */
+export function resolveWorkflowFragments(workflow, fragments) {
+    const problems = [];
+    const phases = workflow.phases.map((phase) => {
+        const { fragments: inclusions, ...base } = phase;
+        if (inclusions === undefined)
+            return base;
+        const resolved = [];
+        const seen = new Set();
+        const skills = new Set(phase.skills ?? []);
+        const requiredTools = new Set(phase.tools?.required ?? []);
+        for (const inclusion of inclusions) {
+            const at = `phase ${phase.phase} fragment ${inclusion.id}`;
+            if (seen.has(inclusion.id))
+                problems.push(`${at}: duplicate fragment inclusion`);
+            seen.add(inclusion.id);
+            const fragment = fragments.get(inclusion.id);
+            if (fragment === undefined) {
+                problems.push(`${at}: unknown fragment`);
+                continue;
+            }
+            const { contract, body } = fragment;
+            if ("fragments" in contract)
+                problems.push(`${at}: nested fragment references are not allowed`);
+            const bindings = inclusion.with ?? {};
+            const inputs = new Set(contract.inputs);
+            for (const id of inputs) {
+                if (!Object.hasOwn(bindings, id))
+                    problems.push(`${at}: missing input ${id}`);
+            }
+            for (const [id, value] of Object.entries(bindings)) {
+                if (!inputs.has(id))
+                    problems.push(`${at}: unknown input ${id}`);
+                if (typeof value !== "string" || value.trim().length === 0 || /\{\{|\}\}/.test(value)) {
+                    problems.push(`${at}: invalid value for input ${id}`);
+                }
+            }
+            const interpolated = body.replace(/\{\{ inputs\.([a-z0-9]+(?:-[a-z0-9]+)*) \}\}/g, (placeholder, id) => {
+                if (!inputs.has(id)) {
+                    problems.push(`${at}: undeclared input ${id}`);
+                    return placeholder;
+                }
+                const value = bindings[id];
+                return typeof value === "string" ? value : placeholder;
+            });
+            if (/\{\{|\}\}/.test(interpolated))
+                problems.push(`${at}: unresolved placeholder`);
+            resolved.push({ ...inclusion, body: interpolated });
+            for (const skill of contract.skills)
+                skills.add(skill);
+            for (const tool of contract.tools)
+                requiredTools.add(tool);
+        }
+        return {
+            ...phase,
+            fragments: resolved,
+            skills: [...skills],
+            tools: { ...phase.tools, required: [...requiredTools],
+                ...(phase.tools?.optional === undefined ? {} : { optional: phase.tools.optional.filter((id) => !requiredTools.has(id)) }) },
+        };
+    });
+    // Fail closed: callers cannot accidentally execute a partially interpolated phase.
+    return { phases: problems.length > 0 ? [] : phases, problems };
+}
 export const WORKFLOW_MAX_LINES = 80;
 export const SKILLS_PER_PHASE = 3;
 export const DEFAULT_RETRY = { class: "retryable", max_attempts: 2 };
@@ -36,10 +100,88 @@ function requiredClosure(id, skills, seen = new Set()) {
     }
     return seen;
 }
+const POLICY_ACTIONS = ["allow", "ask", "deny"];
+/** Resolve selected policies without adding phase Tools; first same-action occurrence wins. */
+export function resolvePhaseToolPolicies(workflow, phase) {
+    const policies = [];
+    const problems = [];
+    const actions = new Map();
+    for (const id of phase.tool_policies ?? []) {
+        const policy = workflow.tool_policies?.find((item) => item.id === id);
+        if (policy === undefined) {
+            problems.push(`phase ${phase.phase}: unknown tool policy ${id}`);
+            continue;
+        }
+        const effective = { id, allow: [], ask: [], deny: [] };
+        for (const action of POLICY_ACTIONS) {
+            for (const tool of policy[action]) {
+                const existing = actions.get(tool);
+                if (existing !== undefined && existing !== action) {
+                    problems.push(`phase ${phase.phase}: tool ${tool} has conflicting actions ${existing} and ${action}`);
+                }
+                else if (existing === undefined) {
+                    effective[action].push(tool);
+                }
+                actions.set(tool, action);
+            }
+        }
+        policies.push(effective);
+    }
+    return { policies, problems };
+}
+/** The active phase's composed guidance and effective policies, for hosts and isolated reviewers. */
+export function phaseContext(workflow, phase) {
+    return {
+        phase: phase.phase,
+        goal: phase.goal,
+        skills: phase.skills ?? [],
+        tools: { required: phase.tools?.required ?? [], optional: phase.tools?.optional ?? [] },
+        toolPolicies: resolvePhaseToolPolicies(workflow, phase).policies,
+        fragments: (phase.fragments ?? []).map(({ id, body }) => ({ id, body })),
+    };
+}
+/** Policy checks shared by authoring quality assessment and runtime workflow loading. */
+export function assessWorkflowToolPolicies(contract, context) {
+    const problems = [];
+    const policyIds = new Set();
+    for (const policy of contract.tool_policies ?? []) {
+        if (policyIds.has(policy.id))
+            problems.push(`duplicate tool policy ${policy.id}`);
+        policyIds.add(policy.id);
+        const actions = new Map();
+        for (const action of POLICY_ACTIONS) {
+            for (const tool of policy[action]) {
+                if (!context.toolSafety.has(tool))
+                    problems.push(`tool policy ${policy.id}: unknown tool ${tool}`);
+                const existing = actions.get(tool);
+                if (existing !== undefined && existing !== action) {
+                    problems.push(`tool policy ${policy.id}: tool ${tool} has conflicting actions ${existing} and ${action}`);
+                }
+                actions.set(tool, action);
+            }
+        }
+    }
+    for (const phase of contract.phases) {
+        const selected = resolvePhaseToolPolicies(contract, phase);
+        problems.push(...selected.problems);
+        const denied = new Set(selected.policies.flatMap((policy) => policy.deny));
+        const skills = new Set(phase.skills ?? []);
+        for (const id of [...skills])
+            for (const dep of requiredClosure(id, context.skills))
+                skills.add(dep);
+        const requiredTools = new Set([...(phase.tools?.required ?? []),
+            ...[...skills].flatMap((id) => context.skills.get(id)?.tools?.required ?? [])]);
+        for (const tool of requiredTools) {
+            if (denied.has(tool))
+                problems.push(`phase ${phase.phase}: required tool ${tool} is denied`);
+        }
+    }
+    return problems;
+}
 /** Problems with one workflow's structure, safety, verifiability and use of skills. */
 export function assessWorkflowQuality(files, context) {
     const { contract, body } = files;
-    const problems = [];
+    const problems = assessWorkflowToolPolicies(contract, context);
     const phases = contract.phases;
     const indexes = phases.map((p) => context.phaseOrder.indexOf(p.phase));
     for (let i = 1; i < indexes.length; i++) {

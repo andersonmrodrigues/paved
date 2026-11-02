@@ -21,6 +21,16 @@ Start a repository change by classifying its type and recording the request befo
 3. Pass the user's request verbatim. When the evidence shows the kind of change, add `--workflow <feature|bug|refactor> --because "<evidence>"`. When it does not, omit `--workflow` (optionally `--recommend <id> --because …`) and present the returned decision. When the request mixes kinds of change, pass each part with `--part` and present the split decision. Never classify on a guess.
 4. When the result has a `review` block, start `paved preview start <target> --json` and follow the `paved.preview` review loop.
 
+## Phase Tool policies
+
+Follow the active `data.phaseContext`, including its composed skills, declared Tools and bound fragment bodies. Apply each `phaseContext.toolPolicies` entry's effective `allow`, `ask` and `deny` Tool ids: `deny` excludes use; `ask` requires the host's own approval flow; `allow` is a workflow recommendation only and never grants execution permission or replaces host approval. Host policy can always be stricter. Policies do not add Tools to the phase's declared set. Omitted Tools retain existing host behavior, and an empty policy list preserves existing behavior.
+
+## Run autonomy
+
+For a new intent or execute request, pass the user's explicit `--autonomy <guided|balanced|autonomous>` selection. It overrides the workflow's optional `autonomy.default_profile`; pending classification preserves the explicit selection. The recorded `data.autonomy_profile` is fixed on resume. If no selection or workflow default exists, leave the profile absent and keep current behavior.
+For `guided`, stop after every completed phase and wait for the user to advance; do not immediately repeat `--auto` or another advance call. For `balanced`, continue through ready phases with `execute --auto`. For `autonomous`, use balanced continuation and automatically dispatch only ready tasks from an approved delegation plan, respecting its dependencies and bounded scope, through native host tools. The CLI creates no sessions.
+Every profile preserves gates, human approvals, required input stops, failures, verification, evidence and completion requirements. Host permissions remain authoritative; an autonomy profile is never an approval or tool permission. Apply this policy to the continuation and routing guidance above.
+
 ## Failure behavior
 
 - A workflow choice without evidence is refused.

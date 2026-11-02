@@ -7,9 +7,23 @@ human must decide; skills say how to do the work. Each workflow is a directory w
 - `workflow.yaml` (schema: `schemas/workflow.schema.yaml`): trigger (`change_type`),
   `version` and `status`, inputs, context, preconditions, rules, the phases in canonical
   order (goal, skills, tools, required and recommended check types, gates, `skip_when`,
-  `retry`), required evidence kinds, outputs and completion criteria.
+  `retry`, optional `fragments` and `tool_policies`), an optional `autonomy.default_profile`,
+  workflow-local Tool policy definitions, required evidence kinds, outputs and completion criteria.
 - `WORKFLOW.md`: guidance for the judgement calls (sections defined in
   `templates/workflow.md`, at most 80 lines).
+
+Reusable phase guidance lives in `core/workflow-fragments/<name>/` as `fragment.yaml`
+and `FRAGMENT.md` (schema: `schemas/workflow-fragment.schema.yaml`); see the
+catalog in `docs/catalog.md`. Include it with
+`phases[].fragments[] {id, with}`. Bind every declared input exactly once with a nonblank
+string; only exact `{{ inputs.<id> }}` placeholders are supported. Fragment skills and
+required Tools compose with the phase; fragments add no phases, gates or nested runs.
+
+The `docs/concepts/workflows.md` guide defines autonomy profiles and
+phase-selected Tool policies. Both are optional: omission preserves existing behavior.
+Neither relaxes gates, verification, evidence, Tool safety or host permissions. Policy
+validation rejects unknown references, conflicting actions and denied required Tools
+before dispatch; integrations apply the projected actions within host permissions.
 
 How any workflow is run (preconditions, gates and approvals, failure codes, retries,
 completion, the run record) is in `instructions/workflows.md`. The canonical phase order

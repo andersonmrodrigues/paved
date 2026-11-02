@@ -1,0 +1,10 @@
+# expect-error: must NOT have duplicate items
+apiVersion: paved/v1
+kind: WorkflowFragment
+id: core.fragment.example
+title: Example fragment
+version: 0.1.0
+status: experimental
+inputs: [goal, goal]
+skills: [core.discovery.context-discovery]
+tools: [core.repository.status]
