@@ -12,13 +12,14 @@ How to change this repository without breaking consumers.
 
 ## Adding content
 
-When adding or renaming a built-in adapter, workflow or example, update the
+When adding or renaming a built-in adapter, workflow, workflow fragment or example, update the
 [component catalog](../catalog.md) in the same change.
 
 | To add | Do | Tests that will hold you to the contract |
 |---|---|---|
 | Skill | `core/skills/<category>/<name>/` with `SKILL.md` from `core/templates/skill.md` and `skill.yaml` from `core/templates/skill.yaml`: id `core.<category>.<name>`, `version: 0.1.0`, `status: experimental`. Detail in `references/`, examples in `examples/`, each listed in `references`. Bump the version of every skill you change ([skills](../concepts/skills.md#versioning)); add the skill to `core/skills/README.md` | `tests/skills/`, `tests/core/references.test.ts` |
 | Workflow | `core/workflows/<name>/` with `WORKFLOW.md` and `workflow.yaml`, id `core.<name>`, `version` and `status`; quality fixtures in `tests/fixtures/workflows/` for new checks | `tests/workflows/`, `tests/core/references.test.ts` |
+| WorkflowFragment | `core/workflow-fragments/<name>/fragment.yaml` and `FRAGMENT.md` from the templates, id `core.fragment.<name>`, version and status. Declare unique input/skill/Tool arrays; bind exact `{{ inputs.<id> }}` placeholders from phase `fragments[].with`; no phases, gates or nested fragments. Update the fragment README and catalog | `tests/schemas/`, `tests/workflows/`, `tests/core/references.test.ts` |
 | Rule | `core/rules/<category>/<name>.yaml`, id `core.<category>.<name>` | `tests/core/rules-and-tools.test.ts` |
 | Tool | `core/tools/<group>/<name>.yaml`, id `core.<group>.<name>` | `tests/core/rules-and-tools.test.ts` |
 | Check | `core/verification/checks/<group>/<name>.yaml`, id `core.<group>.<name>`, referencing a safe Tool; no project command in the definition | `tests/verification/`, `tests/core/references.test.ts` |
@@ -42,6 +43,23 @@ When adding or renaming a built-in adapter, workflow or example, update the
 5. If the change moves a boundary or changes how layers compose, write or supersede an
    ADR, and update [enforcement candidates](enforcement-candidates.md) when a check is
    added or planned.
+
+Workflow evolution also checks the effective contract after fragment composition:
+
+- Validate exact input bindings and skill/Tool references; a fragment's Tools become
+  required phase Tools. Reject unresolved templates and partial resolution.
+- Keep autonomy defaults optional and selection immutable per run. Neither profiles nor
+  fragments may relax gates, approvals, required input, verification, evidence,
+  independent review, completion rules, Tool safety or host permissions.
+- Keep `tool_policies` local to the workflow and explicitly selected per phase. Pin
+  same-action deduplication, cross-action rejection, unknown references and denial of
+  required Tools (including fragment Tools and required skill dependencies) in tests.
+  These checks must run at runtime before dispatch as well as during authoring review.
+- Version fragments when their guidance or declarations change. Bump every workflow
+  whose effective behavior changes, including through a referenced fragment: optional
+  guidance or defaults are compatible additions; new mandatory requirements follow the
+  breaking-change rules. Do not add defaults or policies to built-ins merely to exercise
+  a new optional schema field. Rebuild plugin snapshots from their sources.
 
 ## Releasing
 

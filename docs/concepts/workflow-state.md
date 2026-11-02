@@ -17,6 +17,7 @@ execution metadata. The host agent owns native session creation and coordination
 | Field | Content |
 |---|---|
 | `workflow` | Id and version of the workflow run |
+| `autonomy_profile` | Optional `guided`, `balanced` or `autonomous` choice; immutable per run once selected |
 | `revision`, `started_at`, `ended_at` | Where and when; `ended_at` required for terminal statuses |
 | `status` | `running`, `awaiting-approval`, `awaiting-input`, `completed`, `completed-with-warnings`, `failed`, `blocked`, `cancelled` |
 | `inputs[]` | Every input as understood, with `source` (`human`, `ticket`, `repository`) |
@@ -56,6 +57,25 @@ stateDiagram-v2
   running --> completed_with_warnings
   running --> cancelled: human stopped it
 ```
+
+## Selected execution context
+
+At creation, `intent` and request-form `execute` accept `--autonomy`; this overrides
+`workflow.autonomy.default_profile`. The explicit choice survives classification; an
+unclassified run without one may acquire the chosen workflow's default at classification.
+After selection, persistence and resume reject a changed profile. If neither selection
+nor default exists, old runs remain valid with the field absent and existing behavior.
+Run results expose the recorded value as `data.autonomy_profile` even when resuming with
+a different command. See the [profile matrix](workflows.md#run-autonomy).
+
+For an active phase, `intent`, `plan` and `execute` may return `data.phaseContext` with
+`phase`, `goal`, composed `skills`, `tools.required` and `tools.optional`, ordered bound
+`fragments` (`id`, `body`) and effective `toolPolicies` (`id`, `allow`, `ask`, `deny`).
+`data.routing` remains separate. The workflow id and version identify the source
+contract; fragments and policies are resolved from it on load rather than copied into
+new run fields. Invalid Tool policies block runtime loading before dispatch. No profile,
+fragment or Tool policy changes the required approvals, verification, evidence,
+independent review or host permissions.
 
 ## Consistency
 

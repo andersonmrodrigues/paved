@@ -96,6 +96,45 @@ finishing. No agent-specific verification mechanism is introduced.
 families in this release. An integration must report them unavailable rather
 than pretending they are executable.
 
+## Active workflow context and controls
+
+`intent`, `plan` and `execute` expose an active phase in `data.phaseContext` when one is
+available. Consume `phase`, `goal`, composed `skills`, `tools` (`required`, `optional`),
+ordered `fragments` (`id`, `body`) containing bound fragment guidance, and effective
+`toolPolicies` (`id`, `allow`, `ask`, `deny`). `data.routing` separately describes who does
+the work and the recommended capacity/effort. Empty fragment or policy lists mean there
+is no additional guidance or restriction. Do not interpolate fragment bodies again.
+
+A selected `data.autonomy_profile` is the run's immutable choice, originating from
+creation-time `--autonomy` or `workflow.autonomy.default_profile`. With neither present,
+the value stays absent and existing behavior applies. Integrations use the same protocol
+for every host:
+
+- `guided`: wait for the user after each completed phase; `execute --auto` completes at
+  most one phase per call. Do not immediately invoke it again to bypass the stop.
+- `balanced`: continue eligible phases with `execute --auto`, stopping for new input or
+  observations, gates and failures; the host chooses whether to dispatch ready tasks.
+- `autonomous`: use balanced continuation and automatically dispatch only ready tasks
+  from an approved delegation plan, respecting its dependencies and scope. The CLI does
+  not create agent sessions.
+
+All profiles preserve mandatory stops, required input, approvals, verification, evidence,
+independent review, completion requirements and Tool safety; host permissions remain
+authoritative.
+A profile never supplies approval or permission to execute a Tool.
+
+Apply selected Tool actions through host controls: `deny` excludes use; `ask` requires
+the host's own approval flow; `allow` recommends a capability and never authorizes it.
+Host policy may be stricter. Policies do not add Tools, and unspecified Tools retain
+existing host behavior.
+Same-action duplicates appear once in selection order. Cross-action conflicts and
+unknown references are invalid, as is denying a Tool required by the phase, a fragment,
+an active skill or its required dependencies. Runtime validation and composition fail closed
+before phase dispatch, including on resume. Report diagnostics and correct the contract; do not continue by
+ignoring unavailable policy context. Paved validates and projects these declarations;
+it does not enforce host-level permissions. See [workflows](workflows.md) for authoring
+and [workflow state](workflow-state.md) for persistence.
+
 ## Diagnostics, errors and compatibility
 
 Each diagnostic contains `severity`, `category`, `code`, `component`, `message`,

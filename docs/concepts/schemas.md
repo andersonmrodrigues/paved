@@ -37,8 +37,23 @@ Workflow fragment metadata declares `apiVersion`, `kind`, a `core.fragment.<name
 `title`, `version`, `status`, and unique arrays of `inputs`, `skills` and `tools`. Inputs
 are kebab-case ids; skills and tools use the existing qualified reference formats. All
 three arrays may be empty. `FRAGMENT.md` contains the reusable guidance and may
-interpolate only declared `{{ inputs.<id> }}` values. Body interpolation and binding
-validation belong to the fragment loader, since the schema reads only the metadata.
+interpolate only declared `{{ inputs.<id> }}` values with that exact spacing. The loader
+rejects missing or extra bindings, blank or nonstring values, template delimiters in
+bindings, undeclared or unresolved placeholders, duplicate phase inclusions and nested
+fragments.
+Body interpolation and binding validation belong to the fragment loader, since the
+schema reads only the metadata. Resolved skills and required Tools compose into the
+phase before policy validation.
+
+The Workflow schema optionally accepts `autonomy.default_profile`, workflow-local
+`tool_policies[] {id, allow, ask, deny}` and phase `fragments[] {id, with}` and
+`tool_policies[]` selections. WorkflowRun optionally records `autonomy_profile`. These
+are additive `paved/v1` fields; old documents retain their existing behavior when absent.
+Schemas constrain shape and enum values; runtime validation rejects unknown policy or
+Tool ids, duplicate policy ids, conflicting actions and denial of a composed required
+Tool before dispatch. Run persistence and resume enforce profile immutability.
+`ToolPolicy` is not a separate document kind. See [workflows](workflows.md) for semantics;
+these contracts never grant host permissions or waive mandatory workflow checks.
 
 ## Format
 
@@ -65,7 +80,7 @@ flowchart LR
 
 - `common.schema.yaml` holds primitives used by several schemas: `apiVersion`, `semver`,
   `semverRange`, `sha256`, `relativePath`, the qualified reference formats (`ruleRef`,
-  `toolRef`, `skillRef`, `workflowRef`), `adapterId`, `generatorId`, `checkType`,
+  `toolRef`, `skillRef`, `workflowRef`, `workflowFragmentRef`), `adapterId`, `generatorId`, `checkType`,
   `contextArea`, `changeType`, `unknown`, `conflict`, `fileRef`.
 - `provenance.schema.yaml` is the only definition of provenance. `feature`,
   `project-context` and `generated-artifact` embed it; `evidence` reuses its `source`
@@ -96,7 +111,7 @@ Validation runs in this order; each layer assumes the previous one passed.
 | 1. Version | Can this Core read this `apiVersion`? | `checkApiVersion` in `cli/lib/schemas.ts` | Implemented |
 | 2. Schema | Is the document well formed? | Ajv, `cli/lib/schemas.ts` | Implemented |
 | 3. Reference | Does every qualified id exist, in a namespace the document may use? | `cli/lib/references.ts` | Implemented; needs the effective set from the CLI |
-| 4. Semantic | Is the content coherent? (evidence support and revisions, cited sources, managed blocks) | `cli/lib/evidence.ts`, `cli/lib/provenance.ts` | Implemented for evidence and provenance |
+| 4. Semantic | Is the content coherent? (evidence support and revisions, cited sources, managed blocks) | `cli/lib/evidence.ts`, `cli/lib/provenance.ts` | Implemented for evidence, provenance and workflow composition/policy consistency (`cli/lib/workflows.ts`, runtime loading) |
 | 5. Compatibility | Do Core, adapters and project agree on versions? | `paved status`, `doctor` and `update` | Implemented by consumer resolution and lock checks |
 | 6. Provenance freshness | Do recorded hashes still match the sources? | `paved status` and `update` | Implemented for recorded generator inputs and locked content |
 

@@ -47,13 +47,70 @@ short and workflows cannot disagree about what `blocked` means.
 | Inputs | `inputs[] {id, description, required}` | A missing required input stops the run (`input-missing`); inputs are never invented |
 | Context | `context {required, optional}` | Context areas, resolved through the manifest's `context_areas` |
 | Preconditions | `preconditions[] {id, condition}` | Workflow-specific; the standard ones apply to every run |
-| Execution configuration | `phases[]`: `phase`, `goal`, `skills`, `tools`, `verification`, `gates`, `skip_when`, `retry` | [Workflow stages](workflow-stages.md) |
+| Execution configuration | `phases[]`: `phase`, `goal`, `skills`, `tools`, `verification`, `gates`, `skip_when`, `retry`, optional `routing`, `fragments`, `tool_policies` | [Workflow stages](workflow-stages.md) |
+| Automation preference | Optional `autonomy.default_profile` | Default for a new run; never an approval or permission grant |
+| Tool policies | Optional workflow-local `tool_policies[] {id, allow, ask, deny}` | Phases select local policy ids; see below |
 | Rules | `rules[]` | Rules every run respects, besides those selected by `applies_to` |
 | Completion | `evidence.required`, `outputs`, `completion.criteria` | Criteria add to the standard completion rule; they never relax it |
 
 Deliberately absent: commands, paths, technologies, project names, and any field that
 repeats a skill's procedure. A workflow names skills, tools, rules, check types and
 evidence kinds by id or key.
+
+## Run autonomy
+
+New runs created by `intent` or `execute "<request>"` accept
+`--autonomy <guided|balanced|autonomous>`. The explicit choice overrides the workflow's
+optional `autonomy.default_profile`. An explicit choice survives pending classification;
+otherwise the default is applied when classification selects the workflow. The selected
+`autonomy_profile` is immutable per run, including across resume. If both are absent,
+leave the field absent and preserve existing behavior.
+
+| Profile | Phase continuation | Delegation |
+|---|---|---|
+| `guided` | Stop after each completed phase for the user to advance; even `execute --auto` completes at most one phase per call | Do not start delegated tasks automatically |
+| `balanced` | Use `execute --auto` to continue eligible phases until a gate, required input, failure or new observation is needed | Host decides whether to start ready tasks |
+| `autonomous` | Same continuation as `balanced` | Host automatically dispatches only ready tasks from an approved delegation plan, within its dependencies and scope |
+
+All profiles preserve mandatory stops, gates, approvals, required input, verification,
+evidence, independent review, completion requirements, Tool safety and host permissions.
+Integrations carry out continuation and dispatch guidance; the CLI creates no agent
+sessions. A profile is never consent to a gated action. See [workflow state](workflow-state.md)
+for persistence and [agent integration](agent-integration.md) for the projection.
+
+## Reusable workflow fragments
+
+A `WorkflowFragment` is Core-owned metadata in
+`core/workflow-fragments/<name>/fragment.yaml` with guidance in `FRAGMENT.md`. Its id is
+`core.fragment.<name>` and must match the directory. Start from the
+[templates](../../core/templates/README.md) and declare `apiVersion`, `kind`, `id`,
+`title`, `version`, `status` and unique arrays of `inputs`, `skills` and `tools` (empty
+arrays are valid). The [catalog](../catalog.md#workflow-fragments) lists built-ins.
+Fragments cannot define phases, gates, triggers, lifecycle transitions or other fragments.
+They reuse guidance without nested workflow runs or changes to the canonical phase order.
+
+A phase includes fragments in order and binds every declared input:
+
+```yaml
+fragments:
+  - id: core.fragment.context-discovery
+    with:
+      subject: the sibling feature closest to this one
+```
+
+Only the exact placeholder `{{ inputs.<id> }}` is interpolated, with one space on each
+side and a declared kebab-case input id. Bindings must be nonblank strings with no
+`{{` or `}}`; there are no expressions or recursive templates. The loader rejects
+missing or extra bindings, undeclared inputs, unresolved placeholders (including altered
+spacing), duplicate inclusion of an id in one phase, unknown references and nested
+fragments. Resolution fails closed rather than returning partially bound phases.
+
+Fragment skills append to phase skills in declaration order, deduplicating by id.
+Fragment Tools become required phase Tools; required entries take precedence over
+optional ones. Composition preserves the usual skill dependency, safety and quality
+checks. `data.phaseContext.fragments` exposes ordered `{id, body}` entries with bound
+guidance alongside the composed `skills` and `tools`; integrations consume these results
+rather than rendering templates themselves.
 
 ## Skill composition
 
@@ -98,6 +155,33 @@ carry an approval gate and must not be retried automatically (checked). A Check 
 Tool capability. Tool resolution selects one compatible Core, adapter or explicitly
 selected project implementation; discovery does not grant permission to execute it.
 
+### Phase-scoped Tool policies
+
+Declare local `tool_policies` on the workflow as `{id, allow, ask, deny}`, with a unique
+local id and arrays of qualified Tool ids (empty arrays are valid). A phase selects
+these definitions with `tool_policies: [<local-id>, ...]`. There is no separate ToolPolicy
+document kind or policy execution mechanism.
+
+- `allow` recommends the Tool capability; it never authorizes execution.
+- `ask` requires the host's own approval flow before use; Paved plan approval does not
+  replace host approval.
+- `deny` excludes use in that phase, even if the host would otherwise permit it.
+
+Selected policies do not add Tools to the phase. Selection order determines the first
+occurrence of same-action duplicates; later copies are removed. There is no precedence
+between actions: cross-action conflicts within a definition or across selected policies
+are rejected. Unspecified Tools retain existing host behavior, as do phases without
+selected policies. Host permissions remain authoritative and may always be stricter.
+
+Authoring checks and runtime loading reject duplicate policy ids, unknown selected
+policy ids, unknown Tool references and conflicting actions. Denying a required Tool is
+invalid, including Tools contributed by a fragment, an active skill or its transitive
+required skill dependencies. Validation runs after fragment composition and fails closed
+before starting or advancing a workflow, including on resume; invalid policies are not
+merely omitted from the projection. Effective actions appear in
+`data.phaseContext.toolPolicies` as ordered `{id, allow, ask, deny}` entries. Integrations
+apply restrictions through host controls without claiming Paved grants host permissions.
+
 ## Verification and evidence
 
 Verification is a phase of its own that cannot be skipped. Each phase may name
@@ -135,6 +219,9 @@ approvals are in [workflow failure](workflow-failure.md) and
 | No duplicate activation; no deprecated skills; no sentences copied from skills | `assessWorkflowQuality` |
 | Skills, tools and rules resolve | `resolveReferences` |
 | Run records match their workflow | `assessRun` |
+| Exact fragment bindings, known references and one-level composition | `loadWorkflowFragments`, `resolveWorkflowFragments`, `loadContract` |
+| Local policy consistency, known Tools and no denied required Tool after composition | `assessWorkflowToolPolicies`, runtime `loadContract` |
+| Immutable selected autonomy profile | Run persistence and command resume validation |
 | Every Core gate has a handler | `tests/workflows/gates.test.ts` |
 | Evidence satisfies the workflow | `assessWorkflowEvidence` |
 

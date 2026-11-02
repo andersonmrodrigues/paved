@@ -7,20 +7,20 @@ releases, not the development sequence used to build them.
 
 ### Added
 
-- Optional phase-scoped Tool policies validate local policy and Tool references, reject
-  conflicting actions and denied required Tools before starting or advancing a workflow,
-  and expose effective actions in active phase context. Deny excludes use, ask requires host approval, and allow remains a
-  recommendation subject to stricter host permissions.
-
+- Reusable Core workflow fragments with schema-validated metadata, exact string input
+  bindings and composed skill/Tool requirements. Loading rejects unknown references,
+  missing or extra bindings, unresolved templates and nested fragments. Active phase
+  context exposes bound guidance and composed requirements.
 - Optional per-run autonomy profiles: guided phase-by-phase continuation, balanced
   automatic continuation and autonomous dispatch guidance for ready tasks in an approved
-  delegation plan. Explicit creation-time selection overrides workflow defaults and
-  persists across classification and resume; all existing stops and permissions apply.
-
-- Reusable workflow fragments with schema-validated metadata, exact string input
-  bindings and composed skill/tool references. Core workflow loading rejects unknown
-  references, missing or extra bindings, unresolved templates and nested fragments.
-  Active command results expose bound guidance and composed skill/Tool requirements.
+  delegation plan. Creation-time selection overrides workflow defaults and stays fixed
+  across classification and resume; mandatory stops, approvals, verification, evidence,
+  independent review and host permissions still apply.
+- Optional phase-scoped Tool policies with workflow-local definitions and effective actions
+  in active phase context. Runtime validation rejects unknown references, conflicting
+  actions and denied required Tools before workflow dispatch. Same-action duplicates
+  resolve once; deny excludes use, ask requires host approval and allow recommends use
+  subject to host permissions. Unspecified Tools retain existing host behavior.
 
 ## [2.22.0] - 2026-11-01
 
