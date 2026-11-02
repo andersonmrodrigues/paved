@@ -21,6 +21,10 @@ Start a repository change by classifying its type and recording the request befo
 3. Pass the user's request verbatim. When the evidence shows the kind of change, add `--workflow <feature|bug|refactor> --because "<evidence>"`. When it does not, omit `--workflow` (optionally `--recommend <id> --because …`) and present the returned decision. When the request mixes kinds of change, pass each part with `--part` and present the split decision. Never classify on a guess.
 4. When the result has a `review` block, start `paved preview start <target> --json` and follow the `paved.preview` review loop.
 
+## Phase Tool policies
+
+Follow the active `data.phaseContext`, including its composed skills, declared Tools and bound fragment bodies. Apply each `phaseContext.toolPolicies` entry's effective `allow`, `ask` and `deny` Tool ids: `deny` excludes use; `ask` requires the host's own approval flow; `allow` is a workflow recommendation only and never grants execution permission or replaces host approval. Host policy can always be stricter. Policies do not add Tools to the phase's declared set. Omitted Tools retain existing host behavior, and an empty policy list preserves existing behavior.
+
 ## Run autonomy
 
 For a new intent or execute request, pass the user's explicit `--autonomy <guided|balanced|autonomous>` selection. It overrides the workflow's optional `autonomy.default_profile`; pending classification preserves the explicit selection. The recorded `data.autonomy_profile` is fixed on resume. If no selection or workflow default exists, leave the profile absent and keep current behavior.

@@ -80,6 +80,15 @@ safety still apply. An empty `fragments` list means the phase has no fragment gu
   grant execution permission: resolve a compatible ToolImplementation, check permissions,
   environment, preconditions and approval first. A Tool's `safety` class holds unchanged
   inside a workflow.
+- **Tool policies.** Apply every selected `phaseContext.toolPolicies` entry's effective
+  `allow`, `ask` and `deny` Tool ids. `deny` excludes use; `ask` requires the host's own
+  approval flow before use. `allow` is a workflow recommendation only: it never grants
+  execution permission or replaces host approval, and host policy can always be stricter.
+  Policies do not add Tools to the phase's declared tool set. Same-action duplicates
+  across selected policies appear once, in selection order; conflicting actions are
+  invalid, as is denying a required Tool, including one introduced by a fragment or
+  active skill. A Tool omitted from all selected actions is unspecified and retains
+  existing host behavior. An empty `toolPolicies` list preserves existing behavior.
 - **Rules.** The run respects the workflow's `rules`, the rules of every active skill,
   and every rule whose `applies_to` matches the change, with the project's overrides
   applied. A workflow never changes a rule's severity.

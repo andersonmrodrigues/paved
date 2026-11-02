@@ -20,6 +20,10 @@ Draft and preview a plan for an open Intent, then record the user's explicit app
 2. Follow the structured result's status, diagnostics, evidence, and next action. When `data.remediation` names a Paved command, run it right away, present any decisions it returns, then repeat the original command. Stop only when the runtime blocks on something it cannot remediate.
 3. Read the run's Intent document at `.paved/documents/intents/<run-id>.md`, then write a plan that answers it and links to it. Save the plan at `.paved/documents/plans/<run-id>.md` and run this command with `--advance --evidence <plan> --note <summary>`. When the result carries a `review` block, start the preview on its target (with its companions) and follow the `paved.preview` review loop without ending your turn: resolve each comment after editing and advance once after edits so the approval request covers the current plan. When the user approves the plan in the conversation with an explicit yes, run `paved plan --run <run-id> --approve --json`; never approve on your own or on an ambiguous reply.
 
+## Phase Tool policies
+
+Follow the active `data.phaseContext`, including its composed skills, declared Tools and bound fragment bodies. Apply each `phaseContext.toolPolicies` entry's effective `allow`, `ask` and `deny` Tool ids: `deny` excludes use; `ask` requires the host's own approval flow; `allow` is a workflow recommendation only and never grants execution permission or replaces host approval. Host policy can always be stricter. Policies do not add Tools to the phase's declared set. Omitted Tools retain existing host behavior, and an empty policy list preserves existing behavior.
+
 ## Run autonomy
 
 For a new intent or execute request, pass the user's explicit `--autonomy <guided|balanced|autonomous>` selection. It overrides the workflow's optional `autonomy.default_profile`; pending classification preserves the explicit selection. The recorded `data.autonomy_profile` is fixed on resume. If no selection or workflow default exists, leave the profile absent and keep current behavior.

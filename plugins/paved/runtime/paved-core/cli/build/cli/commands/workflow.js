@@ -14,7 +14,7 @@ import { reviewFor } from "../lib/review-block.js";
 import { relaysAnswers, runPhase } from "../lib/workflow-gates/index.js";
 import { now, projectRelative, readApproval, reopenImplementation, sha, sharedPhase, sourceUnchanged } from "../lib/workflow-gates/shared.js";
 import { isOpen, loadContract, readRun, runBelongsTo, runSourceRoot, scanRuns, runCommand, runPath, TERMINAL_STATUSES, writeRun, } from "../lib/workflow-runs.js";
-import { AMENDED_RETRY, attemptRounds, RECOVER_HANDLER, recoveriesFor, recoveryQuestion, REVIEW_HANDLER, UNCHANGED_HANDLER } from "../lib/workflows.js";
+import { AMENDED_RETRY, attemptRounds, resolvePhaseToolPolicies, RECOVER_HANDLER, recoveriesFor, recoveryQuestion, REVIEW_HANDLER, UNCHANGED_HANDLER } from "../lib/workflows.js";
 import { createDiagnostic, createResult } from "../result.js";
 import { initHandler } from "./init.js";
 import { testHandler } from "./test.js";
@@ -731,7 +731,8 @@ function withPhaseContext(invocation, outcome) {
         const phase = run?.workflow === undefined || TERMINAL_STATUSES.has(run.status) ? undefined : activePhase(run);
         if (run?.workflow === undefined || phase === undefined)
             return enriched;
-        const resolved = loadContract(coreRoot, run.workflow.id).phases.find((item) => item.phase === phase.phase);
+        const workflow = loadContract(coreRoot, run.workflow.id);
+        const resolved = workflow.phases.find((item) => item.phase === phase.phase);
         if (resolved === undefined)
             return enriched;
         return { ...enriched, data: {
@@ -741,6 +742,7 @@ function withPhaseContext(invocation, outcome) {
                     goal: resolved.goal,
                     skills: resolved.skills ?? [],
                     tools: { required: resolved.tools?.required ?? [], optional: resolved.tools?.optional ?? [] },
+                    toolPolicies: resolvePhaseToolPolicies(workflow, resolved).policies,
                     fragments: (resolved.fragments ?? []).map(({ id, body }) => ({ id, body })),
                 },
                 ...(resolved.routing === undefined ? {} : { routing: { phase: resolved.phase, ...resolved.routing } }),

@@ -28,11 +28,20 @@ export interface PhaseRouting {
   rationale: string;
 }
 
+/** Host-neutral recommendations; allow is never an execution permission. */
+export interface WorkflowToolPolicy {
+  id: string;
+  allow: string[];
+  ask: string[];
+  deny: string[];
+}
+
 export interface WorkflowPhase {
   phase: string;
   goal: string;
   skills?: string[];
   tools?: { required?: string[]; optional?: string[] };
+  tool_policies?: string[];
   verification?: { required?: string[]; recommended?: string[]; optional?: string[] };
   gates?: Gate[];
   skip_when?: string;
@@ -50,6 +59,7 @@ export interface WorkflowContract {
   description: string;
   change_type: string;
   autonomy?: { default_profile: AutonomyProfile };
+  tool_policies?: WorkflowToolPolicy[];
   inputs: { id: string; required: boolean }[];
   rules?: string[];
   phases: WorkflowPhase[];
@@ -200,11 +210,72 @@ function requiredClosure(id: string, skills: WorkflowContext["skills"], seen = n
   return seen;
 }
 
+const POLICY_ACTIONS = ["allow", "ask", "deny"] as const;
+
+/** Resolve selected policies without adding phase Tools; first same-action occurrence wins. */
+export function resolvePhaseToolPolicies(workflow: WorkflowContract, phase: WorkflowPhase): {
+  policies: WorkflowToolPolicy[]; problems: string[];
+} {
+  const policies: WorkflowToolPolicy[] = [];
+  const problems: string[] = [];
+  const actions = new Map<string, typeof POLICY_ACTIONS[number]>();
+  for (const id of phase.tool_policies ?? []) {
+    const policy = workflow.tool_policies?.find((item) => item.id === id);
+    if (policy === undefined) {
+      problems.push(`phase ${phase.phase}: unknown tool policy ${id}`);
+      continue;
+    }
+    const effective: WorkflowToolPolicy = { id, allow: [], ask: [], deny: [] };
+    for (const action of POLICY_ACTIONS) {
+      for (const tool of policy[action]) {
+        const existing = actions.get(tool);
+        if (existing !== undefined && existing !== action) {
+          problems.push(`phase ${phase.phase}: tool ${tool} has conflicting actions ${existing} and ${action}`);
+        } else if (existing === undefined) {
+          effective[action].push(tool);
+        }
+        actions.set(tool, action);
+      }
+    }
+    policies.push(effective);
+  }
+  return { policies, problems };
+}
+
 /** Problems with one workflow's structure, safety, verifiability and use of skills. */
 export function assessWorkflowQuality(files: WorkflowFiles, context: WorkflowContext): string[] {
   const { contract, body } = files;
   const problems: string[] = [];
   const phases = contract.phases;
+
+  const policyIds = new Set<string>();
+  for (const policy of contract.tool_policies ?? []) {
+    if (policyIds.has(policy.id)) problems.push(`duplicate tool policy ${policy.id}`);
+    policyIds.add(policy.id);
+    const actions = new Map<string, typeof POLICY_ACTIONS[number]>();
+    for (const action of POLICY_ACTIONS) {
+      for (const tool of policy[action]) {
+        if (!context.toolSafety.has(tool)) problems.push(`tool policy ${policy.id}: unknown tool ${tool}`);
+        const existing = actions.get(tool);
+        if (existing !== undefined && existing !== action) {
+          problems.push(`tool policy ${policy.id}: tool ${tool} has conflicting actions ${existing} and ${action}`);
+        }
+        actions.set(tool, action);
+      }
+    }
+  }
+  for (const phase of phases) {
+    const selected = resolvePhaseToolPolicies(contract, phase);
+    problems.push(...selected.problems);
+    const denied = new Set(selected.policies.flatMap((policy) => policy.deny));
+    const skills = new Set(phase.skills ?? []);
+    for (const id of [...skills]) for (const dep of requiredClosure(id, context.skills)) skills.add(dep);
+    const requiredTools = new Set([...(phase.tools?.required ?? []),
+      ...[...skills].flatMap((id) => context.skills.get(id)?.tools?.required ?? [])]);
+    for (const tool of requiredTools) {
+      if (denied.has(tool)) problems.push(`phase ${phase.phase}: required tool ${tool} is denied`);
+    }
+  }
 
   const indexes = phases.map((p) => context.phaseOrder.indexOf(p.phase));
   for (let i = 1; i < indexes.length; i++) {

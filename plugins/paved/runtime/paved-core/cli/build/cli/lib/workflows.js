@@ -100,11 +100,73 @@ function requiredClosure(id, skills, seen = new Set()) {
     }
     return seen;
 }
+const POLICY_ACTIONS = ["allow", "ask", "deny"];
+/** Resolve selected policies without adding phase Tools; first same-action occurrence wins. */
+export function resolvePhaseToolPolicies(workflow, phase) {
+    const policies = [];
+    const problems = [];
+    const actions = new Map();
+    for (const id of phase.tool_policies ?? []) {
+        const policy = workflow.tool_policies?.find((item) => item.id === id);
+        if (policy === undefined) {
+            problems.push(`phase ${phase.phase}: unknown tool policy ${id}`);
+            continue;
+        }
+        const effective = { id, allow: [], ask: [], deny: [] };
+        for (const action of POLICY_ACTIONS) {
+            for (const tool of policy[action]) {
+                const existing = actions.get(tool);
+                if (existing !== undefined && existing !== action) {
+                    problems.push(`phase ${phase.phase}: tool ${tool} has conflicting actions ${existing} and ${action}`);
+                }
+                else if (existing === undefined) {
+                    effective[action].push(tool);
+                }
+                actions.set(tool, action);
+            }
+        }
+        policies.push(effective);
+    }
+    return { policies, problems };
+}
 /** Problems with one workflow's structure, safety, verifiability and use of skills. */
 export function assessWorkflowQuality(files, context) {
     const { contract, body } = files;
     const problems = [];
     const phases = contract.phases;
+    const policyIds = new Set();
+    for (const policy of contract.tool_policies ?? []) {
+        if (policyIds.has(policy.id))
+            problems.push(`duplicate tool policy ${policy.id}`);
+        policyIds.add(policy.id);
+        const actions = new Map();
+        for (const action of POLICY_ACTIONS) {
+            for (const tool of policy[action]) {
+                if (!context.toolSafety.has(tool))
+                    problems.push(`tool policy ${policy.id}: unknown tool ${tool}`);
+                const existing = actions.get(tool);
+                if (existing !== undefined && existing !== action) {
+                    problems.push(`tool policy ${policy.id}: tool ${tool} has conflicting actions ${existing} and ${action}`);
+                }
+                actions.set(tool, action);
+            }
+        }
+    }
+    for (const phase of phases) {
+        const selected = resolvePhaseToolPolicies(contract, phase);
+        problems.push(...selected.problems);
+        const denied = new Set(selected.policies.flatMap((policy) => policy.deny));
+        const skills = new Set(phase.skills ?? []);
+        for (const id of [...skills])
+            for (const dep of requiredClosure(id, context.skills))
+                skills.add(dep);
+        const requiredTools = new Set([...(phase.tools?.required ?? []),
+            ...[...skills].flatMap((id) => context.skills.get(id)?.tools?.required ?? [])]);
+        for (const tool of requiredTools) {
+            if (denied.has(tool))
+                problems.push(`phase ${phase.phase}: required tool ${tool} is denied`);
+        }
+    }
     const indexes = phases.map((p) => context.phaseOrder.indexOf(p.phase));
     for (let i = 1; i < indexes.length; i++) {
         if (indexes[i] <= indexes[i - 1])

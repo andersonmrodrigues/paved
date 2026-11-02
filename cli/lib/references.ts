@@ -63,6 +63,11 @@ export function referencesIn(document: Fields): Reference[] {
       break;
     }
     case "Workflow":
+      for (const policy of entries(document["tool_policies"])) {
+        for (const action of ["allow", "ask", "deny"]) {
+          add("tool", `tool_policies.${String(policy["id"])}.${action}`, policy[action]);
+        }
+      }
       add("rule", "rules", document["rules"]);
       add("workflow", "deprecation.replaced_by", fields(document["deprecation"])["replaced_by"]);
       for (const phase of entries(document["phases"])) {

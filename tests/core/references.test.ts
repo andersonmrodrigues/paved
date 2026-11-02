@@ -97,3 +97,15 @@ describe("workflow fragment references", () => {
     }
   });
 });
+
+
+describe("workflow Tool policy references", () => {
+  it("resolves every policy action as a required Tool reference", () => {
+    for (const action of ["allow", "ask", "deny"]) {
+      const document = { kind: "Workflow", id: "project.sample", tool_policies: [{ id: "safe", [action]: ["core.repository.missing"] }], phases: [] };
+      const problems = resolve([{ label: "workflow", document }]);
+      assert.ok(problems.some((problem) => problem.includes('unknown tool "core.repository.missing"')), `${action}: ${JSON.stringify(problems)}`);
+    }
+    assert.deepEqual(resolve([{ label: "workflow", document: { kind: "Workflow", id: "project.sample", tool_policies: [{ id: "safe", allow: ["core.repository.status"], ask: [], deny: [] }], phases: [] } }]), []);
+  });
+});

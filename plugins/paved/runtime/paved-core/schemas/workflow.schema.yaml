@@ -98,6 +98,22 @@ properties:
     type: array
     uniqueItems: true
     items: { $ref: "urn:paved:schema:common:v1#/$defs/ruleRef" }
+  tool_policies:
+    description: >
+      Phase-scoped recommendations over Tool ids. Deny excludes use, ask requires the
+      host's own approval flow, and allow never authorizes execution. Host policy may
+      always be stricter. Policies do not add Tools to a phase; omitted Tools retain
+      existing host behavior. Policy ids are local to this workflow and must be unique.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [id, allow, ask, deny]
+      properties:
+        id: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+        allow: { $ref: "#/$defs/toolRefs" }
+        ask: { $ref: "#/$defs/toolRefs" }
+        deny: { $ref: "#/$defs/toolRefs" }
   phases:
     description: >
       Phases in canonical order, each at most once (tests enforce the order).
@@ -189,6 +205,11 @@ $defs:
         properties:
           required: { $ref: "#/$defs/toolRefs" }
           optional: { $ref: "#/$defs/toolRefs" }
+      tool_policies:
+        description: Local policy ids applied together; conflicting actions are invalid and same-action duplicates are deduplicated.
+        type: array
+        uniqueItems: true
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
       verification:
         description: >
           Check types run in this phase. Each `required` type must end as a passed check

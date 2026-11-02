@@ -30,6 +30,7 @@ describe("intent, plan and execute", () => {
     const run = readRunFile(runOf(started));
     assert.equal(run.workflow?.id, "core.feature");
     assert.equal(run.phases[0]?.status, "running");
+    assert.deepEqual((started.data as { phaseContext: { toolPolicies: unknown[] } }).phaseContext.toolPolicies, []);
     assert.match(readFileSync(join(project, `.paved/documents/intents/${run.id}.md`), "utf8"), /Add CSV export/);
   });
 
@@ -46,8 +47,14 @@ describe("intent, plan and execute", () => {
       const workflowFile = join(fixtureCore, "core/workflows/feature/workflow.yaml");
       const workflow = parse(readFileSync(workflowFile, "utf8"));
       workflow.autonomy = { default_profile: "guided" };
+      workflow.tool_policies = [
+        { id: "inspect", allow: ["core.repository.status"], ask: ["core.repository.diff"], deny: ["core.repository.search"] },
+        { id: "more", allow: ["core.repository.status", "core.repository.files"], ask: ["core.repository.diff"], deny: ["core.repository.search"] },
+        { id: "inactive", allow: [], ask: [], deny: ["core.repository.status"] },
+      ];
       const discovery = workflow.phases.find((phase: { phase: string }) => phase.phase === "discovery");
       delete discovery.routing;
+      discovery.tool_policies = ["inspect", "more"];
       discovery.tools = { required: ["core.repository.status"], optional: ["core.repository.files", "core.repository.diff"] };
       writeFileSync(workflowFile, stringify(workflow));
       rmSync(join(project, ".paved"), { recursive: true });
@@ -57,6 +64,7 @@ describe("intent, plan and execute", () => {
       });
       const started = await invokeFixture("intent", "Add CSV export", "--workflow", "feature", "--because", "A new format is requested.");
       assert.equal(started.status, "success", JSON.stringify(started));
+      assert.deepEqual((started.data as { phaseContext: { toolPolicies: unknown[] } }).phaseContext.toolPolicies, []);
       const advanced = await invokeFixture("intent", "--run", runOf(started), "--advance", "--note", "Scope is clear");
       assert.equal(advanced.status, "success", JSON.stringify(advanced));
       const data = advanced.data as { phaseContext?: unknown; routing?: unknown; autonomy_profile?: string };
@@ -67,6 +75,10 @@ describe("intent, plan and execute", () => {
         phase: "discovery", goal: "Locate the affected code, the pattern to follow, the rules in scope and the unknowns.",
         skills: ["core.discovery.context-discovery"],
         tools: { required: ["core.repository.status", "core.repository.files"], optional: ["core.repository.diff"] },
+        toolPolicies: [
+          { id: "inspect", allow: ["core.repository.status"], ask: ["core.repository.diff"], deny: ["core.repository.search"] },
+          { id: "more", allow: ["core.repository.files"], ask: [], deny: [] },
+        ],
         fragments: [{ id: "core.fragment.context-discovery", body: "Find the sibling feature closest to this one; it is the pattern that\n`core.architecture.follow-existing-patterns` asks you to follow.\n" }],
       });
       const resumed = await invokeFixture("intent", "--run", runOf(started));

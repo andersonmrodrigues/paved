@@ -7,6 +7,11 @@ releases, not the development sequence used to build them.
 
 ### Added
 
+- Optional phase-scoped Tool policies validate local policy and Tool references, reject
+  conflicting actions and denied required Tools, and expose effective actions in active
+  phase context. Deny excludes use, ask requires host approval, and allow remains a
+  recommendation subject to stricter host permissions.
+
 - Optional per-run autonomy profiles: guided phase-by-phase continuation, balanced
   automatic continuation and autonomous dispatch guidance for ready tasks in an approved
   delegation plan. Explicit creation-time selection overrides workflow defaults and

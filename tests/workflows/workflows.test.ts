@@ -356,3 +356,74 @@ describe("workflow fragment resolution", () => {
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
+
+
+describe("phase-scoped Tool policies", () => {
+  const files = loadWorkflow(join(root, "feature"));
+  const assess = (policies: unknown[], phasePolicies: string[], phaseTools?: WorkflowPhase["tools"]) => {
+    const contract = structuredClone(files.contract);
+    Object.assign(contract, { tool_policies: policies });
+    const phase = contract.phases.find((item) => item.phase === "discovery")!;
+    Object.assign(phase, { tool_policies: phasePolicies });
+    if (phaseTools) phase.tools = phaseTools;
+    return assessWorkflowQuality({ contract, body: files.body + " core.repository.status core.repository.diff" }, context);
+  };
+  const policy = (id: string, actions = {}) => ({ id, allow: [], ask: [], deny: [], ...actions });
+
+  it("rejects unknown policy ids and duplicate policy definitions", () => {
+    assert.ok(assess([], ["missing"]).some((p) => p.includes("unknown tool policy missing")));
+    assert.ok(assess([policy("safe"), policy("safe")], []).some((p) => p.includes("duplicate tool policy safe")));
+  });
+
+  for (const action of ["allow", "ask", "deny"]) {
+    it(`resolves unknown Tools in ${action}, even in an unselected policy`, () => {
+      const problems = assess([policy("safe", { [action]: ["core.repository.missing"] })], []);
+      assert.ok(problems.some((p) => p.includes("unknown tool core.repository.missing")), JSON.stringify(problems));
+    });
+  }
+
+  for (const actions of [["allow", "ask"], ["allow", "deny"], ["ask", "deny"]]) {
+    it(`rejects conflicting ${actions.join("/")} actions within a policy`, () => {
+      const problems = assess([policy("safe", Object.fromEntries(actions.map((a) => [a, ["core.repository.diff"]])))], ["safe"]);
+      assert.ok(problems.some((p) => p.includes("conflicting actions") && p.includes("core.repository.diff")), JSON.stringify(problems));
+    });
+    it(`rejects conflicting ${actions.join("/")} actions across selected policies`, () => {
+      const problems = assess(actions.map((a) => policy(a, { [a]: ["core.repository.diff"] })), actions);
+      assert.ok(problems.some((p) => p.includes("conflicting actions") && p.includes("phase discovery")), JSON.stringify(problems));
+    });
+  }
+
+  it("accepts repeated same-action Tools and policies isolated to other phases", () => {
+    assert.deepEqual(assess([policy("first", { ask: ["core.repository.diff"] }), policy("second", { ask: ["core.repository.diff"] }),
+      policy("unused", { deny: ["core.repository.diff"] })], ["first", "second"]), []);
+  });
+
+  it("rejects denying a directly required Tool", () => {
+    const problems = assess([policy("safe", { deny: ["core.repository.status"] })], ["safe"], { required: ["core.repository.status"] });
+    assert.ok(problems.some((p) => p.includes("required tool core.repository.status is denied")), JSON.stringify(problems));
+  });
+
+  it("rejects denying a Tool required by a fragment", () => {
+    const contract = structuredClone(files.contract);
+    Object.assign(contract, { tool_policies: [policy("safe", { deny: ["core.repository.status"] })] });
+    const phase = contract.phases.find((item) => item.phase === "discovery")!;
+    Object.assign(phase, { tool_policies: ["safe"], fragments: [{ id: "core.fragment.test" }] });
+    const resolved = workflowModule.resolveWorkflowFragments(contract, new Map([["core.fragment.test", {
+      contract: { apiVersion: "paved/v1", kind: "WorkflowFragment", id: "core.fragment.test", title: "Test", version: "0.1.0", status: "experimental", inputs: [], skills: [], tools: ["core.repository.status"] }, body: "Inspect status.",
+    }]]));
+    assert.deepEqual(resolved.problems, []);
+    const problems = assessWorkflowQuality({ contract: { ...contract, phases: resolved.phases }, body: files.body + " core.repository.status" }, context);
+    assert.ok(problems.some((p) => p.includes("required tool core.repository.status is denied")), JSON.stringify(problems));
+  });
+
+  it("rejects denying a Tool required by an active skill dependency", () => {
+    const contract = structuredClone(files.contract);
+    Object.assign(contract, { tool_policies: [policy("safe", { deny: ["core.repository.status"] })] });
+    Object.assign(contract.phases.find((item) => item.phase === "discovery")!, { tool_policies: ["safe"], skills: ["project.discovery.parent"] });
+    const skills = new Map(context.skills);
+    skills.set("project.discovery.parent", { ...context.skills.get("core.discovery.context-discovery")!, id: "project.discovery.parent", tools: {}, depends_on: { required: ["project.discovery.child"] } });
+    skills.set("project.discovery.child", { ...context.skills.get("core.discovery.context-discovery")!, id: "project.discovery.child", tools: { required: ["core.repository.status"] } });
+    const problems = assessWorkflowQuality({ contract, body: files.body }, { ...context, skills });
+    assert.ok(problems.some((p) => p.includes("required tool core.repository.status is denied")), JSON.stringify(problems));
+  });
+});

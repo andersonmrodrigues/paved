@@ -117,6 +117,10 @@ export function renderCommand(command: AgentCommandContract, rendering: CommandR
     ] : []),
     "",
     ...(["intent", "plan", "execute"].includes(command.name) ? [
+      "## Phase Tool policies",
+      "",
+      "Follow the active `data.phaseContext`, including its composed skills, declared Tools and bound fragment bodies. Apply each `phaseContext.toolPolicies` entry's effective `allow`, `ask` and `deny` Tool ids: `deny` excludes use; `ask` requires the host's own approval flow; `allow` is a workflow recommendation only and never grants execution permission or replaces host approval. Host policy can always be stricter. Policies do not add Tools to the phase's declared set. Omitted Tools retain existing host behavior, and an empty policy list preserves existing behavior.",
+      "",
       "## Run autonomy",
       "",
       "For a new intent or execute request, pass the user's explicit `--autonomy <guided|balanced|autonomous>` selection. It overrides the workflow's optional `autonomy.default_profile`; pending classification preserves the explicit selection. The recorded `data.autonomy_profile` is fixed on resume. If no selection or workflow default exists, leave the profile absent and keep current behavior.",

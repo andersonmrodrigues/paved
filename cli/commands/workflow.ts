@@ -18,7 +18,7 @@ import { now, projectRelative, readApproval, reopenImplementation, sha, sharedPh
 import {
   isOpen, loadContract, readRun, runBelongsTo, runSourceRoot, scanRuns, runCommand, runPath, TERMINAL_STATUSES, writeRun, type Failure, type Gate, type Phase, type Run,
 } from "../lib/workflow-runs.ts";
-import { AMENDED_RETRY, attemptRounds, RECOVER_HANDLER, recoveriesFor, recoveryQuestion, REVIEW_HANDLER, UNCHANGED_HANDLER, type WorkflowContract } from "../lib/workflows.ts";
+import { AMENDED_RETRY, attemptRounds, resolvePhaseToolPolicies, RECOVER_HANDLER, recoveriesFor, recoveryQuestion, REVIEW_HANDLER, UNCHANGED_HANDLER, type WorkflowContract } from "../lib/workflows.ts";
 import { createDiagnostic, createResult, type CommandResult, type DecisionProjection, type Diagnostic } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
 import { initHandler } from "./init.ts";
@@ -712,7 +712,8 @@ function withPhaseContext(invocation: CommandInvocation, outcome: CommandResult)
     const enriched = run?.autonomy_profile === undefined ? outcome : { ...outcome, data: { ...data, run: id, autonomy_profile: run.autonomy_profile } };
     const phase = run?.workflow === undefined || TERMINAL_STATUSES.has(run.status) ? undefined : activePhase(run);
     if (run?.workflow === undefined || phase === undefined) return enriched;
-    const resolved = loadContract(coreRoot, run.workflow.id).phases.find((item) => item.phase === phase.phase);
+    const workflow = loadContract(coreRoot, run.workflow.id);
+    const resolved = workflow.phases.find((item) => item.phase === phase.phase);
     if (resolved === undefined) return enriched;
     return { ...enriched, data: {
       ...(enriched.data as Record<string, unknown>),
@@ -721,6 +722,7 @@ function withPhaseContext(invocation: CommandInvocation, outcome: CommandResult)
         goal: resolved.goal,
         skills: resolved.skills ?? [],
         tools: { required: resolved.tools?.required ?? [], optional: resolved.tools?.optional ?? [] },
+        toolPolicies: resolvePhaseToolPolicies(workflow, resolved).policies,
         fragments: (resolved.fragments ?? []).map(({ id, body }) => ({ id, body })),
       },
       ...(resolved.routing === undefined ? {} : { routing: { phase: resolved.phase, ...resolved.routing } }),
