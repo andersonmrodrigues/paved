@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.23.0] - 2026-11-02
+
 ### Added
 
 - Reusable Core workflow fragments with schema-validated metadata, exact string input
