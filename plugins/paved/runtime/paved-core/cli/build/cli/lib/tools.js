@@ -371,6 +371,47 @@ export function toEvidenceCheck(result, check, id) {
         ...(status === "blocked" ? { reason: result.errors.join("; ") || "Tool execution was blocked" } : {}),
     };
 }
+/**
+ * Public host-mediation context, deliberately narrower than executable configuration.
+ * Never spread raw contracts/bindings here: defaults, prose, opaque argv literals and
+ * synthetic output can contain secrets. The acknowledgment covers only this summary;
+ * host permission checks remain authoritative for the actual invocation.
+ */
+export function publicToolInvocation({ tool, implementation, inputs, override }) {
+    const invocation = implementation.invocation;
+    return {
+        id: tool.id,
+        contract: {
+            version: tool.version, capability: tool.capability, safety: tool.safety,
+            permissions: tool.permissions, environments: tool.environments, side_effects: tool.side_effects,
+            preconditions: tool.preconditions.map(({ id, kind }) => ({ id, kind })),
+            idempotency: tool.idempotency, timeout_seconds: tool.timeout_seconds, retry: tool.retry,
+            availability: tool.availability, confirmation: tool.confirmation,
+            inputs: tool.inputs.map((input) => ({
+                name: input.name, type: input.type, required: input.required, sensitive: input.sensitive === true,
+                ...(input.sensitive || input.default === undefined ? {} : { default: input.default }),
+            })),
+        },
+        implementation: {
+            id: implementation.id, version: implementation.version, source: implementation.source,
+            contract: implementation.contract, environments: implementation.environments, availability: implementation.availability,
+            invocation: {
+                type: invocation.type, executable: invocation.executable, working_directory: invocation.working_directory,
+                timeout_seconds: invocation.timeout_seconds,
+                input_bindings: invocation.input_bindings?.map(({ input, flag }) => ({ input, flag })),
+            },
+        },
+        inputs: Object.fromEntries(tool.inputs.flatMap((input) => {
+            const value = inputs[input.name] ?? input.default;
+            return value === undefined ? [] : [[input.name, input.sensitive ? "[REDACTED]" : value]];
+        })),
+        ...(override ? { override: {
+                target: override.target, action: override.action, implementation: override.implementation,
+                allowed_environments: override.allowed_environments, timeout_seconds: override.timeout_seconds,
+                max_attempts: override.max_attempts, require_approval: override.require_approval,
+            } } : {}),
+    };
+}
 /** Propagates a policy suspension past optional phase hooks without losing its host context. */
 export class ToolInvocationStopped extends Error {
     result;

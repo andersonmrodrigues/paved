@@ -188,7 +188,9 @@ and verification Check Tools, including Tools selected through a testing decisio
 Deny blocks invocation; ask suspends `--auto` with a bounded `data.toolApproval` request
 and `PAVED_WORKFLOW_TOOL_APPROVAL_REQUIRED` warning. After the host mediates its own
 approval step, `--host-tool-approval <request-id>` acknowledges continuation for that
-invocation only. It grants and attests no host or OS permission, is not persisted, and
+capability and visible safe parameters only. Sensitive values and opaque implementation
+configuration are hidden and outside the acknowledgment. It grants and attests no host or
+OS permission, is not persisted, and
 is discarded at the next automatic phase boundary. Plan approval, policy `allow` and
 Paved decision answers never substitute for that step. See the
 [agent integration contract](agent-integration.md) for the request fields. Isolated review

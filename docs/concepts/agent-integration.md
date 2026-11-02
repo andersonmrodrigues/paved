@@ -139,15 +139,23 @@ CLI-owned testing and verification invocations check the active phase's policies
 resolved Tool ids before running any selected suite member or Check Tool. Deny returns
 `PAVED_WORKFLOW_TOOL_DENIED`. Ask stops `--auto` with status `warning`, diagnostic
 `PAVED_WORKFLOW_TOOL_APPROVAL_REQUIRED`, and `data.toolApproval`: a digest `id` plus the
-run, workflow, phase, attempt, source roots/digest, concrete Tool contracts,
-implementations, inputs, overrides when selected, and effective phase policies. The host
-uses that bounded context for its own approval step, then repeats the phase command with
+run, workflow, phase, attempt, source roots/digest and effective phase policies. Tools
+carry explicit capability/safety/input metadata, implementation identity and visible
+executable, working directory, timeout and input-binding names/flags, plus selected
+override execution controls. Sensitive input values are `[REDACTED]`, including effective
+defaults; sensitive defaults are omitted from contract metadata. Opaque argument literals,
+synthetic results and configuration prose are omitted. The public `id` hashes only this
+safe representation, never hidden values or raw configuration. The host uses this bounded
+context to approve the capability and visible safe parameters, then repeats the phase
+command with
 `--host-tool-approval <id>` and the same flags. This is an invocation acknowledgment,
 not a Paved Decision or proof of native approval; it grants and attests no host or OS
 permission. The host must enforce its permissions independently. The acknowledgment is
 not stored, does not carry to the next automatic phase, and stops matching if the
-source, phase, policies or invocation snapshot changes. A repeat without it suspends
-again. The isolated review brief carries the active review phase's composed context
+source, phase, policies or visible invocation summary changes. Hidden values and opaque
+configuration are outside this acknowledgment: it does not claim that they were presented
+or independently host-authorized. The host must enforce permission for actual execution.
+A repeat without it suspends again. The isolated review brief carries the active review phase's composed context
 and effective policies so its reviewer receives the same guidance and restrictions.
 
 ## Diagnostics, errors and compatibility

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, it } from "node:test";
@@ -63,6 +64,94 @@ function fixture(kind: string, phase: string, action: string, suite: boolean | "
   };
   return { root, fixtureCore, invoke, start, plan };
 }
+
+async function sensitiveApprovalFixture() {
+  const context = fixture("feature", "verification", "ask");
+  const { root, fixtureCore, invoke, start, plan } = context;
+  const toolPath = join(fixtureCore, "core/tools/testing/run.yaml");
+  const tool = parse(readFileSync(toolPath, "utf8"));
+  tool.inputs = [
+    { name: "credential", description: "Private supplied value", type: "string", required: false, sensitive: true },
+    { name: "fallback", description: "Private default value", type: "string", required: false, sensitive: true, default: "FAKE-PRIVATE-DEFAULT" },
+    { name: "private-count", description: "Private count", type: "integer", required: false, sensitive: true, default: 739153 },
+    { name: "private-toggle", description: "Private toggle", type: "boolean", required: false, sensitive: true, default: true },
+    { name: "suite", description: "Visible choice", type: "string", required: false, default: "default-suite" },
+  ];
+  writeFileSync(toolPath, stringify(tool));
+  const implementationPath = join(fixtureCore, "core/tool-implementations/private-check.yaml");
+  writeFileSync(implementationPath, stringify({
+    apiVersion: "paved/v1", kind: "ToolImplementation", id: "core.testing.private-check", tool: "core.testing.run",
+    version: "0.1.0", contract: "^0.1.0", source: "core", environments: ["local"], availability: "available",
+    invocation: { type: "command", executable: process.execPath, arguments: ["-e", "// FAKE-OPAQUE-ARGUMENT"] },
+  }));
+  const checkPath = join(root, ".paved/verification/checks/private.yaml");
+  mkdirSync(dirname(checkPath), { recursive: true });
+  writeFileSync(checkPath, stringify({
+    apiVersion: "paved/v1", kind: "Check", id: "project.testing.private", title: "Private check", purpose: "Verify safe approval",
+    type: "unit", tool: "core.testing.run", inputs: { credential: "FAKE-PRIVATE-INPUT", suite: "visible-a" },
+    expected: { description: "Pass", exit_code: 0 }, timeout_seconds: 30, environment: { kinds: ["local"] },
+    failure: "Failed", determinism: { class: "deterministic" }, retry: { class: "non-retryable" },
+  }));
+  writeFileSync(join(root, ".paved/verification/profile.yaml"), stringify({
+    apiVersion: "paved/v1", kind: "VerificationProfile", checks: ["project.testing.private"],
+    unavailable: [{ type: "integration", reason: "No service" }],
+  }));
+  initializeConsumer(fixtureCore, root, "consumer");
+  const id = await start(); await plan(id); await invoke("plan", "--run", id, "--approve");
+  writeFileSync(join(root, "feature.js"), "export const enabled = true;\n");
+  const stopped = await invoke("execute", "--run", id, "--auto", "--note", "Implemented");
+  assert.equal(data(stopped).toolApproval?.phase, "verification", JSON.stringify({ phase: data(stopped).currentPhase, diagnostics: stopped.diagnostics.map((item) => ({ code: item.code, message: item.message })) }));
+  const retry = () => invoke("execute", "--run", id, "--advance");
+  return { ...context, id, stopped, retry, checkPath, toolPath, implementationPath };
+}
+
+function generatedText(root: string): string {
+  if (!existsSync(root)) return "";
+  return readdirSync(root, { withFileTypes: true }).map((entry) => entry.isDirectory()
+    ? generatedText(join(root, entry.name)) : readFileSync(join(root, entry.name), "utf8")).join("\n");
+}
+
+it("keeps sensitive Check inputs, defaults and opaque implementation arguments out of approval output and logs", async () => {
+  const { root, stopped } = await sensitiveApprovalFixture();
+  const serialized = JSON.stringify(stopped);
+  const generated = generatedText(join(root, ".paved/generated"));
+  const runs = generatedText(join(root, ".paved/generated/runs"));
+  assert.ok(runs.length > 0, "the command path must produce run records to inspect");
+  for (const value of ["FAKE-PRIVATE-INPUT", "FAKE-PRIVATE-DEFAULT", "FAKE-OPAQUE-ARGUMENT", "739153"]) {
+    assert.equal(serialized.includes(value), false, "approval output must omit private fixture values");
+    assert.equal(generated.includes(value), false, "generated logs/evidence must omit private fixture values");
+    assert.equal(runs.includes(value), false, "run records must omit private fixture values");
+  }
+  const request = data(stopped).toolApproval! as unknown as { tools: { inputs: Record<string, unknown>; contract: { inputs: { name: string; default?: unknown }[] }; implementation: { invocation: Record<string, unknown> } }[] };
+  assert.deepEqual(request.tools[0]!.inputs, { credential: "[REDACTED]", fallback: "[REDACTED]", "private-count": "[REDACTED]", "private-toggle": "[REDACTED]", suite: "visible-a" });
+  assert.equal(request.tools[0]!.contract.inputs.find((input) => input.name === "fallback")?.default, undefined);
+  assert.equal(request.tools[0]!.implementation.invocation.arguments, undefined);
+});
+
+it("binds approval ids to visible context without providing an oracle over hidden input/default/argument values", async () => {
+  const { stopped, retry, checkPath, toolPath, implementationPath } = await sensitiveApprovalFixture();
+  const { id: initial, ...safeContext } = data(stopped).toolApproval!;
+  assert.equal(initial, createHash("sha256").update(JSON.stringify(safeContext)).digest("hex"), "the public digest must bind exactly the public safe request");
+  const check = parse(readFileSync(checkPath, "utf8"));
+  check.inputs.credential = "FAKE-REPLACEMENT-INPUT";
+  writeFileSync(checkPath, stringify(check));
+  const tool = parse(readFileSync(toolPath, "utf8"));
+  tool.inputs.find((input: { name: string }) => input.name === "fallback").default = "FAKE-REPLACEMENT-DEFAULT";
+  tool.inputs.find((input: { name: string }) => input.name === "private-count").default = 42;
+  tool.inputs.find((input: { name: string }) => input.name === "private-toggle").default = false;
+  writeFileSync(toolPath, stringify(tool));
+  const implementation = parse(readFileSync(implementationPath, "utf8"));
+  implementation.invocation.arguments = ["-e", "// FAKE-REPLACEMENT-ARGUMENT"];
+  writeFileSync(implementationPath, stringify(implementation));
+  assert.equal(data(await retry()).toolApproval!.id, initial, "hidden values must not enter the public digest");
+  check.inputs.suite = "visible-b";
+  writeFileSync(checkPath, stringify(check));
+  const visibleInputRequest = data(await retry()).toolApproval!.id;
+  assert.notEqual(visibleInputRequest, initial, "visible input changes must invalidate the acknowledgment");
+  implementation.invocation.working_directory = "docs";
+  writeFileSync(implementationPath, stringify(implementation));
+  assert.notEqual(data(await retry()).toolApproval!.id, visibleInputRequest, "visible implementation changes must invalidate the acknowledgment");
+});
 
 function assertStopped(result: CommandResult, root: string, id: string, phase: string, action: string) {
   assert.equal(existsSync(join(root, "sentinel")), false, "a policy-blocked Tool must never execute");

@@ -22,7 +22,7 @@ import { AMENDED_RETRY, attemptRounds, phaseContext, resolvePhaseToolPolicies, R
 import { createDiagnostic, createResult, type CommandResult, type DecisionProjection, type Diagnostic } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
 import { initHandler } from "./init.ts";
-import { ToolInvocationStopped, type ToolInvocationGuard } from "../lib/tools.ts";
+import { publicToolInvocation, ToolInvocationStopped, type ToolInvocationGuard } from "../lib/tools.ts";
 import { testHandler } from "./test.ts";
 import { updateHandler } from "./update.ts";
 import { verifyHandler } from "./verify.ts";
@@ -548,13 +548,14 @@ function toolPolicyGuard(invocation: CommandInvocation, step: Step, run: Run, ph
       run: run.id, workflow: run.workflow, phase: phase.phase, attempt: phase.attempts ?? 1,
       projectRoot: invocation.paths.projectRoot, sourceRoot: invocation.paths.sourceRoot,
       source_sha256: fingerprint(invocation.paths.sourceRoot),
-      tools: selected.map(({ tool, implementation, override, inputs }) => ({ id: tool.id, contract: tool, implementation, inputs, ...(override ? { override } : {}) })),
+      tools: selected.map(publicToolInvocation),
       toolPolicies: policies,
     };
     const id = sha(JSON.stringify(context));
-    // This caller acknowledgment only resumes Paved's suspension. The host still enforces its permissions.
+    // Hash only the public summary: raw secrets must never feed a public guessing oracle.
+    // This acknowledgment covers visible context, not hidden values or host permission.
     if (invocation.flags.hostToolApproval === id) return undefined;
-    const nextAction = `Have the host mediate approval for this exact Tool invocation, applying its own permission rules. Only then repeat paved ${step} --run ${run.id} --advance with the same phase flags plus --host-tool-approval ${id} --json. This acknowledgment grants no host or OS permission.`;
+    const nextAction = `Have the host mediate approval for this capability and visible safe parameters, applying its own permission rules. Sensitive values and opaque implementation configuration are hidden and are not attested by this acknowledgment. Only then repeat paved ${step} --run ${run.id} --advance with the same phase flags plus --host-tool-approval ${id} --json. This acknowledgment grants no host or OS permission.`;
     return createResult({ command: step, status: "warning", data: { ...runSummary(run), toolApproval: { id, ...context }, nextAction },
       diagnostics: [createDiagnostic({ severity: "info", category: "findings", code: "PAVED_WORKFLOW_TOOL_APPROVAL_REQUIRED", component: "workflow.runtime",
         message: `Phase ${phase.phase} requires host-mediated approval before invoking ${asked.map(({ tool }) => tool.id).join(", ")}.`, remediation: nextAction })] });

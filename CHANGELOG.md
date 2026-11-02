@@ -24,7 +24,10 @@ releases, not the development sequence used to build them.
   CLI-owned testing suites and verification Check Tools enforce the active phase's
   policies before invocation; ask suspends automatic delivery for a bounded host-mediated
   acknowledgment without granting host permission. Isolated review briefs carry the
-  active review phase's composed guidance and effective policies.
+  active review phase's composed guidance and effective policies. Approval requests expose
+  only safe capability and invocation summaries: sensitive inputs/defaults and opaque
+  implementation arguments never enter the public request or its digest. The acknowledgment
+  covers visible parameters; host permissions govern actual execution.
 
 ## [2.22.0] - 2026-11-01
 
