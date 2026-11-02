@@ -5,8 +5,9 @@ import { atomicWriteFileSync } from "./atomic-write.ts";
 import { loadMarkdown, loadYaml } from "./documents.ts";
 import { resolveSafePath } from "./safe-path.ts";
 import { createRegistry, type SchemaRegistry } from "./schemas.ts";
-import { assessRun, resolveWorkflowFragments, type AutonomyProfile, type ResolvedWorkflowContract, type WorkflowContract, type WorkflowFragmentContract, type WorkflowFragmentMetadata, type WorkflowRunRecord } from "./workflows.ts";
+import { assessWorkflowToolPolicies, assessRun, resolveWorkflowFragments, type AutonomyProfile, type ResolvedWorkflowContract, type WorkflowContract, type WorkflowFragmentContract, type WorkflowFragmentMetadata, type WorkflowRunRecord } from "./workflows.ts";
 import { indexArtifacts, resolveReferences, type LabeledDocument } from "./references.ts";
+import type { SkillContract } from "./skills.ts";
 import type { Decision } from "./decisions/record.ts";
 
 export type PhaseStatus = "pending" | "running" | "completed" | "failed" | "blocked";
@@ -80,6 +81,14 @@ export function loadWorkflowFragments(
     documents.push({ label: file, document: document as Record<string, unknown> });
   }
   // Reference resolution uses declared ids, never path guesses from input bindings.
+  const dependencies = loadWorkflowDependencies(coreRoot);
+  const problems = resolveReferences(documents, indexArtifacts([...documents, ...dependencies]));
+  if (problems.length) throw new Error(`Workflow fragments are invalid: ${problems.join("; ")}`);
+  return fragments;
+}
+
+/** Core skill and Tool contracts used by fragments and policy validation. */
+function loadWorkflowDependencies(coreRoot: string): LabeledDocument[] {
   const dependencies: LabeledDocument[] = [];
   const collect = (dir: string): void => {
     if (!existsSync(dir)) return;
@@ -93,10 +102,10 @@ export function loadWorkflowFragments(
   };
   collect(join(coreRoot, "core/skills"));
   collect(join(coreRoot, "core/tools"));
-  const problems = resolveReferences(documents, indexArtifacts([...documents, ...dependencies]));
-  if (problems.length) throw new Error(`Workflow fragments are invalid: ${problems.join("; ")}`);
-  return fragments;
+  return dependencies;
 }
+
+export class WorkflowToolPolicyError extends Error {}
 
 export function loadContract(coreRoot: string, workflowId: string): ResolvedWorkflowContract {
   const name = /^core\.([a-z][a-z0-9-]*)$/.exec(workflowId)?.[1];
@@ -110,7 +119,17 @@ export function loadContract(coreRoot: string, workflowId: string): ResolvedWork
   if (!validation.valid) throw new Error(`Workflow ${workflowId} is invalid: ${validation.errors.join("; ")}`);
   const resolved = resolveWorkflowFragments(contract, loadWorkflowFragments(coreRoot, registry));
   if (resolved.problems.length) throw new Error(`Workflow ${workflowId} has invalid fragments: ${resolved.problems.join("; ")}`);
-  return { ...contract, phases: resolved.phases };
+  const workflow = { ...contract, phases: resolved.phases };
+  if ((workflow.tool_policies?.length ?? 0) > 0 || workflow.phases.some((phase) => (phase.tool_policies?.length ?? 0) > 0)) {
+    const dependencies = loadWorkflowDependencies(coreRoot);
+    const skills = new Map(dependencies.filter(({ document }) => document.kind === "Skill")
+      .map(({ document }) => [String(document.id), document as unknown as SkillContract]));
+    const toolSafety = new Map(dependencies.filter(({ document }) => document.kind === "Tool")
+      .map(({ document }) => [String(document.id), String(document.safety)]));
+    const problems = assessWorkflowToolPolicies(workflow, { skills, toolSafety });
+    if (problems.length) throw new WorkflowToolPolicyError(`Workflow ${workflowId} has invalid tool policies: ${problems.join("; ")}`);
+  }
+  return workflow;
 }
 
 export function validateRun(coreRoot: string, run: Run): void {

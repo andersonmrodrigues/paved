@@ -13,7 +13,7 @@ import { reportNewProposals } from "../lib/gardener-report.js";
 import { reviewFor } from "../lib/review-block.js";
 import { relaysAnswers, runPhase } from "../lib/workflow-gates/index.js";
 import { now, projectRelative, readApproval, reopenImplementation, sha, sharedPhase, sourceUnchanged } from "../lib/workflow-gates/shared.js";
-import { isOpen, loadContract, readRun, runBelongsTo, runSourceRoot, scanRuns, runCommand, runPath, TERMINAL_STATUSES, writeRun, } from "../lib/workflow-runs.js";
+import { isOpen, loadContract, readRun, runBelongsTo, runSourceRoot, scanRuns, runCommand, runPath, TERMINAL_STATUSES, writeRun, WorkflowToolPolicyError, } from "../lib/workflow-runs.js";
 import { AMENDED_RETRY, attemptRounds, resolvePhaseToolPolicies, RECOVER_HANDLER, recoveriesFor, recoveryQuestion, REVIEW_HANDLER, UNCHANGED_HANDLER } from "../lib/workflows.js";
 import { createDiagnostic, createResult } from "../result.js";
 import { initHandler } from "./init.js";
@@ -748,7 +748,11 @@ function withPhaseContext(invocation, outcome) {
                 ...(resolved.routing === undefined ? {} : { routing: { phase: resolved.phase, ...resolved.routing } }),
             } };
     }
-    catch {
+    catch (error) {
+        // Policy failures must remain blocking even when encountered while enriching a result.
+        if (error instanceof WorkflowToolPolicyError) {
+            return blocked(invocation.command, "PAVED_WORKFLOW_STATE_INVALID", error.message, "Correct the workflow Tool policies before retrying.", { run: id });
+        }
         // Dispatch reports invalid workflow state; preserve its result when enrichment cannot read it.
         return outcome;
     }

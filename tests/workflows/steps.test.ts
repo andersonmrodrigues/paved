@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { createHash } from "node:crypto";
 import { parse, stringify } from "yaml";
+import { acquireConsumerOperationLock } from "../../cli/lib/operation-lock.ts";
 import { initializeConsumer } from "../../cli/lib/generator-runtime.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
 import { loadContract, writeRun, type Run } from "../../cli/lib/workflow-runs.ts";
@@ -48,8 +49,8 @@ describe("intent, plan and execute", () => {
       const workflow = parse(readFileSync(workflowFile, "utf8"));
       workflow.autonomy = { default_profile: "guided" };
       workflow.tool_policies = [
-        { id: "inspect", allow: ["core.repository.status"], ask: ["core.repository.diff"], deny: ["core.repository.search"] },
-        { id: "more", allow: ["core.repository.status", "core.repository.files"], ask: ["core.repository.diff"], deny: ["core.repository.search"] },
+        { id: "inspect", allow: ["core.repository.status"], ask: ["core.repository.diff"], deny: ["core.repository.history"] },
+        { id: "more", allow: ["core.repository.status", "core.repository.files"], ask: ["core.repository.diff"], deny: ["core.repository.history"] },
         { id: "inactive", allow: [], ask: [], deny: ["core.repository.status"] },
       ];
       const discovery = workflow.phases.find((phase: { phase: string }) => phase.phase === "discovery");
@@ -76,7 +77,7 @@ describe("intent, plan and execute", () => {
         skills: ["core.discovery.context-discovery"],
         tools: { required: ["core.repository.status", "core.repository.files"], optional: ["core.repository.diff"] },
         toolPolicies: [
-          { id: "inspect", allow: ["core.repository.status"], ask: ["core.repository.diff"], deny: ["core.repository.search"] },
+          { id: "inspect", allow: ["core.repository.status"], ask: ["core.repository.diff"], deny: ["core.repository.history"] },
           { id: "more", allow: ["core.repository.files"], ask: [], deny: [] },
         ],
         fragments: [{ id: "core.fragment.context-discovery", body: "Find the sibling feature closest to this one; it is the pattern that\n`core.architecture.follow-existing-patterns` asks you to follow.\n" }],
@@ -91,6 +92,79 @@ describe("intent, plan and execute", () => {
       assert.equal(readRunFile(runOf(pending)).autonomy_profile, "guided");
     } finally { rmSync(fixtureCore, { recursive: true, force: true }); }
   });
+
+  for (const invalid of [
+    { name: "unknown selected policy", policies: [], selected: ["missing"], error: /unknown tool policy missing/ },
+    { name: "conflicting selected actions", policies: [
+      { id: "inspect", allow: ["core.repository.diff"], ask: [], deny: [] },
+      { id: "confirm", allow: [], ask: ["core.repository.diff"], deny: [] },
+    ], selected: ["inspect", "confirm"], error: /conflicting actions allow and ask/ },
+    { name: "unknown policy Tool", policies: [
+      { id: "inspect", allow: ["core.repository.missing"], ask: [], deny: [] },
+    ], selected: ["inspect"], error: /unknown tool core.repository.missing/ },
+    { name: "denied fragment Tool", policies: [
+      { id: "inspect", allow: [], ask: [], deny: ["core.repository.files"] },
+    ], selected: ["inspect"], error: /required tool core.repository.files is denied/ },
+    { name: "denied skill dependency Tool", policies: [
+      { id: "inspect", allow: [], ask: [], deny: ["core.repository.diff"] },
+    ], selected: ["inspect"], error: /required tool core.repository.diff is denied/ },
+  ]) {
+    it(`refuses ${invalid.name} before advancing or exposing phase policy`, async () => {
+      const fixtureCore = mkdtempSync(join(tmpdir(), "paved-invalid-policy-"));
+      try {
+        for (const path of ["manifest.yaml", "package.json", "VERSION", "schemas", "core", "generators", "adapters"]) {
+          cpSync(join(core, path), join(fixtureCore, path), { recursive: true });
+        }
+        const fragmentFile = join(fixtureCore, "core/workflow-fragments/context-discovery/fragment.yaml");
+        const fragment = parse(readFileSync(fragmentFile, "utf8"));
+        fragment.tools = ["core.repository.files"];
+        writeFileSync(fragmentFile, stringify(fragment));
+        const skillFile = join(fixtureCore, "core/skills/discovery/context-discovery/skill.yaml");
+        const skill = parse(readFileSync(skillFile, "utf8"));
+        skill.depends_on = { required: ["core.development.feature-development"], optional: [] };
+        writeFileSync(skillFile, stringify(skill));
+        rmSync(join(project, ".paved"), { recursive: true });
+        initializeConsumer(fixtureCore, project, "consumer");
+        const invokeFixture = (...argv: string[]) => dispatchCli({
+          argv: [...argv, "--project", project, "--json"], cwd: project, executablePath: join(fixtureCore, "package.json"),
+        });
+        const started = await invokeFixture("intent", "Add CSV export", "--workflow", "feature", "--because", "A new format is requested.");
+        assert.equal(started.status, "success", JSON.stringify(started));
+        const id = runOf(started);
+        const before = readRunFile(id);
+        const workflowFile = join(fixtureCore, "core/workflows/feature/workflow.yaml");
+        const workflow = parse(readFileSync(workflowFile, "utf8"));
+        workflow.tool_policies = invalid.policies;
+        workflow.phases.find((phase: { phase: string }) => phase.phase === "discovery").tool_policies = invalid.selected;
+        writeFileSync(workflowFile, stringify(workflow));
+
+        const failed = await invokeFixture("intent", "--run", id, "--advance", "--note", "Scope is clear");
+        assert.equal(failed.status, "failed", JSON.stringify(failed));
+        assert.equal(failed.diagnostics[0]?.code, "PAVED_WORKFLOW_STATE_INVALID", JSON.stringify(failed));
+        assert.match(failed.diagnostics[0]?.message ?? "", invalid.error);
+        assert.equal((failed.data as { phaseContext?: unknown } | undefined)?.phaseContext, undefined);
+        assert.deepEqual(readRunFile(id), before, "invalid policy must not advance or write the run");
+
+        // This response is enriched without dispatching: policy failures must not disappear
+        // into withPhaseContext's best-effort handling of unreadable run state.
+        const release = acquireConsumerOperationLock(project, "fixture");
+        try {
+          const locked = await invokeFixture("intent", "--run", id);
+          assert.equal(locked.diagnostics[0]?.code, "PAVED_WORKFLOW_STATE_INVALID", JSON.stringify(locked));
+          assert.match(locked.diagnostics[0]?.message ?? "", invalid.error);
+          assert.equal((locked.data as { phaseContext?: unknown } | undefined)?.phaseContext, undefined);
+        } finally { release(); }
+
+        // Refresh the Core lock so creation reaches policy validation rather than drift.
+        rmSync(join(project, ".paved"), { recursive: true });
+        initializeConsumer(fixtureCore, project, "consumer");
+        const newRun = await invokeFixture("intent", "Add PDF export", "--workflow", "feature", "--because", "A new format is requested.");
+        assert.equal(newRun.status, "failed", JSON.stringify(newRun));
+        assert.match(newRun.diagnostics[0]?.message ?? "", invalid.error);
+        assert.equal((newRun.data as { phaseContext?: unknown } | undefined)?.phaseContext, undefined);
+      } finally { rmSync(fixtureCore, { recursive: true, force: true }); }
+    });
+  }
 
   it("intent without --because is refused", async () => {
     const result = await invoke("intent", "Add CSV export", "--workflow", "feature");

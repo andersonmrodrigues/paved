@@ -129,11 +129,9 @@ export function resolvePhaseToolPolicies(workflow, phase) {
     }
     return { policies, problems };
 }
-/** Problems with one workflow's structure, safety, verifiability and use of skills. */
-export function assessWorkflowQuality(files, context) {
-    const { contract, body } = files;
+/** Policy checks shared by authoring quality assessment and runtime workflow loading. */
+export function assessWorkflowToolPolicies(contract, context) {
     const problems = [];
-    const phases = contract.phases;
     const policyIds = new Set();
     for (const policy of contract.tool_policies ?? []) {
         if (policyIds.has(policy.id))
@@ -152,7 +150,7 @@ export function assessWorkflowQuality(files, context) {
             }
         }
     }
-    for (const phase of phases) {
+    for (const phase of contract.phases) {
         const selected = resolvePhaseToolPolicies(contract, phase);
         problems.push(...selected.problems);
         const denied = new Set(selected.policies.flatMap((policy) => policy.deny));
@@ -167,6 +165,13 @@ export function assessWorkflowQuality(files, context) {
                 problems.push(`phase ${phase.phase}: required tool ${tool} is denied`);
         }
     }
+    return problems;
+}
+/** Problems with one workflow's structure, safety, verifiability and use of skills. */
+export function assessWorkflowQuality(files, context) {
+    const { contract, body } = files;
+    const problems = assessWorkflowToolPolicies(contract, context);
+    const phases = contract.phases;
     const indexes = phases.map((p) => context.phaseOrder.indexOf(p.phase));
     for (let i = 1; i < indexes.length; i++) {
         if (indexes[i] <= indexes[i - 1])
