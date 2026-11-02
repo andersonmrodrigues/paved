@@ -691,10 +691,10 @@ async function deliver(invocation: CommandInvocation, run: Run, answers: readonl
 }
 
 /**
- * Adds the active phase's routing, so the agent knows whether to do the work itself, hand
- * it to a subagent, or only relay a Paved result, and at which capability tier.
+ * Exposes the active resolved phase's guidance and requirements, plus routing advice,
+ * so agents can follow fragment composition without reopening or rendering templates.
  */
-function withRouting(invocation: CommandInvocation, outcome: CommandResult): CommandResult {
+function withPhaseContext(invocation: CommandInvocation, outcome: CommandResult): CommandResult {
   const data = outcome.data as Record<string, unknown> | undefined;
   const id = typeof data?.run === "string" ? data.run : undefined;
   if (id === undefined) return outcome;
@@ -703,10 +703,21 @@ function withRouting(invocation: CommandInvocation, outcome: CommandResult): Com
     const run = readRun(projectRoot, coreRoot, id);
     const phase = run?.workflow === undefined || TERMINAL_STATUSES.has(run.status) ? undefined : activePhase(run);
     if (run?.workflow === undefined || phase === undefined) return outcome;
-    const routing = loadContract(coreRoot, run.workflow.id).phases.find((item) => item.phase === phase.phase)?.routing;
-    return routing === undefined ? outcome : { ...outcome, data: { ...data, routing: { phase: phase.phase, ...routing } } };
+    const resolved = loadContract(coreRoot, run.workflow.id).phases.find((item) => item.phase === phase.phase);
+    if (resolved === undefined) return outcome;
+    return { ...outcome, data: {
+      ...data,
+      phaseContext: {
+        phase: resolved.phase,
+        goal: resolved.goal,
+        skills: resolved.skills ?? [],
+        tools: { required: resolved.tools?.required ?? [], optional: resolved.tools?.optional ?? [] },
+        fragments: (resolved.fragments ?? []).map(({ id, body }) => ({ id, body })),
+      },
+      ...(resolved.routing === undefined ? {} : { routing: { phase: resolved.phase, ...resolved.routing } }),
+    } };
   } catch {
-    // Routing is advice; a contract that cannot be read leaves the result unchanged.
+    // Dispatch reports invalid workflow state; preserve its result when enrichment cannot read it.
     return outcome;
   }
 }
@@ -715,7 +726,7 @@ export async function stepHandler(invocation: CommandInvocation): Promise<Comman
   let release: (() => void) | undefined;
   try {
     release = acquireConsumerOperationLock(invocation.paths.projectRoot, "workflow");
-    return await withConsumerOperationScope(invocation.paths.projectRoot, async () => withRouting(invocation, await dispatchStep(invocation)));
+    return await withConsumerOperationScope(invocation.paths.projectRoot, async () => withPhaseContext(invocation, await dispatchStep(invocation)));
   } catch (error) {
     if (error instanceof ConsumerOperationLockedError) {
       return blocked(invocation.command as Step, "PAVED_OPERATION_IN_PROGRESS", error.message, "Wait for the active Paved operation to finish before starting or resuming a workflow.");

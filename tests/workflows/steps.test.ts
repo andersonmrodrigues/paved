@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,6 +33,44 @@ describe("intent, plan and execute", () => {
     assert.match(readFileSync(join(project, `.paved/documents/intents/${run.id}.md`), "utf8"), /Add CSV export/);
   });
 
+  it("returns active bound fragment guidance and composed refs in command JSON", async () => {
+    const fixtureCore = mkdtempSync(join(tmpdir(), "paved-phase-context-"));
+    try {
+      for (const path of ["manifest.yaml", "package.json", "VERSION", "schemas", "core", "generators", "adapters"]) {
+        cpSync(join(core, path), join(fixtureCore, path), { recursive: true });
+      }
+      const fragmentFile = join(fixtureCore, "core/workflow-fragments/context-discovery/fragment.yaml");
+      const fragment = parse(readFileSync(fragmentFile, "utf8"));
+      fragment.tools = ["core.repository.files"];
+      writeFileSync(fragmentFile, stringify(fragment));
+      const workflowFile = join(fixtureCore, "core/workflows/feature/workflow.yaml");
+      const workflow = parse(readFileSync(workflowFile, "utf8"));
+      const discovery = workflow.phases.find((phase: { phase: string }) => phase.phase === "discovery");
+      delete discovery.routing;
+      discovery.tools = { required: ["core.repository.status"], optional: ["core.repository.files", "core.repository.diff"] };
+      writeFileSync(workflowFile, stringify(workflow));
+      rmSync(join(project, ".paved"), { recursive: true });
+      initializeConsumer(fixtureCore, project, "consumer");
+      const invokeFixture = (...argv: string[]) => dispatchCli({
+        argv: [...argv, "--project", project, "--json"], cwd: project, executablePath: join(fixtureCore, "package.json"),
+      });
+      const started = await invokeFixture("intent", "Add CSV export", "--workflow", "feature", "--because", "A new format is requested.");
+      assert.equal(started.status, "success", JSON.stringify(started));
+      const advanced = await invokeFixture("intent", "--run", runOf(started), "--advance", "--note", "Scope is clear");
+      assert.equal(advanced.status, "success", JSON.stringify(advanced));
+      const data = advanced.data as { phaseContext?: unknown; routing?: unknown };
+      assert.equal(data.routing, undefined, "phase context does not depend on routing metadata");
+      assert.deepEqual(data.phaseContext, {
+        phase: "discovery", goal: "Locate the affected code, the pattern to follow, the rules in scope and the unknowns.",
+        skills: ["core.discovery.context-discovery"],
+        tools: { required: ["core.repository.status", "core.repository.files"], optional: ["core.repository.diff"] },
+        fragments: [{ id: "core.fragment.context-discovery", body: "Find the sibling feature closest to this one; it is the pattern that\n`core.architecture.follow-existing-patterns` asks you to follow.\n" }],
+      });
+      const resumed = await invokeFixture("intent", "--run", runOf(started));
+      assert.deepEqual((resumed.data as { phaseContext?: unknown }).phaseContext, data.phaseContext);
+    } finally { rmSync(fixtureCore, { recursive: true, force: true }); }
+  });
+
   it("intent without --because is refused", async () => {
     const result = await invoke("intent", "Add CSV export", "--workflow", "feature");
     assert.equal(result.diagnostics[0]?.code, "PAVED_INTENT_RATIONALE_REQUIRED");
@@ -46,6 +84,7 @@ describe("intent, plan and execute", () => {
   it("uncertain intent waits for a classification decision, then classifies on the answer", async () => {
     const pending = await invoke("intent", "Make exports work for archived items", "--recommend", "bug", "--because", "The report says it fails.");
     assert.equal(pending.status, "awaiting_input", JSON.stringify(pending));
+    assert.equal((pending.data as { phaseContext?: unknown }).phaseContext, undefined);
     const decision = pending.decisions?.[0];
     assert.deepEqual(decision?.options.map((option) => option.id), ["bug", "feature", "refactor"]);
     assert.equal(decision?.recommended, "bug");
@@ -86,6 +125,7 @@ describe("intent, plan and execute", () => {
     assert.equal(decision?.recommended, "split");
     const split = await invoke("intent", "--run", runOf(pending), "--answer", `${decision!.id}=split`, "--answered-by", "maintainer@example.com");
     assert.equal(readRunFile(runOf(pending)).status, "cancelled");
+    assert.equal((split.data as { phaseContext?: unknown }).phaseContext, undefined);
     const next = (split.data as { nextAction: string }).nextAction;
     assert.match(next, /paved intent "Add CSV export"/);
     assert.match(next, /paved intent "Fix the archived-items crash"/);

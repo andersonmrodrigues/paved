@@ -10,6 +10,7 @@ releases, not the development sequence used to build them.
 - Reusable workflow fragments with schema-validated metadata, exact string input
   bindings and composed skill/tool references. Core workflow loading rejects unknown
   references, missing or extra bindings, unresolved templates and nested fragments.
+  Active command results expose bound guidance and composed skill/Tool requirements.
 
 ## [2.22.0] - 2026-11-01
 

@@ -8,7 +8,7 @@ This directory is the installable plugin for Codex and Cursor. It is generated b
 
 - Plugin package version: `2.22.0`
 - Runtime: `paved-core@2.22.0` unpacked at `runtime/paved-core/`; its dependencies are bundled in its `node_modules/`.
-- Runtime integrity: `sha512-MXQ3IYcZYISbfwAgpKgHI+xiCn7jg+ybg+V5tUwTX41/DGeVJogApwOhUcw+pZ0XzA9Wfhs9zG2VjueWxAuF3A==`, checked over the runtime and its dependencies before activation
+- Runtime integrity: `sha512-SlG/719KogFynXUX6Ti+HCDLcxSozGBjZmO7bfFaboe1hjwcgti6WHfZi9s+z57U/XLy3iBtqBccqBtJ/RuClA==`, checked over the runtime and its dependencies before activation
 - Launcher: `scripts/paved.mjs`
 - Prompt routing: `hooks/hooks.json` adds advisory Paved context on every prompt in repositories initialized with Paved, and again after compaction.
 - Optional automatic update: from an initialized project, explicitly run `node "<plugin>/scripts/paved.mjs" auto-update configure --host codex --mode auto --interval-hours 24 --json`; use `auto-update status --json`, `auto-update check --host <host> --json`, or configure `--mode off` / `--mode notify`. Defaults are off; trusted session/prompt hooks check due updates. Cursor remains manual.

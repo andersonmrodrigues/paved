@@ -44,6 +44,13 @@ its goal is met and its gates hold. Skip a phase only when its `skip_when` condi
 holds, and record how it holds; `verification`, `evidence` and `completion` are never
 skipped.
 
+When a command returns `data.phaseContext`, follow its active `phase` and `goal`,
+activate its composed `skills`, respect its required and optional `tools`, and apply
+all listed fragment `body` guidance. Fragment inputs are already bound and validated;
+do not interpolate those bodies again or replace their values from the conversation.
+The payload adds reusable guidance to WORKFLOW.md; declared gates, approvals and Tool
+safety still apply. An empty `fragments` list means the phase has no fragment guidance.
+
 - **Skills.** Activate the phase's skills in the listed order. A skill already active
   from an earlier phase continues where it was; it is never started twice. A skill whose
   "When to use" does not fit the task is recorded as not applicable, with the reason.
