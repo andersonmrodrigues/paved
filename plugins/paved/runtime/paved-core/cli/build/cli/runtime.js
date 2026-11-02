@@ -118,6 +118,8 @@ function commandUsage(command) {
         if (command === "intent" || command === "execute")
             commandOptions.push("  --workflow <feature|bug|refactor> --because <evidence>  Classify the request.", "  --recommend <workflow> --because <evidence>  Suggest a workflow and let the user decide.", "  --part <request>  Propose one part of a split; repeat per part.", "  --input <id>=<value>  Supply another declared workflow input; repeatable.", "  --autonomy <guided|balanced|autonomous>  Select a profile for the new run; fixed on resume.");
         if (STEP_COMMANDS.includes(command))
+            commandOptions.push("  --host-tool-approval <id>  Acknowledge the exact suspended Tool invocation after host mediation; grants no host permission.");
+        if (STEP_COMMANDS.includes(command))
             commandOptions.push("  --run <id> --advance --note <text> --evidence <path>  Advance the run within this step's phases.");
         if (STEP_COMMANDS.includes(command))
             commandOptions.push("  --run <id> --abandon [--note <reason>]  Cancel the run so the same request can start again.");
@@ -210,6 +212,7 @@ function parse(argv) {
     let decision;
     let workflow;
     let autonomy;
+    let hostToolApproval;
     let because;
     let recommend;
     const parts = [];
@@ -273,6 +276,18 @@ function parse(argv) {
                 return { kind: "error", result: value };
             }
             adapters.push(value);
+            index += 1;
+            continue;
+        }
+        if (token === "--host-tool-approval") {
+            if (!STEP_COMMANDS.includes(command ?? ""))
+                return { kind: "error", result: usage(command ?? "cli", "--host-tool-approval is supported only by workflow commands.") };
+            const value = takeValue(argv, index, token, command ?? "cli");
+            if (typeof value !== "string")
+                return { kind: "error", result: value };
+            if (!/^[a-f0-9]{64}$/.test(value))
+                return { kind: "error", result: usage(command ?? "cli", "--host-tool-approval requires the exact bounded request digest.") };
+            hostToolApproval = value;
             index += 1;
             continue;
         }
@@ -518,6 +533,7 @@ function parse(argv) {
         intentInputs,
         ...(workflow === undefined ? {} : { workflow }),
         ...(autonomy === undefined ? {} : { autonomy }),
+        ...(hostToolApproval === undefined ? {} : { hostToolApproval }),
         ...(because === undefined ? {} : { because }),
         ...(recommend === undefined ? {} : { recommend }),
         ...(reply === undefined ? {} : { reply }),

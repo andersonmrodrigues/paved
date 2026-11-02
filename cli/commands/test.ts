@@ -2,10 +2,11 @@ import { remediationFor } from "../lib/lifecycle-remediation.ts";
 import { createDiagnostic, createResult, type CommandResult, type Diagnostic } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
 import { inspectConsumer } from "../lib/consumer-state.ts";
-import { runTestingTool, type TestToolOutcome } from "../lib/test-runner.ts";
+import { resolveTestingTool, runTestingTool, type TestToolOutcome } from "../lib/test-runner.ts";
 import { acquireConsumerOperationLock, ConsumerOperationLockedError } from "../lib/operation-lock.ts";
 import { runDecisionGate } from "../lib/decisions/gate.ts";
 import { testingProvider } from "../lib/decisions/providers/testing.ts";
+import { ToolInvocationStopped, type ToolInvocationGuard } from "../lib/tools.ts";
 import { testingHandler } from "../lib/decisions/handlers/testing.ts";
 
 function statusFor(diagnostics: readonly Diagnostic[], failed: boolean): "success" | "warning" | "failed" {
@@ -21,7 +22,7 @@ function failureMessage(outcomes: readonly TestToolOutcome[] | undefined): strin
   return `${failing.length} of ${outcomes!.length} testing Tools failed or timed out: ${list}.`;
 }
 
-export async function testHandler(invocation: CommandInvocation): Promise<CommandResult> {
+export async function testHandler(invocation: CommandInvocation, beforeRun?: ToolInvocationGuard): Promise<CommandResult> {
   let inputs: Record<string, unknown> = {};
   if (invocation.flags.inputs !== undefined) {
     try {
@@ -90,12 +91,17 @@ export async function testHandler(invocation: CommandInvocation): Promise<Comman
     }
     const release = acquireConsumerOperationLock(invocation.paths.projectRoot, "test");
     try {
+      const selected = resolveTestingTool(invocation.paths.projectRoot, invocation.paths.coreRoot, invocation.paths.sourceRoot);
+      if (beforeRun && (selected.status === "resolved" || selected.status === "suite")) {
+        const stopped = beforeRun((selected.status === "suite" ? selected.members : [selected]).map((member) => ({ ...member, inputs })));
+        if (stopped) return stopped;
+      }
       const result = await runTestingTool({
         projectRoot: invocation.paths.projectRoot,
         sourceRoot: invocation.paths.sourceRoot,
         coreRoot: invocation.paths.coreRoot,
         inputs,
-      });
+      }, selected);
       return createResult({
         command: "test",
         status: statusFor(result.diagnostics, result.status === "failed"),
@@ -126,6 +132,7 @@ export async function testHandler(invocation: CommandInvocation): Promise<Comman
       release();
     }
   } catch (error) {
+    if (error instanceof ToolInvocationStopped) throw error;
     if (error instanceof ConsumerOperationLockedError) {
       return createResult({
         command: "test",

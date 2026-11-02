@@ -1,10 +1,11 @@
 import { remediationFor } from "../lib/lifecycle-remediation.js";
 import { createDiagnostic, createResult } from "../result.js";
 import { inspectConsumer } from "../lib/consumer-state.js";
-import { runTestingTool } from "../lib/test-runner.js";
+import { resolveTestingTool, runTestingTool } from "../lib/test-runner.js";
 import { acquireConsumerOperationLock, ConsumerOperationLockedError } from "../lib/operation-lock.js";
 import { runDecisionGate } from "../lib/decisions/gate.js";
 import { testingProvider } from "../lib/decisions/providers/testing.js";
+import { ToolInvocationStopped } from "../lib/tools.js";
 import { testingHandler } from "../lib/decisions/handlers/testing.js";
 function statusFor(diagnostics, failed) {
     if (failed || diagnostics.some((item) => item.severity === "error"))
@@ -19,7 +20,7 @@ function failureMessage(outcomes) {
     const list = failing.map((item) => `${item.tool} in ${item.workingDirectory}${item.evidence ? ` (${item.evidence})` : ""}`).join("; ");
     return `${failing.length} of ${outcomes.length} testing Tools failed or timed out: ${list}.`;
 }
-export async function testHandler(invocation) {
+export async function testHandler(invocation, beforeRun) {
     let inputs = {};
     if (invocation.flags.inputs !== undefined) {
         try {
@@ -88,12 +89,18 @@ export async function testHandler(invocation) {
         }
         const release = acquireConsumerOperationLock(invocation.paths.projectRoot, "test");
         try {
+            const selected = resolveTestingTool(invocation.paths.projectRoot, invocation.paths.coreRoot, invocation.paths.sourceRoot);
+            if (beforeRun && (selected.status === "resolved" || selected.status === "suite")) {
+                const stopped = beforeRun((selected.status === "suite" ? selected.members : [selected]).map((member) => ({ ...member, inputs })));
+                if (stopped)
+                    return stopped;
+            }
             const result = await runTestingTool({
                 projectRoot: invocation.paths.projectRoot,
                 sourceRoot: invocation.paths.sourceRoot,
                 coreRoot: invocation.paths.coreRoot,
                 inputs,
-            });
+            }, selected);
             return createResult({
                 command: "test",
                 status: statusFor(result.diagnostics, result.status === "failed"),
@@ -126,6 +133,8 @@ export async function testHandler(invocation) {
         }
     }
     catch (error) {
+        if (error instanceof ToolInvocationStopped)
+            throw error;
         if (error instanceof ConsumerOperationLockedError) {
             return createResult({
                 command: "test",

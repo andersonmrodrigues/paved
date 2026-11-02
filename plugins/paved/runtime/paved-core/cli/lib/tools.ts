@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { CommandResult } from "../result.ts";
 import type { CheckResult } from "./evidence.ts";
 import { namespaceOf } from "./references.ts";
 
@@ -409,4 +410,20 @@ export function toEvidenceCheck(
     ...(status === "failed" || status === "error" ? { summary: result.errors.join("; ") || "Tool execution did not meet the Check expectation" } : {}),
     ...(status === "blocked" ? { reason: result.errors.join("; ") || "Tool execution was blocked" } : {}),
   } as CheckResult;
+}
+
+/** A concrete invocation snapshot, inspected before any selected Tool runs. */
+export interface ToolInvocation {
+  readonly tool: ToolContract;
+  readonly implementation: ToolImplementation;
+  readonly inputs: Record<string, unknown>;
+  readonly override?: ToolOverride;
+}
+
+export type ToolInvocationGuard = (invocations: readonly ToolInvocation[]) => CommandResult | undefined;
+
+/** Propagates a policy suspension past optional phase hooks without losing its host context. */
+export class ToolInvocationStopped extends Error {
+  readonly result: CommandResult;
+  constructor(result: CommandResult) { super("Phase Tool policy stopped invocation."); this.result = result; }
 }

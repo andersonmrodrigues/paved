@@ -242,6 +242,18 @@ export function resolvePhaseToolPolicies(workflow: WorkflowContract, phase: Work
   return { policies, problems };
 }
 
+/** The active phase's composed guidance and effective policies, for hosts and isolated reviewers. */
+export function phaseContext(workflow: WorkflowContract, phase: ResolvedWorkflowPhase) {
+  return {
+    phase: phase.phase,
+    goal: phase.goal,
+    skills: phase.skills ?? [],
+    tools: { required: phase.tools?.required ?? [], optional: phase.tools?.optional ?? [] },
+    toolPolicies: resolvePhaseToolPolicies(workflow, phase).policies,
+    fragments: (phase.fragments ?? []).map(({ id, body }) => ({ id, body })),
+  };
+}
+
 /** Policy checks shared by authoring quality assessment and runtime workflow loading. */
 export function assessWorkflowToolPolicies(
   contract: WorkflowContract,

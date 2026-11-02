@@ -135,6 +135,21 @@ ignoring unavailable policy context. Paved validates and projects these declarat
 it does not enforce host-level permissions. See [workflows](workflows.md) for authoring
 and [workflow state](workflow-state.md) for persistence.
 
+CLI-owned testing and verification invocations check the active phase's policies against
+resolved Tool ids before running any selected suite member or Check Tool. Deny returns
+`PAVED_WORKFLOW_TOOL_DENIED`. Ask stops `--auto` with status `warning`, diagnostic
+`PAVED_WORKFLOW_TOOL_APPROVAL_REQUIRED`, and `data.toolApproval`: a digest `id` plus the
+run, workflow, phase, attempt, source roots/digest, concrete Tool contracts,
+implementations, inputs, overrides when selected, and effective phase policies. The host
+uses that bounded context for its own approval step, then repeats the phase command with
+`--host-tool-approval <id>` and the same flags. This is an invocation acknowledgment,
+not a Paved Decision or proof of native approval; it grants and attests no host or OS
+permission. The host must enforce its permissions independently. The acknowledgment is
+not stored, does not carry to the next automatic phase, and stops matching if the
+source, phase, policies or invocation snapshot changes. A repeat without it suspends
+again. The isolated review brief carries the active review phase's composed context
+and effective policies so its reviewer receives the same guidance and restrictions.
+
 ## Diagnostics, errors and compatibility
 
 Each diagnostic contains `severity`, `category`, `code`, `component`, `message`,

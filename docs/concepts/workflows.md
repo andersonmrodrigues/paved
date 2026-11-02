@@ -182,6 +182,19 @@ merely omitted from the projection. Effective actions appear in
 `data.phaseContext.toolPolicies` as ordered `{id, allow, ask, deny}` entries. Integrations
 apply restrictions through host controls without claiming Paved grants host permissions.
 
+Paved's own testing and verification hooks inspect the concrete invocation set before
+any selected Tool runs. This covers discovery, planning baselines, validation suites
+and verification Check Tools, including Tools selected through a testing decision.
+Deny blocks invocation; ask suspends `--auto` with a bounded `data.toolApproval` request
+and `PAVED_WORKFLOW_TOOL_APPROVAL_REQUIRED` warning. After the host mediates its own
+approval step, `--host-tool-approval <request-id>` acknowledges continuation for that
+invocation only. It grants and attests no host or OS permission, is not persisted, and
+is discarded at the next automatic phase boundary. Plan approval, policy `allow` and
+Paved decision answers never substitute for that step. See the
+[agent integration contract](agent-integration.md) for the request fields. Isolated review
+briefs include only the active review phase's composed skills, Tools, bound fragment
+bodies and effective policies.
+
 ## Verification and evidence
 
 Verification is a phase of its own that cannot be skipped. Each phase may name

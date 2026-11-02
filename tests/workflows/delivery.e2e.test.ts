@@ -494,6 +494,10 @@ describe("independent review", () => {
     const independent = (stopped.data as { review: { independent: { brief: string; reviewed: Record<string, string> } } }).review.independent;
     const brief = readFileSync(join(root, independent.brief), "utf8");
     assert.ok(brief.includes(`.paved/generated/evidence/${id}.diff`) && brief.includes(independent.reviewed.source_sha256!), brief);
+    const context = JSON.parse(/```json\n([\s\S]*?)\n```/.exec(brief)?.[1] ?? "null");
+    assert.equal(context?.phase, "review", "the command must pass its resolved Core root to the isolated brief");
+    assert.ok(context.skills.includes("core.code-review.change-review"));
+
     assert.match((stopped.data as { nextAction: string }).nextAction, /subagent with its own context/);
 
     const refused = await invoke("execute", "--run", id, "--auto", "--note", "Looked fine to me");

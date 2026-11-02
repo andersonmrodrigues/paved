@@ -802,6 +802,12 @@ async function runVerificationUnlocked(input) {
     const { profile, profilePath, checks, tools, implementations, diagnostics } = resolved;
     const sourceRoot = input.sourceRoot ?? input.projectRoot;
     const revision = currentRevision(sourceRoot).revision;
+    // Resolve the complete set first: an ask or deny on a later Check must not partially run verification.
+    input.beforeRun?.(checks.flatMap((check) => {
+        const selected = resolveTool(check.tool, tools, implementations, "local");
+        return selected.status === "resolved" && selected.tool && selected.implementation
+            ? [{ tool: selected.tool, implementation: selected.implementation, inputs: check.inputs ?? {} }] : [];
+    }));
     const evidenceChecks = [];
     const logs = [];
     for (const check of checks) {

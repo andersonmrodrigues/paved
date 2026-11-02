@@ -46,6 +46,7 @@ export interface CliFlags {
   readonly decision?: string;
   readonly workflow?: string;
   readonly autonomy?: string;
+  readonly hostToolApproval?: string;
   readonly because?: string;
   readonly recommend?: string;
   readonly parts: readonly string[];
@@ -211,6 +212,7 @@ function commandUsage(command: CommandName | undefined): string {
     if (command === "decision") commandOptions.push("  --decision <json>  Raise an agent-authored question.", "  --reason <text>   Explain a revision.");
     if (command === "preview") commandOptions.push("  --reply <text>   With resolve, tell the reviewer what changed.");
     if (command === "intent" || command === "execute") commandOptions.push("  --workflow <feature|bug|refactor> --because <evidence>  Classify the request.", "  --recommend <workflow> --because <evidence>  Suggest a workflow and let the user decide.", "  --part <request>  Propose one part of a split; repeat per part.", "  --input <id>=<value>  Supply another declared workflow input; repeatable.", "  --autonomy <guided|balanced|autonomous>  Select a profile for the new run; fixed on resume.");
+    if (STEP_COMMANDS.includes(command)) commandOptions.push("  --host-tool-approval <id>  Acknowledge the exact suspended Tool invocation after host mediation; grants no host permission.");
     if (STEP_COMMANDS.includes(command)) commandOptions.push("  --run <id> --advance --note <text> --evidence <path>  Advance the run within this step's phases.");
     if (STEP_COMMANDS.includes(command)) commandOptions.push("  --run <id> --abandon [--note <reason>]  Cancel the run so the same request can start again.");
     if (command === "plan") commandOptions.push("  --approve        Record the user's approval of the current plan, given in the conversation.", "  --run <id> --amend --note <change> [--evidence <plan>]  Ask approval for a revised plan mid-run.");
@@ -304,6 +306,7 @@ function parse(argv: readonly string[]): Parsed {
   let decision: string | undefined;
   let workflow: string | undefined;
   let autonomy: string | undefined;
+  let hostToolApproval: string | undefined;
   let because: string | undefined;
   let recommend: string | undefined;
   const parts: string[] = [];
@@ -372,6 +375,16 @@ function parse(argv: readonly string[]): Parsed {
         return { kind: "error", result: value };
       }
       adapters.push(value);
+      index += 1;
+      continue;
+    }
+
+    if (token === "--host-tool-approval") {
+      if (!STEP_COMMANDS.includes(command ?? "")) return { kind: "error", result: usage(command ?? "cli", "--host-tool-approval is supported only by workflow commands.") };
+      const value = takeValue(argv, index, token, command ?? "cli");
+      if (typeof value !== "string") return { kind: "error", result: value };
+      if (!/^[a-f0-9]{64}$/.test(value)) return { kind: "error", result: usage(command ?? "cli", "--host-tool-approval requires the exact bounded request digest.") };
+      hostToolApproval = value;
       index += 1;
       continue;
     }
@@ -590,6 +603,7 @@ function parse(argv: readonly string[]): Parsed {
     intentInputs,
     ...(workflow === undefined ? {} : { workflow }),
     ...(autonomy === undefined ? {} : { autonomy }),
+    ...(hostToolApproval === undefined ? {} : { hostToolApproval }),
     ...(because === undefined ? {} : { because }),
     ...(recommend === undefined ? {} : { recommend }),
     ...(reply === undefined ? {} : { reply }),

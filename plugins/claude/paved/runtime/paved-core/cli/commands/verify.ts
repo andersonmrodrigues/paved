@@ -1,5 +1,6 @@
 import { realpathSync } from "node:fs";
 import { relative, sep } from "node:path";
+import { ToolInvocationStopped, type ToolInvocationGuard } from "../lib/tools.ts";
 import { runVerification, type VerificationRunResult } from "../lib/verification-runner.ts";
 import { ConsumerOperationLockedError } from "../lib/operation-lock.ts";
 import { runDecisionGate } from "../lib/decisions/gate.ts";
@@ -18,7 +19,7 @@ function rel(projectRoot: string, path: string): string {
   return relative(realpathSync(projectRoot), realpathSync(path)).split(sep).join("/");
 }
 
-export async function verifyHandler(invocation: CommandInvocation): Promise<CommandResult> {
+export async function verifyHandler(invocation: CommandInvocation, beforeRun?: ToolInvocationGuard): Promise<CommandResult> {
   let result: VerificationRunResult;
   try {
     const outcome = runDecisionGate({
@@ -51,6 +52,10 @@ export async function verifyHandler(invocation: CommandInvocation): Promise<Comm
       sourceRoot: invocation.paths.sourceRoot,
       coreRoot: invocation.paths.coreRoot,
       adapterSelections: invocation.flags.adapters,
+      ...(beforeRun ? { beforeRun: (selected) => {
+        const stopped = beforeRun(selected);
+        if (stopped) throw new ToolInvocationStopped(stopped);
+      } } : {}),
     });
   } catch (error) {
     if (!(error instanceof ConsumerOperationLockedError)) throw error;

@@ -21,6 +21,10 @@ releases, not the development sequence used to build them.
   actions and denied required Tools before workflow dispatch. Same-action duplicates
   resolve once; deny excludes use, ask requires host approval and allow recommends use
   subject to host permissions. Unspecified Tools retain existing host behavior.
+  CLI-owned testing suites and verification Check Tools enforce the active phase's
+  policies before invocation; ask suspends automatic delivery for a bounded host-mediated
+  acknowledgment without granting host permission. Isolated review briefs carry the
+  active review phase's composed guidance and effective policies.
 
 ## [2.22.0] - 2026-11-01
 

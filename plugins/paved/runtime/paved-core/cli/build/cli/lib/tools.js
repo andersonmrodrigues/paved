@@ -371,3 +371,8 @@ export function toEvidenceCheck(result, check, id) {
         ...(status === "blocked" ? { reason: result.errors.join("; ") || "Tool execution was blocked" } : {}),
     };
 }
+/** Propagates a policy suspension past optional phase hooks without losing its host context. */
+export class ToolInvocationStopped extends Error {
+    result;
+    constructor(result) { super("Phase Tool policy stopped invocation."); this.result = result; }
+}

@@ -89,6 +89,15 @@ safety still apply. An empty `fragments` list means the phase has no fragment gu
   invalid, as is denying a required Tool, including one introduced by a fragment or
   active skill. A Tool omitted from all selected actions is unspecified and retains
   existing host behavior. An empty `toolPolicies` list preserves existing behavior.
+  Paved also checks the concrete Tools used by its testing and verification phase hooks,
+  including every suite member and Check Tool. A deny stops before invocation. An ask
+  suspends automatic delivery with `PAVED_WORKFLOW_TOOL_APPROVAL_REQUIRED` and a bounded
+  `data.toolApproval` request. Present its exact phase, Tools, implementations and inputs
+  through the host's own approval flow. After that step, repeat the phase command with
+  `--host-tool-approval <request-id>` and the same phase flags. This caller acknowledgment
+  only resumes Paved's suspension: it neither grants nor attests host or OS permission.
+  Never supply it from plan approval, a Paved decision answer or an `allow` policy. It is
+  not persisted and automatic delivery drops it before entering another phase.
 - **Rules.** The run respects the workflow's `rules`, the rules of every active skill,
   and every rule whose `applies_to` matches the change, with the project's overrides
   applied. A workflow never changes a rule's severity.
