@@ -327,8 +327,9 @@ describe("workflow fragment resolution", () => {
     assert.ok(problems.some((problem) => problem.includes("core.discovery.context-discovery, which another listed skill already activates")), JSON.stringify(problems));
   });
 
-  it("resolves Core workflow contracts before execution", () => {
+  it("loads feature 0.5.0 with its effective context-discovery fragment before execution", () => {
     const contract = loadContract(at(), "core.feature");
+    assert.equal(contract.version, "0.5.0", "adding discovery fragment guidance changes the effective workflow version");
     const discovery = contract.phases.find((phase) => phase.phase === "discovery")!;
     const fragments = Reflect.get(discovery, "fragments");
     assert.ok(fragments?.length, "Core feature workflow consumes context-discovery fragment");

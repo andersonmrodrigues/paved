@@ -10,7 +10,8 @@ releases, not the development sequence used to build them.
 - Reusable Core workflow fragments with schema-validated metadata, exact string input
   bindings and composed skill/Tool requirements. Loading rejects unknown references,
   missing or extra bindings, unresolved templates and nested fragments. Active phase
-  context exposes bound guidance and composed requirements.
+  context exposes bound guidance and composed requirements. Feature workflow `0.5.0`
+  adopts context-discovery fragment guidance (ADR 0046).
 - Optional per-run autonomy profiles: guided phase-by-phase continuation, balanced
   automatic continuation and autonomous dispatch guidance for ready tasks in an approved
   delegation plan. Creation-time selection overrides workflow defaults and stays fixed

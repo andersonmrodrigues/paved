@@ -5,7 +5,7 @@ title: Feature
 description: >-
   Adds behavior or changes existing behavior on purpose, from request to reviewed,
   verified change. Use when a task asks the software to do something it does not do yet.
-version: 0.4.0
+version: 0.5.0
 status: experimental
 change_type: feature
 inputs:
