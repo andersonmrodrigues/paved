@@ -322,6 +322,24 @@ describe("workflow command autonomy", () => {
     });
   }
 
+  it("retains profile and phase context when an implicitly selected run fails on missing evidence", async () => {
+    const started = await invoke("intent", "Add CSV export", "--workflow", "feature", "--because", "New format.", "--autonomy", "guided");
+    assert.equal(started.status, "success", JSON.stringify(started));
+    const id = runOf(started);
+    const before = readRunFile(id);
+    const failed = await invoke("intent", "--advance", "--note", "Scope is clear", "--evidence", "missing.md");
+    assert.equal(failed.status, "failed", JSON.stringify(failed));
+    assert.equal(failed.diagnostics[0]?.code, "PAVED_WORKFLOW_STATE_INVALID");
+    assert.equal(failed.diagnostics[0]?.message, "Evidence file does not exist: missing.md");
+    const data = failed.data as { run?: string; autonomy_profile?: string; phaseContext?: { phase: string }; routing?: unknown } | undefined;
+    assert.equal(data?.run, id);
+    assert.equal(data?.autonomy_profile, "guided");
+    assert.equal(data?.phaseContext?.phase, "context");
+    assert.deepEqual(data?.phaseContext, (started.data as { phaseContext: unknown }).phaseContext);
+    assert.deepEqual(data?.routing, (started.data as { routing: unknown }).routing);
+    assert.deepEqual(readRunFile(id), before, "invalid evidence must not advance or change the persisted run");
+  });
+
   it("preserves an explicit pending profile through the classification answer", async () => {
     const pending = await invoke("intent", "Make exports work", "--autonomy", "autonomous");
     assert.equal(pending.status, "awaiting_input", JSON.stringify(pending));

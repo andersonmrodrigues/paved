@@ -769,6 +769,7 @@ export async function stepHandler(invocation) {
 }
 async function dispatchStep(invocation) {
     const step = invocation.command;
+    let selectedRunId;
     try {
         if (step === "intent" && !invocation.flags.run && invocation.selectors.length > 0)
             return startIntent(invocation);
@@ -784,6 +785,7 @@ async function dispatchStep(invocation) {
         const selected = selectRun(invocation, step);
         if ("result" in selected)
             return selected.result;
+        selectedRunId = selected.run.id;
         if (flags.autonomy !== undefined && flags.autonomy !== selected.run.autonomy_profile) {
             return blocked(step, "PAVED_AUTONOMY_PROFILE_IMMUTABLE", `Run ${selected.run.id} autonomy profile cannot change after creation.`, "Resume without --autonomy; a new profile needs a new run.", { run: selected.run.id });
         }
@@ -800,8 +802,9 @@ async function dispatchStep(invocation) {
         return await resume(invocation, step, selected.run, selected.answers);
     }
     catch (error) {
+        const data = selectedRunId === undefined ? undefined : { run: selectedRunId };
         if (error instanceof IntentError)
-            return blocked(step, error.code, error.message, error.remediation);
-        return blocked(step, "PAVED_WORKFLOW_STATE_INVALID", error instanceof Error ? error.message : "Workflow failed.", "Inspect the workflow run and correct its state before retrying.");
+            return blocked(step, error.code, error.message, error.remediation, data);
+        return blocked(step, "PAVED_WORKFLOW_STATE_INVALID", error instanceof Error ? error.message : "Workflow failed.", "Inspect the workflow run and correct its state before retrying.", data);
     }
 }

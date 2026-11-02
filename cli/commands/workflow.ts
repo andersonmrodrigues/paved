@@ -746,6 +746,7 @@ export async function stepHandler(invocation: CommandInvocation): Promise<Comman
 
 async function dispatchStep(invocation: CommandInvocation): Promise<CommandResult> {
   const step = invocation.command as Step;
+  let selectedRunId: string | undefined;
   try {
     if (step === "intent" && !invocation.flags.run && invocation.selectors.length > 0) return startIntent(invocation);
     if (step === "execute" && !invocation.flags.run && invocation.selectors.length > 0) return startWork(invocation);
@@ -758,6 +759,7 @@ async function dispatchStep(invocation: CommandInvocation): Promise<CommandResul
     }
     const selected = selectRun(invocation, step);
     if ("result" in selected) return selected.result;
+    selectedRunId = selected.run.id;
     if (flags.autonomy !== undefined && flags.autonomy !== selected.run.autonomy_profile) {
       return blocked(step, "PAVED_AUTONOMY_PROFILE_IMMUTABLE", `Run ${selected.run.id} autonomy profile cannot change after creation.`, "Resume without --autonomy; a new profile needs a new run.", { run: selected.run.id });
     }
@@ -770,7 +772,8 @@ async function dispatchStep(invocation: CommandInvocation): Promise<CommandResul
     if (step === "execute" && flags.auto) return await deliver(invocation, selected.run, selected.answers);
     return await resume(invocation, step, selected.run, selected.answers);
   } catch (error) {
-    if (error instanceof IntentError) return blocked(step, error.code, error.message, error.remediation);
-    return blocked(step, "PAVED_WORKFLOW_STATE_INVALID", error instanceof Error ? error.message : "Workflow failed.", "Inspect the workflow run and correct its state before retrying.");
+    const data = selectedRunId === undefined ? undefined : { run: selectedRunId };
+    if (error instanceof IntentError) return blocked(step, error.code, error.message, error.remediation, data);
+    return blocked(step, "PAVED_WORKFLOW_STATE_INVALID", error instanceof Error ? error.message : "Workflow failed.", "Inspect the workflow run and correct its state before retrying.", data);
   }
 }
