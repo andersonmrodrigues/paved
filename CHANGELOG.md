@@ -5,6 +5,14 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- Development guidance now asks agents to choose the smallest complete solution while
+  preserving safety and explicit requirements. Review findings state observed behavior,
+  impact, correction and consequence. Harness evaluations can compare changed-line counts
+  after acceptance criteria pass, and `paved gardener debt` lists tracked, deliberate
+  shortcut comments with their revisit conditions without modifying the repository.
+
 ## [2.23.0] - 2026-11-02
 
 ### Added

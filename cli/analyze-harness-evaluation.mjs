@@ -40,7 +40,7 @@ export function analyzeHarnessEvaluation(dataset) {
     const rows = index(variant);
     if (JSON.stringify([...rows.keys()].sort((a, b) => a - b)) !== JSON.stringify([...baselineRows.keys()].sort((a, b) => a - b))) throw new Error(`Variant ${variant.task_id} must have the same paired repetition ids as the baseline.`);
     const quality = Object.fromEntries(criteria.map((criterion) => [criterion, rows.size ? [...rows.values()].filter((row) => row.checks[criterion]).length / rows.size : 0]));
-    const metrics = Object.fromEntries(["input_tokens", "output_tokens", "duration_ms", "cost_usd"].map((key) => {
+    const metrics = Object.fromEntries(["input_tokens", "output_tokens", "duration_ms", "cost_usd", "changed_lines"].map((key) => {
       const values = [...rows.values()].map((row) => row[key]);
       return [key, values.some((value) => value === undefined) ? null : median(values)];
     }));
@@ -51,7 +51,7 @@ export function analyzeHarnessEvaluation(dataset) {
     const candidateRows = index(variant);
     const candidate = summarize(variant);
     const qualityNonRegressing = criteria.every((criterion) => candidate.quality[criterion] >= base.quality[criterion]);
-    const compared = ["input_tokens", "output_tokens", "duration_ms", "cost_usd"].filter((key) => base.metrics[key] !== null && candidate.metrics[key] !== null);
+    const compared = ["input_tokens", "output_tokens", "duration_ms", "cost_usd", "changed_lines"].filter((key) => base.metrics[key] !== null && candidate.metrics[key] !== null);
     const metricDeltas = Object.fromEntries(compared.map((key) => {
       const paired = [...candidateRows.entries()].map(([repetition, row]) => {
         const before = baselineRows.get(repetition)[key];

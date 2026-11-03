@@ -43,7 +43,7 @@ The diff is final enough to review.
    nameable source, or one stopped by an existing guard, is dropped; one the diff did not
    introduce is raised separately, not recorded here. When the agent can, have a
    separate pass re-trace each finding from the code.
-9. **Record findings** with severity, the boundary they concern and the traced path.
+9. **Record each finding so its owner can act on it in one read:** state what the code currently does, the concrete impact, the suggested correction, and the consequence of leaving it as-is. Include severity, the boundary and traced path. Keep hardening ideas without a traced path in notes.
    Hardening ideas that no traced path demands are notes, kept apart from findings.
    Fix what is in scope; raise what is not. With no finding, list the boundaries
    examined and why each holds.

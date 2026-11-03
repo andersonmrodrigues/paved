@@ -1,10 +1,56 @@
+import { execFileSync } from "node:child_process";
+import { lstatSync, readFileSync } from "node:fs";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { analyzeGardener, GardenerInputError } from "../lib/gardener.js";
 import { createDiagnostic, createResult } from "../result.js";
 import { runDecisionGate } from "../lib/decisions/gate.js";
 import { gardenerProvider } from "../lib/decisions/providers/gardener.js";
 import { gardenerHandler as adoptionHandler } from "../lib/decisions/handlers/gardener.js";
+/** Collect explicit, read-only shortcut markers from tracked text files. */
+export function collectShortcutDebt(projectRoot) {
+    let tracked;
+    try {
+        tracked = execFileSync("git", ["-C", projectRoot, "ls-files", "-z"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })
+            .split("\0").filter(Boolean);
+    }
+    catch {
+        throw new Error("Shortcut debt requires a Git repository.");
+    }
+    const result = [];
+    for (const file of tracked) {
+        if (isAbsolute(file) || file.split(/[\\/]/).some((part) => part === ".." || part === "node_modules" || part === ".git"))
+            continue;
+        const absolute = join(projectRoot, file);
+        try {
+            const stat = lstatSync(absolute);
+            if (!stat.isFile() || stat.size > 1_000_000)
+                continue;
+            const source = readFileSync(absolute);
+            if (source.includes(0))
+                continue;
+            source.toString("utf8").split(/\r?\n/).forEach((text, index) => {
+                const match = text.match(/\bshortcut:\s*(.+?);\s*revisit when\s+(.+?)\s*$/i);
+                if (match)
+                    result.push({ path: relative(projectRoot, absolute).split(sep).join("/"), line: index + 1,
+                        limitation: match[1].trim(), revisit_when: match[2].trim() });
+            });
+        }
+        catch {
+            // A tracked file can disappear between listing and reading; skip it.
+        }
+    }
+    return result.sort((a, b) => a.path.localeCompare(b.path) || a.line - b.line);
+}
 export function gardenerHandler(invocation) {
     try {
+        if (invocation.selectors.length > 0) {
+            if (invocation.selectors.length !== 1 || invocation.selectors[0] !== "debt") {
+                throw new GardenerInputError("Use paved gardener [debt].");
+            }
+            return createResult({ command: "gardener", status: "success", data: {
+                    mode: "shortcut-debt", entries: collectShortcutDebt(invocation.paths.sourceRoot), readOnly: true,
+                } });
+        }
         const result = analyzeGardener(invocation.paths);
         const count = result.proposals.filter((proposal) => proposal.status === "CANDIDATE").length;
         const skippedDiagnostics = result.skipped.map(({ record, problems }) => createDiagnostic({

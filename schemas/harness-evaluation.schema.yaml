@@ -81,3 +81,7 @@ $defs:
       output_tokens: { type: integer, minimum: 0 }
       cost_usd: { type: number, minimum: 0 }
       duration_ms: { type: integer, minimum: 0 }
+      changed_lines:
+        description: Added plus removed lines in the final diff, when available from the host.
+        type: integer
+        minimum: 0

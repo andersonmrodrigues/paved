@@ -63,6 +63,8 @@ Each pass goes through the dimensions below and notes candidates; stop at none.
    that never touches the changed code supports nothing.
 10. **Rules**: compliance entries in the evidence match the diff.
 
+**Write each finding so the owner can act on it in one read:** state what the code currently does, the concrete impact, the suggested correction, and the consequence of leaving it as-is. Keep these separate from notes and avoid generic recommendations without a traced path.
+
 **Classify** each candidate. A *blocking* finding is a defect you can demonstrate: code
 that will not build or load; wrong behavior for an input or state you can name; a
 dependency a declared boundary forbids; an unexplained hunk; a claim its evidence does

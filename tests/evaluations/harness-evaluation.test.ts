@@ -20,6 +20,16 @@ describe("task-level harness evaluation", () => {
     assert.equal(result.candidates[0]?.metric_delta_percent.duration_ms, -20);
   });
 
+  it("includes changed lines as a comparable metric when every paired run reports it", () => {
+    const input = dataset();
+    input.variants[0]!.measurements.forEach((measurement) => Object.assign(measurement, { changed_lines: 100 }));
+    input.variants[1]!.measurements.forEach((measurement) => Object.assign(measurement, { changed_lines: 60 }));
+    const result = analyzeHarnessEvaluation(input);
+    assert.equal(result.baseline.metrics.changed_lines, 100);
+    assert.equal(result.candidates[0]?.metrics.changed_lines, 60);
+    assert.equal(result.candidates[0]?.metric_delta_percent.changed_lines, -40);
+  });
+
   it("keeps the baseline when a candidate regresses an acceptance criterion", () => {
     const input = dataset();
     input.variants[1]!.measurements[0]!.checks.regression = false;

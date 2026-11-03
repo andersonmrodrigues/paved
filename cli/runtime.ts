@@ -128,7 +128,7 @@ const COMMAND_RULES: Record<CommandName, CommandRule> = {
   verify: { adapters: true, dryRun: false, noGenerate: false, selectors: false },
   status: { adapters: true, dryRun: false, noGenerate: false, selectors: false },
   doctor: { adapters: true, dryRun: false, noGenerate: false, selectors: false },
-  gardener: { adapters: false, dryRun: true, noGenerate: false, selectors: false },
+  gardener: { adapters: false, dryRun: true, noGenerate: false, selectors: true },
   test: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
   agent: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   decision: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
