@@ -30,7 +30,7 @@ All Core skills are `experimental`.
 |---|---|---|---|
 | `bootstrap` | `repository-onboarding` | 0.4.0 | Set up Paved and offer project-local app verification |
 | `discovery` | `context-discovery` | 0.3.2 | Understand a repository or the part a task touches |
-| `development` | `feature-development` | 0.6.0 | Add or change behavior |
+| `development` | `feature-development` | 0.7.0 | Add or change behavior |
 | | `frontend-design` | 0.1.3 | Plan and critique user-facing frontend interfaces |
 | | `refactoring` | 0.2.1 | Change structure without changing behavior |
 | | `prototyping` | 0.1.1 | Answer a feasibility question with throwaway code |
@@ -42,13 +42,13 @@ All Core skills are `experimental`.
 | | `app-verification` | 0.1.0 | Create or maintain a project-local user-facing verification skill |
 | | `e2e-testing` | 0.2.0 | Tests of critical user-visible flows using the project's verification guide |
 | | `regression-testing` | 0.2.1 | A test that fails before a fix and passes after |
-| | `harness-refinement` | 0.1.0 | Compare bounded alternative harness configurations using isolated runs and evidence |
+| | `harness-refinement` | 0.2.0 | Compare bounded alternative harness configurations using isolated runs and evidence |
 | `performance` | `profiling` | 0.2.1 | Measure, locate the bottleneck, change one thing |
 | | `backend-performance` | 0.1.1 | Server-side latency, data access, caching, concurrency |
 | | `frontend-performance` | 0.1.1 | Perceived load time, responsiveness, payload size |
-| `security` | `security-review` | 0.4.1 | Review a change for security impact |
+| `security` | `security-review` | 0.5.0 | Review a change for security impact |
 | | `threat-modeling` | 0.1.1 | Find threats in a design before it is built |
-| `code-review` | `change-review` | 0.4.1 | Review a finished change across all dimensions |
+| `code-review` | `change-review` | 0.6.0 | Review a finished change across all dimensions |
 | `gardener` | `gardener` | 0.3.1 | Turn recurring corrections into structural improvements |
 | `decisions` | `decisions` | 0.1.1 | Relay Paved decisions without taking authorship from the user |
 | `product` | `task-specification` | 0.4.1 | Write new tracker items or fill in existing ones, grounded in the repository |

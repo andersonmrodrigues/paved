@@ -35,6 +35,8 @@ CLI subcommands kept: `test`, `verify`, `doctor` and `gardener` are not projecte
 but remain CLI subcommands for CI, the launcher and the runtime itself; `decision`, `tool`,
 `generate`, `agent` and `workbench` are unchanged. `workbench` serves a loopback-only,
 read-only dashboard over existing run records and volatile agent hook activity.
+`paved gardener debt` lists tracked `shortcut:` comments with their revisit condition;
+it is read-only and does not create or modify a ledger file.
 
 Each command contract also reports its interaction mode, decision source (`runtime` or
 `agent`) and answer channel (`relayed` or `human-authored`). Conversational commands

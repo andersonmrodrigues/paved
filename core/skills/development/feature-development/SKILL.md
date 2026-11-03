@@ -87,21 +87,18 @@ know which checks exist before promising any.
    independently verified. Never store prompts, credentials or raw session ids. Keep
    short, tightly dependent or shared-file tasks in the primary session when startup
    and coordination cost exceeds the likely time saved.
-6. **Integrate centrally.** The primary agent owns the approved plan, resolves conflicting
-   results, checks delegated changes against the plan and repository state, and remains
-   responsible for tests, verification, evidence and completion. A delegated result is
-   input, not proof: inspect its diff and rerun affected checks. Do not let parallel work
-   bypass approvals or change scope without updating the plan.
-7. **Implement in small steps** that mirror the chosen sibling: naming, structure, error
+6. **Integrate centrally.** The primary agent owns the approved plan, resolves conflicts, and checks delegated changes against the plan and repository. It remains responsible for tests, verification, evidence and completion. A delegated result is input, not proof: inspect its diff and rerun affected checks. Do not bypass approvals or change scope without updating the plan.
+7. **Choose the smallest complete solution.** Check whether the behavior is needed as stated, then look for a project helper or pattern, platform feature, or installed dependency before adding code or dependencies. Avoid unrequested options, abstractions and future flexibility. Keep the diff readable; finish affected callers, tests and fixtures. Never reduce trust-boundary validation, data-loss handling, error handling, security, accessibility or explicit requirements. For a deliberate shortcut with a known limit, add `shortcut: <limit>; revisit when <condition>` in a source comment; `paved gardener debt` lists tracked markers without writing files. Remove the marker when resolved.
+8. **Implement in small steps** that mirror the chosen sibling: naming, structure, error
    handling, logging, configuration. The diff contains only what the claims need.
-8. **Add tests with the code.** Hand the tests for each level to its skill:
+9. **Add tests with the code.** Hand the tests for each level to its skill:
    `unit-testing` for logic, `integration-testing` for boundaries with real
    collaborators, `e2e-testing` when the claim is a user-visible flow.
-9. **Run the fast checks** after each meaningful step and fix failures before going on.
-10. **Clean up** imports, parameters, files and flags the change left unused.
-11. **Self-review** the diff with `core.repository.diff`, and confirm with `core.repository.status` that
-   no unintended file changed.
-12. **Verify and record** every required check, then hand over to the `verification` phase.
+10. **Run the fast checks** after each meaningful step and fix failures before going on.
+11. **Clean up** imports, parameters, files and flags the change left unused.
+12. **Self-review** the diff with `core.repository.diff` and confirm with `core.repository.status` that no unintended file changed.
+13. **Verify and record** every required check, then hand over to the `verification` phase.
+
 
 For a Paved workflow, keep the durable plan at
 `.paved/documents/plans/<run-id>.md`. Put a behavior contract in

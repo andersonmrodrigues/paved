@@ -15,6 +15,11 @@ and proposed changes. Each group member must run in a host-managed isolated work
 Compare the same acceptance criteria, configured checks, review requirements, and
 starting revision. Record repeated outcomes in the `HarnessEvaluation` document and run
 `npm run benchmark:harness -- <evaluation.yaml>` for a deterministic recommendation.
+The record may include `changed_lines` (added plus removed lines) for each measurement;
+the analyzer compares its median only when every paired measurement reports the value.
+Smaller diffs count as an efficiency measure only after quality criteria pass. Include an
+acceptance criterion for tests around risky behavior when relevant; line count alone does
+not establish correctness or safety.
 The analyzer requires paired repetition ids and accepted independent review, then
 compares criterion-level quality before tokens, cost, or duration. When several
 candidates qualify, it retains the baseline until a human chooses between them; it does
