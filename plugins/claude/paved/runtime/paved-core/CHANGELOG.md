@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.24.0] - 2026-11-03
+
 ### Added
 
 - Development guidance now asks agents to choose the smallest complete solution while
