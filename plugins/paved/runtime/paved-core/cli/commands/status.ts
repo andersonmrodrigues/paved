@@ -7,8 +7,8 @@ import { runDecisionGate } from "../lib/decisions/gate.ts";
 import { DecisionStoreError } from "../lib/decisions/store.ts";
 import { repairProvider } from "../lib/decisions/providers/repair.ts";
 import { repairHandler } from "../lib/decisions/handlers/repair.ts";
-import { isOpen, runBelongsTo, scanRuns, type Run } from "../lib/workflow-runs.ts";
-import { changedSinceVerification } from "../lib/workflow-gates/shared.ts";
+import { isOpen, runBelongsTo, runSourceRoot, scanRuns, type Run } from "../lib/workflow-runs.ts";
+import { changedSinceVerification, fingerprint } from "../lib/workflow-gates/shared.ts";
 import { inspectVerificationConfig } from "../lib/verification-runner.ts";
 
 function statusFor(diagnostics: readonly Diagnostic[]): ResultStatus {
@@ -95,10 +95,13 @@ function staleCompletion(inspection: ConsumerInspection, runs: readonly Run[], s
 function openRuns(inspection: ConsumerInspection, sourceRoot: string): { runs: Record<string, unknown>[]; diagnostics: Diagnostic[] } {
   if (!inspection.initialized) return { runs: [], diagnostics: [] };
   const scanned = scanRuns(inspection.projectRoot, inspection.coreRoot);
-  const runs = scanned.runs.filter(isOpen).map((run) => ({
+  const runs = scanned.runs.filter((run) => isOpen(run) && runBelongsTo(inspection.projectRoot, run, sourceRoot)).map((run) => ({
     run: run.id, status: run.status, ...(run.workflow === undefined ? {} : { workflow: run.workflow.id }),
     ...(run.worktree === undefined ? {} : { worktree: run.worktree }),
     currentPhase: run.phases.find((phase) => phase.status === "running")?.phase,
+    ...(run.handoff === undefined ? {} : { handoff: {
+      ...run.handoff, fresh: fingerprint(runSourceRoot(inspection.projectRoot, run)) === run.handoff.source_sha256,
+    } }),
   }));
   return { runs, diagnostics: [...scanned.unreadable.map((run) => createDiagnostic({
     severity: "warning", category: "findings", code: "PAVED_WORKFLOW_RUN_INVALID", component: "consumer.runs",
@@ -156,6 +159,8 @@ export function diagnose(invocation: CommandInvocation, command: "status" | "doc
   const runs = openRuns(inspection, invocation.paths.sourceRoot);
   const diagnostics = [...inspection.diagnostics, ...agentsBlockFindings(inspection), ...runs.diagnostics,
     ...verificationFindings(invocation, inspection), ...decisionDiagnostics];
+  const onlyOpenRun = runs.runs.length === 1 ? runs.runs[0] : undefined;
+  const resumeAction = onlyOpenRun === undefined ? undefined : `Resume the matching run with paved execute --run ${onlyOpenRun.run} --json; read its handoff first${(onlyOpenRun.handoff as { fresh?: boolean } | undefined)?.fresh === false ? " (the checkpoint is stale; inspect the current changes)" : ""}.`;
   return createResult({
     command,
     status: statusFor(diagnostics),
@@ -163,6 +168,7 @@ export function diagnose(invocation: CommandInvocation, command: "status" | "doc
     data: {
       ...statusData(inspection),
       openRuns: runs.runs,
+      ...(resumeAction === undefined ? {} : { nextAction: resumeAction }),
       actionableFindings: diagnostics.filter((item) => item.code !== "PAVED_DECISION_ANSWER_INVALID" && item.severity !== "info").map((diagnostic) => ({
         code: diagnostic.code, severity: diagnostic.severity, category: diagnostic.category,
         component: diagnostic.component, message: diagnostic.message, remediation: diagnostic.remediation,

@@ -15,6 +15,8 @@ substitute arbitrary shell commands.
 Use this flow by default even when the request is in natural language and does not
 name Paved. Before starting a run, consult status: resume the matching run for the
 same request rather than creating a duplicate, and never reuse an unrelated run.
+If the run has a handoff checkpoint, use it to orient yourself, then compare its
+freshness and changed paths with the current checkout before acting.
 For planning-only requests, stop at the plan. For investigation-only requests,
 follow the bug investigation guidance without implementing a fix. Implementation
 requires explicit human approval of the current plan, not merely a request to

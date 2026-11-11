@@ -22,7 +22,7 @@ import { AMENDED_RETRY, attemptRounds, phaseContext, resolvePhaseToolPolicies, R
 import { createDiagnostic, createResult, type CommandResult, type DecisionProjection, type Diagnostic } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
 import { initHandler } from "./init.ts";
-import { publicToolInvocation, ToolInvocationStopped, type ToolInvocationGuard } from "../lib/tools.ts";
+import { publicToolInvocation, sanitizeToolOutput, ToolInvocationStopped, type ToolInvocationGuard } from "../lib/tools.ts";
 import { testHandler } from "./test.ts";
 import { updateHandler } from "./update.ts";
 import { verifyHandler } from "./verify.ts";
@@ -83,6 +83,7 @@ export function runSummary(run: Run): Record<string, unknown> {
     currentPhase: run.phases.find((phase) => phase.status === "running")?.phase,
     evidence: run.evidence,
     evidenceProduced: run.events.flatMap((event) => event.ref?.startsWith(".paved/generated/evidence/") ? [event.ref] : []),
+    ...(run.handoff === undefined ? {} : { handoff: run.handoff }),
   };
 }
 
@@ -103,7 +104,7 @@ function result(projectRoot: string, coreRoot: string, step: Step, run: Run, nex
     ? "Wait for the user to advance before starting the next phase. Then: " : "";
   return createResult({
     command: step, status, ...(open.length ? { decisions: open } : {}),
-    data: { ...runSummary(run), ...extras.data, ...(review === undefined ? {} : { review }), nextAction: `${guidedStop}${nextAction}${reviewText}` }, diagnostics: retained,
+    data: { ...runSummary(run), ...(run.handoff === undefined ? {} : { handoff: { ...run.handoff, fresh: fingerprint(runSourceRoot(projectRoot, run)) === run.handoff.source_sha256 } }), ...extras.data, ...(review === undefined ? {} : { review }), nextAction: `${guidedStop}${nextAction}${reviewText}` }, diagnostics: retained,
   });
 }
 
@@ -441,17 +442,30 @@ function abandon(invocation: CommandInvocation, step: Step, run: Run): CommandRe
  * implementation starts validation, so it waits until the whole approved plan is done.
  */
 function checkpoint(invocation: CommandInvocation, run: Run): CommandResult {
-  const { projectRoot, coreRoot } = invocation.paths;
+  const { projectRoot, coreRoot, sourceRoot } = invocation.paths;
   const phase = run.status === "running" ? activePhase(run) : undefined;
   if (phase?.phase !== "implementation" || phase.status !== "running") {
     return blocked("execute", "PAVED_WORKFLOW_CHECKPOINT_UNAVAILABLE", `Run ${run.id} is not implementing an approved plan.`, nextStepAction(run), { run: run.id });
   }
   const note = invocation.flags.note?.trim();
   if (!note) return blocked("execute", "PAVED_WORKFLOW_OBSERVATION_REQUIRED", "A checkpoint needs a note on what was finished.", `Run paved execute --run ${run.id} --checkpoint --note <what was finished> --json.`, { run: run.id });
-  run.events.push({ at: now(), type: "evidence-recorded", phase: "implementation", detail: `checkpoint: ${note.slice(0, 4000)}` });
+  const summary = String(sanitizeToolOutput(note)).slice(0, 4000);
+  const changedPaths = changedWorkingPaths(sourceRoot);
+  run.handoff = {
+    updated_at: now(), phase: "implementation", summary, revision: revision(sourceRoot),
+    source_sha256: fingerprint(sourceRoot), changed_paths: changedPaths.slice(0, 200),
+    next_action: `Resume the approved plan with paved execute --run ${run.id} --json; inspect the current diff and continue from the unfinished work.`,
+  };
+  run.events.push({ at: now(), type: "evidence-recorded", phase: "implementation", detail: `checkpoint: ${summary}` });
   writeRun(projectRoot, coreRoot, run);
   return result(projectRoot, coreRoot, "execute", run,
     `Checkpoint recorded; implementation stays open. Verify this part as the plan says, continue with the next one, and once the whole approved plan is implemented run paved execute --run ${run.id} --auto --note <what was implemented> --json.`);
+}
+
+function changedWorkingPaths(projectRoot: string): string[] {
+  const status = spawnSync("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"], { cwd: projectRoot, encoding: "utf8", shell: false });
+  if (status.status !== 0) return [];
+  return [...new Set(status.stdout.split("\0").filter(Boolean).map((entry) => entry.slice(3).replaceAll("\\", "/")).filter((path) => path && !path.startsWith("/")))].slice(0, 200);
 }
 
 const RECOVERY_OPTIONS = [

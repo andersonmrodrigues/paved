@@ -25,9 +25,28 @@ describe("status open runs", () => {
     try {
       writeRun(projectRoot, coreRoot, pending);
       const status = await dispatchCli({ argv: ["status", "--project", projectRoot, "--json"] });
-      const data = status.data as { openRuns?: { run: string; status: string }[]; nextAction: string };
+      const data = status.data as { openRuns?: { run: string; status: string; handoff?: unknown }[]; nextAction: string };
       assert.deepEqual(data.openRuns?.map((item) => item.run), [pending.id]);
       assert.doesNotMatch(JSON.stringify(status), /paved doctor/);
+    } finally { rmSync(projectRoot, { recursive: true, force: true }); }
+  });
+
+  it("surfaces a stale checkpoint without hiding the open run", async () => {
+    const projectRoot = consumer();
+    try {
+      const run = structuredClone(pending);
+      run.handoff = {
+        updated_at: new Date().toISOString(), phase: "implementation", summary: "Finished the parser step.",
+        revision: "abc123", source_sha256: "0".repeat(64), changed_paths: ["src/parser.ts"],
+        next_action: `Resume with paved execute --run ${run.id} --json.`,
+      };
+      writeRun(projectRoot, coreRoot, run);
+      const status = await dispatchCli({ argv: ["status", "--project", projectRoot, "--json"] });
+      const data = status.data as { openRuns: { run: string; handoff?: { summary: string; fresh: boolean } }[]; nextAction: string };
+      assert.equal(data.openRuns[0]?.run, run.id);
+      assert.equal(data.openRuns[0]?.handoff?.summary, "Finished the parser step.");
+      assert.equal(data.openRuns[0]?.handoff?.fresh, false);
+      assert.match(data.nextAction, /checkpoint is stale/);
     } finally { rmSync(projectRoot, { recursive: true, force: true }); }
   });
 });

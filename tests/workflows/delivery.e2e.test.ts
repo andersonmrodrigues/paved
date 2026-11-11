@@ -430,6 +430,14 @@ describe("implementation checkpoints", () => {
     assert.equal(recorded.status, "success", JSON.stringify(recorded));
     assert.equal((recorded.data as { currentPhase: string }).currentPhase, "implementation");
     assert.equal(runState(root, id).phases.find((phase) => phase.phase === "validation")?.status, "pending");
+    const handoff = (recorded.data as { handoff: { summary: string; fresh: boolean; changed_paths: string[]; source_sha256: string } }).handoff;
+    assert.equal(handoff.summary, "Part 1: flag added");
+    assert.equal(handoff.fresh, true);
+    assert.equal(typeof handoff.source_sha256, "string");
+    assert.equal(runState(root, id).status, "running", "checkpoint must not advance the run");
+    write(root, "feature.js", "export const enabled = true;\n");
+    const resumed = await invoke("execute", "--run", id);
+    assert.equal((resumed.data as { handoff: { fresh: boolean } }).handoff.fresh, false, JSON.stringify(resumed));
   });
 
   it("refuses a checkpoint outside implementation", async () => {

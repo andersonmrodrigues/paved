@@ -5,6 +5,12 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- Implementation checkpoints now save a host-neutral handoff summary, changed paths,
+  revision and source/test fingerprint. Workflow results, `status` and supported session
+  start hooks surface the handoff and flag stale snapshots for cross-tool resumption.
+
 ## [2.25.0] - 2026-11-11
 
 ### Added

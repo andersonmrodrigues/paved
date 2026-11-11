@@ -1,4 +1,5 @@
 import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -73,6 +74,33 @@ async function checkAuthorizedUpdate(repository, sourceRoot) {
   if (result.status === "failed") return `Paved automatic update failed after [${result.data.completed.join(", ")}]. Project adoption was not confirmed; inspect the diagnostics. Completed host refresh steps are not rolled back.`;
 }
 
+function activeHandoffContext(repository, sourceRoot) {
+  try {
+    if (!existsSync(join(repository, ".paved", "paved.lock")) || !existsSync(join(repository, ".paved", "runtime", "selection.json"))) return "";
+    const pluginRoot = realpathSync(dirname(dirname(fileURLToPath(import.meta.url))));
+    const launcher = join(pluginRoot, "scripts", "paved.mjs");
+    if (!existsSync(launcher)) return "";
+    const result = spawnSync(process.execPath, [launcher, "status", "--json", "--project", sourceRoot], {
+      cwd: sourceRoot, encoding: "utf8", timeout: 2500, maxBuffer: 256 * 1024, shell: false,
+    });
+    if (result.status !== 0) return "";
+    const status = JSON.parse(result.stdout);
+    const runs = status?.data?.openRuns;
+    if (!Array.isArray(runs)) return "";
+    const handoffs = runs.filter((run) => run?.handoff && typeof run.handoff.summary === "string").slice(0, 3);
+    if (handoffs.length === 0) return "";
+    const lines = ["Portable Paved handoff (repository state; use the matching run and approved plan):"];
+    for (const run of handoffs) {
+      const handoff = run.handoff;
+      const freshness = handoff.fresh === false ? "STALE: source/test files changed since this checkpoint; inspect current diff before continuing" : "current";
+      const paths = Array.isArray(handoff.changed_paths) && handoff.changed_paths.length ? `\n  Changed paths: ${handoff.changed_paths.slice(0, 20).join(", ")}` : "";
+      lines.push(`- Run ${run.run} | phase ${run.currentPhase ?? handoff.phase} | ${freshness}\n  Progress: ${handoff.summary.slice(0, 1200)}${paths}\n  Next: ${handoff.next_action ?? `Resume with paved execute --run ${run.run} --json.`}`);
+    }
+    if (runs.length > handoffs.length) lines.push(`- ${runs.length - handoffs.length} other open run(s) have no checkpoint; use status and select the run matching the request.`);
+    return lines.join("\n");
+  } catch { return ""; }
+}
+
 try {
   process.stdin.setEncoding("utf8");
   let input = "";
@@ -95,7 +123,8 @@ try {
   if (event.hook_event_name === "SessionStart") {
     // A new or resumed session, compaction and clear each start without earlier guidance.
     if (["startup", "resume", "compact", "clear"].includes(event.source)) {
-      emit("SessionStart", updateNotice ? `${context}\n${updateNotice}` : context);
+      const handoff = activeHandoffContext(repository, sourceRoot);
+      emit("SessionStart", [context, handoff, updateNotice].filter(Boolean).join("\n\n"));
     }
   } else if (event.hook_event_name === undefined || event.hook_event_name === "UserPromptSubmit") {
     emit("UserPromptSubmit", updateNotice ? `${reminder}\n${updateNotice}` : reminder);

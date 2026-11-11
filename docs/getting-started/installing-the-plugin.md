@@ -96,6 +96,11 @@ submitted prompt it checks the nearest repository boundary and, when both
 reminder. A `SessionStart` hook adds the full guidance when a session starts or resumes
 and again after the context is compacted or cleared.
 
+When an open workflow has a checkpoint, SessionStart also includes its concise handoff,
+changed paths, next action and freshness. This lets another supported agent continue the
+same run after a session ends or a tool changes. The checkpoint is saved in the run, not
+in a host transcript; it is guidance and never stands in for approval or verification.
+
 You do not need to name a Paved command: ask for development, a plan, a correction,
 debugging or a refactor in ordinary language. The guidance tells the agent to inspect
 Paved status, resume a matching run or start `intent`, then follow `plan` and `execute`
@@ -107,7 +112,9 @@ proceed normally. Explicit user direction takes precedence.
 Review and trust the plugin's hook when Codex or Claude Code asks. Codex skips plugin
 hooks until you review and trust their current definition; Claude Code applies its
 workspace trust rules. Routing remains advisory and never inspects prompt text.
-By default hooks do not change files or run Paved commands. Explicit automatic-update
+SessionStart runs the installed project-local `status --json` command when a runtime is
+already active, using its result only to add open handoffs; it does not initialize or
+update the runtime. Hooks do not change files. Explicit automatic-update
 authorization enables the deterministic update check described below; it does not
 authorize implementing your application changes. Invalid input, missing state, or hook errors fail
 open and leave the prompt unaffected. If the hook is disabled, untrusted, or unsupported
