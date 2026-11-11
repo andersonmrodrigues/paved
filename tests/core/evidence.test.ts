@@ -17,6 +17,11 @@ function policyOf(file: string): VerificationPolicy {
 describe("evidence semantics", () => {
   const registry = loadEvidenceRegistry(at("core", "verification", "registry.yaml"));
 
+  it("registers mutation checks only for test-effectiveness claims", () => {
+    assert.deepEqual(registry.checkTypes.mutation?.supports, ["test-effectiveness"]);
+    assert.equal(registry.checkTypes.unit?.supports.includes("test-effectiveness"), false);
+  });
+
   it("accepts the evidence template", () => {
     const record = loadYaml(at("core", "templates", "evidence.yaml")) as Record;
     assert.deepEqual(assessEvidence(record, registry), []);

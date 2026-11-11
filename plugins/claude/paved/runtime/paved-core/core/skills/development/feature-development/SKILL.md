@@ -35,9 +35,10 @@ know which checks exist before promising any.
    For technology-specific code, read the relevant knowledge under the selected
    adapter in the pinned Core runtime; use the project's adapter selection, and do not
    apply guidance from an unselected technology.
-3. **Plan the proof.** For each claim, pick the check type from the profile that will
-   prove it. A claim no check can prove gets a planned artifact and a gap, decided now,
-   not after the code is written.
+3. **Plan the proof.** Pick a profile check for each claim; plan artifacts and gaps now.
+   Consider optional `mutation` checks for high-risk behavior or suite evaluation. They
+   support only `test-effectiveness` claims about selected injected changes, never
+   production behavior or non-regression.
 4. **Choose the working capacity.** Use the lightest available model that can handle
    each bounded task reliably. Reserve stronger models for ambiguous requirements,
    architecture choices, difficult debugging, security-sensitive reasoning and final
@@ -89,16 +90,20 @@ know which checks exist before promising any.
    and coordination cost exceeds the likely time saved.
 6. **Integrate centrally.** The primary agent owns the approved plan, resolves conflicts, and checks delegated changes against the plan and repository. It remains responsible for tests, verification, evidence and completion. A delegated result is input, not proof: inspect its diff and rerun affected checks. Do not bypass approvals or change scope without updating the plan.
 7. **Choose the smallest complete solution.** Check whether the behavior is needed as stated, then look for a project helper or pattern, platform feature, or installed dependency before adding code or dependencies. Avoid unrequested options, abstractions and future flexibility. Keep the diff readable; finish affected callers, tests and fixtures. Never reduce trust-boundary validation, data-loss handling, error handling, security, accessibility or explicit requirements. For a deliberate shortcut with a known limit, add `shortcut: <limit>; revisit when <condition>` in a source comment; `paved gardener debt` lists tracked markers without writing files. Remove the marker when resolved.
-8. **Implement in small steps** that mirror the chosen sibling: naming, structure, error
+8. **Test clear behavior before implementing it.** For a behavior claim with a known
+   result, write and run the lowest-level test first; confirm its intended failure before
+   making the smallest passing change. If behavior is unresolved, prototype or ask first;
+   refactors pin existing behavior with characterization tests.
+9. **Implement in small steps** that mirror the chosen sibling: naming, structure, error
    handling, logging, configuration. The diff contains only what the claims need.
-9. **Add tests with the code.** Hand the tests for each level to its skill:
+10. **Complete the tests for every relevant level.** Hand tests to the skill for each
+   level:
    `unit-testing` for logic, `integration-testing` for boundaries with real
    collaborators, `e2e-testing` when the claim is a user-visible flow.
-10. **Run the fast checks** after each meaningful step and fix failures before going on.
-11. **Clean up** imports, parameters, files and flags the change left unused.
-12. **Self-review** the diff with `core.repository.diff` and confirm with `core.repository.status` that no unintended file changed.
-13. **Verify and record** every required check, then hand over to the `verification` phase.
-
+11. **Run the fast checks** after each meaningful step and fix failures before going on.
+12. **Clean up** imports, parameters, files and flags the change left unused.
+13. **Self-review** the diff with `core.repository.diff` and confirm with `core.repository.status` that no unintended file changed.
+14. **Verify and record** every required check, then hand over to the `verification` phase.
 
 For a Paved workflow, keep the durable plan at
 `.paved/documents/plans/<run-id>.md`. Put a behavior contract in

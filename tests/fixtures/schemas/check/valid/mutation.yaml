@@ -1,0 +1,10 @@
+apiVersion: paved/v1
+kind: Check
+id: project.test.mutation
+title: Mutation testing
+purpose: Confirm the configured test suite detects selected injected code changes.
+type: mutation
+tool: project.test.run-mutation
+expected: { description: The project mutation threshold is met., exit_code: 0 }
+failure: Review surviving mutations and the configured scope.
+determinism: { class: controlled, sources: [random-data], controls: Fixed mutation selection and seed. }

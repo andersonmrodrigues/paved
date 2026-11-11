@@ -1,0 +1,11 @@
+# expect-error: must be equal to one of the allowed values
+apiVersion: paved/v1
+kind: Check
+id: project.test.unknown
+title: Unknown check type
+purpose: Exercise an unsupported check type.
+type: mutaton
+tool: project.test.run
+expected: { description: Command passes., exit_code: 0 }
+failure: Read the output.
+determinism: { class: deterministic }

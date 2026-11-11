@@ -112,8 +112,8 @@ properties:
             `behavior`: the system now does something (or stops doing something).
             `non-regression`: existing behavior is preserved. `structure`: code shape,
             dependencies or boundaries changed. `performance`, `security`, `documentation`
-            as named.
-          enum: [behavior, non-regression, structure, performance, security, documentation]
+            or `test-effectiveness` as named.
+          enum: [behavior, non-regression, structure, performance, security, documentation, test-effectiveness]
         supported_by:
           type: array
           minItems: 1

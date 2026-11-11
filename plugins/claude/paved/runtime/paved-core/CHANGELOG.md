@@ -5,6 +5,17 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- The verification registry recognizes project-defined mutation checks and the
+  `test-effectiveness` evidence claim they can support. Mutation testing stays optional
+  and does not prove production behavior or non-regression.
+
+### Changed
+
+- Feature-development guidance uses a test-first loop when behavior is clear and defers
+  lasting test expectations until unresolved behavior has been settled.
+
 ## [2.24.0] - 2026-11-03
 
 ### Added

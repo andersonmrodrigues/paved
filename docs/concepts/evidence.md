@@ -13,6 +13,11 @@ digest on the subject and on each check execution. Results from another revision
 rejected. Artifacts use the canonical provenance `source` object and reference reports,
 logs, screenshots or traces rather than embedding them.
 
+The `test-effectiveness` claim type is intentionally narrow: a configured mutation check
+can show that a test suite detects selected injected changes under a project-defined
+scope and threshold. It does not support behavior or non-regression claims about the
+production code.
+
 | Check status | Meaning | Supports a claim? |
 |---|---|---|
 | `passed` | Executed and met the declared expectation | Yes, if its type can support the claim |

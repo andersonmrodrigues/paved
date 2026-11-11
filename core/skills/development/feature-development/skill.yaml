@@ -1,7 +1,7 @@
 apiVersion: paved/v1
 kind: Skill
 id: core.development.feature-development
-version: 0.7.0
+version: 0.8.0
 status: experimental
 category: development
 context:
@@ -23,5 +23,6 @@ depends_on:
 verification:
   required: [unit]
   recommended: [build, static-analysis, integration, e2e]
+  optional: [mutation]
 evidence:
   required: [check-result, diff]

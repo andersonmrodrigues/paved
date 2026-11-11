@@ -26,6 +26,10 @@ check_types:
     proves: Isolated units behave as the tests assert.
     does_not_prove: That units work together, or that the assertions cover the claim.
     supports: [behavior, non-regression]
+  mutation:
+    proves: The configured test suite detects the selected injected code mutations under the project's stated scope and threshold.
+    does_not_prove: That production behavior is correct, that all relevant defects are detectable, or that the selected mutations represent every defect.
+    supports: [test-effectiveness]
   integration:
     proves: Components work together with real or realistic collaborators.
     does_not_prove: End-to-end user flows or production configuration.
