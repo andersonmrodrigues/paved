@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.25.0] - 2026-11-11
+
 ### Added
 
 - The verification registry recognizes project-defined mutation checks and the
