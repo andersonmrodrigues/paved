@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,8 +23,8 @@ function initialize(path: string): void {
   writeFileSync(join(path, ".paved", "paved.lock"), "version: test\n");
 }
 
-function runHook(input: string, state = repository("state")): { status: number | null; stdout: string; stderr: string } {
-  const result = spawnSync(process.execPath, [handler], { input, encoding: "utf8", timeout: 5_000, env: { ...process.env, TMPDIR: state } });
+function runHook(input: string, state = repository("state"), script = handler): { status: number | null; stdout: string; stderr: string } {
+  const result = spawnSync(process.execPath, [script], { input, encoding: "utf8", timeout: 5_000, env: { ...process.env, TMPDIR: state } });
   return {
     status: result.status,
     stdout: result.stdout,
@@ -53,6 +53,29 @@ describe("prompt submit hook", () => {
     assert.match(context, /resume the matching run.*do not create a duplicate/);
     assert.match(context, /planning-only.*stop.*plan/);
     assert.match(context, /investigation-only.*do not implement a fix/);
+  });
+
+  it("adds a portable active-run handoff from the installed local status runtime", () => {
+    const cwd = repository("handoff-project");
+    initialize(cwd);
+    mkdirSync(join(cwd, ".paved", "runtime"), { recursive: true });
+    writeFileSync(join(cwd, ".paved", "runtime", "selection.json"), "{}\n");
+    const plugin = repository("handoff-plugin");
+    mkdirSync(join(plugin, "hooks"), { recursive: true });
+    mkdirSync(join(plugin, "scripts"), { recursive: true });
+    const copiedHook = join(plugin, "hooks", "paved-prompt-submit.mjs");
+    copyFileSync(handler, copiedHook);
+    writeFileSync(join(plugin, "scripts", "paved.mjs"), `process.stdout.write(JSON.stringify({data:{openRuns:[{run:"feature-0123456789abcdef0123",currentPhase:"implementation",handoff:{summary:"Parser step done; response mapping remains.",fresh:false,changed_paths:["src/parser.ts"],next_action:"Inspect parser diff and resume."}}]}}));\n`);
+
+    const result = runHook(JSON.stringify({ cwd, hook_event_name: "SessionStart", source: "resume" }), repository("handoff-state"), copiedHook);
+
+    assert.equal(result.status, 0, result.stderr);
+    const output = JSON.parse(result.stdout) as { hookSpecificOutput: { additionalContext: string } };
+    assert.match(output.hookSpecificOutput.additionalContext, /Portable Paved handoff/);
+    assert.match(output.hookSpecificOutput.additionalContext, /feature-0123456789abcdef0123/);
+    assert.match(output.hookSpecificOutput.additionalContext, /STALE/);
+    assert.match(output.hookSpecificOutput.additionalContext, /response mapping remains/);
+    assert.match(output.hookSpecificOutput.additionalContext, /src\/parser.ts/);
   });
 
   it("keeps the per-prompt reminder to one short line without echoing the prompt", () => {

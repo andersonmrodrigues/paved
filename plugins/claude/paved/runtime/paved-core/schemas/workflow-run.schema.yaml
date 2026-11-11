@@ -123,6 +123,27 @@ properties:
             minLength: 1
             not: { enum: [agent, paved, ci] }
           decided_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+  handoff:
+    description: >
+      Host-neutral checkpoint for resuming an active run. It records only a concise
+      progress note and repository state references, never a conversation transcript.
+    type: object
+    additionalProperties: false
+    required: [updated_at, phase, summary, revision, source_sha256, changed_paths]
+    properties:
+      updated_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }
+      phase: { $ref: "urn:paved:schema:common:v1#/$defs/phase" }
+      summary:
+        description: Concise human-readable progress note supplied at checkpoint time.
+        $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+      revision: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      source_sha256: { $ref: "urn:paved:schema:common:v1#/$defs/sha256" }
+      changed_paths:
+        type: array
+        uniqueItems: true
+        maxItems: 200
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+      next_action: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
   outputs:
     type: array
     items:

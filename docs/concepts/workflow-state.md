@@ -29,6 +29,7 @@ execution metadata. The host agent owns native session creation and coordination
 | `events[]` | Append-only log |
 | `decisions[]` | Run-scoped decisions whose lifetime is this run |
 | `delegation` | Optional pointer and integrity digest for the implementation task graph |
+| `handoff` | Optional host-neutral checkpoint summary, changed paths, source/test fingerprint, revision and suggested next action |
 
 Delegation plans live under `.paved/generated/delegations/<run-id>.yaml`, with concise
 reports under `.paved/generated/delegation-results/<run-id>/`. Tasks declare
@@ -129,6 +130,15 @@ current hash.
 Events are append-only reporting and provenance. Approval and evidence events
 are cross-checked against their referenced files when a run resumes. The
 authoritative completion decision still comes from the evidence record.
+
+During implementation, `execute --checkpoint --note <progress>` writes a portable
+handoff into the run without advancing its phase. The handoff contains the agent's
+concise progress note, changed paths, current revision and a SHA-256 fingerprint of
+source and test files. Workflow results and `status` expose whether that fingerprint
+still matches. A stale handoff is a cue to inspect the current diff and reconcile the
+note; it never blocks resume or counts as verification. SessionStart hooks include
+available handoffs so another supported host can continue from the same run. The
+record contains no prompt transcript, session id or credentials.
 
 ## Independent review
 

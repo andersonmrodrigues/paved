@@ -92,7 +92,10 @@ of their own, the step returns them and passes the user's answers through when i
   a later validation failure on those tests carries it again, separating Tools that
   started failing from Tools that already failed.
 - `execute --run <id> --checkpoint --note <part>` records a finished part of a multi-part
-  plan without leaving implementation; advancing implementation starts validation.
+  plan without leaving implementation; advancing implementation starts validation. The
+  checkpoint also stores a portable handoff summary and checkout fingerprint. `status`,
+  workflow resume results, and supported SessionStart hooks expose it to another agent;
+  check its `fresh` value and inspect current changes before continuing.
 - `status` reports `PAVED_WORKFLOW_EVIDENCE_STALE` when files changed after the latest
   completed run was verified.
 - When a phase runs out of attempts, the step asks whether to `retry` (a new round of

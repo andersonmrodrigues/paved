@@ -146,7 +146,12 @@ test("a run started in one worktree is refused from another", async () => {
   // The same request in the main worktree starts its own run instead of joining the linked one.
   const own = await cli(main, ...request);
   assert.notEqual(own.status, "failed", JSON.stringify(own.diagnostics));
-  assert.notEqual((own.data as { run: string }).run, id);
+  const ownId = (own.data as { run: string }).run;
+  assert.notEqual(ownId, id);
+  const linkedStatus = (await cli(linked, "status")).data as { openRuns: { run: string }[] };
+  const mainStatus = (await cli(main, "status")).data as { openRuns: { run: string }[] };
+  assert.deepEqual(linkedStatus.openRuns.map((run) => run.run), [id]);
+  assert.deepEqual(mainStatus.openRuns.map((run) => run.run), [ownId]);
 });
 
 test("a worktree with its own .paved/ keeps using it while other worktrees share the main state", async () => {
