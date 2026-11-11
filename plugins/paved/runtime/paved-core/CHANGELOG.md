@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.26.0] - 2026-11-11
+
 ### Added
 
 - Implementation checkpoints now save a host-neutral handoff summary, changed paths,
