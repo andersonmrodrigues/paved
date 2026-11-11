@@ -9,7 +9,7 @@ export interface SkillContract {
   tools?: { required?: string[]; optional?: string[] };
   rules?: string[];
   depends_on?: { required?: string[]; optional?: string[] };
-  verification: { required: string[]; recommended?: string[] };
+  verification: { required: string[]; recommended?: string[]; optional?: string[] };
   evidence: { required: string[] };
   references?: string[];
 }
@@ -203,7 +203,7 @@ export function assessSkillEvidence(record: EvidenceRecord, skills: ReadonlyMap<
  */
 export function planCoverageProblems(
   owner: string,
-  verification: { required?: string[]; recommended?: string[] },
+  verification: { required?: string[]; recommended?: string[]; optional?: string[] },
   kinds: string[],
   plan: VerificationPlan,
 ): string[] {

@@ -9,6 +9,7 @@ import {
   assessSkillQuality,
   dependencyCycles,
   duplicatedSentences,
+  planCoverageProblems,
   unprovingRequiredChecks,
   type SkillContract,
   type SkillFiles,
@@ -85,6 +86,27 @@ describe("core skills", () => {
     assert.ok(body);
     assert.match(body, /technology-specific code[\s\S]*selected\s+adapter[\s\S]*pinned Core runtime/i);
     assert.match(body, /unselected technology/i);
+  });
+
+  it("uses test-first guidance for clear behavior and offers mutation evidence optionally", () => {
+    const feature = skills.find((skill) => skill.name === "feature-development")?.files;
+    assert.ok(feature);
+    assert.match(feature.body, /For a behavior claim with a known\s+result/i);
+    assert.match(feature.body, /write and run the lowest-level test first[\s\S]*intended failure[\s\S]*smallest passing change/i);
+    assert.match(feature.body, /unresolved[\s\S]*prototype/i);
+    assert.deepEqual(feature.contract.verification?.optional, ["mutation"]);
+  });
+
+  it("keeps optional skill checks non-blocking when they are irrelevant", () => {
+    assert.deepEqual(
+      planCoverageProblems(
+        "core.development.feature-development",
+        { required: ["unit"], optional: ["mutation"] },
+        ["check-result"],
+        { required: ["unit"], evidence: ["check-result"] },
+      ),
+      [],
+    );
   });
 
   it("creates project verification guides during init and preserves runtime evidence limits", () => {

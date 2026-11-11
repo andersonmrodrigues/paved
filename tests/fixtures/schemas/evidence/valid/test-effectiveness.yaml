@@ -1,0 +1,38 @@
+apiVersion: paved/v1
+kind: Evidence
+id: mutation-tests
+created_at: 2026-01-01T00:00:00Z
+change:
+  summary: Improve tests for the parser.
+  revision: 4f2c9e1
+plan:
+  required: [mutation]
+  evidence: [check-result]
+claims:
+  - id: detects-parser-regressions
+    statement: The configured suite detects the selected parser mutations.
+    type: test-effectiveness
+    supported_by: [mutation]
+checks:
+  - id: mutation
+    type: mutation
+    status: passed
+    execution:
+      recorded_by: paved
+      revision: 4f2c9e1
+      started_at: 2026-01-01T00:00:00Z
+    check: project.test.mutation
+    tool:
+      id: project.test.mutation
+      version: 1.0.0
+    exit_code: 0
+completion:
+  status: complete
+  verification: verified
+  decided_by: paved
+  criteria:
+    - statement: The configured suite detects the selected parser mutations.
+      met: true
+      supported_by: [detects-parser-regressions]
+verification:
+  profile: .paved/verification/profile.yaml

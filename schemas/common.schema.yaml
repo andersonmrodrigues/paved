@@ -125,6 +125,7 @@ $defs:
           - build
           - static-analysis
           - unit
+          - mutation
           - integration
           - e2e
           - architecture

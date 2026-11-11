@@ -25,3 +25,11 @@ configured scanner; a runtime check may observe a health probe, browser flow or 
 Formal checks can run model checkers or proof assistants, but are optional unless a
 workflow explicitly requires them. A future browser adapter may execute navigate,
 interact, observe, capture and assert steps and attach screenshots, DOM state or traces.
+
+A project may configure a `mutation` check to assess whether its tests detect selected,
+deliberately injected code changes. The project check owns the mutation operators, scope,
+tool and pass threshold; a passing check supports a `test-effectiveness` claim only. It
+does not prove that production behavior is correct, that every defect would be detected,
+or that the selected mutations represent every possible defect. Mutation testing is most
+useful when evaluating a test suite or examining higher-risk behavior, and is not a
+default requirement for every change.
