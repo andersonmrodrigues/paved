@@ -15,7 +15,7 @@ function ruleFor(proposal) {
         rule: proposal.proposed_change,
         enforcement: { mechanism: "agent", layer: "rule" },
         severity: "warning",
-        verification: `Review evidence for the proposed change: ${proposal.expected_impact}`,
+        verification: `Review evidence for the proposed change: ${proposal.expected_impact}${proposal.adoption_requirement ? ` ${proposal.adoption_requirement.statement}` : ""}`,
         references: proposal.provenance.sources.map((source) => source.location).sort(),
     };
 }

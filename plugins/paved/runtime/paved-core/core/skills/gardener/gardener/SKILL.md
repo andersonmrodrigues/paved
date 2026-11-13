@@ -18,6 +18,12 @@ description: >-
 The concrete incidents: what the agent did, what the correction was, where it happened.
 Without at least two concrete incidents, record the observation and stop.
 
+`paved gardener` lists the incidents Paved already records: failed checks, violated rules,
+missing verification, generator conflicts and human corrections (a plan a person
+rejected, blocking review findings a person sent back to implementation, and the rules
+those findings cited). It reads structured records only, never chat transcripts or
+source code.
+
 ## Preconditions
 
 - The pattern is recurring, not a one-off.
@@ -32,11 +38,14 @@ Without at least two concrete incidents, record the observation and stop.
    misleading skill, or an architecture that makes the mistake easy.
 4. **Choose the layer**, trying each in order and stopping at the first that works (see
    [references/enforcement-layers.md](references/enforcement-layers.md)):
-   architecture, static analysis, CI, rule, skill, documentation.
+   architecture, static analysis, CI, rule, skill, documentation. A rule enforced only by
+   the agent or a reviewer that keeps being violated or corrected is a promotion candidate.
 5. **Choose the owner**: Core (true for every repository), an adapter (true for a
    technology), or the project (true here). Most fixes belong to the project.
 6. **Write a proposal**: pattern, incidents, layer, owner, concrete change, and how to
-   verify that it prevents the mistake.
+   verify that it prevents the mistake. A proposal that adds a check or a structural
+   change states that it must first be shown failing on a fixture reproducing one of the
+   recorded mistakes, and passing once that mistake is corrected.
 7. Hand the proposal to a human. Do not apply changes to rules, skills, Core or project
    architecture on your own.
 
@@ -60,6 +69,7 @@ A review artifact containing the proposal and the incidents it is based on.
 ## Completion criteria
 
 - The proposal names the pattern, incidents, layer, owner and verification.
+- A proposed check or structural change names the recorded mistake it must fail on before adoption.
 - A stronger layer was considered and rejected with a reason before settling on a weaker one.
 
 ## Failure modes
@@ -67,6 +77,7 @@ A review artifact containing the proposal and the incidents it is based on.
 | Failure | Signal | Response |
 |---|---|---|
 | Documentation by default | Proposal adds prose where a check is possible | Go back to step 4 |
+| Unproven check | The check was never seen failing on a recorded mistake | Reproduce the mistake in a fixture and show the check failing first |
 | Project knowledge in Core | Proposal puts a project convention into the Core | Move it to the project |
 | Rule inflation | Many narrow rules for one underlying issue | Fix the underlying design instead |
 

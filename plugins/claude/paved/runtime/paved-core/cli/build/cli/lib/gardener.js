@@ -3,8 +3,10 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { parse } from "yaml";
 import { assessEvidence, coveredTypes, loadEvidenceRegistry } from "./evidence.js";
+import { loadYaml } from "./documents.js";
 import { createRegistry } from "./schemas.js";
 import { isTestingToolEvidence } from "./test-runner.js";
+import { REVIEW_HANDLER } from "./workflows.js";
 export class GardenerInputError extends Error {
 }
 const hash = (value) => createHash("sha256").update(value).digest("hex");
@@ -130,6 +132,96 @@ function generatorIncidents(projectRoot) {
         ];
     });
 }
+const RULE_REF = /^(core|project|adapter-[a-z0-9]+(-[a-z0-9]+)*)(\.[a-z0-9]+(-[a-z0-9]+)*){2}$/;
+const FIXED_REVIEW = /(?:^|; )blocking=\d+ \(fix\)(?:;|$)/;
+/**
+ * Human corrections Paved already records in workflow runs: a plan a person rejected and
+ * blocking review findings a person sent back to implementation. Runs written by an older
+ * workflow version still count, so they are checked against the schema only.
+ */
+function correctionIncidents(projectRoot, registry, skipped) {
+    const found = [];
+    for (const path of files(join(projectRoot, ".paved/generated/runs"), ".yaml")) {
+        const rel = posix(relative(projectRoot, path));
+        const raw = readFileSync(path, "utf8");
+        let value;
+        try {
+            value = parse(raw);
+        }
+        catch {
+            skipped.push({ record: rel, problems: ["the run record is not valid YAML"] });
+            continue;
+        }
+        const validation = registry.validate(value);
+        if (!validation.valid) {
+            skipped.push({ record: rel, problems: validation.errors });
+            continue;
+        }
+        const run = value;
+        const workflow = run.workflow?.id;
+        if (workflow === undefined)
+            continue;
+        const base = { category: "correction", state: "documented", record: rel, revision: run.revision, sourceHash: hash(raw) };
+        const rejected = run.phases.find((phase) => phase.phase === "planning")?.gates?.find((gate) => gate.id === "plan-approved" && gate.status === "rejected");
+        if (rejected) {
+            found.push({ ...base, subject: workflow, pattern: `correction:plan-rejected:${workflow}`, at: rejected.decided_at ?? run.started_at, item: `${run.id}:plan-rejected` });
+        }
+        for (const decision of run.decisions ?? []) {
+            if (decision.handler !== REVIEW_HANDLER || decision.status !== "APPLIED" || decision.answer !== "fix")
+                continue;
+            found.push({ ...base, subject: workflow, pattern: `correction:review-fix:${workflow}`, at: decision.answered_at ?? run.started_at, item: decision.id });
+        }
+        // The next review overwrites the findings file, so the rules a fix concerned come from the run's own event.
+        for (const event of run.events ?? []) {
+            const detail = event.detail ?? "";
+            if (event.type !== "evidence-recorded" || event.phase !== "review" || !FIXED_REVIEW.test(detail))
+                continue;
+            const digest = /(?:^|; )sha256=([a-f0-9]{64})/.exec(detail)?.[1];
+            if (digest === undefined)
+                continue;
+            const rules = /(?:^|; )rules=([^;]+)/.exec(detail)?.[1]?.split(",").filter((rule) => RULE_REF.test(rule)) ?? [];
+            for (const rule of new Set(rules)) {
+                found.push({ ...base, subject: rule, pattern: `correction:rule:${rule}`, at: event.at, item: `review-fix:${digest.slice(0, 20)}` });
+            }
+        }
+    }
+    return found;
+}
+const MECHANISMS = new Set(["automated", "agent", "review"]);
+const RULE_LAYERS = new Set(["architecture", "static-analysis", "ci", "rule", "skill", "documentation"]);
+/** Enforcement of every Core, adapter and project rule by id; an unreadable definition is simply not known. */
+function ruleEnforcement(projectRoot, coreRoot) {
+    const rules = new Map();
+    const walk = (dir, inRules) => {
+        if (!existsSync(dir))
+            return;
+        for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+            const path = join(dir, entry.name);
+            if (entry.isDirectory()) {
+                walk(path, inRules || entry.name === "rules");
+                continue;
+            }
+            if (!inRules || !entry.isFile() || !entry.name.endsWith(".yaml"))
+                continue;
+            let doc;
+            try {
+                doc = loadYaml(path);
+            }
+            catch {
+                continue;
+            }
+            const mechanism = doc?.enforcement?.mechanism;
+            if (doc?.kind !== "Rule" || typeof doc.id !== "string" || !MECHANISMS.has(mechanism))
+                continue;
+            const layer = doc.enforcement?.layer;
+            rules.set(doc.id, { mechanism: mechanism, ...(RULE_LAYERS.has(layer) ? { layer: layer } : {}) });
+        }
+    };
+    walk(join(coreRoot, "core/rules"), true);
+    walk(join(coreRoot, "adapters"), false);
+    walk(join(projectRoot, ".paved/rules"), true);
+    return rules;
+}
 const PROBLEM_LABELS = {
     "missing-verification": "Required verification type with no passing or failing check:",
     "verification-failure": "Failing check",
@@ -138,7 +230,20 @@ const PROBLEM_LABELS = {
     "generator-unknown": "Unresolved project fact reported by",
     "implementation-pattern": "Implementation pattern in",
 };
+const CORRECTION_LABELS = {
+    "plan-rejected": "Plan rejected by a person in workflow",
+    "review-fix": "Blocking review findings a person sent back to implementation in workflow",
+};
+const correctionKind = (pattern) => pattern.split(":")[1] ?? "";
 function diagnosis(observation) {
+    if (observation.category === "correction")
+        return {
+            root_cause: "A person corrected the agent's work in this workflow more than once; the records do not say what the mistakes had in common.", root_cause_state: "unknown",
+            recommended_layer: "human-review", layer_rationale: "The run records show the correction but not its content; a person must name the recurring mistake before a layer can be chosen.",
+            proposed_change: `Compare the cited ${correctionKind(observation.pattern) === "plan-rejected" ? "rejected plans" : "review findings"} in ${observation.subject} runs, name the recurring mistake, and propose it as a rule or check at the strongest layer that holds it.`,
+            expected_impact: "A recurring correction becomes an enforced constraint instead of a repeated conversation.",
+            uncertainty: "The corrections may be unrelated; recurrence in one workflow does not establish a shared cause.",
+        };
     if (observation.category === "missing-verification")
         return {
             root_cause: "The required check was not recorded as passed; the reason for omission is unknown.", root_cause_state: "unknown",
@@ -161,12 +266,7 @@ function diagnosis(observation) {
             expected_impact: "Project context can cite an authoritative source.", uncertainty: "The Gardener cannot infer the desired state from repository repetition.",
         };
     if (observation.category === "rule-violation")
-        return {
-            root_cause: "The rule is documented but violations recur; the underlying design cause is unknown.", root_cause_state: "unknown",
-            recommended_layer: "static-analysis", layer_rationale: "A deterministic recurring rule violation may be preventable by an automated check; review structural detectability first.",
-            proposed_change: `Assess whether ${observation.subject} can be checked structurally; otherwise improve the existing rule.`, expected_impact: "Earlier detection of the same violation.",
-            uncertainty: "The record does not prove that static analysis can detect this rule.",
-        };
+        return ruleDiagnosis(observation.subject);
     return {
         root_cause: "The configured check repeatedly fails; the underlying engineering cause is unknown.", root_cause_state: "unknown",
         recommended_layer: "architecture", layer_rationale: "Review whether design can prevent the failure before adding another instruction or check.",
@@ -174,6 +274,38 @@ function diagnosis(observation) {
         uncertainty: "Check failure alone does not establish architectural intent or a particular fix.",
     };
 }
+function ruleDiagnosis(rule) {
+    return {
+        root_cause: "The rule is documented but violations recur; the underlying design cause is unknown.", root_cause_state: "unknown",
+        recommended_layer: "static-analysis", layer_rationale: "A deterministic recurring rule violation may be preventable by an automated check; review structural detectability first.",
+        proposed_change: `Assess whether ${rule} can be checked structurally; otherwise improve the existing rule.`, expected_impact: "Earlier detection of the same violation.",
+        uncertainty: "The record does not prove that static analysis can detect this rule.",
+    };
+}
+const ENFORCED_BY = { agent: "the agent's own self-check", review: "a human reviewer's judgement" };
+// The next stronger layer for a rule already held at one: architecture > static-analysis > verification > documentation.
+const STRONGER = { "static-analysis": "architecture", architecture: "human-review" };
+/** A rule that only the agent or a reviewer enforces, and that keeps being broken, is a candidate for a stronger layer. */
+function promotionDiagnosis(rule, enforcement) {
+    const recommended = STRONGER[enforcement.layer ?? "documentation"] ?? "static-analysis";
+    return {
+        root_cause: `${rule} relies on ${ENFORCED_BY[enforcement.mechanism]}, and the recorded mistakes passed it; the design cause is unknown.`, root_cause_state: "unknown",
+        recommended_layer: recommended,
+        layer_rationale: `${rule} is enforced only by ${ENFORCED_BY[enforcement.mechanism]}${enforcement.layer ? ` at layer ${enforcement.layer}` : ""}. Promote it to the strongest layer that can hold it, in order: architecture, static analysis (types, lint, architecture tests), a test or CI check, and only then documentation.`,
+        proposed_change: recommended === "human-review"
+            ? `Review why ${rule} is still broken although its layer is ${enforcement.layer}, and whether the design really prevents the recorded mistake.`
+            : `Promote ${rule}: make the recorded mistake unrepresentable or detect it with a static check; if neither fits, add a test or CI check. Then set the rule's enforcement to automated with that check.`,
+        expected_impact: "The recorded mistake is caught by a mechanism before review, for agents and humans alike.",
+        uncertainty: "The records do not show that a deterministic check can detect this rule, or that every recorded case shares one cause.",
+    };
+}
+const CHECK_LAYERS = new Set(["architecture", "static-analysis", "verification"]);
+const ADOPTION_STATEMENT = "Before adoption, show the proposed check or structural change failing on a fixture that reproduces one of the recorded mistakes cited here, then passing once that mistake is corrected. A check never seen failing on a recorded mistake is not evidence that it prevents it.";
+function problemFor(observation) {
+    const label = observation.category === "correction" ? CORRECTION_LABELS[correctionKind(observation.pattern)] : PROBLEM_LABELS[observation.category];
+    return `${label} "${observation.subject}" recurred in ${observation.occurrences} distinct evidence items.`;
+}
+const ruleOf = (observation) => observation.category === "rule-violation" || observation.pattern.startsWith("correction:rule:") ? observation.subject : undefined;
 export function analyzeGardener(input) {
     const manifestPath = join(input.projectRoot, ".paved/manifest.yaml");
     if (!existsSync(manifestPath))
@@ -185,40 +317,76 @@ export function analyzeGardener(input) {
     const decisions = reviews(input.projectRoot, input.coreRoot);
     const groups = new Map();
     const skipped = [];
-    for (const incident of [...evidenceIncidents(input.projectRoot, input.coreRoot, skipped), ...generatorIncidents(input.projectRoot)]) {
+    const registry = createRegistry(join(input.coreRoot, "schemas"), ["paved/v1"]);
+    for (const incident of [
+        ...evidenceIncidents(input.projectRoot, input.coreRoot, skipped), ...generatorIncidents(input.projectRoot),
+        ...correctionIncidents(input.projectRoot, registry, skipped),
+    ]) {
         const key = `${name}\u0000${incident.pattern}`;
         groups.set(key, [...(groups.get(key) ?? []), incident]);
     }
     const observations = [];
-    const proposals = [];
     for (const [key, incidents] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
         const unique = [...new Map(incidents.map((incident) => [`${incident.record}\u0000${incident.item}`, incident])).values()]
             .sort((a, b) => `${a.at}:${a.record}:${a.item}`.localeCompare(`${b.at}:${b.record}:${b.item}`));
         const first = unique[0];
         const sources = [...new Map(unique.map((item) => [item.record, { type: "file", location: item.record, sha256: item.sourceHash }])).values()]
             .sort((a, b) => a.location.localeCompare(b.location));
-        const observation = {
+        observations.push({
             apiVersion: "paved/v1", kind: "GardenerObservation", id: id("observation", key), consumer: name,
             category: first.category, subject: first.subject, state: first.state, pattern: first.pattern,
             first_observed: first.at, last_observed: unique.at(-1).at, occurrences: unique.length,
             evidence: unique.map(({ record, item, revision }) => ({ record, item, ...(revision === undefined ? {} : { revision }) })),
             provenance: { sources }, confidence: first.state === "enforced" ? "high" : first.state === "unknown" ? "unknown" : "medium",
-        };
-        observations.push(observation);
-        if (unique.length < 2 || first.category === "implementation-pattern")
-            continue;
+        });
+    }
+    const byPattern = new Map(observations.map((observation) => [observation.pattern, observation]));
+    let rules;
+    const proposed = new Set();
+    const proposals = [];
+    const propose = (key, primary, related, problem, base, enforcement) => {
+        const supporting = [primary, ...related];
+        const evidence = [...new Map(supporting.flatMap((entry) => entry.evidence).map((item) => [`${item.record}\u0000${item.item}`, item])).values()];
+        if (evidence.length < 2)
+            return;
+        const sources = [...new Map(supporting.flatMap((entry) => entry.provenance.sources).map((source) => [source.location, source])).values()]
+            .sort((a, b) => a.location.localeCompare(b.location));
         const proposalId = id("proposal", key);
         const review = decisions.get(proposalId);
-        const evidenceSha = hash(JSON.stringify(observation.provenance.sources));
+        const evidenceSha = hash(JSON.stringify(sources));
         const currentReview = review?.status === "REJECTED" && review.evidence_sha256 !== evidenceSha ? undefined : review;
-        const base = diagnosis(observation);
         proposals.push({
             apiVersion: "paved/v1", kind: "GardenerProposal", id: proposalId,
             scope: { consumer: name, target: "consumer" }, status: currentReview?.status ?? "CANDIDATE",
-            problem: `${PROBLEM_LABELS[first.category]} "${first.subject}" recurred in ${unique.length} distinct evidence items.`, observation: observation.id,
-            evidence: observation.evidence, evidence_sha256: evidenceSha, ...base, affected_components: [first.subject], provenance: observation.provenance,
+            problem, observation: primary.id, evidence, evidence_sha256: evidenceSha, ...base, affected_components: [primary.subject], provenance: { sources },
+            ...(related.length === 0 ? {} : { related_observations: related.map((entry) => entry.id) }),
+            ...(enforcement === undefined ? {} : { rule_enforcement: enforcement }),
+            ...(CHECK_LAYERS.has(base.recommended_layer) ? { adoption_requirement: { condition: "fails-on-recorded-mistake", statement: ADOPTION_STATEMENT, reproduces: evidence } } : {}),
             ...(currentReview === undefined ? {} : { review: { by: currentReview.by, at: currentReview.at, reason: currentReview.reason, ...(currentReview.superseded_by === undefined ? {} : { superseded_by: currentReview.superseded_by }) } }),
         });
+    };
+    for (const observation of observations) {
+        if (observation.category === "implementation-pattern")
+            continue;
+        const rule = ruleOf(observation);
+        if (rule === undefined) {
+            propose(`${name}\u0000${observation.pattern}`, observation, [], problemFor(observation), diagnosis(observation));
+            continue;
+        }
+        if (proposed.has(rule))
+            continue;
+        proposed.add(rule);
+        // Violations and human corrections of one rule are one problem; the id stays the violation's, so earlier reviews still apply.
+        const violation = byPattern.get(`rule:${rule}`);
+        const correction = byPattern.get(`correction:rule:${rule}`);
+        const primary = violation ?? correction;
+        const related = violation !== undefined && correction !== undefined ? [correction] : [];
+        rules ??= ruleEnforcement(input.projectRoot, input.coreRoot);
+        const known = rules.get(rule);
+        const promote = known !== undefined && known.mechanism !== "automated";
+        const assessment = known !== undefined && promote ? promotionDiagnosis(rule, known) : ruleDiagnosis(rule);
+        const count = new Set([...primary.evidence, ...related.flatMap((entry) => entry.evidence)].map((item) => `${item.record}\u0000${item.item}`)).size;
+        propose(`${name}\u0000rule:${rule}`, primary, related, correction === undefined ? problemFor(primary) : `Rule "${rule}" was violated or corrected by a person in ${count} distinct evidence items.`, assessment, known === undefined ? undefined : { rule, ...known, promotion_candidate: promote });
     }
     return { consumer: name, observations, proposals, skipped };
 }

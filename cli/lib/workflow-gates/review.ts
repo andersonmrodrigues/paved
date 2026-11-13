@@ -11,7 +11,7 @@ import { blocked, fingerprint, now, projectRelative, reopenImplementation, sha }
 export interface ReviewedState { readonly plan_sha256: string; readonly source_sha256: string; readonly evidence_sha256: string }
 export type ProofLevel = "asserted" | "cited" | "reasoned" | "executed" | "reproduced";
 export interface FindingProof { readonly level: ProofLevel; readonly command?: string; readonly output_sha256?: string; readonly expected?: string }
-export interface ReviewFinding { readonly severity: "blocking" | "note"; readonly file: string; readonly line?: number; readonly summary: string; readonly proof?: FindingProof }
+export interface ReviewFinding { readonly severity: "blocking" | "note"; readonly file: string; readonly line?: number; readonly summary: string; readonly proof?: FindingProof; readonly rule?: string }
 export interface ChangeReview {
   readonly run: string;
   readonly reviewer: { readonly agent: string; readonly isolated: boolean };
@@ -88,9 +88,16 @@ export const review: PhaseHook = (context) => {
       `A blocking finding needs proof at level executed or reproduced: ${listed}.`.slice(0, 2000),
       `Prove each one with a command that runs the real code and record proof.level, proof.command and proof.output_sha256, or record it as severity note; then run ${resume}.`);
   }
+  const rules = [...new Set(blocking.flatMap((finding) => finding.rule === undefined ? [] : [finding.rule]))].sort();
+  // Kept on the run because the next review overwrites the findings file; the Gardener reads it as a human correction.
+  const recorded = (outcome: string) => ({
+    at: now(), type: "evidence-recorded", phase: "review", ref,
+    detail: `sha256=${digest}; reviewer=${record.reviewer.agent.replaceAll(";", ",")}; blocking=${blocking.length}${outcome}; notes=${notes}${rules.length ? `; rules=${rules.join(",")}` : ""}`.slice(0, 4000),
+  });
   let accepted = false;
   if (blocking.length) {
     if (answer === "fix") {
+      run.events.push(recorded(" (fix)"));
       reopenImplementation(run, REVIEW_FIX);
       return { kind: "wait", nextAction: `Fix the blocking findings in ${ref}, then run paved execute --run ${run.id} --auto --note <what was fixed> --json; tests, verification, evidence and a new independent review follow.` };
     }
@@ -115,9 +122,6 @@ export const review: PhaseHook = (context) => {
     }
     accepted = true;
   }
-  run.events.push({
-    at: now(), type: "evidence-recorded", phase: "review", ref,
-    detail: `sha256=${digest}; reviewer=${record.reviewer.agent}; blocking=${blocking.length}${accepted ? " (accepted)" : ""}; notes=${notes}`.slice(0, 4000),
-  });
+  run.events.push(recorded(accepted ? " (accepted)" : ""));
   return { kind: "pass" };
 };

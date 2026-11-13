@@ -55,7 +55,9 @@ export function gardenerHandler(invocation) {
         const count = result.proposals.filter((proposal) => proposal.status === "CANDIDATE").length;
         const skippedDiagnostics = result.skipped.map(({ record, problems }) => createDiagnostic({
             severity: "warning", category: "findings", code: "PAVED_GARDENER_EVIDENCE_SKIPPED", component: "gardener",
-            message: `Skipped ${record}: it contradicts its recorded observations (${problems.join("; ")}). Regenerate or remove the record.`,
+            message: record.startsWith(".paved/generated/runs/")
+                ? `Skipped ${record}: it is not a valid workflow run (${problems.join("; ")}). Its corrections are not counted.`
+                : `Skipped ${record}: it contradicts its recorded observations (${problems.join("; ")}). Regenerate or remove the record.`,
         }));
         const outcome = runDecisionGate({
             context: {

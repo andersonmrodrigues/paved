@@ -9,7 +9,7 @@ properties:
   kind: { const: GardenerObservation }
   id: { type: string, pattern: '^observation-[a-f0-9]{20}$' }
   consumer: { $ref: 'urn:paved:schema:common:v1#/$defs/nonEmptyString' }
-  category: { enum: [verification-failure, rule-violation, missing-verification, generator-conflict, generator-unknown, implementation-pattern] }
+  category: { enum: [verification-failure, rule-violation, missing-verification, generator-conflict, generator-unknown, implementation-pattern, correction] }
   subject: { $ref: 'urn:paved:schema:common:v1#/$defs/nonEmptyString' }
   state: { enum: [observed, documented, enforced, inferred, unknown] }
   pattern: { $ref: 'urn:paved:schema:common:v1#/$defs/nonEmptyString' }

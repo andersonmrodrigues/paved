@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createDiagnostic, createResult, type CommandResult, type Diagnostic, type ResultStatus } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
 import { hasContextDrift, inspectConsumer, type ConsumerInspection } from "../lib/consumer-state.ts";
@@ -10,6 +13,9 @@ import { repairHandler } from "../lib/decisions/handlers/repair.ts";
 import { isOpen, runBelongsTo, runSourceRoot, scanRuns, type Run } from "../lib/workflow-runs.ts";
 import { changedSinceVerification, fingerprint } from "../lib/workflow-gates/shared.ts";
 import { inspectVerificationConfig } from "../lib/verification-runner.ts";
+import { loadMarkdown, loadYaml } from "../lib/documents.ts";
+import { resolveSafePath } from "../lib/safe-path.ts";
+import { createRegistry } from "../lib/schemas.ts";
 
 function statusFor(diagnostics: readonly Diagnostic[]): ResultStatus {
   if (diagnostics.some((diagnostic) => diagnostic.category !== "findings")) return "failed";
@@ -141,6 +147,120 @@ function verificationFindings(invocation: CommandInvocation, inspection: Consume
   }));
 }
 
+interface GuideCoverage {
+  status: "draft" | "ready";
+  features: { id: string; entrypoints?: string[] }[];
+  deferred?: string[];
+  sources: { location: string; sha256: string }[];
+}
+interface MappedFeature { status: string; entrypoints: Set<string>; userVisible: boolean }
+
+const COMPONENT = "consumer.verification-guide";
+// Entry points a person reaches directly; events, jobs, RPC and library calls are not walked through by a guide.
+const USER_VISIBLE: ReadonlySet<string> = new Set(["ui", "http", "cli"]);
+const RETIRED: ReadonlySet<string> = new Set(["deprecated", "removed"]);
+
+const listed = (items: readonly string[]): string => items.length <= 8 ? items.join(", ") : `${items.slice(0, 8).join(", ")} and ${items.length - 8} more`;
+
+/** Guides laid out by the app-verification skill: `.paved/skills/verify-<slug>/references/features.md`. */
+function guidePaths(projectRoot: string): string[] {
+  const skills = join(projectRoot, ".paved/skills");
+  if (!existsSync(skills)) return [];
+  return readdirSync(skills, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith("verify-"))
+    .map((entry) => `.paved/skills/${entry.name}/references/features.md`)
+    .filter((path) => existsSync(join(projectRoot, path)))
+    .sort();
+}
+
+/** The feature map by id; an unreadable entry is reported by its own validation, not here. */
+function featureMap(projectRoot: string): Map<string, MappedFeature> {
+  const dir = join(projectRoot, ".paved/project/feature-map");
+  const features = new Map<string, MappedFeature>();
+  if (!existsSync(dir)) return features;
+  for (const entry of readdirSync(dir, { withFileTypes: true }).filter((item) => item.isFile() && item.name.endsWith(".yaml"))) {
+    let doc: { kind?: unknown; id?: unknown; status?: unknown; code?: { entrypoints?: { kind?: unknown; name?: unknown }[] } } | null;
+    try { doc = loadYaml(join(dir, entry.name)) as typeof doc; } catch { continue; }
+    if (doc?.kind !== "Feature" || typeof doc.id !== "string") continue;
+    const entrypoints = Array.isArray(doc.code?.entrypoints) ? doc.code.entrypoints : [];
+    features.set(doc.id, {
+      status: typeof doc.status === "string" ? doc.status : "active",
+      entrypoints: new Set(entrypoints.flatMap((item) => typeof item?.name === "string" ? [item.name] : [])),
+      userVisible: entrypoints.some((item) => USER_VISIBLE.has(String(item?.kind))),
+    });
+  }
+  return features;
+}
+
+function changedSources(projectRoot: string, sources: GuideCoverage["sources"]): string[] {
+  return sources.filter((source) => {
+    let path: string;
+    try { path = resolveSafePath(projectRoot, source.location); } catch { return true; }
+    return !existsSync(path) || createHash("sha256").update(readFileSync(path)).digest("hex") !== source.sha256;
+  }).map((source) => source.location);
+}
+
+function inspectGuide(projectRoot: string, guide: string, coverage: GuideCoverage, features: Map<string, MappedFeature>): Diagnostic[] {
+  const findings: Diagnostic[] = [];
+  const finding = (code: string, message: string, remediation: string) =>
+    findings.push(createDiagnostic({ severity: "warning", category: "findings", code, component: COMPONENT, message, remediation }));
+
+  const missing = coverage.features.flatMap(({ id, entrypoints }) => {
+    const mapped = features.get(id);
+    if (mapped === undefined || mapped.status === "removed") return [id];
+    return (entrypoints ?? []).filter((name) => !mapped.entrypoints.has(name)).map((name) => `${id} ${name}`);
+  });
+  if (missing.length > 0) {
+    finding("PAVED_VERIFICATION_GUIDE_FEATURE_MISSING", `${guide} covers features or entry points that are no longer in the feature map: ${listed(missing)}.`,
+      "Update the guide with the app-verification skill: confirm each claim against the source, then drop or rename it; Paved does not rewrite the guide.");
+  }
+
+  const known = new Set([...coverage.features.map((feature) => feature.id), ...(coverage.deferred ?? [])]);
+  const uncovered = [...features].filter(([id, feature]) => feature.userVisible && !RETIRED.has(feature.status) && !known.has(id)).map(([id]) => id).sort();
+  if (uncovered.length > 0) {
+    finding("PAVED_VERIFICATION_GUIDE_FEATURE_UNCOVERED", `The feature map has user-visible features ${guide} neither covers nor defers: ${listed(uncovered)}.`,
+      "Add them to the guide, or list them under `deferred` in its frontmatter when they are knowingly left for later.");
+  }
+
+  const stale = changedSources(projectRoot, coverage.sources);
+  if (stale.length > 0) {
+    finding("PAVED_VERIFICATION_GUIDE_STALE", `${guide} was written from feature-map documents that changed or no longer exist since: ${listed(stale)}.`,
+      "Recheck the affected features against the source with the app-verification skill and record the new digests.");
+  }
+  return findings;
+}
+
+/**
+ * Read-only drift between each app verification guide and the feature map. Only the
+ * guide's frontmatter is read; its prose is the project's own and is never interpreted.
+ */
+export function inspectVerificationGuides(projectRoot: string, coreRoot: string): Diagnostic[] {
+  const guides = guidePaths(projectRoot);
+  if (guides.length === 0) return [];
+  const registry = createRegistry(join(coreRoot, "schemas"), ["paved/v1"]);
+  const features = featureMap(projectRoot);
+  return guides.flatMap((guide) => {
+    let frontmatter: Record<string, unknown>;
+    try { frontmatter = loadMarkdown(join(projectRoot, guide)).frontmatter; } catch { frontmatter = { kind: "VerificationGuide" }; }
+    if (frontmatter.kind !== "VerificationGuide") {
+      return [createDiagnostic({
+        severity: "info", category: "findings", code: "PAVED_VERIFICATION_GUIDE_UNTRACKED", component: COMPONENT,
+        message: `${guide} does not record which feature-map entries it covers, so drift from the feature map cannot be checked.`,
+        remediation: "Add VerificationGuide frontmatter as the app-verification skill describes.",
+      })];
+    }
+    const validation = registry.validate(frontmatter);
+    if (!validation.valid) {
+      return [createDiagnostic({
+        severity: "warning", category: "findings", code: "PAVED_VERIFICATION_GUIDE_INVALID", component: COMPONENT,
+        message: `${guide} has frontmatter that does not match the VerificationGuide schema: ${validation.errors.join("; ")}`,
+        remediation: "Fix the frontmatter of the guide's references/features.md.",
+      })];
+    }
+    return inspectGuide(projectRoot, guide, frontmatter as unknown as GuideCoverage, features);
+  });
+}
+
 /** `status` and the `doctor` CLI subcommand share this; repairs keep the `doctor` decision ids. */
 export function diagnose(invocation: CommandInvocation, command: "status" | "doctor"): CommandResult {
   const inspection = inspectConsumer({
@@ -158,7 +278,8 @@ export function diagnose(invocation: CommandInvocation, command: "status" | "doc
   }));
   const runs = openRuns(inspection, invocation.paths.sourceRoot);
   const diagnostics = [...inspection.diagnostics, ...agentsBlockFindings(inspection), ...runs.diagnostics,
-    ...verificationFindings(invocation, inspection), ...decisionDiagnostics];
+    ...verificationFindings(invocation, inspection),
+    ...(inspection.initialized ? inspectVerificationGuides(inspection.projectRoot, inspection.coreRoot) : []), ...decisionDiagnostics];
   const onlyOpenRun = runs.runs.length === 1 ? runs.runs[0] : undefined;
   const resumeAction = onlyOpenRun === undefined ? undefined : `Resume the matching run with paved execute --run ${onlyOpenRun.run} --json; read its handoff first${(onlyOpenRun.handoff as { fresh?: boolean } | undefined)?.fresh === false ? " (the checkpoint is stale; inspect the current changes)" : ""}.`;
   return createResult({

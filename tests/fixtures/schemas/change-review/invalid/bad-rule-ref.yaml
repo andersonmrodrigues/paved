@@ -1,0 +1,9 @@
+# expect-error: must match pattern
+apiVersion: paved/v1
+kind: ChangeReview
+run: intent-0123456789abcdef0123
+reviewer: { agent: claude-code subagent, isolated: true }
+reviewed: { plan_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, source_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, evidence_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa }
+passes: [rules]
+findings:
+  - { severity: blocking, file: src/client.ts, summary: Wrong client., rule: single-http-client }

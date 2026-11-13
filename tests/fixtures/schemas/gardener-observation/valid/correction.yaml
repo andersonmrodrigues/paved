@@ -1,0 +1,19 @@
+apiVersion: paved/v1
+kind: GardenerObservation
+id: observation-1123456789abcdef0123
+consumer: sample
+category: correction
+subject: project.architecture.single-http-client
+state: documented
+pattern: 'correction:rule:project.architecture.single-http-client'
+first_observed: '2026-01-01T00:00:00Z'
+last_observed: '2026-01-02T00:00:00Z'
+occurrences: 2
+evidence:
+  - { record: .paved/generated/runs/intent-0123456789abcdef0123.yaml, item: 'review-fix:0123456789abcdef0123' }
+  - { record: .paved/generated/runs/intent-1123456789abcdef0123.yaml, item: 'review-fix:1123456789abcdef0123' }
+provenance:
+  sources:
+    - { type: file, location: .paved/generated/runs/intent-0123456789abcdef0123.yaml, sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }
+    - { type: file, location: .paved/generated/runs/intent-1123456789abcdef0123.yaml, sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }
+confidence: medium
