@@ -1,0 +1,9 @@
+# expect-error: must have required property 'hypothesis'
+apiVersion: paved/v1
+kind: PerformanceMeasurement
+run: intent-0123456789abcdef0123
+stage: baseline
+metric: { name: latency, unit: ms, direction: lower-is-better }
+method: { command: node bench.mjs, workload: one request, environment: laptop, warmup: none needed }
+samples: [221, 230, 219]
+limits: Laptop noise.

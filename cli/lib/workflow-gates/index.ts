@@ -4,6 +4,8 @@ import type { WorkflowContract } from "../workflows.ts";
 import type { Gate, Phase, Run } from "../workflow-runs.ts";
 import { bugGates } from "./bug.ts";
 import { featureGates } from "./feature.ts";
+import { investigationGates } from "./investigation.ts";
+import { performanceGates } from "./performance.ts";
 import { refactorGates } from "./refactor.ts";
 import { review } from "./review.ts";
 import { implementationChanged, recordObservation, SHARED_GATES, sharedPhase } from "./shared.ts";
@@ -43,16 +45,20 @@ export type PhaseHook = (context: PhaseContext) => PhaseOutcome | Promise<PhaseO
 
 export interface WorkflowGates {
   readonly workflow: string;
-  /** Gate ids this module decides; with SHARED_GATES they must cover the contract exactly. */
+  /** Gate ids this module decides; with its shared gates they must cover the contract exactly. */
   readonly handles: readonly string[];
+  /** The shared gates its contract declares; all of SHARED_GATES unless the workflow omits a phase they sit in. */
+  readonly sharedGates?: readonly string[];
   /** Gates recorded alongside `plan-approved` when approval is requested. */
   readonly planningGates?: readonly Gate[];
   /** Phases whose hook runs the testing Tool and may relay its decisions. */
   readonly relays?: readonly string[];
+  /** A hook for a shared phase replaces the shared hook; call sharedPhase() inside it to build on that. */
   readonly phases: Readonly<Record<string, PhaseHook>>;
 }
 
-const REGISTRY: ReadonlyMap<string, WorkflowGates> = new Map([featureGates, bugGates, refactorGates].map((gates) => [gates.workflow, gates]));
+const REGISTRY: ReadonlyMap<string, WorkflowGates> = new Map([featureGates, bugGates, refactorGates, investigationGates, performanceGates]
+  .map((gates) => [gates.workflow, gates]));
 
 export function gatesFor(workflowId: string): WorkflowGates {
   const gates = REGISTRY.get(workflowId);
@@ -65,7 +71,8 @@ export function executableWorkflows(): string[] {
 }
 
 export function handledGates(workflowId: string): ReadonlySet<string> {
-  return new Set([...SHARED_GATES, ...gatesFor(workflowId).handles]);
+  const gates = gatesFor(workflowId);
+  return new Set([...(gates.sharedGates ?? SHARED_GATES), ...gates.handles]);
 }
 
 export function relaysAnswers(workflowId: string, phase: string): boolean {
@@ -75,7 +82,7 @@ export function relaysAnswers(workflowId: string, phase: string): boolean {
 export async function runPhase(input: Omit<PhaseContext, "gates">): Promise<PhaseOutcome> {
   const context: PhaseContext = { ...input, gates: gatesFor(input.workflow.id) };
   const shared = sharedPhase(context.phase.phase);
-  if (shared) return shared(context);
+  if (shared) return (context.gates.phases[context.phase.phase] ?? shared)(context);
   // Not a shared phase: delivery stops before it, because only a separate reviewer can supply its record.
   if (context.phase.phase === "review") return review(context);
   if (!context.note) {

@@ -35,14 +35,36 @@ describe("core workflows", () => {
   const sections = headings(loadMarkdown(at("core", "templates", "workflow.md")).body, 2);
 
   it("include every workflow the Core promises", () => {
-    for (const name of ["feature", "bug", "refactor"]) {
+    for (const name of ["feature", "bug", "refactor", "performance", "investigation"]) {
       assert.ok(names.includes(name), `missing workflow ${name}`);
     }
   });
 
   it("do not ship workflows that nothing executes", () => {
-    for (const name of ["performance", "incident", "release"]) {
+    for (const name of ["incident", "release"]) {
       assert.ok(!names.includes(name), `workflow ${name} was removed in 2.0`);
+    }
+  });
+
+  it("keep the investigation read-only: a write Tool is rejected when authored and when loaded", () => {
+    const files = loadWorkflow(join(root, "investigation"));
+    assert.deepEqual(assessWorkflowQuality(files, context), []);
+    const discovery = files.contract.phases.find((phase) => phase.phase === "discovery")!;
+    const writing = { ...files, contract: { ...files.contract, phases: files.contract.phases.map((phase) =>
+      phase === discovery ? { ...phase, tools: { required: [], optional: ["core.testing.run"] } } : phase) } };
+    assert.ok(assessWorkflowQuality(writing, context).some((problem) => problem.includes("core.testing.run, which can change state")));
+
+    const fixtureCore = mkdtempSync(join(tmpdir(), "paved-read-only-"));
+    try {
+      for (const path of ["manifest.yaml", "package.json", "VERSION", "schemas", "core"]) cpSync(at(path), join(fixtureCore, path), { recursive: true });
+      const file = join(fixtureCore, "core/skills/discovery/context-discovery/skill.yaml");
+      const skill = loadYaml(file) as { tools?: { required?: string[]; optional?: string[] } };
+      skill.tools = { ...skill.tools, optional: [...(skill.tools?.optional ?? []), "core.runtime.reset"] };
+      writeFileSync(file, JSON.stringify(skill));
+      assert.throws(() => loadContract(fixtureCore, "core.investigation"), /must stay read-only: .*core\.runtime\.reset/);
+      assert.doesNotThrow(() => loadContract(fixtureCore, "core.feature"));
+    } finally {
+      rmSync(fixtureCore, { recursive: true, force: true });
     }
   });
 

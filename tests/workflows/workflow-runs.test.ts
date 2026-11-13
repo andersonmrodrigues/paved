@@ -22,7 +22,7 @@ function pending(id = "intent-0123456789abcdef0123"): Run {
 
 describe("workflow runs", () => {
   it("lists exactly the Core workflows", () => {
-    assert.deepEqual(coreWorkflowIds(coreRoot), ["core.bug", "core.feature", "core.refactor"]);
+    assert.deepEqual(coreWorkflowIds(coreRoot), ["core.bug", "core.feature", "core.investigation", "core.performance", "core.refactor"]);
   });
 
   it("loads only Core contracts by id", () => {

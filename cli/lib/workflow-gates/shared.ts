@@ -35,7 +35,7 @@ export function fingerprint(projectRoot: string): string {
     .map((source) => [source.path, source.sha256])));
 }
 
-const VERIFIED_SOURCE = "source_sha256=";
+export const VERIFIED_SOURCE = "source_sha256=";
 
 /**
  * True when a completed run's source and test files differ from what its verification saw,

@@ -48,8 +48,8 @@ Paths starting with `.paved/` are in the repository you are working on. Other pa
 ## 1. Discover context
 
 1. Read `.paved/manifest.yaml` to learn the project, its adapters and its Core version.
-2. Identify the workflow that matches the task (`feature`, `bug` or `refactor`) in
-   `workflows/`; `intent` records it on the run. It tells you which inputs, phases, skills,
+2. Identify the workflow that matches the task (`feature`, `bug`, `refactor`,
+   `performance`, or the read-only `investigation` for a question) in `workflows/`; `intent` records it on the run. It tells you which inputs, phases, skills,
    checks, gates and approvals apply; `workflows.md` tells you how to run it. A workflow
    disabled in `.paved/overrides/overrides.yaml` does not apply to this repository.
    Project workflows in `.paved/workflows/` are guidance; Paved does not execute them.

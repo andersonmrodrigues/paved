@@ -1,10 +1,11 @@
 # Workflows
 
 A workflow carries one class of change from request to verified completion. The Core
-ships three: `feature`, `bug` and `refactor`. A performance improvement runs as `refactor`
-(behavior unchanged) or `feature` (a new budget); the `performance`, `incident` and
-`release` workflows were removed in Core 2.0 because nothing executed them
-([ADR 0036](../decisions/0036-intent-plan-execute.md)). It is an
+ships five: `feature`, `bug`, `refactor`, `performance` and `investigation`. The
+`incident` and `release` workflows were removed in Core 2.0 because nothing executed them
+([ADR 0036](../decisions/0036-intent-plan-execute.md)); `performance` came back once its
+gates had code that enforces them
+([ADR 0047](../decisions/0047-investigation-and-performance-workflows.md)). It is an
 orchestration layer: it decides **which** phases run, **which** skills each phase
 activates, **which** checks prove the result and **where** a human must decide. It never
 says **how** to do the work; skills do. It never says what must hold; rules do. It
@@ -155,6 +156,14 @@ carry an approval gate and must not be retried automatically (checked). A Check 
 Tool capability. Tool resolution selects one compatible Core, adapter or explicitly
 selected project implementation; discovery does not grant permission to execute it.
 
+A workflow without an `implementation` phase is read-only. Every Tool its phases can
+reach, listed or brought by an active skill and its required dependencies, must be
+`read-only`; authoring checks and runtime `loadContract` both reject anything else.
+The `investigation` workflow also denies the Core's state-changing Tools in a
+`tool_policies` entry selected by every phase, and its gate module refuses to advance
+once the run's source fingerprint differs from the one recorded at the start, so a file
+edited outside any Tool is caught too. A read-only run needs no plan approval.
+
 ### Phase-scoped Tool policies
 
 Declare local `tool_policies` on the workflow as `{id, allow, ask, deny}`, with a unique
@@ -203,7 +212,8 @@ Verification is a phase of its own that cannot be skipped. Each phase may name
 `verification.required` check types (each must pass for completion; a missing type is
 recorded as a gap) and
 `recommended` ones. A workflow that has an implementation phase must require at least one
-check type in `verification` and at least one evidence kind, and a required check type
+check type in `verification` and at least one evidence kind (a read-only workflow
+verifies that nothing changed and that its answer's citations resolve instead), and a required check type
 must be able to prove some claim (`build` cannot). The evidence record names the
 workflow in `producer.workflow`; `assessWorkflowEvidence` checks it holds every required
 check type of every phase and every required evidence kind, and `assessSkillEvidence`
@@ -231,6 +241,7 @@ approvals are in [workflow failure](workflow-failure.md) and
 | Canonical order, unique gates, "Use when", no technology names, size, contract mentioned in `WORKFLOW.md` | `assessWorkflowQuality` |
 | Verification required for code changes; required checks can prove something | `assessWorkflowQuality` |
 | Destructive tools gated and not auto-retried; a `release` or `incident` change type carries its approval | `assessWorkflowQuality` |
+| A workflow without implementation reaches only read-only Tools | `assessReadOnlyTools`, from `assessWorkflowQuality` and runtime `loadContract` |
 | No duplicate activation; no deprecated skills; no sentences copied from skills | `assessWorkflowQuality` |
 | Skills, tools and rules resolve | `resolveReferences` |
 | Run records match their workflow | `assessRun` |

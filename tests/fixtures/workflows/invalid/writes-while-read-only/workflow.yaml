@@ -1,0 +1,34 @@
+# expect-problem: phase discovery can use core.testing.run, which can change state, but the workflow has no implementation phase and must stay read-only
+apiVersion: paved/v1
+kind: Workflow
+id: project.sample
+title: Sample
+description: >-
+  Answers a question about the code with cited sources. Use when the user asks how
+  or why something works and wants no change.
+version: 0.1.0
+status: experimental
+change_type: investigation
+inputs:
+  - id: question
+    description: The question to answer.
+    required: true
+phases:
+  - phase: context
+    goal: Restate the question.
+    skills: [core.discovery.context-discovery]
+  - phase: discovery
+    goal: Find the sources that decide the answer.
+    tools:
+      optional: [core.testing.run]
+  - phase: verification
+    goal: Confirm nothing changed and every citation resolves.
+  - phase: evidence
+    goal: Record the answer.
+  - phase: completion
+    goal: Finish.
+evidence:
+  required: []
+outputs: [evidence]
+completion:
+  criteria: [Every claim in the answer is cited.]

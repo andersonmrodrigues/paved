@@ -20,7 +20,7 @@ const base = { request: "Export fails for archived items", parts: [], inputs: []
 
 describe("intent classification", () => {
   it("offers the executable Core workflows", () => {
-    assert.deepEqual(availableWorkflows(projectRoot, coreRoot), ["core.bug", "core.feature", "core.refactor"]);
+    assert.deepEqual(availableWorkflows(projectRoot, coreRoot), ["core.bug", "core.feature", "core.investigation", "core.performance", "core.refactor"]);
   });
 
   it("hides a workflow disabled by an override that still matches its target", () => {
@@ -29,7 +29,7 @@ describe("intent classification", () => {
       apiVersion: "paved/v1", kind: "Overrides",
       workflows: [{ target: "core.refactor", action: "disable", owner: "team", reason: "Not used here." }],
     }));
-    assert.deepEqual(availableWorkflows(projectRoot, coreRoot), ["core.bug", "core.feature"]);
+    assert.deepEqual(availableWorkflows(projectRoot, coreRoot), ["core.bug", "core.feature", "core.investigation", "core.performance"]);
     assert.throws(() => normalizeWorkflow(projectRoot, coreRoot, "refactor"), (error: unknown) =>
       error instanceof IntentError && error.code === "PAVED_WORKFLOW_NOT_EXECUTABLE");
   });
@@ -51,6 +51,31 @@ describe("intent classification", () => {
     assert.deepEqual(run.workflow, { id: "core.bug", version: "0.4.0" });
     assert.deepEqual(run.classification, { workflow: "core.bug", because: "Archived items crash the export.", decided_by: "agent" });
     assert.deepEqual(run.inputs[0], { id: "report", value: base.request, source: "human" });
+  });
+
+  it("routes a question to investigation and a measured slowness to performance", () => {
+    const question = createIntentRun(projectRoot, coreRoot, { ...base, request: "Why do archived exports time out?", workflow: "investigation",
+      because: "The user asks why, and wants an answer rather than a change." }, "q1");
+    validateRun(coreRoot, question);
+    assert.equal(question.workflow?.id, "core.investigation");
+    assert.deepEqual(question.inputs[0], { id: "question", value: "Why do archived exports time out?", source: "human" });
+    const slow = createIntentRun(projectRoot, coreRoot, { ...base, request: "Exports take 12 s; make them faster", workflow: "performance",
+      because: "A measured metric should improve with behavior unchanged." }, "p1");
+    validateRun(coreRoot, slow);
+    assert.equal(slow.workflow?.id, "core.performance");
+    assert.equal(slow.inputs[0]?.id, "request");
+  });
+
+  it("an ambiguous slowness report still asks, offering both readings", () => {
+    const run = createIntentRun(projectRoot, coreRoot, { ...base, request: "Exports are slow", recommend: "investigation",
+      because: "It is unclear whether the user wants an explanation or a faster export." }, "amb");
+    assert.equal(run.status, "awaiting-input");
+    assert.equal(run.workflow, undefined);
+    writeIntentDocument(projectRoot, run);
+    const candidate = classificationCandidate(projectRoot, coreRoot, run, "investigation", "Unclear.");
+    assert.equal(candidate.recommended, "investigation");
+    assert.ok(candidate.options.some((option) => option.id === "performance"));
+    assert.equal(candidate.required, true);
   });
 
   it("classified without a rationale is refused", () => {
@@ -79,7 +104,7 @@ describe("intent classification", () => {
     assert.equal(run.workflow, undefined);
     writeIntentDocument(projectRoot, run);
     const candidate = classificationCandidate(projectRoot, coreRoot, run);
-    assert.deepEqual(candidate.options.map((option) => option.id), ["bug", "feature", "refactor"]);
+    assert.deepEqual(candidate.options.map((option) => option.id), ["bug", "feature", "investigation", "performance", "refactor"]);
     assert.equal(candidate.recommended, undefined);
     assert.equal(candidate.handler, "run.record");
     assert.equal(candidate.scope, "run");
@@ -91,7 +116,7 @@ describe("intent classification", () => {
     assert.deepEqual(run.classification, { parts: ["Add CSV export", "Fix the crash"] });
     writeIntentDocument(projectRoot, run);
     const candidate = classificationCandidate(projectRoot, coreRoot, run);
-    assert.deepEqual(candidate.options.map((option) => option.id), ["split", "bug", "feature", "refactor"]);
+    assert.deepEqual(candidate.options.map((option) => option.id), ["split", "bug", "feature", "investigation", "performance", "refactor"]);
     assert.equal(candidate.recommended, "split");
   });
 
