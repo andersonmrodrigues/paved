@@ -17,6 +17,9 @@ behavior. If a behavior change is needed too, do it as a separate feature or bug
   three attempts before it needs a human.
 - **verification:** a `non-regression` claim needs behavior checks; a `structure` claim
   needs an architecture check or a review artifact.
+- **after completion:** the run ends here. Proposing and merging the change through a
+  change request is optional and follows `change-delivery`; it reopens no gate of this
+  run, and each merge needs its own human confirmation.
 
 ## Escalation
 

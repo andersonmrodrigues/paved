@@ -1,0 +1,27 @@
+apiVersion: paved/v1
+kind: ToolImplementation
+id: adapter-github.change-request.open
+tool: core.change-request.open
+version: 0.1.0
+contract: ^0.1.0
+source: adapter
+environments:
+  - local
+  - ci
+invocation:
+  type: command
+  timeout_seconds: 120
+  executable: gh
+  arguments:
+    - pr
+    - create
+  input_bindings:
+    - input: title
+      flag: --title
+    - input: body
+      flag: --body
+    - input: base
+      flag: --base
+    - input: draft
+      flag: --draft
+availability: available

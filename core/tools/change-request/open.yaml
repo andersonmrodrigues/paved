@@ -1,0 +1,74 @@
+apiVersion: paved/v1
+kind: Tool
+id: core.change-request.open
+version: 0.1.0
+title: Open a change request
+purpose: >
+  Propose the current branch for merge into a target branch of the shared repository,
+  after its change was verified and independently reviewed. Opening one publishes the
+  change to other people and starts their automation, so it needs a human's
+  confirmation each time.
+capability: change-request-open
+safety: high-impact
+permissions:
+  - repository-read
+  - network-write
+environments:
+  - local
+  - ci
+inputs:
+  - name: title
+    description: One-line summary of the change.
+    required: true
+    type: string
+  - name: body
+    description: Description of the change, its verification and its review outcome.
+    required: true
+    type: string
+  - name: base
+    description: Target branch to merge into. Omit to use the repository's default branch.
+    required: false
+    pattern: ^(?!-)[^\s]+$
+    type: string
+  - name: draft
+    description: Open the change request as a draft that cannot be merged yet.
+    required: false
+    type: boolean
+outputs:
+  format: text
+  description: Location of the created change request.
+side_effects:
+  - external-service
+preconditions:
+  - id: branch-published
+    kind: repository
+    description: The current branch is already published to the shared repository.
+  - id: change-reviewed
+    kind: working-tree
+    description: The change's run completed with verified evidence and a passed independent review.
+  - id: authenticated
+    kind: credentials
+    description: The implementation is authenticated with the shared repository outside Paved.
+idempotency: non-idempotent
+timeout_seconds: 120
+retry:
+  max_attempts: 1
+  backoff_seconds: 0
+errors:
+  - invalid-input
+  - failed-precondition
+  - permission-denied
+  - timeout
+  - execution-failure
+  - implementation-unavailable
+availability: available
+confirmation: required
+evidence:
+  capture:
+    - revision
+    - environment
+    - timestamps
+    - output-digest
+examples:
+  - description: Open a draft change request against the main branch.
+    inputs: { title: Include archived items in the export, body: Verified and reviewed in run 2026-01-01-export., base: main, draft: true }

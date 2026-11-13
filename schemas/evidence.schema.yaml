@@ -71,6 +71,19 @@ properties:
       files:
         type: array
         items: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+      patch_id:
+        description: >
+          Stable fingerprint of the change's patch against `patch_base`, independent of
+          commit ids, so the same patch keeps its fingerprint after a rebase. Evidence
+          describes a patch, not a revision: a later head with the same fingerprint is
+          still described by this record; a different fingerprint needs new verification.
+        type: string
+        pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$"
+      patch_base:
+        description: Revision the patch in `patch_id` was computed against. Required with `patch_id`.
+        $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+    dependentRequired:
+      patch_id: [patch_base]
     if:
       properties: { uncommitted_changes: { const: true } }
       required: [uncommitted_changes]

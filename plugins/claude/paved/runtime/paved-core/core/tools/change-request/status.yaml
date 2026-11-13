@@ -1,0 +1,64 @@
+apiVersion: paved/v1
+kind: Tool
+id: core.change-request.status
+version: 0.1.0
+title: Read change request status
+purpose: >
+  Observe a change request as the shared repository sees it: its state, head and target
+  revisions, automated check results, review decision and whether it can be merged.
+  Green automated checks are an observation, not a verdict on the change.
+capability: change-request-status
+safety: read-only
+permissions:
+  - repository-read
+  - network-read
+environments:
+  - local
+  - ci
+inputs:
+  - name: change
+    description: Number, location or branch of the change request. Omit for the current branch.
+    required: false
+    pattern: ^(?!-)[^\s]+$
+    type: string
+outputs:
+  format: json
+  description: >
+    Structured state of the change request. Besides the canonical fields, an
+    implementation reports the head revision, target branch, automated check results,
+    review decision and mergeability under the names its service uses.
+  fields:
+    - number
+    - url
+    - state
+side_effects: []
+preconditions:
+  - id: authenticated
+    kind: credentials
+    description: The implementation is authenticated with the shared repository outside Paved.
+idempotency: idempotent
+timeout_seconds: 60
+retry:
+  max_attempts: 2
+  backoff_seconds: 5
+errors:
+  - invalid-input
+  - failed-precondition
+  - permission-denied
+  - timeout
+  - transient-failure
+  - execution-failure
+  - implementation-unavailable
+  - malformed-output
+availability: available
+confirmation: none
+evidence:
+  capture:
+    - revision
+    - environment
+    - timestamps
+    - output-digest
+examples:
+  - description: Status of the change request for the current branch.
+  - description: Status of a change request by number.
+    inputs: { change: "42" }

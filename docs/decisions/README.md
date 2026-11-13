@@ -54,6 +54,7 @@ writing a new record that supersedes it, not by editing the old one.
 | [0047](0047-investigation-and-performance-workflows.md) | Investigation and performance workflows | Accepted |
 | [0048](0048-proven-review-findings.md) | Blocking review findings carry executed proof | Accepted |
 | [0049](0049-corrections-feed-the-gardener.md) | Human corrections feed the Gardener; guide drift is a doctor finding | Accepted |
+| [0050](0050-governed-change-delivery.md) | Governed change delivery and patch-identity evidence | Accepted |
 
 ## Format
 

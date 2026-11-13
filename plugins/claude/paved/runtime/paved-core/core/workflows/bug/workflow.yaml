@@ -5,7 +5,7 @@ title: Bug fix
 description: >-
   Takes a defect from report to a verified fix with a regression test, never through a
   speculative fix. Use when the software behaves differently from its intended behavior.
-version: 0.4.0
+version: 0.4.1
 status: experimental
 change_type: bug-fix
 inputs:

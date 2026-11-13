@@ -51,6 +51,20 @@ releases, not the development sequence used to build them.
   unchanged.
 - Final run summaries label each substantive claim as observed (naming its evidence),
   inferred or unknown, reusing Project Context's knowledge states.
+- Governed delivery after local review. Core Tools `core.change-request.open`
+  (high-impact), `core.change-request.status` (read-only) and
+  `core.change-request.merge` (destructive, pinned to a head revision) describe change
+  requests without naming a service, and the `change-delivery` skill covers opening,
+  status, comment triage, bottom-up landing of stacked change requests and merging only
+  on an explicit human request.
+- Workflow evidence records the change's stable patch fingerprint (`change.patch_id`
+  and `change.patch_base`, both optional). Verification and review cover a patch, not a
+  commit id, so a rebase that keeps the patch keeps the evidence.
+- `paved status --base <ref>` reports `data.delivery`: whether the latest completed
+  run's evidence still matches the patch HEAD proposes against that target, and whether
+  uncommitted changes would be left out.
+- `infrastructure/github` adapter binding the change-request Tools to the GitHub CLI,
+  detected from GitHub Actions workflow content.
 
 ### Changed
 
@@ -59,8 +73,11 @@ releases, not the development sequence used to build them.
   workflow.
 - A workflow gate module can replace a shared phase hook (verification, evidence,
   completion) and build on it.
-- The Claude plugin no longer packs TypeScript sources under `cli/` that have a compiled
-  `cli/build` twin. The runtime only loads the compiled files.
+- The packed runtime no longer carries TypeScript sources under `cli/` that have a
+  compiled `cli/build` twin (the runtime only loads the compiled files), except the
+  generator runtime source that generated-context provenance hashes. Maintainer-only
+  catalogs, Core-authoring templates and the root README, CHANGELOG and SECURITY files are
+  also left out. The Claude plugin drops from 511 to about 440 files.
 - Agent routing (instructions, hook context and command help) names the new workflows.
   Investigation-only requests use the read-only `investigation` workflow.
 - Independent review findings record how far they were proven: asserted, cited,
@@ -72,6 +89,11 @@ releases, not the development sequence used to build them.
   `change-review` skill (`0.7.0`) pushes every candidate down that ladder and merges
   findings that share a root cause.
 - `decisions` skill 0.2.0: triage a question before asking it.
+- `gardener` 0.4.0 reads corrections and proposes rule promotions; `app-verification`
+  0.2.0 writes guide frontmatter that drift checks read; `change-review` 0.7.0 also names
+  the broken `rule` on a finding.
+- The feature, bug and refactor workflows point to `change-delivery` after completion
+  (guidance only; no phase, gate or approval changed).
 
 ## [2.27.0] - 2026-11-13
 

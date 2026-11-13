@@ -1,0 +1,17 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.code-review.change-delivery
+version: 0.1.0
+status: experimental
+category: code-review
+context:
+  required: []
+  optional: [rules, verification]
+tools:
+  optional: [core.change-request.open, core.change-request.status, core.change-request.merge]
+rules:
+  - core.quality.evidence-before-completion
+verification:
+  required: []
+evidence:
+  required: []

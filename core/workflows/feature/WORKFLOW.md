@@ -35,6 +35,9 @@ The `request` input is the anchor: without it the run stops as `input-missing`.
   verification proves the claims. Missing check types become recorded gaps.
 - **review:** `change-review` brings in `security-review` when the feature adds input,
   access paths or data exposure.
+- **after completion:** the run ends here. Proposing and merging the change through a
+  change request is optional and follows `change-delivery`; it reopens no gate of this
+  run, and each merge needs its own human confirmation.
 
 ## Escalation
 

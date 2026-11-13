@@ -6,7 +6,7 @@ description: >-
   Changes the structure of code while preserving its behavior, in small verified steps.
   Use when code must be renamed, moved, split, merged or simplified and nothing it does
   should change.
-version: 0.3.0
+version: 0.3.1
 status: experimental
 change_type: refactor
 inputs:

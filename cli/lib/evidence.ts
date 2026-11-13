@@ -65,7 +65,7 @@ interface Artifact {
 }
 
 export interface EvidenceRecord {
-  change: { revision: string; uncommitted_changes?: boolean; worktree_sha256?: string };
+  change: { revision: string; uncommitted_changes?: boolean; worktree_sha256?: string; patch_id?: string; patch_base?: string };
   plan: { required: string[]; recommended?: string[]; optional?: string[]; evidence: string[] };
   claims: { id: string; type: string; supported_by: string[] }[];
   checks: CheckResult[];

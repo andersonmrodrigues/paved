@@ -11,8 +11,8 @@ import { runSourceRoot } from "./workflow-runs.js";
 import { UNCHANGED_HANDLER } from "./workflows.js";
 // Paved state is not part of the change it records.
 const PATHSPEC = ["--", ".", ":(exclude).paved", ":(exclude).paved.update-backup", ":(exclude).paved-operation-lock"];
-function git(projectRoot, args) {
-    const result = spawnSync("git", args, { cwd: projectRoot, encoding: "utf8", shell: false, maxBuffer: 64 * 1024 * 1024 });
+function git(projectRoot, args, input) {
+    const result = spawnSync("git", args, { cwd: projectRoot, encoding: "utf8", shell: false, maxBuffer: 64 * 1024 * 1024, ...(input === undefined ? {} : { input }) });
     // `git diff --no-index` exits 1 when the files differ, which is the expected case.
     return { ok: result.error === undefined && (result.status === 0 || (args.includes("--no-index") && result.status === 1)), stdout: result.stdout ?? "" };
 }
@@ -34,7 +34,43 @@ function collectChange(projectRoot, revision) {
     let patch = base === undefined ? "" : git(projectRoot, ["diff", "--no-color", base, ...PATHSPEC]).stdout;
     for (const file of added)
         patch += git(projectRoot, ["diff", "--no-color", "--no-index", "--", "/dev/null", file]).stdout;
-    return { files: [...new Set(changed)].sort((a, b) => a.localeCompare(b, "en")), patch };
+    return { files: [...new Set(changed)].sort((a, b) => a.localeCompare(b, "en")), patch,
+        ...(base === undefined ? {} : { base: git(projectRoot, ["rev-parse", "--verify", `${base}^{commit}`]).stdout.trim() }) };
+}
+/**
+ * The stable patch id of a diff: unchanged when the same patch is rebased onto another
+ * base or split into other commits, so evidence can be matched to the patch it verified.
+ */
+function patchId(projectRoot, patch) {
+    if (patch.trim() === "")
+        return undefined;
+    const id = git(projectRoot, ["patch-id", "--stable"], patch).stdout.trim().split(/\s+/)[0] ?? "";
+    return /^[0-9a-f]{40}([0-9a-f]{24})?$/.test(id) ? id : undefined;
+}
+/** The patch the current head would propose against `target`, computed like the recorded one. */
+export function headPatch(sourceRoot, target) {
+    if (target.startsWith("-") || !git(sourceRoot, ["rev-parse", "--verify", "--quiet", `${target}^{commit}`]).ok) {
+        return { problem: `Target ${target} is not a revision in this repository.` };
+    }
+    const base = git(sourceRoot, ["merge-base", "HEAD", target]);
+    if (!base.ok || base.stdout.trim() === "")
+        return { problem: `HEAD and ${target} share no history.` };
+    const mergeBase = base.stdout.trim();
+    const id = patchId(sourceRoot, git(sourceRoot, ["diff", "--no-color", mergeBase, "HEAD", ...PATHSPEC]).stdout);
+    const status = git(sourceRoot, ["status", "--porcelain=v1", "--untracked-files=all", ...PATHSPEC]).stdout;
+    return { base: mergeBase, ...(id === undefined ? {} : { patchId: id }), uncommitted: status.trim() !== "" };
+}
+/**
+ * Whether evidence recorded for one patch still describes the head. Verification and
+ * review cover a patch, not a commit id: a rebase that keeps the patch keeps the evidence,
+ * and any other difference, or a missing fingerprint, means the evidence no longer applies.
+ */
+export function patchFreshness(recorded, head) {
+    if (recorded === undefined)
+        return { fresh: false, reason: "unrecorded" };
+    if (head === undefined)
+        return { fresh: false, reason: "empty-head" };
+    return recorded === head ? { fresh: true } : { fresh: false, reason: "patch-changed" };
 }
 function workflowPlan(workflow, authoritative) {
     const all = (key) => workflow.phases.flatMap((phase) => phase.verification?.[key] ?? []);
@@ -66,6 +102,7 @@ export function writeWorkflowEvidence(input) {
     const diffRef = `.paved/generated/evidence/${run.id}${suffix}.diff`;
     const recordRef = `.paved/generated/evidence/${run.id}-workflow${suffix}.yaml`;
     const plan = workflowPlan(workflow, authoritative);
+    const patch = change.base === undefined ? undefined : patchId(runSourceRoot(projectRoot, run), change.patch);
     const covered = new Set(authoritative.checks.filter((check) => check.status === "passed").flatMap(coveredTypes));
     const profilePath = resolveSafePath(projectRoot, ".paved/verification/profile.yaml");
     const unavailable = existsSync(profilePath) ? loadYaml(profilePath).unavailable ?? [] : [];
@@ -80,7 +117,8 @@ export function writeWorkflowEvidence(input) {
         producer: { agent: "paved-cli", workflow: workflow.id, run: run.id },
         verification: authoritative.verification,
         retention: "local",
-        change: { ...authoritative.change, summary: preExisting && change.files.length === 0 ? `${input.summary} (already in the repository before the run started)` : input.summary, files: change.files },
+        change: { ...authoritative.change, summary: preExisting && change.files.length === 0 ? `${input.summary} (already in the repository before the run started)` : input.summary, files: change.files,
+            ...(patch === undefined ? {} : { patch_id: patch, patch_base: change.base }) },
         plan,
         claims: authoritative.claims,
         checks: authoritative.checks,

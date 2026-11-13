@@ -31,6 +31,11 @@ source-control observations used by Core skills and workflows. Core supplies no 
 for them. A selected adapter may supply a compatible binding; otherwise resolution
 blocks explicitly. Revision identifiers are opaque to Core.
 
+`core.change-request.open`, `.status` and `.merge` describe proposing a verified change
+to a shared repository. Opening is `high-impact`, reading status is `read-only` and
+merging is `destructive`, pinned to the head revision whose patch was checked. Core
+supplies no binding; a selected adapter may.
+
 Verification Checks reference a Tool id. A captured execution records the Tool id,
 actual runtime version, implementation id and version, revision, environment, timestamps,
 sanitized input/output digests and structured status. The result can be converted to the

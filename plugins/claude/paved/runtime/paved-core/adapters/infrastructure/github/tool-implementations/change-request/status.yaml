@@ -1,0 +1,22 @@
+apiVersion: paved/v1
+kind: ToolImplementation
+id: adapter-github.change-request.status
+tool: core.change-request.status
+version: 0.1.0
+contract: ^0.1.0
+source: adapter
+environments:
+  - local
+  - ci
+invocation:
+  type: command
+  timeout_seconds: 60
+  executable: gh
+  arguments:
+    - pr
+    - view
+    - --json
+    - number,url,state,isDraft,baseRefName,headRefName,headRefOid,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup
+  input_bindings:
+    - input: change
+availability: available

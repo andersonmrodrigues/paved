@@ -127,6 +127,8 @@ function commandUsage(command) {
             commandOptions.push("  --approve        Record the user's approval of the current plan, given in the conversation.", "  --run <id> --amend --note <change> [--evidence <plan>]  Ask approval for a revised plan mid-run.");
         if (command === "execute")
             commandOptions.push("  \"<request>\"      Start new work: initialize Paved if needed and record the request.", "  --approve        Record the user's approval of the current plan, given in the conversation.", "  --auto           Advance through every phase that needs no human input.", "  --run <id> --checkpoint --note <progress>  Record a finished part of the plan without leaving implementation.");
+        if (command === "status")
+            commandOptions.push("  --base <ref>     Report whether the latest completed run's evidence still matches the patch HEAD proposes against this target.");
         if (command === "tool")
             commandOptions.push("  --scope <dir>    Run the command from this project directory.", "  -- <executable> [args...]  The exact command; everything after -- is passed as argv.");
         if (command === "delegation")
@@ -218,6 +220,7 @@ function parse(argv) {
     const parts = [];
     const intentInputs = [];
     let scope;
+    let base;
     let toolCommand;
     let task;
     let file;
@@ -258,6 +261,16 @@ function parse(argv) {
             if (typeof value !== "string")
                 return { kind: "error", result: value };
             scope = value;
+            index += 1;
+            continue;
+        }
+        if (token === "--base") {
+            if (command !== "status")
+                return { kind: "error", result: usage(command ?? "cli", "--base is supported only by status.") };
+            const value = takeValue(argv, index, token, command);
+            if (typeof value !== "string")
+                return { kind: "error", result: value };
+            base = value;
             index += 1;
             continue;
         }
@@ -545,6 +558,7 @@ function parse(argv) {
         ...(inputs === undefined ? {} : { inputs }),
         ...(decision === undefined ? {} : { decision }),
         ...(scope === undefined ? {} : { scope }),
+        ...(base === undefined ? {} : { base }),
         ...(toolCommand === undefined ? {} : { toolCommand }),
         ...(task === undefined ? {} : { task }),
         ...(file === undefined ? {} : { file }),
