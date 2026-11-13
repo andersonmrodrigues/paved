@@ -8,7 +8,7 @@ import { loadMarkdown } from "../../cli/lib/documents.ts";
 import { AGENT_COMMANDS } from "../../integrations/shared/commands.ts";
 import { loadCanonicalSkills } from "../../integrations/shared/catalog.ts";
 import {
-  CLAUDE_PLUGIN_DIRECTORY, LAUNCHER_DIRECTORY, PLUGIN_DIRECTORY, PLUGIN_TARGETS, RUNTIME_DIRECTORY, packRuntime, planPlugins,
+  CLAUDE_PLUGIN_DIRECTORY, LAUNCHER_DIRECTORY, MAINTAINER_ONLY_FILES, PLUGIN_DIRECTORY, PLUGIN_TARGETS, RUNTIME_DIRECTORY, packRuntime, planPlugins,
   readPluginSource, reconcilePlugin, writePlugins, type PluginProvenance, type PluginTarget,
 } from "../../plugins/build.ts";
 import { OPENAI_EXCLUDED, packageOpenAI } from "../../plugins/package-openai.ts";
@@ -41,15 +41,12 @@ const assertSquarePng = (icon: Buffer) => {
 describe("generated plugins", () => {
   it("omits maintainer catalogs while retaining consumer verification guidance", () => {
     const runtime = packRuntime(ROOT, { build: false });
-    for (const path of [
-      "core/skills/README.md", "core/rules/README.md", "core/tools/README.md",
-      "core/workflows/README.md", "core/workflow-fragments/README.md", "core/templates/README.md",
-      "adapters/README.md", "adapters/databases/README.md", "adapters/frameworks/README.md",
-      "adapters/infrastructure/README.md", "adapters/languages/README.md",
-    ]) {
-      assert.equal(runtime.files.has(path), false, `${path} is a maintainer-only catalog`);
+    for (const path of MAINTAINER_ONLY_FILES) {
+      assert.equal(runtime.files.has(path), false, `${path} is maintainer-only`);
     }
-    assert.deepEqual(runtime.files.get("core/verification/README.md"), readFileSync(join(ROOT, "core/verification/README.md")));
+    for (const path of ["core/verification/README.md", "core/templates/workflow-run.yaml", "core/templates/evidence.yaml", "core/templates/AGENTS.md"]) {
+      assert.deepEqual(runtime.files.get(path), readFileSync(join(ROOT, path)), `${path} is referenced by consumer guidance`);
+    }
     // The launcher runs the compiled CLI; its TypeScript sources are not packed twice.
     assert.ok(runtime.files.has("cli/build/cli/index.js"));
     // The engine digest in generated-context provenance hashes this source file.

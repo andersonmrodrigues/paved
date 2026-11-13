@@ -18,6 +18,9 @@ production is impaired now, run `incident` first and this workflow afterwards.
   `test-failed-first` gate non-negotiable. Two failed fix attempts mean the cause was
   not confirmed: the phase fails as `skill-failed` and discovery is repeated.
 - **review:** a fix that does not explain the cause is sent back to discovery.
+- **after completion:** the run ends here. Proposing and merging the change through a
+  change request is optional and follows `change-delivery`; it reopens no gate of this
+  run, and each merge needs its own human confirmation.
 
 ## Escalation
 

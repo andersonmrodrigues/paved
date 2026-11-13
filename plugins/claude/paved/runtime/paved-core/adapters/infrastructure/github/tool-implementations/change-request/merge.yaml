@@ -1,0 +1,26 @@
+apiVersion: paved/v1
+kind: ToolImplementation
+id: adapter-github.change-request.merge
+tool: core.change-request.merge
+version: 0.1.0
+contract: ^0.1.0
+source: adapter
+environments:
+  - local
+  - ci
+invocation:
+  type: command
+  timeout_seconds: 120
+  executable: gh
+  # A squash merge lands the reviewed patch as one commit, so its patch fingerprint on the
+  # target equals the one recorded in the evidence. --match-head-commit makes GitHub refuse
+  # the merge when the head moved after the freshness check.
+  arguments:
+    - pr
+    - merge
+    - --squash
+  input_bindings:
+    - input: change
+    - input: head
+      flag: --match-head-commit
+availability: available

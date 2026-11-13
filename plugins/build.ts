@@ -97,6 +97,24 @@ export function directoryIntegrity(files: ReadonlyMap<string, Buffer>): string {
   return `sha512-${createHash("sha512").update(lines.join("\n")).digest("base64")}`;
 }
 
+/**
+ * Runtime package files that serve Core maintenance or the source repository, never
+ * consumer execution: maintainer catalogs, templates whose instances live only in the
+ * Core repository (adapters, generators, the capability registry, workflow fragments),
+ * and the repository's own landing page, release notes and disclosure policy. Claude
+ * has a 512-file ceiling, so the runtime ships only what a consumer runs or reads.
+ * Both hosts drop the same set before the runtime integrity is computed.
+ */
+export const MAINTAINER_ONLY_FILES: readonly string[] = [
+  "core/skills/README.md", "core/rules/README.md", "core/tools/README.md",
+  "core/workflows/README.md", "core/workflow-fragments/README.md", "core/templates/README.md",
+  "adapters/README.md", "adapters/databases/README.md", "adapters/frameworks/README.md",
+  "adapters/infrastructure/README.md", "adapters/languages/README.md", "integrations/README.md",
+  "core/templates/adapter.yaml", "core/templates/generator.yaml", "core/templates/capability-registry.yaml",
+  "core/templates/workflow-fragment.md", "core/templates/workflow-fragment.yaml",
+  "README.md", "CHANGELOG.md", "SECURITY.md",
+];
+
 function readTree(directory: string): Map<string, Buffer> {
   const files = new Map<string, Buffer>();
   const walk = (current: string) => {
@@ -139,15 +157,7 @@ export function packRuntime(root: string, options: { build: boolean }): RuntimeA
         && !path.endsWith(".d.ts") && path !== "cli/lib/generator-runtime.ts"
         && files.has(`cli/build/${path.replace(/\.ts$/, ".js")}`)) files.delete(path);
     }
-    // These catalogs describe Core maintenance; consumer execution uses the contracts
-    // beneath them. Keep verification/README.md, which consumer guidance references.
-    // Exclude the same catalogs from both hosts before computing runtime integrity.
-    for (const path of [
-      "core/skills/README.md", "core/rules/README.md", "core/tools/README.md",
-      "core/workflows/README.md", "core/workflow-fragments/README.md", "core/templates/README.md",
-      "adapters/README.md", "adapters/databases/README.md", "adapters/frameworks/README.md",
-      "adapters/infrastructure/README.md", "adapters/languages/README.md",
-    ]) files.delete(path);
+    for (const path of MAINTAINER_ONLY_FILES) files.delete(path);
     return { version: artifact.version, files, integrity: directoryIntegrity(files) };
   } finally {
     rmSync(workspace, { recursive: true, force: true });

@@ -48,7 +48,7 @@ describe("intent classification", () => {
     validateRun(coreRoot, run);
     assert.match(run.id, /^intent-[a-f0-9]{20}$/);
     assert.equal(run.status, "running");
-    assert.deepEqual(run.workflow, { id: "core.bug", version: "0.4.0" });
+    assert.deepEqual(run.workflow, { id: "core.bug", version: "0.4.1" });
     assert.deepEqual(run.classification, { workflow: "core.bug", because: "Archived items crash the export.", decided_by: "agent" });
     assert.deepEqual(run.inputs[0], { id: "report", value: base.request, source: "human" });
   });

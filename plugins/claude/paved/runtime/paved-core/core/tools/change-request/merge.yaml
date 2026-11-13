@@ -1,0 +1,75 @@
+apiVersion: paved/v1
+kind: Tool
+id: core.change-request.merge
+version: 0.1.0
+title: Merge a change request
+purpose: >
+  Merge one change request into its target branch, only if its head is still the exact
+  revision whose patch was verified, reviewed and checked. A merge changes shared history
+  and cannot be undone in place, so every invocation needs an explicit human
+  confirmation naming the change request, its head and its target; approval of an
+  implementation plan never covers it.
+capability: change-request-merge
+safety: destructive
+permissions:
+  - repository-read
+  - repository-write
+  - network-write
+environments:
+  - local
+  - ci
+inputs:
+  - name: change
+    description: Number, location or branch of the change request to merge.
+    required: true
+    pattern: ^(?!-)[^\s]+$
+    type: string
+  - name: head
+    description: Full revision the change request's head must still be at; the merge is refused if it moved.
+    required: true
+    pattern: ^[0-9a-f]{40}([0-9a-f]{24})?$
+    type: string
+outputs:
+  format: text
+  description: Outcome reported by the shared repository.
+side_effects:
+  - external-service
+preconditions:
+  - id: evidence-current
+    kind: repository
+    description: The patch fingerprint of the latest verified and reviewed evidence equals the head's patch fingerprint.
+  - id: checks-passed
+    kind: service
+    description: The change request's required automated checks passed on the head revision.
+  - id: human-confirmed
+    kind: environment
+    description: A human confirmed this merge, naming the change request, head and target.
+  - id: authenticated
+    kind: credentials
+    description: The implementation is authenticated with the shared repository outside Paved.
+idempotency: non-idempotent
+timeout_seconds: 120
+retry:
+  max_attempts: 1
+  backoff_seconds: 0
+errors:
+  - invalid-input
+  - failed-precondition
+  - permission-denied
+  - policy-violation
+  - timeout
+  - execution-failure
+  - partial-execution
+  - implementation-unavailable
+availability: available
+confirmation: required
+evidence:
+  capture:
+    - input-digest
+    - revision
+    - environment
+    - timestamps
+    - output-digest
+examples:
+  - description: Merge change request 42 only while its head is the verified revision.
+    inputs: { change: "42", head: 4f2c9e1b7a3d8c21e5f60a9b2d4c6e8f01a3b5c7 }

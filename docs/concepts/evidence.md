@@ -33,6 +33,12 @@ the record. A partial level never authorizes completion of an unmet required che
 The recorder (`agent`, `paved`, `ci`) describes independence; project policy may set a
 minimum. Agent-recorded review and manual-observation statements support nothing.
 
+Workflow evidence also records `change.patch_id`, a stable fingerprint of the change's
+patch against `change.patch_base`. A verdict covers a patch, not a commit id: after a
+rebase that keeps the patch, `paved status --base <target>` still reports the
+evidence as fresh; any other change to the patch needs new verification and review
+([ADR 0050](../decisions/0050-governed-change-delivery.md)).
+
 Working records and small outputs live in `.paved/generated/evidence/`; retained copies
 may live in `.paved/verification/evidence/` or with a change request, CI run or release.
 The `retention` field distinguishes local, change, release and audit lifetimes. Large

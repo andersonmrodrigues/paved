@@ -14,8 +14,10 @@ import { isOpen, runBelongsTo, runSourceRoot, scanRuns, type Run } from "../lib/
 import { changedSinceVerification, fingerprint } from "../lib/workflow-gates/shared.ts";
 import { inspectVerificationConfig } from "../lib/verification-runner.ts";
 import { loadMarkdown, loadYaml } from "../lib/documents.ts";
+import type { EvidenceRecord } from "../lib/evidence.ts";
 import { resolveSafePath } from "../lib/safe-path.ts";
 import { createRegistry } from "../lib/schemas.ts";
+import { headPatch, patchFreshness } from "../lib/workflow-evidence.ts";
 
 function statusFor(diagnostics: readonly Diagnostic[]): ResultStatus {
   if (diagnostics.some((diagnostic) => diagnostic.category !== "findings")) return "failed";
@@ -86,10 +88,14 @@ function agentsBlockFindings(inspection: ConsumerInspection): Diagnostic[] {
   })];
 }
 
+function latestRun(inspection: ConsumerInspection, runs: readonly Run[], sourceRoot: string): Run | undefined {
+  return runs.filter((run) => runBelongsTo(inspection.projectRoot, run, sourceRoot))
+    .sort((a, b) => a.started_at.localeCompare(b.started_at)).at(-1);
+}
+
 /** The latest run in this checkout, when it completed and its code changed afterwards. */
 function staleCompletion(inspection: ConsumerInspection, runs: readonly Run[], sourceRoot: string): Diagnostic[] {
-  const latest = runs.filter((run) => runBelongsTo(inspection.projectRoot, run, sourceRoot))
-    .sort((a, b) => a.started_at.localeCompare(b.started_at)).at(-1);
+  const latest = latestRun(inspection, runs, sourceRoot);
   if (latest === undefined || !changedSinceVerification(inspection.projectRoot, latest)) return [];
   return [createDiagnostic({
     severity: "warning", category: "findings", code: "PAVED_WORKFLOW_EVIDENCE_STALE", component: "consumer.runs",
@@ -98,7 +104,56 @@ function staleCompletion(inspection: ConsumerInspection, runs: readonly Run[], s
   })];
 }
 
-function openRuns(inspection: ConsumerInspection, sourceRoot: string): { runs: Record<string, unknown>[]; diagnostics: Diagnostic[] } {
+function recordedPatchId(projectRoot: string, evidence: string): string | undefined {
+  try {
+    return (loadYaml(resolveSafePath(projectRoot, evidence)) as EvidenceRecord).change?.patch_id;
+  } catch {
+    return undefined;
+  }
+}
+
+const FRESHNESS_REASONS = {
+  "unrecorded": "The run's evidence records no patch fingerprint, so it cannot be matched to the head.",
+  "empty-head": "The head proposes no change against the target.",
+  "patch-changed": "The head's patch differs from the patch that was verified and reviewed.",
+} as const;
+
+/**
+ * With `--base`, whether the latest completed run's evidence still describes the patch a
+ * change request from HEAD to that target would carry. Read-only; it never contacts a remote.
+ */
+function deliveryReadiness(inspection: ConsumerInspection, runs: readonly Run[], sourceRoot: string, target: string): { delivery: Record<string, unknown>; diagnostics: Diagnostic[] } {
+  const notReady = (reason: string, remediation: string, facts: Record<string, unknown> = {}) => ({
+    delivery: { target, ready: false, reason, ...facts },
+    diagnostics: [createDiagnostic({
+      severity: "warning", category: "findings", code: "PAVED_DELIVERY_NOT_READY", component: "consumer.delivery",
+      message: reason, remediation,
+    })],
+  });
+  const latest = latestRun(inspection, runs, sourceRoot);
+  if (latest === undefined || latest.status !== "completed" || latest.evidence === undefined) {
+    return notReady("No completed run in this checkout has verified and reviewed evidence to deliver.", "Finish the run with paved execute first; a change request is opened only after review passed.");
+  }
+  const head = headPatch(runSourceRoot(inspection.projectRoot, latest), target);
+  if ("problem" in head) return notReady(head.problem, "Pass the branch the change request targets, for example --base origin/main.", { run: latest.id });
+  const recorded = recordedPatchId(inspection.projectRoot, latest.evidence);
+  const freshness = patchFreshness(recorded, head.patchId);
+  const facts = {
+    run: latest.id, evidence: latest.evidence, mergeBase: head.base,
+    ...(recorded === undefined ? {} : { recordedPatchId: recorded }),
+    ...(head.patchId === undefined ? {} : { headPatchId: head.patchId }),
+    fresh: freshness.fresh, uncommitted: head.uncommitted,
+  };
+  if (!freshness.fresh) {
+    return notReady(FRESHNESS_REASONS[freshness.reason], "Verify and review the current patch in a new run (paved execute) before opening or merging the change request.", facts);
+  }
+  if (head.uncommitted) {
+    return notReady("Uncommitted changes would not be part of the change request.", "Commit or discard them, then check again.", facts);
+  }
+  return { delivery: { target, ready: true, ...facts }, diagnostics: [] };
+}
+
+function openRuns(inspection: ConsumerInspection, sourceRoot: string, deliveryTarget?: string): { runs: Record<string, unknown>[]; diagnostics: Diagnostic[]; delivery?: Record<string, unknown> } {
   if (!inspection.initialized) return { runs: [], diagnostics: [] };
   const scanned = scanRuns(inspection.projectRoot, inspection.coreRoot);
   const runs = scanned.runs.filter((run) => isOpen(run) && runBelongsTo(inspection.projectRoot, run, sourceRoot)).map((run) => ({
@@ -109,11 +164,12 @@ function openRuns(inspection: ConsumerInspection, sourceRoot: string): { runs: R
       ...run.handoff, fresh: fingerprint(runSourceRoot(inspection.projectRoot, run)) === run.handoff.source_sha256,
     } }),
   }));
-  return { runs, diagnostics: [...scanned.unreadable.map((run) => createDiagnostic({
+  const delivery = deliveryTarget === undefined ? undefined : deliveryReadiness(inspection, scanned.runs, sourceRoot, deliveryTarget);
+  return { runs, ...(delivery === undefined ? {} : { delivery: delivery.delivery }), diagnostics: [...scanned.unreadable.map((run) => createDiagnostic({
     severity: "warning", category: "findings", code: "PAVED_WORKFLOW_RUN_INVALID", component: "consumer.runs",
     message: `Workflow run ${run.id} could not be read: ${run.reason}`,
     remediation: "Inspect .paved/generated/runs/ and restore or remove the invalid run document.",
-  })), ...staleCompletion(inspection, scanned.runs, sourceRoot)] };
+  })), ...staleCompletion(inspection, scanned.runs, sourceRoot), ...(delivery?.diagnostics ?? [])] };
 }
 
 /** An unreadable decision store is already reported by the inspection; repairs then wait for it to be fixed. */
@@ -276,7 +332,7 @@ export function diagnose(invocation: CommandInvocation, command: "status" | "doc
     component: `cli.${command}`, message,
     remediation: "Use the offered option id and provide the required human-authored approval.",
   }));
-  const runs = openRuns(inspection, invocation.paths.sourceRoot);
+  const runs = openRuns(inspection, invocation.paths.sourceRoot, invocation.flags.base);
   const diagnostics = [...inspection.diagnostics, ...agentsBlockFindings(inspection), ...runs.diagnostics,
     ...verificationFindings(invocation, inspection),
     ...(inspection.initialized ? inspectVerificationGuides(inspection.projectRoot, inspection.coreRoot) : []), ...decisionDiagnostics];
@@ -289,6 +345,7 @@ export function diagnose(invocation: CommandInvocation, command: "status" | "doc
     data: {
       ...statusData(inspection),
       openRuns: runs.runs,
+      ...(runs.delivery === undefined ? {} : { delivery: runs.delivery }),
       ...(resumeAction === undefined ? {} : { nextAction: resumeAction }),
       actionableFindings: diagnostics.filter((item) => item.code !== "PAVED_DECISION_ANSWER_INVALID" && item.severity !== "info").map((diagnostic) => ({
         code: diagnostic.code, severity: diagnostic.severity, category: diagnostic.category,

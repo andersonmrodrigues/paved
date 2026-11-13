@@ -11,6 +11,9 @@ confirmation.
 ## Included
 
 - `infrastructure/git` binds the Core repository Tools to Git.
+- `infrastructure/github` binds the Core change-request Tools (open, status, merge) to
+  the GitHub CLI. It is proposed when `.github/workflows/` holds an Actions workflow;
+  merges are squashed and pinned to the head revision whose patch was checked.
 - `infrastructure/aws` detects AWS infrastructure-as-code and SDK usage, observes
   declared resource types and constructs, and routes AWS work to the Agent Toolkit for
   AWS (`aws-core` skills and AWS MCP Server) when the host has it. Terraform files are

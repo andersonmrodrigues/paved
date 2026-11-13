@@ -14,6 +14,10 @@ Report a consumer repository's Paved state without changing files.
 - `--project <dir>`: select the consumer root.
 - `--adapter <id>`: repeatable adapter content-root selection for inspection.
 - `--json`: render the structured result.
+- `--base <ref>`: also report `delivery` for the latest completed run in this checkout:
+  its evidence's `patch_id`, the patch HEAD proposes against the merge base with `<ref>`,
+  whether the two match (`fresh`), whether uncommitted changes exist, and `ready`. A
+  mismatch, a missing fingerprint or uncommitted changes add `PAVED_DELIVERY_NOT_READY`.
 - `--help`: show command help.
 
 `--dry-run`, selectors and writing/repair flags are not supported because the

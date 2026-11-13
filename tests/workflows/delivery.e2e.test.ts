@@ -720,6 +720,46 @@ describe("after completion", () => {
     assert.equal(stale(await invoke("status")), true);
   });
 
+  it("keeps evidence for the same patch across a rebase and drops it when the patch changes", async () => {
+    const root = project();
+    const base = spawnSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).stdout.trim();
+    const { id, invoke, stopped } = await inReview(root);
+    await reviewClean(root, id, invoke, stopped);
+    assert.equal(runState(root, id).status, "completed");
+    const evidence = parse(readFileSync(join(root, runState(root, id).evidence!), "utf8")) as { change: { patch_id?: string; patch_base?: string } };
+    assert.match(evidence.change.patch_id ?? "", /^[0-9a-f]{40}$/);
+    assert.equal(evidence.change.patch_base, base);
+    const delivery = async (target: string) => ((await invoke("status", "--base", target)).data as { delivery: { ready: boolean; fresh?: boolean; uncommitted?: boolean; recordedPatchId?: string; headPatchId?: string } }).delivery;
+
+    const uncommitted = await delivery(base);
+    assert.equal(uncommitted.ready, false, "a change request would not carry uncommitted changes");
+    assert.equal(uncommitted.uncommitted, true);
+    const user = ["-c", "user.email=t@example.com", "-c", "user.name=t"];
+    git(root, "checkout", "-q", "-b", "change");
+    commitAll(root, "change");
+    const committed = await delivery(base);
+    assert.equal(committed.ready, true, JSON.stringify(committed));
+    assert.equal(committed.headPatchId, evidence.change.patch_id);
+
+    git(root, "branch", "upstream", base);
+    git(root, "checkout", "-q", "upstream");
+    write(root, "NOTES.md", "Upstream moved on.\n");
+    commitAll(root, "upstream");
+    git(root, "checkout", "-q", "change");
+    git(root, ...user, "rebase", "-q", "upstream");
+    const rebased = await delivery("upstream");
+    assert.equal(rebased.ready, true, "a rebase moves commits without changing the verified patch");
+    assert.equal(rebased.headPatchId, evidence.change.patch_id);
+
+    write(root, "feature.js", "export const enabled = true; // changed after review\n");
+    commitAll(root, "tweak");
+    const changed = await delivery("upstream");
+    assert.equal(changed.ready, false);
+    assert.equal(changed.fresh, false);
+    assert.notEqual(changed.headPatchId, changed.recordedPatchId);
+    assert.equal((await invoke("status", "--base", "no-such-branch")).diagnostics.some((item) => item.code === "PAVED_DELIVERY_NOT_READY"), true);
+  });
+
   it("does not turn testing Tool logs into missing-verification proposals", async () => {
     const root = project();
     await inReview(root);

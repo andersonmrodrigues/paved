@@ -1,0 +1,105 @@
+---
+name: change-delivery
+description: >-
+  Carry a verified and reviewed change through its change request: open it, read automated checks and review comments, and merge only when the evidence still describes the head. Use when a completed Paved run's change is to be proposed, updated or merged through a pull or merge request; use change-review to review the code itself.
+---
+
+# Change delivery
+
+## When to use
+
+After a Paved run completed: its change was verified, its evidence recorded and an
+independent review passed. Use it to open the change request, to respond to what the
+shared repository reports about it, and to merge it when a human asks. Not for
+reviewing code (`change-review`) and not before the run completed: a change request is
+never a substitute for local verification or review.
+
+## Required context
+
+None beyond the completed run and its evidence. The verification context says which
+automated checks the project treats as required; the rules context says who may merge.
+
+## Preconditions
+
+- The run in this checkout completed, so verification and review passed.
+- The branch carrying the change is committed and published; nothing the change needs is
+  left uncommitted.
+- Delivery readiness reports the target: `paved status --base <target> --json` returns
+  `data.delivery`. When `ready` is not true, follow its remediation instead.
+
+## Procedure
+
+1. **Check freshness.** Run `paved status --base <target> --json`. Evidence covers a
+   patch, not a commit id: a rebase that keeps the patch keeps `fresh: true`; any other
+   difference reports `fresh: false`. When it is not fresh, start a new run for the
+   current patch so it is verified and reviewed again. Never reuse the old verdict.
+2. **Open.** Ask the user to confirm the title, target and draft state, then use
+   `core.change-request.open`. Its body states what changed, which claims were verified
+   and that an independent review passed, with the evidence record's location. The
+   confirmation covers this one invocation only.
+3. **Read status.** Use `core.change-request.status` for automated checks, review
+   decision and mergeability. Green automated checks are one more observation of the
+   head, not a verdict: they do not replace the evidence or the review, and a check that
+   does not exercise the change supports nothing.
+4. **Triage comments**, automated or human, one at a time, and report each outcome:
+   - *Fix*: a defect you can demonstrate. Change the code, then return to step 1; the
+     patch changed, so it needs new verification and review before it ships.
+   - *Dismiss*: a false positive, already handled, or out of scope. Reply with the
+     concrete reason (the line, test or rule that settles it), never "not applicable".
+   - *Ask*: a product or design choice, or anything you cannot settle from the code.
+     Put it to the user; do not decide it silently.
+5. **Merge only when asked.** A human must ask for this specific merge; approval of the
+   implementation plan never covers it. Before `core.change-request.merge`:
+   - step 1 reports `ready: true` for the change request's target;
+   - required automated checks passed on the head revision `core.change-request.status`
+     reports;
+   - the user confirmed the merge naming the change request, its head revision and its
+     target. Pass that head revision, so the merge is refused if the head moved since.
+6. **Stacked change requests land bottom-up.** Merge the one targeting the main line
+   first. Then retarget the next to the main line, rebase it, and repeat from step 1:
+   when its patch is unchanged it stays fresh; when the rebase changed it, re-verify.
+
+## Tools
+
+`core.change-request.open`, `core.change-request.status` and `core.change-request.merge`
+come from an adapter for the shared repository's service. When one is unavailable,
+tell the user which step they need to do themselves and keep the freshness check. Open
+needs confirmation for each invocation; merge is destructive and needs an explicit
+human confirmation every time, with no automatic retry.
+
+## Rules
+
+`core.quality.evidence-before-completion` applies to delivery as well: do not report a
+change request as ready, or a merge as safe, without the freshness result and the check
+status that show it.
+
+## Verification
+
+Delivery adds no check type. It relies on the run's evidence, the freshness result and
+the status the shared repository reports for the head revision.
+
+## Evidence
+
+The run's evidence record stays the source of truth; the change request links to it.
+Report the freshness result, the status observed and each triage outcome to the user.
+
+## Completion criteria
+
+- The change request exists, describes the verified change and links its evidence.
+- Every review comment is fixed, dismissed with a concrete reason or put to the user.
+- A merge happened only after a human asked for it, with fresh evidence and passing
+  required checks on the merged head.
+
+## Failure modes
+
+| Failure | Signal | Response |
+|---|---|---|
+| Stale verdict | Freshness reports `patch-changed` after a fix or a conflicted rebase | New run for the current patch; do not merge on the old evidence |
+| Green checks taken as approval | About to merge with no passed local review | Stop; finish the run first |
+| Comment dismissed without reason | Reply says only "won't fix" | Give the line, test or rule that settles it, or ask the user |
+| Head moved during merge | Merge refused because the head differs | Read status again and return to step 1 |
+| Stack merged top-down | Upper change request merged before its base | Stop and tell the user; land the base, then re-verify the upper one |
+
+## References
+
+None.

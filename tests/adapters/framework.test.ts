@@ -17,7 +17,7 @@ function detected(name: string, id: string) { return inspect(name).detection.fin
 
 test('adapter contracts validate and maintain independent versions and compatibility', () => {
   const registry = createRegistry(join(core, 'schemas'), ['paved/v1']);
-  assert.equal(adapters.length, 9);
+  assert.equal(adapters.length, 10);
   for (const adapter of adapters) assert.equal(registry.validate(adapter).valid, true, adapter.id);
   const bad = { ...adapters[0], version: 'latest' };
   assert.equal(registry.validate(bad).valid, false);
@@ -263,7 +263,7 @@ test('combined repository resolves six adapters and all declared evidence capabi
   const selected = detection.filter(d => d.confidence === 'strong' || d.adapter.id === 'infrastructure/git').map(d => ({ id: d.adapter.id, version: `^${d.adapter.version}` }));
   const result = resolveAdapters(detection, selected, '1.0.0');
   assert.deepEqual(result.diagnostics, []);
-  assert.deepEqual(result.adapters.map(d => d.adapter.id), adapters.filter(a => !['infrastructure/aws', 'technology/dart', 'technology/flutter'].includes(a.id)).map(a => a.id));
+  assert.deepEqual(result.adapters.map(d => d.adapter.id), adapters.filter(a => !['infrastructure/aws', 'infrastructure/github', 'technology/dart', 'technology/flutter'].includes(a.id)).map(a => a.id));
   const capabilities = capabilityEvidence(root, sources, result.adapters);
   assert.ok(capabilities.evidence.some(e => e.capability === 'application.ui-routes' && e.value === 'items'));
   assert.ok(capabilities.evidence.some(e => e.statement === 'Angular core resolved version in package lock' && e.value === '19.2.15'));

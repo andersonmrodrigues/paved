@@ -1,0 +1,37 @@
+apiVersion: paved/v1
+kind: Adapter
+id: infrastructure/github
+title: GitHub change requests
+version: 0.1.0
+summary: GitHub CLI bindings for the Core change-request capabilities (open, status, merge).
+requires:
+  core: ^2.0.0
+detect:
+  # A repository's remote is not readable from its files, so detection relies on GitHub
+  # Actions workflow content: a top-level `jobs:` key in .github/workflows is only
+  # meaningful to GitHub. A mirror hosted elsewhere can carry it too, hence medium.
+  file_contains:
+    - glob: .github/workflows/*.yml
+      pattern: '^jobs\s*:'
+    - glob: .github/workflows/*.yaml
+      pattern: '^jobs\s*:'
+  confidence: medium
+provides:
+  tool_implementations:
+    - tool-implementations/change-request/open.yaml
+    - tool-implementations/change-request/status.yaml
+    - tool-implementations/change-request/merge.yaml
+sources:
+  - title: GitHub CLI manual - gh pr create
+    url: https://cli.github.com/manual/gh_pr_create
+    retrieved_at: 2026-11-13
+  - title: GitHub CLI manual - gh pr view
+    url: https://cli.github.com/manual/gh_pr_view
+    retrieved_at: 2026-11-13
+  - title: GitHub CLI manual - gh pr merge
+    url: https://cli.github.com/manual/gh_pr_merge
+    retrieved_at: 2026-11-13
+  - title: Workflow syntax for GitHub Actions
+    url: https://docs.github.com/en/actions/writing-workflows/workflow-syntax-for-github-actions
+    retrieved_at: 2026-11-13
+reviewed_at: 2026-11-13
