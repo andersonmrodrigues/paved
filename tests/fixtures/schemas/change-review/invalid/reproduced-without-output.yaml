@@ -1,0 +1,12 @@
+# expect-error: must have required property 'output_sha256'
+apiVersion: paved/v1
+kind: ChangeReview
+run: intent-0123456789abcdef0123
+reviewer: { agent: claude-code subagent, isolated: true }
+reviewed: { plan_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, source_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, evidence_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa }
+passes: [rules, diff, change]
+findings:
+  - severity: blocking
+    file: src/export.ts
+    summary: An empty list makes the export divide by zero.
+    proof: { level: reproduced, command: curl -s localhost:3000/export?items= }

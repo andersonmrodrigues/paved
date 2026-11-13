@@ -35,7 +35,8 @@ digests the findings must carry. Paved refuses a review that was not isolated or
 an older plan, source or evidence.
 
 Run three passes, each reading the diff afresh. When the reviewer can start reviewers of its
-own, run each pass as one, given only the intent and the diff:
+own, run each pass as one, given only the intent and the diff, on a different model
+when the host offers one:
 
 - **Rules pass**: the rules in scope. A rule applies to a file only when its scope
   covers that file's path; a violation quotes the exact rule text it breaks.
@@ -65,12 +66,19 @@ Each pass goes through the dimensions below and notes candidates; stop at none.
 
 **Write each finding so the owner can act on it in one read:** state what the code currently does, the concrete impact, the suggested correction, and the consequence of leaving it as-is. Keep these separate from notes and avoid generic recommendations without a traced path.
 
-**Classify** each candidate. A *blocking* finding is a defect you can demonstrate: code
-that will not build or load; wrong behavior for an input or state you can name; a
-dependency a declared boundary forbids; an unexplained hunk; a claim its evidence does
-not exercise; a violation of an in-scope rule whose text you can quote. Any other
-surviving candidate, typically from steps 4, 5 and 8, is a *note*: recorded, never a
-reason to hold the change.
+**Prove** each candidate as far down this ladder as is cheap: `asserted` (said so), `cited`
+(`file:line` in the change or library source), `reasoned` (the failure walked step by step),
+`executed` (a command running the real code shows it: a test, script, build, boundary or
+rule check, or the diff for an unexplained hunk) or `reproduced` (shown in the running
+system). For the last two, record the command, the SHA-256 of its output and what the
+intent `expected`. Never edit the change to prove a finding.
+
+**Classify** each candidate. A *blocking* finding is a defect proven at `executed` or
+`reproduced`: code that will not build or load; wrong behavior for an input or state you
+can name; a dependency a declared boundary forbids; an unexplained hunk; a claim its
+evidence does not exercise; a violation of an in-scope rule whose text you can quote.
+Any other surviving candidate, including a defect you could not run, is a *note* with the
+level it reached: recorded, never a reason to hold the change.
 
 **Discard** candidates that are:
 
@@ -86,11 +94,12 @@ reason to hold the change.
 the defect exists as stated (the symbol is really undefined, the branch is really
 reachable, the rule's scope really covers the file), apart from the pass that found it
 when the agent supports that. A finding that does not survive validation is dropped.
-Keep one finding per defect, even when several passes found it.
+Keep one finding per defect, even when several passes found it, and merge findings that
+share a root cause into one that names it.
 
-Fix findings in scope, then re-run the checks the fixes affect. Record the rest. A review
-with no finding says so and lists what it examined: the passes, the rules in scope and
-the claims whose evidence was confirmed.
+Fix findings in scope, then re-run the checks the fixes affect. Record the rest. No
+findings is a valid result: say so and list what was examined (the passes, the rules in
+scope and the claims whose evidence was confirmed).
 
 ## Tools
 
@@ -110,7 +119,7 @@ Any fix made during review is verified like any other change.
 
 In a Paved workflow, a review record at
 `.paved/generated/reviews/<run-id>-findings.yaml`, in the format the brief shows: the
-reviewer, the digests it read, the passes it ran and each finding as `blocking` or `note`.
+reviewer, the digests it read, the passes it ran and each finding, `blocking` or `note`, with its `proof`.
 Blocking findings go to the user, who decides to fix them (implementation reopens, and the
 fix is tested, verified and reviewed again) or to accept them on record. Outside a workflow,
 report the same content in the conversation. The review supports no claim; it prepares the
@@ -120,7 +129,7 @@ human review.
 
 - No unexplained hunk in the diff.
 - Every claim's support was confirmed to exercise the claim.
-- Every blocking finding was validated against the code before it was recorded.
+- Every blocking finding was validated and carries `executed` or `reproduced` proof.
 - Findings are fixed, or recorded with a reason; notes are recorded apart from them.
 
 ## Failure modes
@@ -132,6 +141,7 @@ human review.
 | Evidence theater | Claims backed by checks unrelated to the change | Downgrade the claim or add a real check |
 | Style over substance | Findings are all about formatting | Revisit correctness and tests first |
 | False positive | A recorded finding the code does not bear out | Validate before recording; drop what fails |
+| Unproven block | A blocking finding resting on reading or reasoning alone | Run it, or record it as a note |
 | Inherited blame | A finding points at lines the diff did not touch | Discard it, or raise it outside this review |
 | Rule by vibe | A rule finding without quoted text or out of the rule's scope | Quote the rule and check its scope, or drop it |
 

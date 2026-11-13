@@ -20,10 +20,17 @@ export function reviewedState(projectRoot, run) {
         return undefined;
     return { plan_sha256: sha(readFileSync(planPath)), source_sha256: fingerprint(runSourceRoot(projectRoot, run)), evidence_sha256: sha(readFileSync(evidencePath)) };
 }
+/** A blocking finding holds the change only when a command or the running system showed it. */
+export const provesBlocking = (proof) => proof?.level === "executed" || proof?.level === "reproduced";
+/** Where a finding points, as `file` or `file:line`. */
+export function findingLocation(finding) {
+    return `${finding.file}${finding.line ? `:${finding.line}` : ""}`;
+}
 const STATE_NAMES = { plan_sha256: "plan", source_sha256: "source", evidence_sha256: "evidence" };
 /**
  * The review counts only when a reviewer that did not write the change read the run's
- * current plan, source and evidence. Blocking findings go back to the user: fixing one
+ * current plan, source and evidence. A blocking finding must have been executed or
+ * reproduced; the rest are notes. Blocking findings go back to the user: fixing one
  * reopens implementation, so the fix is tested, verified and reviewed again.
  */
 export const review = (context) => {
@@ -53,10 +60,16 @@ export const review = (context) => {
     const digest = sha(readFileSync(context.evidence));
     const blocking = record.findings.filter((finding) => finding.severity === "blocking");
     const notes = record.findings.length - blocking.length;
+    const answer = run.decisions?.findLast((decision) => decision.handler === REVIEW_HANDLER && decision.status === "APPLIED"
+        && decision.evidence.some((item) => item.sha256 === digest))?.answer;
+    // A record the user already decided on keeps that decision, so a run in flight is not sent back.
+    const unproven = answer === undefined ? blocking.filter((finding) => !provesBlocking(finding.proof)) : [];
+    if (unproven.length) {
+        const listed = unproven.map((finding) => `${findingLocation(finding)} (${finding.proof?.level ?? "no proof"})`).join(", ");
+        return blocked("PAVED_REVIEW_FINDING_UNPROVEN", `A blocking finding needs proof at level executed or reproduced: ${listed}.`.slice(0, 2000), `Prove each one with a command that runs the real code and record proof.level, proof.command and proof.output_sha256, or record it as severity note; then run ${resume}.`);
+    }
     let accepted = false;
     if (blocking.length) {
-        const answer = run.decisions?.findLast((decision) => decision.handler === REVIEW_HANDLER && decision.status === "APPLIED"
-            && decision.evidence.some((item) => item.sha256 === digest))?.answer;
         if (answer === "fix") {
             reopenImplementation(run, REVIEW_FIX);
             return { kind: "wait", nextAction: `Fix the blocking findings in ${ref}, then run paved execute --run ${run.id} --auto --note <what was fixed> --json; tests, verification, evidence and a new independent review follow.` };
@@ -68,7 +81,7 @@ export const review = (context) => {
                 candidate: {
                     scope: "run",
                     question: `The independent review found ${blocking.length} blocking ${blocking.length === 1 ? "finding" : "findings"}. How should Paved continue?`,
-                    reason: blocking.map((finding) => `${finding.file}${finding.line ? `:${finding.line}` : ""}: ${finding.summary}`).join(" ").slice(0, 2000),
+                    reason: blocking.map((finding) => `${findingLocation(finding)} [${finding.proof?.level ?? "unproven"}]: ${finding.summary}`).join(" ").slice(0, 2000),
                     options: [
                         { id: "fix", label: "Fix them", description: "Go back to implementation and fix the findings.", consequence: "The fix is tested, verified and reviewed again before the run completes." },
                         { id: "accept", label: "Accept as they are", description: "Complete the run with the findings unresolved.", consequence: "The findings stay on record as accepted by you." },

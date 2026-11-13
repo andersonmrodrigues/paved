@@ -4,7 +4,7 @@ import { atomicWriteFileSync } from "./atomic-write.js";
 import { loadYaml } from "./documents.js";
 import { intentDocumentPath } from "./intent.js";
 import { resolveSafePath } from "./safe-path.js";
-import { planRef, reviewBriefPath, reviewedState, reviewRecordPath } from "./workflow-gates/review.js";
+import { findingLocation, planRef, reviewBriefPath, reviewedState, reviewRecordPath } from "./workflow-gates/review.js";
 import { loadContract } from "./workflow-runs.js";
 import { phaseContext } from "./workflows.js";
 export function reviewBlock(target, companions = [], independent) {
@@ -46,6 +46,11 @@ function recordedFindings(projectRoot, run) {
     const matches = Object.keys(current).every((key) => record.reviewed?.[key] === current[key]);
     return matches && Array.isArray(record.findings) ? record : undefined;
 }
+function findingLine(finding) {
+    const proof = finding.proof;
+    const shown = proof ? ` (${proof.level}${proof.command ? `: \`${proof.command}\`` : ""})` : "";
+    return `- **${finding.severity}** \`${findingLocation(finding)}\`${shown}: ${finding.summary}${proof?.expected ? ` Expected: ${proof.expected}` : ""}`;
+}
 export function writeReviewDocument(projectRoot, run) {
     const relative = `.paved/generated/reviews/${run.id}.md`;
     const evidence = loadEvidence(projectRoot, run);
@@ -64,7 +69,7 @@ export function writeReviewDocument(projectRoot, run) {
         "## Rules", "", ...(evidence.rules?.length ? evidence.rules.map((rule) => `- \`${rule.id}\` (${rule.severity}): ${rule.status}`) : ["No rule results recorded."]), "",
         "## Independent review", "", ...(findings
             ? [`Reviewer: ${findings.reviewer?.agent ?? "unknown"}. Passes: ${(findings.passes ?? []).join(", ") || "none"}.`, "",
-                ...(findings.findings.length ? findings.findings.map((finding) => `- **${finding.severity}** \`${finding.file}${finding.line ? `:${finding.line}` : ""}\`: ${finding.summary}`) : ["No findings."])]
+                ...(findings.findings.length ? findings.findings.map(findingLine) : ["No findings."])]
             : [`Not recorded yet. A separate reviewer reads \`${reviewBriefPath(run.id)}\` and writes \`${reviewRecordPath(run.id)}\`.`]), "",
     ];
     return write(projectRoot, relative, lines);
@@ -89,8 +94,12 @@ export function writeReviewBrief(projectRoot, run, reviewed, coreRoot) {
         ...(workflow && phase ? ["## Active review phase context", "", "Apply these composed skills, Tool requirements, fragment instructions and phase policies.",
             "Tool policies never grant host permission; the host enforces its own permissions independently.", "", "```json", JSON.stringify(phaseContext(workflow, phase), null, 2), "```", ""] : []),
         "Follow the change-review skill: run the rules, diff and change passes, then keep only",
-        "findings you validated against the code. A blocking finding is a defect you can demonstrate;",
-        "anything else is a note. Use `findings: []` when nothing survives.", "",
+        "findings you validated against the code. Take each one as far down the proof ladder as is cheap:",
+        "asserted, cited (file:line or library source), reasoned (the failure walked step by step),",
+        "executed (a command running the real code shows it) or reproduced (shown in the running system).",
+        "Only an executed or reproduced finding may be blocking, with the command you ran and the SHA-256",
+        "of its captured output; Paved refuses a blocking finding with weaker proof. Record the rest as",
+        "notes. Merge findings that share a root cause. Use `findings: []` when nothing survives.", "",
         `Write your findings to \`${reviewRecordPath(run.id)}\`:`, "",
         "```yaml",
         "apiVersion: paved/v1",
@@ -109,6 +118,15 @@ export function writeReviewBrief(projectRoot, run, reviewed, coreRoot) {
         "    file: path/to/file",
         "    line: 42",
         "    summary: What is wrong, and the input or state that shows it.",
+        "    proof:",
+        "      level: executed",
+        "      command: <the command that shows the defect>",
+        "      output_sha256: <sha256 of its captured output>",
+        "      expected: <what the intent requires instead>",
+        "  - severity: note",
+        "    file: path/to/file",
+        "    summary: A concern you could not prove by running the code.",
+        "    proof: { level: reasoned }",
         "```", "",
     ];
     return write(projectRoot, reviewBriefPath(run.id), lines);

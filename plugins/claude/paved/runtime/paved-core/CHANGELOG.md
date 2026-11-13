@@ -38,6 +38,14 @@ releases, not the development sequence used to build them.
   `cli/build` twin. The runtime only loads the compiled files.
 - Agent routing (instructions, hook context and command help) names the new workflows.
   Investigation-only requests use the read-only `investigation` workflow.
+- Independent review findings record how far they were proven: asserted, cited,
+  reasoned, executed or reproduced. A blocking finding must be executed or reproduced,
+  with the command the reviewer ran and the SHA-256 of its output; Paved refuses one with
+  weaker proof (`PAVED_REVIEW_FINDING_UNPROVEN`), so the reviewer runs it or records it
+  as a note. Records the user already decided on are unaffected. The review brief,
+  review document and decision question show each finding's proof, and the
+  `change-review` skill (`0.7.0`) pushes every candidate down that ladder and merges
+  findings that share a root cause.
 
 ## [2.27.0] - 2026-11-13
 

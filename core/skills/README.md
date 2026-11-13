@@ -48,7 +48,7 @@ All Core skills are `experimental`.
 | | `frontend-performance` | 0.1.2 | Perceived load time, responsiveness, payload size |
 | `security` | `security-review` | 0.5.0 | Review a change for security impact |
 | | `threat-modeling` | 0.1.1 | Find threats in a design before it is built |
-| `code-review` | `change-review` | 0.6.0 | Review a finished change across all dimensions |
+| `code-review` | `change-review` | 0.7.0 | Review a finished change across all dimensions |
 | `gardener` | `gardener` | 0.3.1 | Turn recurring corrections into structural improvements |
 | `decisions` | `decisions` | 0.1.1 | Relay Paved decisions without taking authorship from the user |
 | `product` | `task-specification` | 0.4.1 | Write new tracker items or fill in existing ones, grounded in the repository |
