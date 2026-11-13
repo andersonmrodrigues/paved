@@ -14,7 +14,7 @@ import { atomicWriteFileSync } from './atomic-write.js';
 import { acquireConsumerOperationLock } from './operation-lock.js';
 import { resolveSafePath } from './safe-path.js';
 import { readRuntimeSelection } from './runtime-lock.js';
-export const IGNORED_SOURCE_ENTRY_NAMES = ['.git', '.paved', '.paved-operation-lock', '.claude', '.agents', '.superpowers', 'node_modules', 'target', 'dist', 'build', '.angular', '.next', '.venv', 'venv', '.worktrees', 'coverage', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache', '.tox', '.gradle'];
+export const IGNORED_SOURCE_ENTRY_NAMES = ['.git', '.paved', '.paved-operation-lock', '.claude', '.agents', '.superpowers', 'node_modules', 'target', 'dist', 'build', '.angular', '.next', '.venv', 'venv', '.worktrees', 'coverage', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache', '.tox', '.gradle', 'cdk.out', '.aws-sam'];
 const ignoredSourceEntryNames = new Set(IGNORED_SOURCE_ENTRY_NAMES);
 export function isIgnoredSourceEntry(name) { return name.startsWith('.env') || ignoredSourceEntryNames.has(name); }
 const sha = (content) => createHash('sha256').update(content).digest('hex');
@@ -182,9 +182,9 @@ export function sourcesFor(id, all) {
     return all.filter(s => patterns[id]?.test(s.path) ?? false).slice(0, 80);
 }
 export function relevantEvidenceFor(id, evidence) {
-    return evidence.filter(e => id.endsWith('/architecture') ? ['source.build', 'source.dependencies', 'application.runtime', 'application.modules', 'database.configuration'].includes(e.capability)
+    return evidence.filter(e => id.endsWith('/architecture') ? ['source.build', 'source.dependencies', 'application.runtime', 'application.modules', 'database.configuration', 'infrastructure.definitions'].includes(e.capability)
         : id.endsWith('/domain') ? ['source.structure', 'database.migrations'].includes(e.capability)
-            : id.endsWith('/integrations') ? ['application.http-routes', 'application.ui-routes', 'database.configuration', 'api.http', 'api.openapi'].includes(e.capability)
+            : id.endsWith('/integrations') ? ['application.http-routes', 'application.ui-routes', 'database.configuration', 'api.http', 'api.openapi', 'infrastructure.definitions'].includes(e.capability)
                 : id.endsWith('/feature-map') ? ['application.ui-routes', 'application.http-routes'].includes(e.capability)
                     : id.endsWith('/product') ? e.capability === 'application.ui-routes'
                         : id === 'verification' ? ['source.test', 'testing.structure'].includes(e.capability) : false);

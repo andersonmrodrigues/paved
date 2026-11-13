@@ -42,6 +42,7 @@ adapter contracts: Quarkus requires Java, and Flutter requires Dart.
 
 | Adapter | Adds reusable guidance for | Contract |
 |---|---|---|
+| `infrastructure/aws` | AWS infrastructure-as-code (CDK, CloudFormation, SAM) and SDK usage, routed to the Agent Toolkit for AWS when installed | [adapter.yaml](../adapters/infrastructure/aws/adapter.yaml) |
 | `infrastructure/git` | Git repositories, source control and worktrees | [adapter.yaml](../adapters/infrastructure/git/adapter.yaml) |
 | `technology/angular` | Angular applications | [adapter.yaml](../adapters/technology/angular/adapter.yaml) |
 | `technology/dart` | Dart projects | [adapter.yaml](../adapters/technology/dart/adapter.yaml) |

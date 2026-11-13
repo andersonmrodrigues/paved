@@ -7,3 +7,11 @@ running system.
 
 Tools that act on shared environments are almost always `destructive` and require
 confirmation.
+
+## Included
+
+- `infrastructure/git` binds the Core repository Tools to Git.
+- `infrastructure/aws` detects AWS infrastructure-as-code and SDK usage, observes
+  declared resource types and constructs, and routes AWS work to the Agent Toolkit for
+  AWS (`aws-core` skills and AWS MCP Server) when the host has it. Terraform files are
+  not read by source discovery, so Terraform-only repositories are not detected yet.

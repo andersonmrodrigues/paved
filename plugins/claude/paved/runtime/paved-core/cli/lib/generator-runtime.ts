@@ -28,7 +28,7 @@ interface Contract { apiVersion: string; kind: 'Generator'; id: string; version:
 interface Output { path: string; content: string; schema: string }
 type WriteOutputStatus = 'written' | 'unchanged' | 'conflict' | 'proposed';
 interface WriteOutputResult { status: WriteOutputStatus; finalContent: string; sha256: string }
-export const IGNORED_SOURCE_ENTRY_NAMES = ['.git', '.paved', '.paved-operation-lock', '.claude', '.agents', '.superpowers', 'node_modules', 'target', 'dist', 'build', '.angular', '.next', '.venv', 'venv', '.worktrees', 'coverage', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache', '.tox', '.gradle'] as const;
+export const IGNORED_SOURCE_ENTRY_NAMES = ['.git', '.paved', '.paved-operation-lock', '.claude', '.agents', '.superpowers', 'node_modules', 'target', 'dist', 'build', '.angular', '.next', '.venv', 'venv', '.worktrees', 'coverage', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache', '.tox', '.gradle', 'cdk.out', '.aws-sam'] as const;
 const ignoredSourceEntryNames = new Set<string>(IGNORED_SOURCE_ENTRY_NAMES);
 export function isIgnoredSourceEntry(name: string): boolean { return name.startsWith('.env') || ignoredSourceEntryNames.has(name); }
 const sha = (content: string | Buffer) => createHash('sha256').update(content).digest('hex');
@@ -133,9 +133,9 @@ export function sourcesFor(id: string, all: Source[]): Source[] {
   return all.filter(s => patterns[id]?.test(s.path) ?? false).slice(0, 80);
 }
 export function relevantEvidenceFor(id: string, evidence: readonly AdapterEvidence[]): AdapterEvidence[] {
-  return evidence.filter(e => id.endsWith('/architecture') ? ['source.build','source.dependencies','application.runtime','application.modules','database.configuration'].includes(e.capability)
+  return evidence.filter(e => id.endsWith('/architecture') ? ['source.build','source.dependencies','application.runtime','application.modules','database.configuration','infrastructure.definitions'].includes(e.capability)
     : id.endsWith('/domain') ? ['source.structure','database.migrations'].includes(e.capability)
-    : id.endsWith('/integrations') ? ['application.http-routes','application.ui-routes','database.configuration','api.http','api.openapi'].includes(e.capability)
+    : id.endsWith('/integrations') ? ['application.http-routes','application.ui-routes','database.configuration','api.http','api.openapi','infrastructure.definitions'].includes(e.capability)
     : id.endsWith('/feature-map') ? ['application.ui-routes','application.http-routes'].includes(e.capability)
     : id.endsWith('/product') ? e.capability === 'application.ui-routes'
     : id === 'verification' ? ['source.test', 'testing.structure'].includes(e.capability) : false);

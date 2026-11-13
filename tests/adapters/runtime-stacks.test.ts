@@ -30,6 +30,9 @@ describe("representative consumer runtimes", () => {
     { name: "postgresql", expected: ["technology/postgresql"], populate: (root: string) => {
       writeFileSync(join(root, "application.properties"), "quarkus.datasource.db-kind=postgresql\n");
     } },
+    { name: "aws-sam", expected: ["infrastructure/aws"], populate: (root: string) => {
+      writeFileSync(join(root, "template.yaml"), "AWSTemplateFormatVersion: '2010-09-09'\nTransform: AWS::Serverless-2016-10-31\nResources:\n  Handler:\n    Type: AWS::Serverless::Function\n");
+    } },
     { name: "git-only", expected: ["infrastructure/git"], populate: (root: string) => {
       mkdirSync(join(root, ".git"));
       writeFileSync(join(root, ".git", "HEAD"), "ref: refs/heads/main\n");

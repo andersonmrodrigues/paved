@@ -1,0 +1,24 @@
+apiVersion: paved/v1
+kind: Rule
+id: adapter-aws.operations.confirm-shared-environment-changes
+title: Confirm before changing AWS environments
+rationale: >
+  AWS accounts are shared, billed and often production. A deploy, delete or mutating API
+  call cannot be undone by reverting the repository, and console or CLI changes drift
+  from the infrastructure-as-code that the team reviews.
+applies_to: {}
+rule: >
+  Do not run cdk deploy, cdk destroy, sam deploy, CloudFormation create, update or delete
+  operations, or any mutating AWS API call without explicit human confirmation for that
+  action, naming the account, region and resources affected. Plan approval does not
+  authorize a deployment unless the plan names it. Make infrastructure changes in the
+  repository's infrastructure-as-code rather than through direct calls, and prefer
+  read-only, synth, diff or change-set previews to learn what a change would do.
+enforcement:
+  mechanism: agent
+  layer: rule
+severity: error
+verification: >
+  Every mutating AWS command in the run has a recorded human confirmation naming its
+  target; otherwise the run used only read-only or preview operations.
+overridable: true
