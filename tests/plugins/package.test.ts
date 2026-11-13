@@ -44,6 +44,8 @@ describe("generated plugins", () => {
     for (const path of [
       "core/skills/README.md", "core/rules/README.md", "core/tools/README.md",
       "core/workflows/README.md", "core/workflow-fragments/README.md", "core/templates/README.md",
+      "adapters/README.md", "adapters/databases/README.md", "adapters/frameworks/README.md",
+      "adapters/infrastructure/README.md", "adapters/languages/README.md",
     ]) {
       assert.equal(runtime.files.has(path), false, `${path} is a maintainer-only catalog`);
     }

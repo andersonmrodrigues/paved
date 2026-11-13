@@ -5,7 +5,7 @@ projects using it are usually structured, which checks it offers, and technology
 skills, rules and tools. Adapters sit between the domain-agnostic Core and the
 project-specific context.
 
-The current set includes the Git infrastructure adapter and technology adapters
+The current set includes the Git and AWS infrastructure adapters and technology adapters
 `technology/java`, `technology/quarkus`, `technology/typescript`,
 `technology/angular`, `technology/dart`, `technology/flutter` and
 `technology/postgresql`. Quarkus depends on Java and Flutter depends on Dart.
@@ -17,8 +17,8 @@ Web applications. The selected targets and repository architecture remain
 project-specific.
 
 Reusable meanings remain capabilities rather than technology adapters. The Core
-capability registry includes testing evidence, HTTP API evidence and OpenAPI
-contract evidence. Providers report observed repository evidence only; detection
+capability registry includes testing evidence, HTTP API evidence, OpenAPI
+contract evidence and infrastructure-as-code definitions. Providers report observed repository evidence only; detection
 does not recommend a technology, infer quality, or create verification policy.
 
 ## Layout

@@ -1,0 +1,118 @@
+apiVersion: paved/v1
+kind: Adapter
+id: infrastructure/aws
+title: Amazon Web Services
+version: 0.1.0
+summary: Static evidence and working guidance for repositories that define or call AWS resources.
+requires:
+  core: ^2.0.0
+detect:
+  file_contains:
+    - glob: cdk.json
+      pattern: '"app"\s*:'
+    - glob: samconfig.toml
+      pattern: '^\s*stack_name\s*='
+    - glob: '*.yaml'
+      pattern: '^AWSTemplateFormatVersion\s*:|^Transform\s*:\s*[''"]?AWS::Serverless'
+    - glob: '*.yml'
+      pattern: '^AWSTemplateFormatVersion\s*:|^Transform\s*:\s*[''"]?AWS::Serverless'
+    - glob: '*.json'
+      pattern: '"AWSTemplateFormatVersion"\s*:'
+    - glob: serverless.yml
+      pattern: '^provider\s*:\s*\n\s+name\s*:\s*aws\b'
+    - glob: package.json
+      pattern: '"(@aws-sdk/[a-z0-9-]+|aws-sdk|aws-cdk-lib)"\s*:'
+    - glob: 'requirements*.txt'
+      pattern: '^\s*(boto3|aws-cdk-lib)\s*([=<>~!;\[]|$)'
+    - glob: pyproject.toml
+      pattern: '[''"](boto3|aws-cdk-lib)\s*([=<>~!;\[]|[''"])|^\s*(boto3|aws-cdk-lib)\s*='
+    - glob: pom.xml
+      pattern: '<groupId>software\.amazon\.(awssdk|awscdk)</groupId>'
+    - glob: build.gradle
+      pattern: 'software\.amazon\.(awssdk|awscdk)'
+    - glob: build.gradle.kts
+      pattern: 'software\.amazon\.(awssdk|awscdk)'
+  confidence: strong
+provides:
+  knowledge:
+    - knowledge/working-with-aws.md
+  rules:
+    - rules/security/no-direct-secret-retrieval.yaml
+    - rules/operations/confirm-shared-environment-changes.yaml
+  capabilities:
+    - id: infrastructure.definitions
+      evidence:
+        - glob: '*.yaml'
+          pattern: '^\s+Type\s*:\s*[''"]?(AWS::[A-Za-z0-9]+::[A-Za-z0-9:]+)'
+          statement: CloudFormation or SAM resource type
+          capture: 1
+        - glob: '*.yml'
+          pattern: '^\s+Type\s*:\s*[''"]?(AWS::[A-Za-z0-9]+::[A-Za-z0-9:]+)'
+          statement: CloudFormation or SAM resource type
+          capture: 1
+        - glob: '*.json'
+          pattern: '"Type"\s*:\s*"(AWS::[A-Za-z0-9]+::[A-Za-z0-9:]+)"'
+          statement: CloudFormation resource type
+          capture: 1
+        - glob: '*.ts'
+          pattern: '\bnew\s+([a-z][A-Za-z0-9_]*\.[A-Z][A-Za-z0-9]*)\s*\(\s*this\s*,'
+          statement: AWS CDK construct instantiation
+          capture: 1
+        - glob: '*.py'
+          pattern: '\b([a-z_][a-z0-9_]*\.[A-Z][A-Za-z0-9]*)\s*\(\s*self\s*,\s*[''"]'
+          statement: AWS CDK construct instantiation
+          capture: 1
+  check_suggestions:
+    - type: build
+      command: cdk synth --quiet
+      description: Synthesizes the AWS CDK app to CloudFormation without deploying it.
+    - type: static-analysis
+      command: sam validate --lint
+      description: Validates an AWS SAM template and runs cfn-lint on it without deploying it.
+    - type: static-analysis
+      command: cfn-lint template.yaml
+      description: Lints a CloudFormation template against the resource specification; adjust the template path to the project.
+    - type: static-analysis
+      command: cfn-guard validate --data template.yaml --rules guard-rules/
+      description: Evaluates a CloudFormation template against the project's own Guard policy rules; needs a rules directory.
+sources:
+  - title: Agent Toolkit for AWS - AWS MCP Server tools
+    url: https://docs.aws.amazon.com/agent-toolkit/latest/userguide/understanding-mcp-server-tools.html
+    retrieved_at: 2026-11-13
+  - title: Agent Toolkit for AWS - aws-core plugin
+    url: https://github.com/aws/agent-toolkit-for-aws/tree/e1f50d7224bc7a1ee7cccd2c00564b66956b0223/plugins/aws-core
+    retrieved_at: 2026-11-13
+  - title: AWS CDK v2 developer guide
+    url: https://docs.aws.amazon.com/cdk/v2/guide/home.html
+    retrieved_at: 2026-11-13
+  - title: AWS CDK CLI synth command
+    url: https://docs.aws.amazon.com/cdk/v2/guide/ref-cli-cmd-synth.html
+    retrieved_at: 2026-11-13
+  - title: AWS CloudFormation user guide
+    url: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/Welcome.html
+    retrieved_at: 2026-11-13
+  - title: CloudFormation dynamic references to Secrets Manager
+    url: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/dynamic-references-secretsmanager.html
+    retrieved_at: 2026-11-13
+  - title: AWS SAM developer guide
+    url: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/what-is-sam.html
+    retrieved_at: 2026-11-13
+  - title: AWS SAM CLI validate command
+    url: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-cli-command-reference-sam-validate.html
+    retrieved_at: 2026-11-13
+  - title: CloudFormation Linter
+    url: https://github.com/aws-cloudformation/cfn-lint
+    retrieved_at: 2026-11-13
+  - title: AWS CloudFormation Guard
+    url: https://docs.aws.amazon.com/cfn-guard/latest/ug/what-is-guard.html
+    retrieved_at: 2026-11-13
+  - title: Retrieving secrets from AWS Secrets Manager
+    url: https://docs.aws.amazon.com/secretsmanager/latest/userguide/retrieving-secrets.html
+    retrieved_at: 2026-11-13
+  - title: Security best practices in IAM
+    url: https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html
+    retrieved_at: 2026-11-13
+  - title: AWS Well-Architected Framework
+    url: https://docs.aws.amazon.com/wellarchitected/latest/framework/welcome.html
+    retrieved_at: 2026-11-13
+reviewed_at: 2026-11-13

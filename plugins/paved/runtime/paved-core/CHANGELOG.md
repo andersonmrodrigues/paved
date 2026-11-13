@@ -5,6 +5,21 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- `infrastructure/aws` adapter. It detects AWS CDK, CloudFormation, SAM, Serverless
+  Framework and AWS SDK usage from file contents, and ships guidance that routes AWS work
+  to the Agent Toolkit for AWS skills and MCP Server when installed. It also adds rules
+  against reading secret values into the session and against unconfirmed changes to
+  AWS environments, plus suggested `cdk synth`, `sam validate`, `cfn-lint` and
+  `cfn-guard` checks.
+- `infrastructure.definitions` capability: observed infrastructure-as-code resource
+  types and constructs feed the architecture and integrations context.
+
+### Changed
+
+- Source discovery skips generated `cdk.out` and `.aws-sam` directories.
+
 ## [2.26.0] - 2026-11-11
 
 ### Added

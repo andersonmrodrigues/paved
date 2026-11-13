@@ -52,3 +52,6 @@ capabilities:
   - id: api.openapi
     meaning: Observe OpenAPI contracts and related declarations without inferring generated code.
     consumer: project-context/integrations
+  - id: infrastructure.definitions
+    meaning: Observe infrastructure-as-code resource and construct declarations without values or deployed state.
+    consumer: project-context/architecture

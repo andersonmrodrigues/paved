@@ -141,6 +141,8 @@ export function packRuntime(root: string, options: { build: boolean }): RuntimeA
     for (const path of [
       "core/skills/README.md", "core/rules/README.md", "core/tools/README.md",
       "core/workflows/README.md", "core/workflow-fragments/README.md", "core/templates/README.md",
+      "adapters/README.md", "adapters/databases/README.md", "adapters/frameworks/README.md",
+      "adapters/infrastructure/README.md", "adapters/languages/README.md",
     ]) files.delete(path);
     return { version: artifact.version, files, integrity: directoryIntegrity(files) };
   } finally {
