@@ -93,7 +93,7 @@ Every skill lists its own failure modes. These apply to all of them:
 |---|---|
 | Required context is missing | Look for it in the code and documentation (section 5). If it is still missing, continue only if the gap does not change the plan, and record it as unknown; otherwise ask |
 | A required tool is unavailable | Say so and use the skill's stated fallback. Never improvise a destructive substitute |
-| Requirements are ambiguous | Ask before changing code. State the interpretations you see |
+| Requirements are ambiguous | Triage the question first (section 5): find out what is observable, then ask before changing code about what remains a preference, stating the interpretations you see |
 | Project knowledge conflicts | Trust the code for what the system does; ask a human for what it should do. Do not pick a side silently |
 | Verification fails | Fix the cause and re-run. Never weaken, skip or delete a check to make it pass |
 | A rule blocks the change | Stop and say so. Only an override written by a human changes a rule |
@@ -146,6 +146,19 @@ what it believes happened is not a substitute for an observed result.
   `.paved/project/`; the repository's documentation. Then ask a human.
 - If it is still not found, it is unknown. Say so, and record it as an `unknown` in the
   relevant context document or as a gap in the evidence.
+- Before you ask a human anything, classify the question:
+  - **Observable:** the answer is a fact you can get by reading code or running
+    something: current behavior, output, timing, layout, whether a test fails today.
+    Find out instead of asking. Read the code, run the existing tests or the program, or
+    try a throwaway experiment outside the repository; an experiment inside the
+    repository follows the `prototyping` skill. Ask only when you cannot observe it
+    (no access, no safe way to run it, a shared or production system), and say why.
+  - **Preference:** a product, scope, priority or taste call that no experiment
+    settles. Only these go to the human, with the interpretations you see.
+
+  Triage never replaces a human step: plan approval, confirmation of destructive or
+  high-impact actions, and every decision Paved emits stay with a person, however
+  observable the facts behind them are.
 - Prefer an existing pattern in the repository over a new one. Introduce a new pattern
   only when no existing one fits, and say why in the evidence.
 

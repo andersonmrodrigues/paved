@@ -48,6 +48,15 @@ is a constraint to report, not a question to invent.
    does not resolve the blocker unless Paved says it does. Do not turn the diagnostic into
    an option or call `decision raise` to route around a decision Paved already emitted.
 8. After resuming, report Paved's resulting status and any remaining decisions or blockers.
+9. Before asking a question of your own, in the conversation or with `paved decision
+   raise`, triage it. If the answer is observable (current behavior, output, timing,
+   layout, whether a test fails), find it out by reading or running the code instead of
+   asking. Ask only about preferences: product, scope, priority or taste calls that no
+   experiment settles. Raise them with `"questionKind": "preference"`. When an
+   observable question genuinely cannot be observed (no access, no safe way to run it),
+   raise it with `"questionKind": "observable"` and an `"observationBlocker"` that says
+   why; Paved rejects an observable question without one. Triage covers only your own
+   questions: every decision Paved emits is still presented, and approvals stay human.
 
 ## Tools
 
@@ -79,6 +88,7 @@ answer source and resulting command status when reporting the interaction.
 - Every submitted answer and answering identity came from the user.
 - Human-authored approval requirements and blockers were relayed without agent edits.
 - The final Paved result and any remaining action were reported.
+- No question you asked yourself had an answer you could have observed.
 
 ## Failure modes
 
@@ -88,6 +98,7 @@ answer source and resulting command status when reporting the interaction.
 | Agent authors an approval | `answerChannel` is `human-authored` | Tell the user where the approval belongs; do not write it. |
 | Blocker is turned into a choice | No matching decision was emitted | Relay the diagnostic and its next action without raising a substitute. |
 | Independent decisions are serialized | No dependency connects them | Present the emitted decisions together. |
+| A fact is asked as a question | The answer could be read from the code or a run | Find it out, then ask only what remains a preference. |
 
 ## References
 

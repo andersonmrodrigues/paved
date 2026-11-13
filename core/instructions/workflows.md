@@ -34,6 +34,12 @@ to verify its citations and that nothing changed. Never edit source or test file
 an investigation; if the answer recommends a change, report it and start that change as a
 new intent once the user asks for it.
 
+Evidence you can gather yourself is not a question for the user. Whether the reported
+behavior happens today, what a command prints or whether a test fails are observable:
+read the code or run it, then classify or plan from what you saw. Ask, or raise a
+decision, only for preferences such as scope, priority or product direction
+(`AGENTS.md`, section 5). This never stands in for a decision Paved emits or an approval.
+
 ## Run autonomy
 
 At creation, `intent` and `execute "<request>"` accept
@@ -217,6 +223,19 @@ Keep the evidence of every attempt. When the limit is reached, the run fails as
   gaps say why.
 - **failed** or **blocked:** the evidence record is `incomplete` or `blocked`, and the
   run's failure says what happens next.
+
+**Reporting.** In the final summary you give the user, label each substantive claim by
+its basis, using the same knowledge states as Project Context:
+
+- **observed:** a check, test run, command output or file you read shows it. Name the
+  source: "the unit tests pass (observed: check `unit` in the evidence record)".
+- **inferred:** you reasoned your way to it and nothing ran to confirm it: "the timeout
+  was likely caused by the retry loop (inferred)". Say what would confirm it.
+- **unknown:** nobody established it. Say so plainly, as you would record a gap.
+
+A claim the evidence record supports is observed; anything you add beyond it is
+inferred or unknown until something observes it. Do not upgrade an inferred claim
+because it sounds likely, and do not drop a gap from the summary to make it read clean.
 
 ## Who does each phase
 

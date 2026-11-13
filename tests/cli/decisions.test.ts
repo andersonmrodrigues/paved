@@ -156,6 +156,13 @@ describe("human rendering of decisions", () => {
     assert.match(decisionLine, /\(optional\)/);
   });
 
+  it("says why an observable question reached the user", () => {
+    const observable = { ...projection, questionKind: "observable" as const, observationBlocker: "CI logs are not readable here." };
+    const text = renderHuman(createResult({ command: "verify", status: "awaiting_input", decisions: [observable] }));
+    assert.match(text, /could not be observed: CI logs are not readable here\./);
+    assert.doesNotMatch(renderHuman(createResult({ command: "verify", status: "awaiting_input", decisions: [projection] })), /could not be observed/);
+  });
+
   it("includes --run at the right position when the decision carries a runId", () => {
     const withRun = { ...projection, runId: "r-abc123" };
     const text = renderHuman(createResult({
@@ -325,6 +332,73 @@ describe("decision command", () => {
     assert.equal((await dispatchCli({
       argv: ["decision", "raise", "--decision", agentDecision({ evidence: [] }), "--project", project],
     })).status, "failed");
+  });
+
+  it("records a preference question's triage", async () => {
+    const project = commandWorkspace();
+    const raised = await dispatchCli({
+      argv: ["decision", "raise", "--decision", agentDecision({ questionKind: "preference" }), "--project", project],
+    });
+    assert.equal(raised.status, "success");
+    const id = (raised.data as { id: string }).id;
+    const shown = await dispatchCli({ argv: ["decision", "show", id, "--project", project] });
+    const decision = (shown.data as { decision: { question_kind?: string; observation_blocker?: string } }).decision;
+    assert.equal(decision.question_kind, "preference");
+    assert.equal(decision.observation_blocker, undefined);
+  });
+
+  it("refuses an observable question that does not say why it could not be observed", async () => {
+    const project = commandWorkspace();
+    for (const blocker of [undefined, "", "   ", 42]) {
+      const result = await dispatchCli({
+        argv: ["decision", "raise", "--decision", agentDecision({ questionKind: "observable", observationBlocker: blocker }), "--project", project],
+      });
+      assert.equal(result.status, "failed");
+      assert.equal(result.diagnostics[0]?.code, "PAVED_DECISION_OBSERVATION_REQUIRED");
+    }
+    const list = await dispatchCli({ argv: ["decision", "list", "--project", project] });
+    assert.deepEqual((list.data as { decisions: unknown[] }).decisions, []);
+  });
+
+  it("relays an observable question with its blocker", async () => {
+    const project = commandWorkspace();
+    const blocker = "The identity provider is only reachable from the production network.";
+    const raised = await dispatchCli({
+      argv: ["decision", "raise", "--decision", agentDecision({ questionKind: "observable", observationBlocker: ` ${blocker} ` }), "--project", project],
+    });
+    assert.equal(raised.status, "success");
+    const list = await dispatchCli({ argv: ["decision", "list", "--project", project] });
+    const [decision] = (list.data as { decisions: { questionKind?: string; observationBlocker?: string }[] }).decisions;
+    assert.equal(decision?.questionKind, "observable");
+    assert.equal(decision?.observationBlocker, blocker);
+  });
+
+  it("rejects an unknown question kind and a blocker on a preference", async () => {
+    const project = commandWorkspace();
+    const unknown = await dispatchCli({
+      argv: ["decision", "raise", "--decision", agentDecision({ questionKind: "factual" }), "--project", project],
+    });
+    assert.equal(unknown.diagnostics[0]?.code, "PAVED_DECISION_QUESTION_KIND_INVALID");
+    const misplaced = await dispatchCli({
+      argv: ["decision", "raise", "--decision", agentDecision({ questionKind: "preference", observationBlocker: "No access." }), "--project", project],
+    });
+    assert.equal(misplaced.diagnostics[0]?.code, "PAVED_DECISION_QUESTION_KIND_INVALID");
+  });
+
+  it("keeps a question's triage when the decision is revised", async () => {
+    const project = commandWorkspace();
+    const raised = await dispatchCli({
+      argv: ["decision", "raise", "--decision", agentDecision({ questionKind: "observable", observationBlocker: "No access to staging." }), "--project", project],
+    });
+    const id = (raised.data as { id: string }).id;
+    const revised = await dispatchCli({
+      argv: ["decision", "revise", id, "--reason", "Requirements changed.", "--project", project],
+    });
+    const successorId = (revised.data as { successorId: string }).successorId;
+    const successor = await dispatchCli({ argv: ["decision", "show", successorId, "--project", project] });
+    const decision = (successor.data as { decision: { question_kind?: string; observation_blocker?: string } }).decision;
+    assert.equal(decision.question_kind, "observable");
+    assert.equal(decision.observation_blocker, "No access to staging.");
   });
 
   it("shows a stored decision", async () => {

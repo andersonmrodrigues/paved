@@ -41,6 +41,16 @@ releases, not the development sequence used to build them.
   `paved status` findings when a guide covers features or entry points no longer in the
   feature map, misses user-visible features it does not defer, or was written from
   feature-map documents that have since changed.
+- Question triage. Agents classify each question of their own as `observable` (a fact
+  they can get by reading or running code) or `preference` (a product, scope, priority
+  or taste call), find out observable answers instead of asking, and ask the user only
+  about preferences. `paved decision raise` accepts optional `questionKind` and
+  `observationBlocker`; the Decision schema gains optional `question_kind` and
+  `observation_blocker`, and an observable question without a blocker is refused
+  (`PAVED_DECISION_OBSERVATION_REQUIRED`). Approvals and decisions Paved emits are
+  unchanged.
+- Final run summaries label each substantive claim as observed (naming its evidence),
+  inferred or unknown, reusing Project Context's knowledge states.
 
 ### Changed
 
@@ -61,6 +71,7 @@ releases, not the development sequence used to build them.
   review document and decision question show each finding's proof, and the
   `change-review` skill (`0.7.0`) pushes every candidate down that ladder and merges
   findings that share a root cause.
+- `decisions` skill 0.2.0: triage a question before asking it.
 
 ## [2.27.0] - 2026-11-13
 

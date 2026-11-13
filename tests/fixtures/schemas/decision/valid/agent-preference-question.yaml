@@ -1,0 +1,36 @@
+apiVersion: paved/v1
+kind: Decision
+id: d-0123456789abcdef0123
+scope: project
+command: decision
+category: material
+authored_by: agent
+question: Should the export include archived records?
+question_kind: preference
+reason: The request does not say whether archived records belong in the export.
+options:
+  - id: include
+    label: Include
+    description: Export archived records too.
+    consequence: The export grows and includes archived records.
+  - id: exclude
+    label: Exclude
+    description: Export active records only.
+    consequence: Archived records stay out of the export.
+evidence:
+  - type: file
+    location: src/export.ts
+    sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+required: true
+required_answer:
+  type: single-choice
+risk: low
+reversibility: reversible
+answer_channel: relayed
+effect: record-only
+status: PENDING
+fingerprint:
+  inputs:
+    - "src/export.ts@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+created_at: "2026-11-13T00:00:00.000Z"

@@ -50,7 +50,7 @@ All Core skills are `experimental`.
 | | `threat-modeling` | 0.1.1 | Find threats in a design before it is built |
 | `code-review` | `change-review` | 0.7.0 | Review a finished change across all dimensions |
 | `gardener` | `gardener` | 0.3.1 | Turn recurring corrections into structural improvements |
-| `decisions` | `decisions` | 0.1.1 | Relay Paved decisions without taking authorship from the user |
+| `decisions` | `decisions` | 0.2.0 | Relay Paved decisions without taking authorship from the user, and ask only what cannot be observed |
 | `product` | `task-specification` | 0.4.1 | Write new tracker items or fill in existing ones, grounded in the repository |
 | | `task-review` | 0.4.1 | Review an existing task or issue against the project's template and the repository |
 

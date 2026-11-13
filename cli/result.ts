@@ -31,6 +31,8 @@ export interface Diagnostic {
 export interface DecisionProjection {
   readonly id: string;
   readonly question: string;
+  readonly questionKind?: "observable" | "preference";
+  readonly observationBlocker?: string;
   readonly reason: string;
   readonly options: readonly {
     readonly id: string;

@@ -17,6 +17,7 @@ function fail(code, message, remediation) {
             })],
     });
 }
+const QUESTION_KINDS = ["observable", "preference"];
 function raise(invocation, raw) {
     let input;
     try {
@@ -47,6 +48,19 @@ function raise(invocation, raw) {
     if (evidence.length === 0) {
         return fail("PAVED_DECISION_EVIDENCE_REQUIRED", "An agent-raised decision must cite evidence.", "Supply at least one evidence entry.");
     }
+    // A fact the agent could find out by reading or running code is not a question for
+    // a person. An observable question is relayed only with the reason it was not observed.
+    if (input.questionKind !== undefined && !QUESTION_KINDS.includes(input.questionKind)) {
+        return fail("PAVED_DECISION_QUESTION_KIND_INVALID", "questionKind must be observable or preference.", "Classify the question as observable or preference, or omit questionKind.");
+    }
+    const questionKind = input.questionKind;
+    const observationBlocker = typeof input.observationBlocker === "string" ? input.observationBlocker.trim() : "";
+    if (input.observationBlocker !== undefined && questionKind !== "observable") {
+        return fail("PAVED_DECISION_QUESTION_KIND_INVALID", "observationBlocker applies only to an observable question.", "Set questionKind to observable, or omit observationBlocker.");
+    }
+    if (questionKind === "observable" && observationBlocker === "") {
+        return fail("PAVED_DECISION_OBSERVATION_REQUIRED", "An observable question must be answered by reading or running the code, not by asking.", "Find out the answer yourself, or supply observationBlocker explaining why it cannot be observed.");
+    }
     const question = String(input.question ?? "");
     const candidates = (Array.isArray(input.candidates) ? input.candidates : []).map(String);
     const run = typeof input.run === "string" ? input.run : undefined;
@@ -69,7 +83,10 @@ function raise(invocation, raw) {
         scope, command: decisionCommand,
         ...(run === undefined ? {} : { run }),
         category: "material", authored_by: "agent",
-        question, reason: input.reason,
+        question,
+        ...(questionKind === undefined ? {} : { question_kind: questionKind }),
+        ...(questionKind === "observable" ? { observation_blocker: observationBlocker } : {}),
+        reason: input.reason,
         options: input.options,
         evidence, required: input.required !== false,
         required_answer: input.requiredAnswer,
@@ -157,7 +174,10 @@ export function decisionHandler(invocation) {
             scope: decision.scope, command: decision.command,
             ...(decision.run === undefined ? {} : { run: decision.run }),
             category: decision.category, authored_by: decision.authored_by,
-            question: decision.question, reason: decision.reason,
+            question: decision.question,
+            ...(decision.question_kind === undefined ? {} : { question_kind: decision.question_kind }),
+            ...(decision.observation_blocker === undefined ? {} : { observation_blocker: decision.observation_blocker }),
+            reason: decision.reason,
             options: decision.options,
             ...(decision.recommended_option === undefined ? {} : { recommended_option: decision.recommended_option }),
             evidence: decision.evidence, required: decision.required,

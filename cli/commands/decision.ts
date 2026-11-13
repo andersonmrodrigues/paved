@@ -3,7 +3,7 @@ import type { CommandInvocation } from "../runtime.ts";
 import { AGENT_ASSIGNABLE_EFFECTS, tierFor, type EffectClass } from "../lib/decisions/effects.ts";
 import { fingerprintOf } from "../lib/decisions/fingerprint.ts";
 import { toProjection } from "../lib/decisions/gate.ts";
-import { decisionId, transition, type Decision } from "../lib/decisions/record.ts";
+import { decisionId, transition, type Decision, type QuestionKind } from "../lib/decisions/record.ts";
 import { listDecisions, readDecision, writeDecision } from "../lib/decisions/store.ts";
 import { acquireConsumerOperationLock } from "../lib/operation-lock.ts";
 import { runCommand } from "../lib/workflow-runs.ts";
@@ -24,7 +24,10 @@ interface RaiseInput {
   question?: unknown; reason?: unknown; options?: unknown; evidence?: unknown;
   required?: unknown; requiredAnswer?: unknown; effect?: unknown; candidates?: unknown;
   dependsOn?: unknown; authored_by?: unknown; category?: unknown; run?: unknown;
+  questionKind?: unknown; observationBlocker?: unknown;
 }
+
+const QUESTION_KINDS: readonly QuestionKind[] = ["observable", "preference"];
 
 function raise(invocation: CommandInvocation, raw: string): CommandResult {
   let input: RaiseInput;
@@ -54,6 +57,20 @@ function raise(invocation: CommandInvocation, raw: string): CommandResult {
     return fail("PAVED_DECISION_EVIDENCE_REQUIRED", "An agent-raised decision must cite evidence.", "Supply at least one evidence entry.");
   }
 
+  // A fact the agent could find out by reading or running code is not a question for
+  // a person. An observable question is relayed only with the reason it was not observed.
+  if (input.questionKind !== undefined && !QUESTION_KINDS.includes(input.questionKind as QuestionKind)) {
+    return fail("PAVED_DECISION_QUESTION_KIND_INVALID", "questionKind must be observable or preference.", "Classify the question as observable or preference, or omit questionKind.");
+  }
+  const questionKind = input.questionKind as QuestionKind | undefined;
+  const observationBlocker = typeof input.observationBlocker === "string" ? input.observationBlocker.trim() : "";
+  if (input.observationBlocker !== undefined && questionKind !== "observable") {
+    return fail("PAVED_DECISION_QUESTION_KIND_INVALID", "observationBlocker applies only to an observable question.", "Set questionKind to observable, or omit observationBlocker.");
+  }
+  if (questionKind === "observable" && observationBlocker === "") {
+    return fail("PAVED_DECISION_OBSERVATION_REQUIRED", "An observable question must be answered by reading or running the code, not by asking.", "Find out the answer yourself, or supply observationBlocker explaining why it cannot be observed.");
+  }
+
   const question = String(input.question ?? "");
   const candidates = (Array.isArray(input.candidates) ? input.candidates : []).map(String);
   const run = typeof input.run === "string" ? input.run : undefined;
@@ -75,7 +92,10 @@ function raise(invocation: CommandInvocation, raw: string): CommandResult {
     scope, command: decisionCommand,
     ...(run === undefined ? {} : { run }),
     category: "material", authored_by: "agent",
-    question, reason: input.reason,
+    question,
+    ...(questionKind === undefined ? {} : { question_kind: questionKind }),
+    ...(questionKind === "observable" ? { observation_blocker: observationBlocker } : {}),
+    reason: input.reason,
     options: input.options as Decision["options"],
     evidence, required: input.required !== false,
     required_answer: input.requiredAnswer as Decision["required_answer"],
@@ -160,7 +180,10 @@ export function decisionHandler(invocation: CommandInvocation): CommandResult {
       scope: decision.scope, command: decision.command,
       ...(decision.run === undefined ? {} : { run: decision.run }),
       category: decision.category, authored_by: decision.authored_by,
-      question: decision.question, reason: decision.reason,
+      question: decision.question,
+      ...(decision.question_kind === undefined ? {} : { question_kind: decision.question_kind }),
+      ...(decision.observation_blocker === undefined ? {} : { observation_blocker: decision.observation_blocker }),
+      reason: decision.reason,
       options: decision.options,
       ...(decision.recommended_option === undefined ? {} : { recommended_option: decision.recommended_option }),
       evidence: decision.evidence, required: decision.required,
