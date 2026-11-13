@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.27.0] - 2026-11-13
+
 ### Added
 
 - `infrastructure/aws` adapter. It detects AWS CDK, CloudFormation, SAM, Serverless
