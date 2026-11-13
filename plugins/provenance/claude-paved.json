@@ -12,13 +12,13 @@
     "package": "paved-core",
     "version": "2.27.0",
     "directory": "runtime/paved-core",
-    "integrity": "sha512-r7//IAabmQGZU78ZI690maGEreJdxhBiCwqnH3HDGQ6rbbd6F96l2wzPpulFoDwx9MdVQ68oe0oKXAr6QhhluA==",
-    "files": 344
+    "integrity": "sha512-Wg4NhbLSMQf99pAd3OwPQKrd4No8+wCUUf/3TaMEZZu28fR8MlySKCT5xOQZGfC8iyjufzKwg3Ct4OQ/+TrHHQ==",
+    "files": 345
   },
   "files": {
     ".claude-plugin/icon.png": "7329011229d8217f77bdb856691f0c1123b998d2d9c21c7be3201d59d043f409",
     ".claude-plugin/plugin.json": "aa589c0fbe2a47b46ac299f56878aaa66581d0164afa70bde25313fdd845133c",
-    "README.md": "a277351b78bc47062202331e87864e8fb22217c6e30b6495afa8a7a1c4ef3eea",
+    "README.md": "fc61148c46001f7f1313b9b013acc17b1c100150e670ec24f634e753458a907c",
     "VERSION": "fe4cdb1957a64adc109dc99a7734ed99a14af564af5b70ab8e6ee84b12ff96d4",
     "evals/README.md": "a7dd9ab77122ae9ec2e188b0802307376d038c1d4ab4aaefbdd39368f9466a4b",
     "evals/cases/ambiguous-request/case.yaml": "17d485d89564d79e5e2ecfb4633115c998c0cc87ef0598bdd04ad209d8975394",
@@ -188,6 +188,7 @@
     "runtime/paved-core/cli/commands/tool/README.md": "aa86a4ba0f42e0ecb57db55ba52c5d6b7d97b908509bdc73c032c4df80afb94c",
     "runtime/paved-core/cli/commands/update/README.md": "894ce0523c1ef8c3a069ab8d336963885876315747cb86da66fb84619858ce97",
     "runtime/paved-core/cli/commands/verify/README.md": "c920e6ac6c1e68ae8d6e772b9ee5d5ccd22c6881cede3f681ffc75fd859443fc",
+    "runtime/paved-core/cli/lib/generator-runtime.ts": "1746fdf07ed300a24506f0c8d195de5af4edb3b96cab3d181d862d236852f475",
     "runtime/paved-core/core/capabilities/registry.yaml": "16f5848c4f82909384fac7b8198399967fec23e227bea1a8ce83401a190926d3",
     "runtime/paved-core/core/instructions/AGENTS.md": "9d6f13943fb57beaed1eed29f910adf0ba01d4a9b6b1f0595f9f38f655142627",
     "runtime/paved-core/core/instructions/lifecycle.md": "f354100e297b1cbb90dde440011112989d9193677c34641d663ad5f4bb65de9b",
@@ -401,7 +402,7 @@
     "runtime/paved-core/schemas/workflow-run.schema.yaml": "e9dff12e8c1090a1027d2772bff48e2d4230c97e5281506236af4d9f037d004a",
     "runtime/paved-core/schemas/workflow.schema.yaml": "99c5296aa73d2bca17476237bb937e4c188e6fc9e265be21cb7d6145c46f1213",
     "scripts/auto-update.mjs": "cdec31e210b2e5a502b574d0532eed8e340112891c52a6b826a938bfc589e33a",
-    "scripts/bootstrap.json": "eff3728ffe477e480eec577d7c78a55834a5661eb5a32c3357dcf80b22176e19",
+    "scripts/bootstrap.json": "2bc26b8c5c6f219acbdc16df2f4223ce0a8d3b055f5cede74c291a13ac2e4de5",
     "scripts/paved.mjs": "02a96b31827a4538325f332f7023e6c171c498fa3cb12ddc1065c04307fbcdd3",
     "skills/app-verification/SKILL.md": "c0479d68b8645c50c9a83d78b20e0e3be7683119adcbaccb5ac34e3f4230edfc",
     "skills/app-verification/references/project-skill-layout.md": "a57c55118aaaeea721d203770e59f7ddee0863eae5b4a922e73b7896b86c3259",
