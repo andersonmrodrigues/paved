@@ -156,7 +156,17 @@ The agent passes the record with `paved execute --run <run-id> --auto --evidence
 (`PAVED_REVIEW_NOT_INDEPENDENT`) or when a digest differs from the run's current state
 (`PAVED_REVIEW_STALE`), so a review of an older change cannot close the run. Isolation
 is declared by the agent; like plan approval, it rests on the agent following the
-instruction. Notes are listed in the review document. Blocking findings become a run
+instruction.
+
+Each finding may carry a `proof` with the level the reviewer reached: `asserted`,
+`cited`, `reasoned`, `executed` (a command running the real code shows the defect) or
+`reproduced` (shown in the running system). A blocking finding needs `executed` or
+`reproduced`, with the command and the SHA-256 of its captured output; otherwise Paved
+refuses the record (`PAVED_REVIEW_FINDING_UNPROVEN`) and the reviewer proves the finding
+or records it as a note. A record the user already decided on keeps that decision. Paved
+does not re-run the command; the digest ties the claim to one captured output for a
+person to check. Notes, at any level, are listed with their proof in the review
+document. Blocking findings become a run
 decision: `fix` reopens implementation, and the fix runs through tests, verification,
 evidence and a new review; `accept` completes the run with the findings on record as
 accepted by the user.

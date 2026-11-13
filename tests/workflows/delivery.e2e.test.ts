@@ -97,7 +97,7 @@ async function inReview(root: string): Promise<{ id: string; invoke: (...argv: s
   return { id, invoke, stopped: delivered };
 }
 
-interface Finding { severity: "blocking" | "note"; file: string; line?: number; summary: string }
+interface Finding { severity: "blocking" | "note"; file: string; line?: number; summary: string; proof?: { level: string; command?: string; output_sha256?: string } }
 
 /** Writes what an isolated reviewer would for the run's current state, from the review block Paved returned. */
 function writeFindings(root: string, id: string, stopped: CommandResult, findings: Finding[] = [], isolated = true): string {
@@ -494,7 +494,10 @@ describe("refactor baseline", () => {
 });
 
 describe("independent review", () => {
-  const blocking: Finding = { severity: "blocking", file: "feature.js", line: 1, summary: "The flag is exported as a string elsewhere." };
+  const blocking: Finding = {
+    severity: "blocking", file: "feature.js", line: 1, summary: "The flag is exported as a string elsewhere.",
+    proof: { level: "executed", command: "node check.mjs", output_sha256: "b".repeat(64) },
+  };
 
   it("needs findings from a separate reviewer and hands it a brief with the current digests", async () => {
     const root = project();
@@ -533,6 +536,21 @@ describe("independent review", () => {
     assert.match(stale.diagnostics[0]!.message, /different source/);
   });
 
+  it("refuses a blocking finding that was not executed or reproduced", async () => {
+    const root = project();
+    const { id, invoke, stopped } = await inReview(root);
+    const brief = readFileSync(join(root, (stopped.data as { review: { independent: { brief: string } } }).review.independent.brief), "utf8");
+    assert.match(brief, /Only an executed or reproduced finding may be blocking/);
+
+    const asserted = await invoke("execute", "--run", id, "--auto", "--evidence", writeFindings(root, id, stopped, [{ ...blocking, proof: { level: "cited" } }]));
+
+    assert.equal(asserted.diagnostics[0]?.code, "PAVED_REVIEW_FINDING_UNPROVEN", JSON.stringify(asserted));
+    assert.equal(runState(root, id).phases.find((phase) => phase.phase === "review")?.status, "running");
+    const demoted = await invoke("execute", "--run", id, "--auto", "--evidence", writeFindings(root, id, stopped, [{ ...blocking, severity: "note", proof: { level: "cited" } }]));
+    assert.equal(demoted.status, "success", JSON.stringify(demoted));
+    assert.equal(runState(root, id).status, "completed");
+  });
+
   it("completes on accepted blocking findings and keeps them on record", async () => {
     const root = project();
     const { id, invoke, stopped } = await inReview(root);
@@ -542,7 +560,7 @@ describe("independent review", () => {
     assert.equal(asked.status, "awaiting_input", JSON.stringify(asked));
     assert.match(asked.decisions![0]!.question, /1 blocking finding\./);
     const document = readFileSync(join(root, `.paved/generated/reviews/${id}.md`), "utf8");
-    assert.match(document, /\*\*blocking\*\* `feature\.js:1`/);
+    assert.match(document, /\*\*blocking\*\* `feature\.js:1` \(executed: `node check\.mjs`\)/);
     assert.match(document, /\*\*note\*\* `feature\.js`: Name differs/);
 
     await invoke("execute", "--run", id, "--auto", "--evidence", record, "--answer", `${asked.decisions![0]!.id}=accept`, "--answered-by", "owner@example.com");

@@ -44,5 +44,37 @@ properties:
         file: { type: string, minLength: 1 }
         line: { type: integer, minimum: 1 }
         summary: { type: string, minLength: 1, maxLength: 2000 }
+        proof: { $ref: "#/$defs/proof" }
 $defs:
   sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+  proof:
+    type: object
+    description: >-
+      How far the reviewer took the finding. The review gate counts a blocking finding only
+      when it was executed or reproduced; anything weaker is a note.
+    additionalProperties: false
+    required: [level]
+    properties:
+      level:
+        description: >-
+          asserted: stated; cited: points at the code or library source; reasoned: the
+          failure walked step by step; executed: a command running the real code shows it;
+          reproduced: shown in the running application or system.
+        enum: [asserted, cited, reasoned, executed, reproduced]
+      command:
+        description: The command that shows the defect, as the reviewer ran it.
+        type: string
+        minLength: 1
+        maxLength: 2000
+      output_sha256:
+        description: SHA-256 of the command's captured output.
+        $ref: "#/$defs/sha256"
+      expected:
+        description: What the intent requires instead.
+        type: string
+        minLength: 1
+        maxLength: 500
+    if:
+      properties: { level: { enum: [executed, reproduced] } }
+    then:
+      required: [command, output_sha256]
