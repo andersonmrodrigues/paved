@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.28.0] - 2026-11-13
+
 ### Added
 
 - `investigation` workflow (read-only) for questions about the code. Discovery ends with
