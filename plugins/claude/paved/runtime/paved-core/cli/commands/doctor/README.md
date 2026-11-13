@@ -8,6 +8,8 @@ read-only; it does not repair files or run verification checks.
 - The selected project root.
 - `.paved/manifest.yaml`, `.paved/paved.lock`, generated provenance, generator
   state, pending proposals/conflicts and verification profile state.
+- The frontmatter of `.paved/skills/verify-*/references/features.md` and
+  `.paved/project/feature-map/`.
 - Local Core schemas, manifest, adapters and capability registry.
 
 ## Supported flags
@@ -24,8 +26,11 @@ read-only; it does not repair files or run verification checks.
 `doctor` reports diagnostics for uninitialized consumers, invalid manifest/lock
 documents, Core version/digest mismatch, unavailable or undetected adapters,
 adapter digest drift, ambiguous capabilities, missing verification profile,
-pending proposals, generator conflicts, tampered generated provenance and missing
-required consumer-layout paths.
+pending proposals, generator conflicts, tampered generated provenance, missing
+required consumer-layout paths, and drift between an app verification guide's
+`VerificationGuide` frontmatter and the feature map (`PAVED_VERIFICATION_GUIDE_*`:
+covered features or entry points no longer in the map, user-visible features neither
+covered nor deferred, changed source digests).
 
 Diagnostics include stable codes, severity, category, component and remediation
 when available. Document contents and secret values are not printed.

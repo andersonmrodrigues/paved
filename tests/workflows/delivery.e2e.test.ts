@@ -86,6 +86,7 @@ async function approvedRun(root: string, plan = "docs/plan.md", autonomy?: strin
 
 const runState = (root: string, id: string) => parse(readFileSync(join(root, ".paved/generated/runs", `${id}.yaml`), "utf8")) as {
   status: string; revision: string; evidence?: string; phases: { phase: string; status: string; attempts?: number }[];
+  events: { type: string; phase?: string; detail?: string }[];
 };
 
 /** An approved run whose change is implemented, verified and recorded, waiting for its review. */
@@ -97,7 +98,7 @@ async function inReview(root: string): Promise<{ id: string; invoke: (...argv: s
   return { id, invoke, stopped: delivered };
 }
 
-interface Finding { severity: "blocking" | "note"; file: string; line?: number; summary: string; proof?: { level: string; command?: string; output_sha256?: string } }
+interface Finding { severity: "blocking" | "note"; file: string; line?: number; summary: string; proof?: { level: string; command?: string; output_sha256?: string }; rule?: string }
 
 /** Writes what an isolated reviewer would for the run's current state, from the review block Paved returned. */
 function writeFindings(root: string, id: string, stopped: CommandResult, findings: Finding[] = [], isolated = true): string {
@@ -573,10 +574,13 @@ describe("independent review", () => {
   it("sends a fix back through implementation, verification and a new review", async () => {
     const root = project();
     const { id, invoke, stopped } = await inReview(root);
-    const record = writeFindings(root, id, stopped, [blocking]);
+    const record = writeFindings(root, id, stopped, [{ ...blocking, rule: "core.architecture.follow-existing-patterns" }]);
     const asked = await invoke("execute", "--run", id, "--auto", "--evidence", record);
 
     const reopened = await invoke("execute", "--run", id, "--auto", "--evidence", record, "--answer", `${asked.decisions![0]!.id}=fix`, "--answered-by", "owner@example.com");
+    // The next review overwrites the findings file, so the fix and the rule it concerned stay on the run.
+    const fixed = runState(root, id).events.findLast((event) => event.phase === "review" && event.type === "evidence-recorded");
+    assert.match(fixed?.detail ?? "", /blocking=1 \(fix\); notes=0; rules=core\.architecture\.follow-existing-patterns$/);
 
     assert.equal((reopened.data as { currentPhase: string }).currentPhase, "implementation", JSON.stringify(reopened));
     for (const later of ["validation", "verification", "evidence", "review"]) {

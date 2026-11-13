@@ -33,9 +33,25 @@ context, requires the `runtime` check and `check-result` evidence, and lists
 `references/features.md` in `references`. Include optional tool ids only when the
 project actually configures compatible implementations.
 
-`references/features.md` begins with the verification status (`ready` or `draft`), safe
-launch preconditions and cleanup boundary. For each feature, include exactly these
-headings in order:
+`references/features.md` starts with YAML frontmatter that validates against
+`schemas/verification-guide.schema.yaml`:
+
+- `apiVersion` and `kind`, as the schema requires.
+- `status`: `draft` or `ready`.
+- `features`: each covered feature-map `id`, with the `entrypoints` it covers, named as
+  in that feature's `code.entrypoints`.
+- `deferred`: user-visible feature-map ids knowingly left for later.
+- `sources`: each feature-map document the guide was written from, as `location` and
+  the `sha256` of the file when the guide was last checked.
+
+List every user-visible feature-map entry (one with a `ui`, `http` or `cli` entry point)
+under `features` or `deferred`. `paved doctor` reports covered features or entry points
+missing from the feature map, user-visible features in neither list, and sources whose
+digest changed.
+
+The body begins with the verification status (`ready` or `draft`), safe launch
+preconditions and cleanup boundary. For each feature, include exactly these headings in
+order:
 
 1. `Sub-features` — concise user-visible behaviors covered.
 2. `How to get to it (user POV)` — every known user entry point.

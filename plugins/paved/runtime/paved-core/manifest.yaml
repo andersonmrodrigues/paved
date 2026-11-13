@@ -41,6 +41,7 @@ schemas:
   PerformanceMeasurement: schemas/performance-measurement.schema.yaml
   AutoUpdateConfig: schemas/auto-update-config.schema.yaml
   AutoUpdateState: schemas/auto-update-state.schema.yaml
+  VerificationGuide: schemas/verification-guide.schema.yaml
 
 # Schemas that define shared structures, not a document kind.
 schema_definitions:

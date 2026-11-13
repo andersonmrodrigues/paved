@@ -51,6 +51,11 @@ If the repository has no such interface, explain that and stop.
 4. Mark each claim in the feature map as `observed` only when supported by source or
    documentation; otherwise leave it unknown. For launch and interaction instructions,
    distinguish commands found in project configuration from behavior actually exercised.
+   Record the guide's coverage in the frontmatter of `references/features.md`
+   (`schemas/verification-guide.schema.yaml`): the feature-map ids and entry points it covers, user-visible
+   features knowingly `deferred`, and the SHA-256 of each feature-map document it was
+   written from. `paved doctor` compares that frontmatter with the feature map and reports
+   drift; it never rewrites the guide.
 5. If an existing configured check or Tool can safely exercise the app, verify one
    representative feature end to end, capture its result and clean up only resources
    this run created. Do not change application code to make the guide pass. If no usable
@@ -99,7 +104,7 @@ capability instead of claiming a pass.
 |---|---|---|
 | Guessed instructions | A command or route has no source in project files or configuration | Remove it or ask the user |
 | No safe runtime path | No configured check or Tool can exercise the interface | Leave a draft and name the missing harness |
-| Stale guide | A documented path no longer matches the source | Update only that claim and recheck it |
+| Stale guide | A documented path no longer matches the source, or `paved doctor` reports `PAVED_VERIFICATION_GUIDE_*` | Update only that claim, recheck it and record the new digests |
 | Shared or sensitive state | A run would use production or personal data | Stop; ask for a safe local or ephemeral environment |
 
 ## References

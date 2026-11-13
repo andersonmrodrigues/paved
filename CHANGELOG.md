@@ -26,6 +26,21 @@ releases, not the development sequence used to build them.
   `performance` and `investigation`.
 - Quality and runtime check: a workflow without an `implementation` phase may reach only
   read-only Tools, directly or through its skills.
+- `paved gardener` reads human corrections already recorded in workflow runs: plans a
+  person rejected and blocking review findings a person sent back to implementation.
+  They become `correction` observations with the run record as provenance. Review
+  findings may name the `rule` they break; when a person chooses to fix them, the run
+  keeps the cited rules.
+- Gardener proposals for a rule combine its violations and corrections. A rule enforced
+  only by the agent or a reviewer with two or more such items is flagged as a promotion
+  candidate (`rule_enforcement`) with a stronger recommended layer. Proposals that
+  recommend architecture, static analysis or verification carry an
+  `adoption_requirement`: the new check must be shown failing on a fixture reproducing a
+  recorded mistake before it is adopted.
+- `VerificationGuide` frontmatter for app verification guides, and `paved doctor` /
+  `paved status` findings when a guide covers features or entry points no longer in the
+  feature map, misses user-visible features it does not defer, or was written from
+  feature-map documents that have since changed.
 
 ### Changed
 

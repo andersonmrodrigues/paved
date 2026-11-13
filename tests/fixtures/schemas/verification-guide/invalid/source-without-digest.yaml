@@ -1,0 +1,8 @@
+# expect-error: must have required property 'sha256'
+apiVersion: paved/v1
+kind: VerificationGuide
+status: ready
+features:
+  - id: checkout
+sources:
+  - { location: .paved/project/feature-map/checkout.yaml }

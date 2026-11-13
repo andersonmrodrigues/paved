@@ -117,9 +117,9 @@ Any fix made during review is verified like any other change.
 
 ## Evidence
 
-In a Paved workflow, a review record at
-`.paved/generated/reviews/<run-id>-findings.yaml`, in the format the brief shows: the
-reviewer, the digests it read, the passes it ran and each finding, `blocking` or `note`, with its `proof`.
+In a Paved workflow, a review record at `.paved/generated/reviews/<run-id>-findings.yaml`
+in the brief's format: the reviewer, the digests it read, the passes it ran and each finding,
+`blocking` or `note`, with its `proof` and the in-scope `rule` it breaks, if any.
 Blocking findings go to the user, who decides to fix them (implementation reopens, and the
 fix is tested, verified and reviewed again) or to accept them on record. Outside a workflow,
 report the same content in the conversation. The review supports no claim; it prepares the

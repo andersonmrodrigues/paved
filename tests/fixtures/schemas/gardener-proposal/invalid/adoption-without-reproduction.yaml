@@ -1,0 +1,28 @@
+# expect-error: must NOT have fewer than 1 items
+apiVersion: paved/v1
+kind: GardenerProposal
+id: proposal-1123456789abcdef0123
+scope: { consumer: sample, target: consumer }
+status: CANDIDATE
+problem: Rule project.architecture.single-http-client was violated or corrected in 2 distinct evidence items.
+observation: observation-0123456789abcdef0123
+evidence:
+  - { record: .paved/generated/evidence/one.yaml, item: project.architecture.single-http-client }
+  - { record: .paved/generated/runs/intent-0123456789abcdef0123.yaml, item: 'review-fix:0123456789abcdef0123' }
+evidence_sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+root_cause: The rule relies on the agent's self-check; the design cause is unknown.
+root_cause_state: unknown
+recommended_layer: static-analysis
+layer_rationale: The rule is enforced only by the agent; promote it to a stronger layer.
+proposed_change: Add a static check for the rule.
+expected_impact: The recorded mistake is caught before review.
+affected_components: [project.architecture.single-http-client]
+uncertainty: The records do not prove a static check can detect the rule.
+provenance:
+  sources:
+    - { type: file, location: .paved/generated/evidence/one.yaml, sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }
+    - { type: file, location: .paved/generated/runs/intent-0123456789abcdef0123.yaml, sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }
+adoption_requirement:
+  condition: fails-on-recorded-mistake
+  statement: Show the new check failing on the recorded mistake.
+  reproduces: []

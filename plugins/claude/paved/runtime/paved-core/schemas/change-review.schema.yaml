@@ -45,6 +45,9 @@ properties:
         line: { type: integer, minimum: 1 }
         summary: { type: string, minLength: 1, maxLength: 2000 }
         proof: { $ref: "#/$defs/proof" }
+        rule:
+          description: The in-scope rule the finding shows broken, when it breaks one.
+          $ref: "urn:paved:schema:common:v1#/$defs/ruleRef"
 $defs:
   sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
   proof:

@@ -1,0 +1,47 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:verification-guide:v1
+title: Paved app verification guide coverage
+description: >
+  Frontmatter of the feature list of a project-local app verification guide
+  (.paved/skills/verify-<slug>/references/features.md). It records which feature-map
+  entries the guide covers and the feature-map documents it was written from, so
+  `paved doctor` can report drift between the guide and the feature map without reading
+  the guide's prose. The guide stays project-owned; Paved never rewrites it.
+type: object
+additionalProperties: false
+required: [apiVersion, kind, status, features, sources]
+properties:
+  apiVersion: { $ref: "urn:paved:schema:common:v1#/$defs/apiVersion" }
+  kind: { const: VerificationGuide }
+  status:
+    description: "`ready` once one configured runtime check passed with an artifact; `draft` otherwise."
+    enum: [draft, ready]
+  features:
+    description: Feature-map entries the guide covers, by feature id.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+        entrypoints:
+          description: Entry point names from the feature's `code.entrypoints` that the guide drives (a route, a command).
+          type: array
+          uniqueItems: true
+          items: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  deferred:
+    description: User-visible feature-map entries knowingly left out of the guide for now.
+    type: array
+    uniqueItems: true
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
+  sources:
+    description: Feature-map documents the guide was written from, with their SHA-256 when it was last updated.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [location, sha256]
+      properties:
+        location: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+        sha256: { $ref: "urn:paved:schema:common:v1#/$defs/sha256" }

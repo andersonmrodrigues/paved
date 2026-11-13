@@ -32,6 +32,39 @@ properties:
   affected_components: { type: array, items: { type: string } }
   uncertainty: { type: string }
   provenance: { $ref: 'urn:paved:schema:gardener-observation:v1#/$defs/provenance' }
+  related_observations:
+    description: Other observations of the same subject whose evidence this proposal also cites, such as human corrections of a violated rule.
+    type: array
+    uniqueItems: true
+    items: { type: string, pattern: '^observation-[a-f0-9]{20}$' }
+  rule_enforcement:
+    description: How the rule the proposal concerns is enforced today, read from its definition.
+    type: object
+    additionalProperties: false
+    required: [rule, mechanism]
+    properties:
+      rule: { $ref: 'urn:paved:schema:common:v1#/$defs/ruleRef' }
+      mechanism: { enum: [automated, agent, review] }
+      layer: { enum: [architecture, static-analysis, ci, rule, skill, documentation] }
+      promotion_candidate:
+        description: True when the rule relies on the agent or a reviewer and the recorded mistakes call for a stronger layer.
+        type: boolean
+  adoption_requirement:
+    description: >-
+      What a check or structural change proposed here must show before it is adopted: that it
+      fails on a fixture reproducing one of the recorded mistakes, and passes once that mistake
+      is corrected.
+    type: object
+    additionalProperties: false
+    required: [condition, statement, reproduces]
+    properties:
+      condition: { const: fails-on-recorded-mistake }
+      statement: { type: string, minLength: 1 }
+      reproduces:
+        description: The recorded evidence items a reproducing fixture is taken from.
+        type: array
+        minItems: 1
+        items: { $ref: 'urn:paved:schema:gardener-observation:v1#/$defs/evidenceRef' }
   review:
     type: object
     additionalProperties: false

@@ -1,0 +1,11 @@
+apiVersion: paved/v1
+kind: VerificationGuide
+status: draft
+features:
+  - id: checkout
+    entrypoints: [/checkout]
+  - id: sign-in
+deferred: [admin-reports]
+sources:
+  - { location: .paved/project/feature-map/checkout.yaml, sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa }
+  - { location: .paved/project/feature-map/sign-in.yaml, sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa }

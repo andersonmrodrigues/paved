@@ -36,10 +36,18 @@ Agent mistake ──► Human correction ──► Recurring? ──no──► 
 
 ## Promotion
 
-Rules record `enforcement.layer`. A rule at layer `rule`, `skill` or `documentation` that
-keeps being violated is a promotion candidate: ask again whether static analysis or CI
-could enforce it. Promotion changes the rule's `enforcement` and adds the check to the
-project's verification profile.
+Rules record `enforcement.mechanism` and `enforcement.layer`. A rule enforced only by the
+`agent` or by `review`, or held at layer `rule`, `skill` or `documentation`, that keeps
+being violated or corrected by a person (two or more distinct evidence items) is a
+promotion candidate: ask again whether architecture, static analysis, or a test or CI
+check could enforce it. `paved gardener` marks these proposals with
+`rule_enforcement.promotion_candidate`. Promotion changes the rule's `enforcement` and
+adds the check to the project's verification profile.
+
+Before a new check is adopted, show it failing on a fixture that reproduces one of the
+recorded mistakes, then passing once the mistake is corrected. A check never seen failing
+on a real mistake proves nothing about preventing it. Proposals carry this as
+`adoption_requirement`.
 
 ## What the Gardener does not do
 

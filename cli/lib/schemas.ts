@@ -66,6 +66,7 @@ const KIND_TO_SCHEMA: Readonly<Record<string, string>> = {
   PerformanceMeasurement: "urn:paved:schema:performance-measurement:v1",
   AutoUpdateConfig: "urn:paved:schema:auto-update-config:v1",
   AutoUpdateState: "urn:paved:schema:auto-update-state:v1",
+  VerificationGuide: "urn:paved:schema:verification-guide:v1",
 };
 
 export function schemaIdForKind(kind: string): string | undefined {
