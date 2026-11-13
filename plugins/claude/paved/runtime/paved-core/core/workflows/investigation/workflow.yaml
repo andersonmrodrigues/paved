@@ -1,0 +1,100 @@
+apiVersion: paved/v1
+kind: Workflow
+id: core.investigation
+title: Investigation
+description: >-
+  Answers a question about the code with cited claims and changes nothing. Use when the
+  user asks how something works, why it is built the way it is, or whether a statement
+  about the code holds, and wants an answer rather than a change.
+version: 0.1.0
+status: experimental
+change_type: investigation
+inputs:
+  - id: question
+    description: The question about the code, as the user asked it.
+    required: true
+  - id: scope
+    description: Paths, components or history the answer should stay within.
+    required: false
+context:
+  required: []
+  optional: [manifest, feature-map, architecture, technology, rules, verification]
+rules: [core.quality.unknowns-stay-unknown]
+tool_policies:
+  - id: read-only
+    allow: []
+    ask: []
+    deny:
+      - core.testing.run
+      - core.testing.targeted
+      - core.testing.smoke
+      - core.runtime.start
+      - core.runtime.stop
+      - core.runtime.reset
+      - core.browser.interact
+      - core.infrastructure.apply
+phases:
+  - phase: context
+    goal: Restate the question, what a complete answer covers and what is out of scope.
+    routing:
+      mode: primary
+      capacity: balanced
+      reasoning_effort: low
+      rationale: "Restating the question needs the conversation, which only the primary session holds, and it is short work."
+    skills: [core.discovery.context-discovery]
+    tool_policies: [read-only]
+    gates:
+      - id: question-clear
+        condition: The question is one the repository, its history or its tools can answer, and its scope is stated.
+  - phase: discovery
+    goal: Read the code and history that answer the question and write the cited answer.
+    routing:
+      mode: subagent
+      capacity: balanced
+      reasoning_effort: medium
+      rationale: "Reading is search-heavy and its file contents belong in a separate context; the answer needs judgment, so a balanced model returns cited findings."
+    tool_policies: [read-only]
+    fragments:
+      - id: core.fragment.context-discovery
+        with:
+          subject: the code, configuration and commits that decide the answer
+    gates:
+      - id: answer-cited
+        condition: Every claim in the answer is labeled observed, inferred or unknown, and every observed or inferred claim cites a file and line, a commit or a command.
+  - phase: verification
+    goal: Confirm the citations still resolve and that nothing in the source changed during the run.
+    routing:
+      mode: cli
+      capacity: economy
+      reasoning_effort: low
+      rationale: "Paved resolves the citations and compares the source digest; the agent relays the result."
+    tool_policies: [read-only]
+    gates:
+      - id: read-only
+        condition: No source or test file changed between the start of the run and verification.
+  - phase: evidence
+    goal: Record the answer and its digest as the run's evidence.
+    routing:
+      mode: cli
+      capacity: economy
+      reasoning_effort: low
+      rationale: "Paved records the verified answer."
+    tool_policies: [read-only]
+  - phase: completion
+    goal: Report the answer and any recommended change, which needs its own run.
+    routing:
+      mode: cli
+      capacity: economy
+      reasoning_effort: low
+      rationale: "Paved confirms the recorded gates and evidence."
+    tool_policies: [read-only]
+    gates:
+      - id: criteria-met
+        condition: The answer is recorded, its citations resolve and the source is unchanged.
+evidence:
+  required: []
+outputs: [evidence, follow-up]
+completion:
+  criteria:
+    - The question stated in context is answered, or the answer says which part stays unknown and why.
+    - A change the answer recommends is named as a follow-up for a new run, never made in this one.

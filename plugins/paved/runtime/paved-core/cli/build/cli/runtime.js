@@ -116,7 +116,7 @@ function commandUsage(command) {
         if (command === "preview")
             commandOptions.push("  --reply <text>   With resolve, tell the reviewer what changed.");
         if (command === "intent" || command === "execute")
-            commandOptions.push("  --workflow <feature|bug|refactor> --because <evidence>  Classify the request.", "  --recommend <workflow> --because <evidence>  Suggest a workflow and let the user decide.", "  --part <request>  Propose one part of a split; repeat per part.", "  --input <id>=<value>  Supply another declared workflow input; repeatable.", "  --autonomy <guided|balanced|autonomous>  Select a profile for the new run; fixed on resume.");
+            commandOptions.push("  --workflow <feature|bug|refactor|performance|investigation> --because <evidence>  Classify the request.", "  --recommend <workflow> --because <evidence>  Suggest a workflow and let the user decide.", "  --part <request>  Propose one part of a split; repeat per part.", "  --input <id>=<value>  Supply another declared workflow input; repeatable.", "  --autonomy <guided|balanced|autonomous>  Select a profile for the new run; fixed on resume.");
         if (STEP_COMMANDS.includes(command))
             commandOptions.push("  --host-tool-approval <id>  Acknowledge the exact suspended Tool invocation after host mediation; grants no host permission.");
         if (STEP_COMMANDS.includes(command))

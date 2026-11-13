@@ -5,7 +5,7 @@ import { atomicWriteFileSync } from "./atomic-write.js";
 import { loadMarkdown, loadYaml } from "./documents.js";
 import { resolveSafePath } from "./safe-path.js";
 import { createRegistry } from "./schemas.js";
-import { assessWorkflowToolPolicies, assessRun, resolveWorkflowFragments } from "./workflows.js";
+import { assessReadOnlyTools, assessWorkflowToolPolicies, assessRun, isReadOnly, resolveWorkflowFragments } from "./workflows.js";
 import { indexArtifacts, resolveReferences } from "./references.js";
 /** `failed` is not terminal: a failed phase may be retried. */
 export const TERMINAL_STATUSES = new Set(["completed", "completed-with-warnings", "blocked", "cancelled"]);
@@ -102,7 +102,8 @@ export function loadContract(coreRoot, workflowId) {
     if (resolved.problems.length)
         throw new Error(`Workflow ${workflowId} has invalid fragments: ${resolved.problems.join("; ")}`);
     const workflow = { ...contract, phases: resolved.phases };
-    if ((workflow.tool_policies?.length ?? 0) > 0 || workflow.phases.some((phase) => (phase.tool_policies?.length ?? 0) > 0)) {
+    const policies = (workflow.tool_policies?.length ?? 0) > 0 || workflow.phases.some((phase) => (phase.tool_policies?.length ?? 0) > 0);
+    if (policies || isReadOnly(workflow)) {
         const dependencies = loadWorkflowDependencies(coreRoot);
         const skills = new Map(dependencies.filter(({ document }) => document.kind === "Skill")
             .map(({ document }) => [String(document.id), document]));
@@ -111,6 +112,9 @@ export function loadContract(coreRoot, workflowId) {
         const problems = assessWorkflowToolPolicies(workflow, { skills, toolSafety });
         if (problems.length)
             throw new WorkflowToolPolicyError(`Workflow ${workflowId} has invalid tool policies: ${problems.join("; ")}`);
+        const writing = assessReadOnlyTools(workflow, { skills, toolSafety });
+        if (writing.length)
+            throw new WorkflowToolPolicyError(`Workflow ${workflowId} must stay read-only: ${writing.join("; ")}`);
     }
     return workflow;
 }

@@ -27,7 +27,7 @@ const COMMAND_DEFINITIONS = [
     },
     {
         id: "paved.intent", name: "intent", group: "development",
-        description: "Start a repository change by classifying its type and recording the request before planning. Use when the user asks to begin a feature, bug fix or refactor.",
+        description: "Start a repository change by classifying its type and recording the request before planning. Use when the user asks to begin a feature, bug fix, refactor or performance improvement, or asks a question about the code that needs a cited answer.",
         input: { required: true, description: "The user's request, verbatim; classify with --workflow <id> --because <evidence>, or let the user decide." },
         output: "The run, its Intent document, its classification or the decision that settles it, and context and discovery results.",
         requiredContext: [".paved/manifest.yaml", ".paved/project/", ".paved/rules/", "core workflows"],

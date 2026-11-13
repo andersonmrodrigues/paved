@@ -38,6 +38,7 @@ schemas:
   AgentIntegration: schemas/agent-integration.schema.yaml
   PreviewReview: schemas/preview-review.schema.yaml
   ChangeReview: schemas/change-review.schema.yaml
+  PerformanceMeasurement: schemas/performance-measurement.schema.yaml
   AutoUpdateConfig: schemas/auto-update-config.schema.yaml
   AutoUpdateState: schemas/auto-update-state.schema.yaml
 

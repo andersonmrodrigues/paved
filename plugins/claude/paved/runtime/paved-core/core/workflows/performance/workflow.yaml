@@ -1,0 +1,125 @@
+apiVersion: paved/v1
+kind: Workflow
+id: core.performance
+title: Performance
+description: >-
+  Improves a measured metric (latency, throughput, memory, CPU, I/O or cost) without
+  changing behavior, from a recorded baseline to a repeated after measurement. Use when
+  the user reports measured slowness or asks to improve a metric, and the claim must be
+  backed by numbers.
+version: 0.1.0
+status: experimental
+change_type: performance
+inputs:
+  - id: request
+    description: What is slow or which metric should improve, and where it was observed.
+    required: true
+  - id: target
+    description: The value or budget the metric should reach.
+    required: false
+  - id: workload
+    description: The input and load under which the metric matters.
+    required: false
+context:
+  required: []
+  optional: [architecture, integrations, verification, tools]
+rules: [core.performance.measure-before-optimizing]
+phases:
+  - phase: context
+    goal: State the metric, its direction, the workload it matters under and the target.
+    routing:
+      mode: primary
+      capacity: balanced
+      reasoning_effort: low
+      rationale: "Restating the request needs the conversation, which only the primary session holds, and it is short work."
+    skills: [core.discovery.context-discovery]
+  - phase: discovery
+    goal: Measure the baseline with repeated runs before any change, profile it and form one hypothesis.
+    routing:
+      mode: primary
+      capacity: balanced
+      reasoning_effort: medium
+      rationale: "Measuring runs the project's own commands and the hypothesis needs judgment over the profile; the primary session keeps the numbers the plan is built on."
+    skills: [core.performance.profiling]
+    gates:
+      - id: baseline-measured
+        condition: A baseline with at least three samples, its method and its limits was recorded while the source was unchanged.
+      - id: hypothesis-stated
+        condition: The baseline names the one cause the profile points to and the change expected to improve it.
+  - phase: planning
+    goal: Plan the change that tests the hypothesis and how behavior stays the same.
+    routing:
+      mode: primary
+      capacity: frontier
+      reasoning_effort: high
+      rationale: "The plan is what the user approves; it needs the whole conversation and the strongest reasoning available."
+    skills: [core.performance.backend-performance, core.performance.frontend-performance]
+    gates:
+      - id: plan-approved
+        condition: A human approved the performance plan before implementation.
+        approval: implementation-plan
+  - phase: implementation
+    goal: Make the planned change, then measure again with the baseline's method.
+    routing:
+      mode: primary
+      capacity: balanced
+      reasoning_effort: medium
+      rationale: "The primary session owns the change against the approved plan and takes the after measurement on the code it changed."
+    skills: [core.performance.backend-performance, core.performance.frontend-performance]
+    gates:
+      - id: after-measured
+        condition: An after measurement repeats the baseline's metric and method on the changed code, with at least three samples.
+      - id: improvement-supported
+        condition: Paved's comparison of the two sample sets shows an improvement larger than their spread.
+  - phase: validation
+    goal: Build, lint and run the tests covering the changed code.
+    routing:
+      mode: cli
+      capacity: economy
+      reasoning_effort: low
+      rationale: "Paved runs the tests; the agent relays the result and needs no strong model."
+    verification:
+      recommended: [build, static-analysis, unit]
+  - phase: verification
+    goal: Prove behavior is unchanged on exactly the code that was measured.
+    routing:
+      mode: cli
+      capacity: economy
+      reasoning_effort: low
+      rationale: "Paved runs the profile checks; the agent relays the result and needs no strong model."
+    verification:
+      required: [unit]
+      recommended: [integration, performance]
+  - phase: evidence
+    goal: Record the change, the check results and the measurements they rest on.
+    routing:
+      mode: cli
+      capacity: economy
+      reasoning_effort: low
+      rationale: "Paved writes the evidence record from the verified results."
+  - phase: review
+    goal: Confirm the change matches the hypothesis, behavior is unchanged and the numbers support the claim.
+    routing:
+      mode: subagent
+      capacity: balanced
+      reasoning_effort: high
+      rationale: "Independence needs a separate context; a balanced model at high effort finds defects at a fraction of a frontier model's cost."
+    skills: [core.code-review.change-review]
+  - phase: completion
+    goal: Report baseline, result, the improvement and what limits it.
+    routing:
+      mode: cli
+      capacity: economy
+      reasoning_effort: low
+      rationale: "Paved confirms the recorded gates and evidence."
+    gates:
+      - id: criteria-met
+        condition: The evidence record is complete and valid.
+evidence:
+  required: [check-result, diff]
+outputs: [change, evidence, review, measurement]
+completion:
+  criteria:
+    - Baseline and after were measured with the same metric, method and workload, each with repeated runs.
+    - The improvement exceeds the spread of both sample sets, and the report states what limits the numbers.
+    - Behavior checks pass on the code that was measured.
