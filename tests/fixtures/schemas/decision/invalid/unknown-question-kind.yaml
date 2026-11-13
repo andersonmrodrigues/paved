@@ -1,0 +1,32 @@
+# expect-error: /question_kind must be equal to one of the allowed values
+apiVersion: paved/v1
+kind: Decision
+id: d-0123456789abcdef0123
+scope: project
+command: decision
+category: material
+authored_by: agent
+question: Should the export include archived records?
+question_kind: factual
+reason: The request does not say whether archived records belong in the export.
+options:
+  - id: include
+    label: Include
+    description: Export archived records too.
+    consequence: The export grows and includes archived records.
+evidence:
+  - type: file
+    location: src/export.ts
+    sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+required: true
+required_answer:
+  type: single-choice
+risk: low
+reversibility: reversible
+answer_channel: relayed
+status: PENDING
+fingerprint:
+  inputs:
+    - "src/export.ts@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+created_at: "2026-11-13T00:00:00.000Z"

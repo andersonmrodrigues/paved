@@ -31,6 +31,10 @@ For a new intent or execute request, pass the user's explicit `--autonomy <guide
 For `guided`, stop after every completed phase and wait for the user to advance; do not immediately repeat `--auto` or another advance call. For `balanced`, continue through ready phases with `execute --auto`. For `autonomous`, use balanced continuation and automatically dispatch only ready tasks from an approved delegation plan, respecting its dependencies and bounded scope, through native host tools. The CLI creates no sessions.
 Every profile preserves gates, human approvals, required input stops, failures, verification, evidence and completion requirements. Host permissions remain authoritative; an autonomy profile is never an approval or tool permission. Apply this policy to the continuation and routing guidance above.
 
+## Before asking the user
+
+Triage every question of your own before you ask it. When the answer is observable (current behavior, output, timing, layout, whether a test fails), find it out by reading the code, running it or trying a throwaway experiment outside the repository; an experiment inside the repository follows the `prototyping` skill. Ask only about preferences: product, scope, priority or taste calls that no experiment settles. When you raise one with `paved decision raise`, set `questionKind`; an `observable` question needs an `observationBlocker` saying why you could not observe it. Triage never skips a human step: present every decision Paved emits, and plan approval and confirmation of destructive actions stay with the user.
+
 ## Failure behavior
 
 - A workflow choice without evidence is refused.

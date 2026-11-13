@@ -52,6 +52,9 @@ function renderDecision(decision: DecisionProjection, command: string): string {
   const lines: string[] = [];
   lines.push(`  [${decision.id}] ${decision.question}${decision.required ? "" : "  (optional)"}`);
   lines.push(`    ${decision.reason}`);
+  if (decision.observationBlocker !== undefined) {
+    lines.push(`    Asked because it could not be observed: ${decision.observationBlocker}`);
+  }
   for (const [index, option] of decision.options.entries()) {
     const mark = option.id === decision.recommended ? "  (recommended)" : "";
     lines.push(`    ${index + 1}. ${option.id} — ${option.label}${mark}`);

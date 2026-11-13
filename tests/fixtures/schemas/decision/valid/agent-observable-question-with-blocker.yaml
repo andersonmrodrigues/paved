@@ -1,0 +1,37 @@
+apiVersion: paved/v1
+kind: Decision
+id: d-0123456789abcdef0123
+scope: project
+command: decision
+category: material
+authored_by: agent
+question: Does the nightly export finish before the backup window opens?
+question_kind: observable
+observation_blocker: The export only runs against the shared staging database, which the agent may not touch.
+reason: If the export overlaps the backup window, the schedule has to move.
+options:
+  - id: finishes
+    label: It finishes in time
+    description: The export completes before the backup window.
+    consequence: The schedule stays as it is.
+  - id: overlaps
+    label: It overlaps
+    description: The export is still running when the backup starts.
+    consequence: The plan moves the export earlier.
+evidence:
+  - type: file
+    location: src/export.ts
+    sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+required: true
+required_answer:
+  type: single-choice
+risk: low
+reversibility: reversible
+answer_channel: relayed
+effect: record-only
+status: PENDING
+fingerprint:
+  inputs:
+    - "src/export.ts@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+created_at: "2026-11-13T00:00:00.000Z"

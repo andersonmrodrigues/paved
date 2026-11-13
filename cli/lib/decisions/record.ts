@@ -37,6 +37,9 @@ export interface DecisionFingerprint {
   readonly sha256: string;
 }
 
+/** Triage of an agent-raised question: a fact the agent could observe, or a human preference. */
+export type QuestionKind = "observable" | "preference";
+
 export interface Decision {
   readonly apiVersion: "paved/v1";
   readonly kind: "Decision";
@@ -47,6 +50,8 @@ export interface Decision {
   readonly category: DecisionCategory;
   readonly authored_by: DecisionAuthor;
   readonly question: string;
+  readonly question_kind?: QuestionKind;
+  readonly observation_blocker?: string;
   readonly reason: string;
   readonly options: readonly DecisionOption[];
   readonly recommended_option?: string;

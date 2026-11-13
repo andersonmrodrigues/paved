@@ -33,6 +33,16 @@ properties:
     description: "`runtime`: derived from repository evidence. `agent`: declared through `paved decision raise`."
     enum: [runtime, agent]
   question: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+  question_kind:
+    description: >
+      Triage of an agent-raised question. `observable`: the answer is a fact the agent
+      could get by reading or running code; it reaches a person only with an
+      observation_blocker. `preference`: a product, scope, priority or taste call no
+      experiment settles. Absent on runtime decisions and older records.
+    enum: [observable, preference]
+  observation_blocker:
+    description: Why the agent could not observe the answer to an observable question itself.
+    $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
   reason:
     description: Why this decision matters, in terms the project owner can act on.
     $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
@@ -136,6 +146,11 @@ allOf:
       required: [status]
     then:
       required: [superseded_reason]
+  - if:
+      properties: { question_kind: { const: observable } }
+      required: [question_kind]
+    then:
+      required: [observation_blocker]
   - if:
       required: [recommended_option]
     then:

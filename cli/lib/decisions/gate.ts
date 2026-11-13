@@ -66,6 +66,8 @@ export function toProjection(decision: Decision): DecisionProjection {
   return {
     id: decision.id,
     question: decision.question,
+    ...(decision.question_kind === undefined ? {} : { questionKind: decision.question_kind }),
+    ...(decision.observation_blocker === undefined ? {} : { observationBlocker: decision.observation_blocker }),
     reason: decision.reason,
     options: decision.options,
     ...(decision.recommended_option === undefined ? {} : { recommended: decision.recommended_option }),

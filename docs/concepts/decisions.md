@@ -113,9 +113,27 @@ cannot become a command argument or path.
 - `paved decision show <id>` displays a record.
 - `paved decision revise <id> --reason <text>` supersedes a record and asks again.
 - `paved decision raise --decision <json>` accepts a validated agent-authored question;
-  it cannot route around a decision Paved already emitted.
+  it cannot route around a decision Paved already emitted. See
+  [agent questions](#agent-questions) for its optional triage fields.
 - No TTY prompt is used. A required question returns `status: "awaiting_input"` and exit
   code `10`; optional questions accompany a normal success or warning result.
+
+## Agent questions
+
+Before an agent asks anything of its own, it triages the question:
+
+| Kind | Meaning | What the agent does |
+|---|---|---|
+| `observable` | A fact the agent can get by reading or running code: behavior, output, timing, layout, whether a test fails | Finds out, by reading the code, running it or a throwaway experiment. Asks only when it cannot observe the answer, and says why |
+| `preference` | A product, scope, priority or taste call that no experiment settles | Asks the user |
+
+`paved decision raise` takes the triage as optional `questionKind` (`observable` or
+`preference`), stored as `question_kind`. An `observable` question also needs
+`observationBlocker` (stored as `observation_blocker`), the reason it could not be
+observed; without one Paved refuses it with `PAVED_DECISION_OBSERVATION_REQUIRED`, and
+the schema enforces the same pairing. The blocker is shown with the question so the
+user knows why a fact is being asked. Triage applies only to questions an agent raises.
+Decisions Paved emits, plan approval and human-authored approvals are never triaged away.
 
 The originating command applies accepted answers and continues. See the
 [canonical decision skill](../../core/skills/decisions/decisions/SKILL.md) for agent rules
