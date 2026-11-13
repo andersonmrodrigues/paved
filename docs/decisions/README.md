@@ -51,6 +51,7 @@ writing a new record that supersedes it, not by editing the old one.
 | [0044](0044-phase-routing-and-token-economy.md) | Phase routing and a one-line prompt reminder | Accepted |
 | [0045](0045-authorized-automatic-plugin-updates.md) | Authorized automatic plugin updates | Accepted |
 | [0046](0046-bounded-workflow-fragment-composition.md) | Bounded workflow fragment composition | Accepted |
+| [0047](0047-investigation-and-performance-workflows.md) | Investigation and performance workflows | Accepted |
 
 ## Format
 

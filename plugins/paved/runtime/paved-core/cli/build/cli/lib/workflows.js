@@ -178,10 +178,40 @@ export function assessWorkflowToolPolicies(contract, context) {
     }
     return problems;
 }
+/** A workflow without an implementation phase changes nothing; investigations are the Core's. */
+export const isReadOnly = (contract) => !contract.phases.some((phase) => phase.phase === "implementation");
+/**
+ * A read-only workflow may reach only read-only Tools, whether a phase lists them, a
+ * fragment adds them or an active skill (or its required dependencies) brings them.
+ * Shared by authoring quality assessment and runtime workflow loading.
+ */
+export function assessReadOnlyTools(contract, context) {
+    if (!isReadOnly(contract))
+        return [];
+    const problems = [];
+    for (const phase of contract.phases) {
+        const skills = new Set(phase.skills ?? []);
+        for (const id of [...skills])
+            for (const dep of requiredClosure(id, context.skills))
+                skills.add(dep);
+        const tools = new Set([...listed(phase), ...[...skills].flatMap((id) => {
+                const skill = context.skills.get(id);
+                return [...(skill?.tools?.required ?? []), ...(skill?.tools?.optional ?? [])];
+            })]);
+        const writing = [...tools].filter((id) => {
+            const safety = context.toolSafety.get(id);
+            return safety !== undefined && safety !== "read-only";
+        });
+        if (writing.length > 0) {
+            problems.push(`phase ${phase.phase} can use ${writing.join(", ")}, which can change state, but the workflow has no implementation phase and must stay read-only`);
+        }
+    }
+    return problems;
+}
 /** Problems with one workflow's structure, safety, verifiability and use of skills. */
 export function assessWorkflowQuality(files, context) {
     const { contract, body } = files;
-    const problems = assessWorkflowToolPolicies(contract, context);
+    const problems = [...assessWorkflowToolPolicies(contract, context), ...assessReadOnlyTools(contract, context)];
     const phases = contract.phases;
     const indexes = phases.map((p) => context.phaseOrder.indexOf(p.phase));
     for (let i = 1; i < indexes.length; i++) {
@@ -209,7 +239,7 @@ export function assessWorkflowQuality(files, context) {
             problems.push(`WORKFLOW.md never mentions ${id}, which workflow.yaml lists`);
     }
     // A software change must be proven: required checks that can prove something, and evidence.
-    const changesCode = phases.some((p) => p.phase === "implementation");
+    const changesCode = !isReadOnly(contract);
     const required = phases.flatMap((p) => p.verification?.required ?? []);
     if (changesCode) {
         const verification = phases.find((p) => p.phase === "verification");
@@ -282,6 +312,7 @@ export const UNCHANGED_HANDLER = "run.unchanged";
 export const AMENDED_RETRY = "plan amended";
 export const REVIEW_HANDLER = "run.review";
 export const REVIEW_FIX = "review findings";
+export const MEASUREMENT_STALE = "measured code changed";
 export function recoveryQuestion(phase, attempts) {
     return `The ${phase} phase failed ${attempts} times. How should Paved continue?`;
 }
@@ -291,12 +322,13 @@ export function recoveriesFor(decisions, phase) {
         && decision.question?.startsWith(`The ${phase} phase failed `) === true);
 }
 /**
- * Each "retry" the user chose, each approved plan amendment and each review finding sent
- * back to implementation gives a phase a fresh set of attempts on top of the workflow's limit. An "amend" answer earns its round only once
+ * Each "retry" the user chose, each approved plan amendment, each review finding sent
+ * back to implementation and each performance measurement made stale by a later change
+ * gives a phase a fresh set of attempts on top of the workflow's limit. An "amend" answer earns its round only once
  * the amendment is approved, so it is counted there and not twice.
  */
 export function attemptRounds(run, phase) {
-    const amended = (run.events ?? []).filter((event) => (event.type === "retry-started" || event.type === "phase-reopened") && event.phase === phase && (event.detail === AMENDED_RETRY || event.detail === REVIEW_FIX)).length;
+    const amended = (run.events ?? []).filter((event) => (event.type === "retry-started" || event.type === "phase-reopened") && event.phase === phase && [AMENDED_RETRY, REVIEW_FIX, MEASUREMENT_STALE].includes(event.detail ?? "")).length;
     return 1 + recoveriesFor(run.decisions, phase).filter((decision) => decision.answer === "retry").length + amended;
 }
 const DONE = new Set(["completed", "skipped"]);

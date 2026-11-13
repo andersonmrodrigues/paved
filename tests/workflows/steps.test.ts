@@ -181,7 +181,7 @@ describe("intent, plan and execute", () => {
     assert.equal(pending.status, "awaiting_input", JSON.stringify(pending));
     assert.equal((pending.data as { phaseContext?: unknown }).phaseContext, undefined);
     const decision = pending.decisions?.[0];
-    assert.deepEqual(decision?.options.map((option) => option.id), ["bug", "feature", "refactor"]);
+    assert.deepEqual(decision?.options.map((option) => option.id), ["bug", "feature", "investigation", "performance", "refactor"]);
     assert.equal(decision?.recommended, "bug");
     const id = runOf(pending);
     assert.equal(readRunFile(id).phases.length, 0);

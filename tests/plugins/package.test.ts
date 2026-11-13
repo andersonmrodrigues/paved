@@ -50,6 +50,12 @@ describe("generated plugins", () => {
       assert.equal(runtime.files.has(path), false, `${path} is a maintainer-only catalog`);
     }
     assert.deepEqual(runtime.files.get("core/verification/README.md"), readFileSync(join(ROOT, "core/verification/README.md")));
+    // The launcher runs the compiled CLI; its TypeScript sources are not packed twice.
+    assert.ok(runtime.files.has("cli/build/cli/index.js"));
+    // The engine digest in generated-context provenance hashes this source file.
+    assert.ok(runtime.files.has("cli/lib/generator-runtime.ts"));
+    assert.equal([...runtime.files.keys()].some((path) => /^(cli|integrations)\/(?!build\/).*(?<!\.d)\.ts$/.test(path)
+      && path !== "cli/lib/generator-runtime.ts" && runtime.files.has(`cli/build/${path.replace(/\.ts$/, ".js")}`)), false);
     const claudePlan = planPlugins(ROOT, runtime).find((plan) => plan.target === PLUGIN_TARGETS.claude)!;
     assert.ok(claudePlan.files.size <= 512, `${claudePlan.files.size} files`);
   });

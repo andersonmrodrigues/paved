@@ -21,7 +21,7 @@ this CLI yet.
 | [`paved doctor`](commands/doctor/README.md) | The diagnostics and repair decisions of `status`, kept as a CLI subcommand for the launcher and CI | nothing, unless a repair decision is answered |
 | `paved gardener` | Analyze existing consumer evidence and report review proposals | nothing |
 | `paved agent` | List, discover/resolve shared agent command contracts, validate, install, update or uninstall project-local agent projections | `.agents/`, `.claude/` or `.claude-plugin/` projection files |
-| `paved intent` | Classify a request into the `feature`, `bug` or `refactor` workflow, write the Intent, and run `context` and `discovery` | `.paved/generated/runs/`, `.paved/documents/intents/`, evidence |
+| `paved intent` | Classify a request into the `feature`, `bug`, `refactor`, `performance` or `investigation` workflow, write the Intent, and run `context` and `discovery` | `.paved/generated/runs/`, `.paved/documents/intents/`, evidence |
 | `paved plan` | Run `planning` on the open run and record the approval the user gives in the conversation | `.paved/generated/runs/`, `.paved/approvals/` |
 | `paved execute` | Run `implementation` through `completion`; validation invokes `test`, verification invokes `verify`, and new gardener proposals are listed | `.paved/generated/runs/`, evidence, `.paved/generated/gardener/reported.json` |
 | `paved test` | Run the adopted module tests or the one declared testing Tool | `.paved/generated/evidence/` |

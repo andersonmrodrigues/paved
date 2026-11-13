@@ -29,7 +29,7 @@ export function fingerprint(projectRoot) {
         .filter((source) => source.kind === "source-module" || source.kind === "test")
         .map((source) => [source.path, source.sha256])));
 }
-const VERIFIED_SOURCE = "source_sha256=";
+export const VERIFIED_SOURCE = "source_sha256=";
 /**
  * True when a completed run's source and test files differ from what its verification saw,
  * so the recorded evidence no longer describes the code. Runs from before the digest was

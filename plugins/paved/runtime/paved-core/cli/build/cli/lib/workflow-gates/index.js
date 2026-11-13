@@ -1,9 +1,12 @@
 import { bugGates } from "./bug.js";
 import { featureGates } from "./feature.js";
+import { investigationGates } from "./investigation.js";
+import { performanceGates } from "./performance.js";
 import { refactorGates } from "./refactor.js";
 import { review } from "./review.js";
 import { implementationChanged, recordObservation, SHARED_GATES, sharedPhase } from "./shared.js";
-const REGISTRY = new Map([featureGates, bugGates, refactorGates].map((gates) => [gates.workflow, gates]));
+const REGISTRY = new Map([featureGates, bugGates, refactorGates, investigationGates, performanceGates]
+    .map((gates) => [gates.workflow, gates]));
 export function gatesFor(workflowId) {
     const gates = REGISTRY.get(workflowId);
     if (!gates)
@@ -14,7 +17,8 @@ export function executableWorkflows() {
     return [...REGISTRY.keys()].sort();
 }
 export function handledGates(workflowId) {
-    return new Set([...SHARED_GATES, ...gatesFor(workflowId).handles]);
+    const gates = gatesFor(workflowId);
+    return new Set([...(gates.sharedGates ?? SHARED_GATES), ...gates.handles]);
 }
 export function relaysAnswers(workflowId, phase) {
     return phase === "validation" || phase === "verification" || (gatesFor(workflowId).relays ?? []).includes(phase);
@@ -23,7 +27,7 @@ export async function runPhase(input) {
     const context = { ...input, gates: gatesFor(input.workflow.id) };
     const shared = sharedPhase(context.phase.phase);
     if (shared)
-        return shared(context);
+        return (context.gates.phases[context.phase.phase] ?? shared)(context);
     // Not a shared phase: delivery stops before it, because only a separate reviewer can supply its record.
     if (context.phase.phase === "review")
         return review(context);

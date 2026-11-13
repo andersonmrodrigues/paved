@@ -1,0 +1,14 @@
+apiVersion: paved/v1
+kind: PerformanceMeasurement
+run: intent-0123456789abcdef0123
+stage: baseline
+metric: { name: export request latency p50, unit: ms, direction: lower-is-better }
+method:
+  command: node bench/export.mjs --rows 10000
+  workload: Export of 10,000 archived rows from the seeded fixture database.
+  environment: Local laptop, Node 22, fixture database on the same machine.
+  warmup: Two discarded runs before sampling.
+samples: [412, 405, 418, 409, 411]
+limits: Laptop noise of about 2 percent; the fixture is smaller than production data.
+hypothesis: Rows are serialized one query at a time; batching the lookup removes the per-row round trip.
+profile: .paved/generated/measurements/intent-0123456789abcdef0123-profile.txt

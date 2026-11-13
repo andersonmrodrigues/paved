@@ -15,14 +15,24 @@ step that owns the current phase.
 | `paved plan` | `planning` |
 | `paved execute` | `implementation` through `completion` |
 
-Pass the user's request to `intent` verbatim. Add `--workflow <feature|bug|refactor>
---because "<evidence>"` only when the evidence shows the kind of change; otherwise omit it
-(optionally `--recommend <id> --because "<evidence>"`) and present the returned decision.
-A request that mixes kinds of change is passed with one `--part` per part and becomes a
-split decision. `plan` and `execute` act on the only open run, or on `--run <id>`; with
-several open runs they ask which one. A bug's failing regression test and a refactor's
-passing baseline run inside `intent`; tests and verification run inside `execute`. When a
-step returns their decisions, present them and repeat the same call with the answers.
+Pass the user's request to `intent` verbatim. Add
+`--workflow <feature|bug|refactor|performance|investigation> --because "<evidence>"` only
+when the evidence shows the kind of change; otherwise omit it (optionally
+`--recommend <id> --because "<evidence>"`) and present the returned decision. A question
+that wants an answer and no change is an `investigation`; a metric to improve with
+behavior unchanged is `performance`. When a report could be either ("it is slow"), do not
+choose: recommend one and let the user decide. A request that mixes kinds of change is
+passed with one `--part` per part and becomes a split decision. `plan` and `execute` act
+on the only open run, or on `--run <id>`; with several open runs they ask which one. A
+bug's failing regression test, a refactor's passing baseline and a performance baseline
+run inside `intent`; tests and verification run inside `execute`. When a step returns
+their decisions, present them and repeat the same call with the answers.
+
+An `investigation` has no `planning` or `implementation` phase, so it needs no plan and
+no approval: after `intent` records the cited answer, run `paved execute --run <id> --auto`
+to verify its citations and that nothing changed. Never edit source or test files during
+an investigation; if the answer recommends a change, report it and start that change as a
+new intent once the user asks for it.
 
 ## Run autonomy
 

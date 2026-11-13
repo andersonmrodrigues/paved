@@ -17,6 +17,8 @@ planning. Every feature still requires plan approval, verification, evidence and
 | `feature` | Adding behavior or intentionally changing behavior | [workflow.yaml](../core/workflows/feature/workflow.yaml) · [WORKFLOW.md](../core/workflows/feature/WORKFLOW.md) |
 | `bug` | Actual behavior differs from intended behavior | [workflow.yaml](../core/workflows/bug/workflow.yaml) · [WORKFLOW.md](../core/workflows/bug/WORKFLOW.md) |
 | `refactor` | Changing structure without changing behavior | [workflow.yaml](../core/workflows/refactor/workflow.yaml) · [WORKFLOW.md](../core/workflows/refactor/WORKFLOW.md) |
+| `performance` | Improving a measured metric without changing behavior; needs a baseline before any change | [workflow.yaml](../core/workflows/performance/workflow.yaml) · [WORKFLOW.md](../core/workflows/performance/WORKFLOW.md) |
+| `investigation` | Answering how or why something works, with cited sources and no change | [workflow.yaml](../core/workflows/investigation/workflow.yaml) · [WORKFLOW.md](../core/workflows/investigation/WORKFLOW.md) |
 
 ## Workflow fragments
 

@@ -63,6 +63,7 @@ const KIND_TO_SCHEMA: Readonly<Record<string, string>> = {
   AgentIntegration: "urn:paved:schema:agent-integration:v1",
   PreviewReview: "urn:paved:schema:preview-review:v1",
   ChangeReview: "urn:paved:schema:change-review:v1",
+  PerformanceMeasurement: "urn:paved:schema:performance-measurement:v1",
   AutoUpdateConfig: "urn:paved:schema:auto-update-config:v1",
   AutoUpdateState: "urn:paved:schema:auto-update-state:v1",
 };

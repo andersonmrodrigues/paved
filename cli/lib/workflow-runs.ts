@@ -5,7 +5,7 @@ import { atomicWriteFileSync } from "./atomic-write.ts";
 import { loadMarkdown, loadYaml } from "./documents.ts";
 import { resolveSafePath } from "./safe-path.ts";
 import { createRegistry, type SchemaRegistry } from "./schemas.ts";
-import { assessWorkflowToolPolicies, assessRun, resolveWorkflowFragments, type AutonomyProfile, type ResolvedWorkflowContract, type WorkflowContract, type WorkflowFragmentContract, type WorkflowFragmentMetadata, type WorkflowRunRecord } from "./workflows.ts";
+import { assessReadOnlyTools, assessWorkflowToolPolicies, assessRun, isReadOnly, resolveWorkflowFragments, type AutonomyProfile, type ResolvedWorkflowContract, type WorkflowContract, type WorkflowFragmentContract, type WorkflowFragmentMetadata, type WorkflowRunRecord } from "./workflows.ts";
 import { indexArtifacts, resolveReferences, type LabeledDocument } from "./references.ts";
 import type { SkillContract } from "./skills.ts";
 import type { Decision } from "./decisions/record.ts";
@@ -125,7 +125,8 @@ export function loadContract(coreRoot: string, workflowId: string): ResolvedWork
   const resolved = resolveWorkflowFragments(contract, loadWorkflowFragments(coreRoot, registry));
   if (resolved.problems.length) throw new Error(`Workflow ${workflowId} has invalid fragments: ${resolved.problems.join("; ")}`);
   const workflow = { ...contract, phases: resolved.phases };
-  if ((workflow.tool_policies?.length ?? 0) > 0 || workflow.phases.some((phase) => (phase.tool_policies?.length ?? 0) > 0)) {
+  const policies = (workflow.tool_policies?.length ?? 0) > 0 || workflow.phases.some((phase) => (phase.tool_policies?.length ?? 0) > 0);
+  if (policies || isReadOnly(workflow)) {
     const dependencies = loadWorkflowDependencies(coreRoot);
     const skills = new Map(dependencies.filter(({ document }) => document.kind === "Skill")
       .map(({ document }) => [String(document.id), document as unknown as SkillContract]));
@@ -133,6 +134,8 @@ export function loadContract(coreRoot: string, workflowId: string): ResolvedWork
       .map(({ document }) => [String(document.id), String(document.safety)]));
     const problems = assessWorkflowToolPolicies(workflow, { skills, toolSafety });
     if (problems.length) throw new WorkflowToolPolicyError(`Workflow ${workflowId} has invalid tool policies: ${problems.join("; ")}`);
+    const writing = assessReadOnlyTools(workflow, { skills, toolSafety });
+    if (writing.length) throw new WorkflowToolPolicyError(`Workflow ${workflowId} must stay read-only: ${writing.join("; ")}`);
   }
   return workflow;
 }

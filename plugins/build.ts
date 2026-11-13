@@ -131,9 +131,13 @@ export function packRuntime(root: string, options: { build: boolean }): RuntimeA
     // generated plugin output and provenance digests.
     for (const path of files.keys()) {
       if (path.startsWith("node_modules/") && /\/CHANGELOG\.md$/i.test(path)) files.delete(path);
-      // Claude has a 512-file ceiling. Integration execution uses compiled twins;
-      // keep the standalone launchers and assets, not duplicate TypeScript sources.
-      if (path.startsWith("integrations/") && path.endsWith(".ts") && files.has(`cli/build/${path.replace(/\.ts$/, ".js")}`)) files.delete(path);
+      // Claude has a 512-file ceiling. The launcher runs cli/build/cli/index.js, so CLI and
+      // integration execution uses compiled twins; keep the standalone launchers and
+      // assets, not the TypeScript sources the twins were built from. The generator runtime
+      // source stays: its digest is part of generated-context provenance.
+      if ((path.startsWith("cli/") || path.startsWith("integrations/")) && !path.startsWith("cli/build/") && path.endsWith(".ts")
+        && !path.endsWith(".d.ts") && path !== "cli/lib/generator-runtime.ts"
+        && files.has(`cli/build/${path.replace(/\.ts$/, ".js")}`)) files.delete(path);
     }
     // These catalogs describe Core maintenance; consumer execution uses the contracts
     // beneath them. Keep verification/README.md, which consumer guidance references.

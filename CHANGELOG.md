@@ -5,6 +5,40 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- `investigation` workflow (read-only) for questions about the code. Discovery ends with
+  an answer document, and each claim in it is labeled observed, inferred or unknown.
+  Observed and inferred claims cite `path:line`, `commit <sha>` or `$ command`.
+  - Paved checks that cited lines exist and that cited commits resolve.
+  - It blocks the run if any source or test file changes.
+  - It needs no plan approval.
+  - A change the answer recommends starts a new intent.
+- `performance` workflow. Discovery requires a baseline measurement record taken before
+  any change, and implementation requires an after record taken with the same metric
+  and method.
+  - Paved compares the sample sets and accepts the improvement only when it clears the
+    noise in both.
+  - Verification reopens implementation if the code changed after it was measured.
+  - Plan approval is required.
+- `PerformanceMeasurement` schema (`schemas/performance-measurement.schema.yaml`).
+- `investigation` change type. `intent --workflow` and classification decisions offer
+  `performance` and `investigation`.
+- Quality and runtime check: a workflow without an `implementation` phase may reach only
+  read-only Tools, directly or through its skills.
+
+### Changed
+
+- `profiling` 0.3.0 describes the measurement records of a performance run.
+  `backend-performance` and `frontend-performance` 0.1.2 now point to the `performance`
+  workflow.
+- A workflow gate module can replace a shared phase hook (verification, evidence,
+  completion) and build on it.
+- The Claude plugin no longer packs TypeScript sources under `cli/` that have a compiled
+  `cli/build` twin. The runtime only loads the compiled files.
+- Agent routing (instructions, hook context and command help) names the new workflows.
+  Investigation-only requests use the read-only `investigation` workflow.
+
 ## [2.27.0] - 2026-11-13
 
 ### Added

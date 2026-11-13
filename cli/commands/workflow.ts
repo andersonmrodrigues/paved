@@ -71,6 +71,9 @@ function nextStepAction(run: Run): string {
   const owner = phase === undefined ? undefined : ownerOf(phase.phase);
   if (phase === undefined || owner === undefined) return "Inspect the run; it has no active phase.";
   if (phase.phase === "review") return "Have the change reviewed by a reviewer that did not write it.";
+  if (readOnly(run) && owner === "execute") {
+    return `The answer is recorded. Run paved execute --run ${run.id} --auto --json to verify its citations and that nothing changed, then report it; a recommended change starts a new run with paved intent.`;
+  }
   if (phase.phase === "implementation") {
     return `Implement the whole approved plan; record each finished part with paved execute --run ${run.id} --checkpoint --note <part> --json. Advancing starts validation, so run paved execute --run ${run.id} --auto --note <what was implemented> --json only when everything is done.`;
   }
@@ -418,6 +421,11 @@ function planApproved(run: Run): boolean {
   return planGate(run)?.status === "approved";
 }
 
+/** A run whose workflow changes nothing (an investigation) has no plan to approve. */
+function readOnly(run: Run): boolean {
+  return !run.phases.some((phase) => phase.phase === "planning" || phase.phase === "implementation");
+}
+
 /** A revised plan awaits approval after planning already completed. */
 function amendmentPending(run: Run): boolean {
   return run.phases.find((phase) => phase.phase === "planning")?.status === "completed" && planGate(run)?.status === "awaiting-approval";
@@ -585,7 +593,7 @@ async function resume(invocation: CommandInvocation, step: Step, run: Run, answe
   }
   const current = run.workflow ? activePhase(run) : undefined;
   const owner: Step | undefined = run.workflow ? (current ? ownerOf(current.phase) : undefined) : "intent";
-  if (step === "execute" && run.workflow && !planApproved(run)) {
+  if (step === "execute" && run.workflow && !readOnly(run) && !planApproved(run)) {
     return blocked(step, "PAVED_WORKFLOW_PLAN_UNAPPROVED", `Run ${run.id} has no approved plan.`, nextStepAction(run), { run: run.id });
   }
   if (owner !== step) {
@@ -700,7 +708,10 @@ async function resume(invocation: CommandInvocation, step: Step, run: Run, answe
       // Advisory only: a gardener failure or proposal never changes the outcome.
       const gardener = reportNewProposals(projectRoot, coreRoot);
       const refresh = refreshContext(invocation);
-      return result(projectRoot, coreRoot, step, run, `Workflow complete with authoritative verification evidence.${refresh.remediation ? ` Then run ${refresh.remediation.command} to refresh project context.` : ""}`, [],
+      const done = readOnly(run)
+        ? `Investigation complete. Report the answer in ${run.evidence} to the user; a change it recommends needs its own run, started with paved intent.`
+        : "Workflow complete with authoritative verification evidence.";
+      return result(projectRoot, coreRoot, step, run, `${done}${refresh.remediation ? ` Then run ${refresh.remediation.command} to refresh project context.` : ""}`, [],
         { data: { ...(Object.keys(gardener).length > 0 ? { gardener } : {}), ...(refresh.remediation ? { remediation: refresh.remediation } : {}),
           ...(refresh.refreshed ? { contextRefreshed: true } : {}) } });
     }

@@ -42,9 +42,13 @@ A workflow may omit phases that do not apply. `verification`, `evidence` and
 | `feature` | feature | New or changed behavior | Crossing an architectural boundary |
 | `bug` | bug-fix | Behavior that differs from what is intended | |
 | `refactor` | refactor | Structure changes with no behavior change | Refactoring code no test pins |
+| `performance` | performance | A measured metric to improve, behavior unchanged | The plan, after a recorded baseline |
+| `investigation` | investigation | A question answered with cited sources; changes nothing | |
 
-A performance improvement runs as `refactor` (behavior unchanged) or `feature` (a new
-budget). Workflows do not invoke each other.
+A workflow without an `implementation` phase is read-only: every Tool it can reach,
+directly or through a skill, must be `read-only`, and its run ends when its source is
+unchanged. `investigation` is the Core's. A change it recommends starts a new intent.
+A new performance budget is a `feature`. Workflows do not invoke each other.
 
 Projects never copy a Core workflow. Through `.paved/overrides/overrides.yaml` they can
 `extend` one (add gates, require checks) or `disable` it, always with an owner and a

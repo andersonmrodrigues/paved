@@ -17,7 +17,8 @@ Use this flow by default for natural-language development, planning, correction,
 debugging and refactoring requests, even when the user does not name Paved. Check
 status first and resume the matching run for the same request rather than creating
 a duplicate; never reuse an unrelated run. For planning-only requests, stop at the
-plan; for investigation-only requests, investigate without implementing a fix.
+plan; for investigation-only requests, use the read-only `investigation` workflow and
+answer with cited sources without implementing a fix.
 Implementation requires explicit human approval of the current plan. Answer
 repository questions using relevant context without starting a workflow; handle
 unrelated conversation normally. Respect explicit user direction.

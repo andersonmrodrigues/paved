@@ -1,0 +1,69 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:performance-measurement:v1
+title: Paved performance measurement
+description: >-
+  One measurement taken in a `core.performance` run: the baseline before any change, or
+  the result after it. Paved binds each record to the code it measured and compares the
+  two itself; the agent states the samples, the method and what limits them, never the
+  verdict. A baseline also carries the hypothesis the change will test.
+type: object
+additionalProperties: false
+required: [apiVersion, kind, run, stage, metric, method, samples, limits]
+properties:
+  apiVersion: { const: paved/v1 }
+  kind: { const: PerformanceMeasurement }
+  run:
+    description: The workflow run this measurement belongs to.
+    type: string
+    pattern: "^[a-z][a-z0-9-]{5,80}$"
+  stage:
+    description: "`baseline`: before any change. `after`: on the changed code, with the baseline's method."
+    enum: [baseline, after]
+  metric:
+    type: object
+    additionalProperties: false
+    required: [name, unit, direction]
+    properties:
+      name: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      unit: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      direction: { enum: [lower-is-better, higher-is-better] }
+  method:
+    description: How the samples were taken. The after measurement must repeat it exactly.
+    type: object
+    additionalProperties: false
+    required: [command, workload, environment, warmup]
+    properties:
+      command:
+        description: The invocation as run, never containing secret values.
+        $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+      workload:
+        description: The input and load the metric was measured under.
+        $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+      environment:
+        description: Where it ran (machine, runtime, data size), enough to repeat it.
+        $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+      warmup:
+        description: How warm-up was handled, for example the number of discarded runs, or why none is needed.
+        $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+  samples:
+    description: One value per repeated run, in the metric's unit. A single run cannot separate a change from noise.
+    type: array
+    minItems: 3
+    maxItems: 1000
+    items: { type: number }
+  limits:
+    description: >-
+      What limits trust in these numbers: run-to-run noise, warm-up, the environment, and
+      whether the command measured the real work or a proxy for it.
+    $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+  hypothesis:
+    description: The single cause the profile points to and the change expected to improve it. Required for a baseline.
+    $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+  profile:
+    description: Where the profile or trace that located the bottleneck is stored.
+    $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+allOf:
+  - if:
+      properties: { stage: { const: baseline } }
+    then:
+      required: [hypothesis]

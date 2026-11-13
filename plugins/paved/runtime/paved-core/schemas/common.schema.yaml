@@ -144,9 +144,11 @@ $defs:
 
   changeType:
     description: >
-      Kind of change. The first six have Core workflows; the others exist so rules can be
-      scoped to them.
-    enum: [feature, bug-fix, refactor, performance, incident, release, dependency, configuration, documentation]
+      Kind of change. `feature`, `bug-fix`, `refactor`, `performance` and `investigation`
+      have Core workflows; the others exist so rules can be scoped to them.
+      `investigation` is the read-only kind: a question about the code, answered with
+      cited claims and no change.
+    enum: [feature, bug-fix, refactor, performance, investigation, incident, release, dependency, configuration, documentation]
 
   phase:
     description: Task lifecycle phase, in canonical order (core/instructions/lifecycle.md).
