@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { parse as parseYaml, stringify } from "yaml";
 import { createDiagnostic } from "../result.js";
+import { globRegex } from "./adapters.js";
 import { loadYaml } from "./documents.js";
 import { assessEvidence, evaluateCompletion, loadEvidenceRegistry, } from "./evidence.js";
 import { createRegistry } from "./schemas.js";
@@ -47,6 +48,15 @@ export function verificationEnvironment(source = process.env) {
     // Test runners that would otherwise watch for changes or prompt exit after one run.
     env.CI = "true";
     return env;
+}
+/** Why the change does not concern the check, or undefined when it does. */
+function irrelevance(check, changedFiles) {
+    if (changedFiles === undefined || check.applies_to === undefined || check.applies_to.length === 0)
+        return undefined;
+    const patterns = check.applies_to.map(globRegex);
+    if (changedFiles.some((file) => patterns.some((pattern) => pattern.test(file))))
+        return undefined;
+    return `No changed file matches applies_to (${check.applies_to.join(", ")}).`;
 }
 let evidenceCounter = 0;
 function diagnostic(input) {
@@ -386,9 +396,12 @@ function buildEvidence(args) {
     const now = new Date().toISOString();
     const change = currentRevision(args.sourceRoot);
     const id = evidenceId();
-    const checkTypes = [...new Set(args.checks.map((check) => check.type))].sort();
-    const checkIds = args.evidenceChecks.map((check) => check.id);
-    const met = args.evidenceChecks.length > 0 && args.evidenceChecks.every((check) => check.status === "passed");
+    // A Check the change does not concern is on record as skipped, but neither required nor counted.
+    const ran = args.evidenceChecks.filter((check) => check.status !== "skipped");
+    const skipped = new Set(args.evidenceChecks.filter((check) => check.status === "skipped").map((check) => check.check));
+    const checkTypes = [...new Set(args.checks.filter((check) => !skipped.has(check.id)).map((check) => check.type))].sort();
+    const checkIds = ran.map((check) => check.id);
+    const met = ran.length > 0 && ran.every((check) => check.status === "passed");
     const record = {
         apiVersion: "paved/v1",
         kind: "Evidence",
@@ -468,18 +481,34 @@ function buildEvidence(args) {
     };
     return { record, evaluation };
 }
+function unresolvedTool(checkId, reason) {
+    return diagnostic({
+        code: "PAVED_VERIFY_TOOL_UNRESOLVED",
+        category: "verification",
+        component: "verification.runner",
+        message: `Check ${checkId} could not resolve its Tool binding.`,
+        ...(reason === undefined ? {} : { remediation: reason }),
+    });
+}
+/** A Check the change does not concern, recorded as skipped rather than run. */
+function skippedCheck(args) {
+    const resolution = resolveTool(args.check.tool, [...args.tools], [...args.implementations], "local");
+    if (resolution.status !== "resolved" || resolution.tool === undefined || resolution.implementation === undefined) {
+        return { diagnostic: unresolvedTool(args.check.id, resolution.reason) };
+    }
+    const now = new Date().toISOString();
+    const captured = captureToolExecution({
+        tool: resolution.tool, implementation: resolution.implementation, environment: "local", revision: args.revision,
+        runtime_version: RUNTIME_VERSION, recorded_by: "paved", started_at: now, finished_at: now,
+        status: "blocked", output: "", inputs: args.check.inputs ?? {}, errors: [args.reason],
+    });
+    const blocked = toEvidenceCheck(captured, args.check, evidenceCheckId(args.check.id));
+    return { evidenceCheck: { ...blocked, status: "skipped", reason: args.reason } };
+}
 async function executeCheck(args) {
     const resolution = resolveTool(args.check.tool, [...args.tools], [...args.implementations], "local");
     if (resolution.status !== "resolved" || resolution.tool === undefined || resolution.implementation === undefined) {
-        return {
-            diagnostic: diagnostic({
-                code: "PAVED_VERIFY_TOOL_UNRESOLVED",
-                category: "verification",
-                component: "verification.runner",
-                message: `Check ${args.check.id} could not resolve its Tool binding.`,
-                ...(resolution.reason === undefined ? {} : { remediation: resolution.reason }),
-            }),
-        };
+        return { diagnostic: unresolvedTool(args.check.id, resolution.reason) };
     }
     if (args.check.preconditions && args.check.preconditions.length > 0) {
         const now = new Date().toISOString();
@@ -803,7 +832,7 @@ async function runVerificationUnlocked(input) {
     const sourceRoot = input.sourceRoot ?? input.projectRoot;
     const revision = currentRevision(sourceRoot).revision;
     // Resolve the complete set first: an ask or deny on a later Check must not partially run verification.
-    input.beforeRun?.(checks.flatMap((check) => {
+    input.beforeRun?.(checks.filter((check) => irrelevance(check, input.changedFiles) === undefined).flatMap((check) => {
         const selected = resolveTool(check.tool, tools, implementations, "local");
         return selected.status === "resolved" && selected.tool && selected.implementation
             ? [{ tool: selected.tool, implementation: selected.implementation, inputs: check.inputs ?? {} }] : [];
@@ -811,7 +840,10 @@ async function runVerificationUnlocked(input) {
     const evidenceChecks = [];
     const logs = [];
     for (const check of checks) {
-        const result = await executeCheck({ check, tools, implementations, sourceRoot, revision });
+        const skipped = irrelevance(check, input.changedFiles);
+        const result = skipped === undefined
+            ? await executeCheck({ check, tools, implementations, sourceRoot, revision })
+            : skippedCheck({ check, tools, implementations, revision, reason: skipped });
         if (result.diagnostic)
             diagnostics.push(result.diagnostic);
         if (result.evidenceCheck)

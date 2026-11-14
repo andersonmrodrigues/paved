@@ -54,7 +54,9 @@ export const review = (context) => {
     }
     const stale = Object.keys(STATE_NAMES).filter((key) => record.reviewed[key] !== expected[key]);
     if (stale.length) {
-        return blocked("PAVED_REVIEW_STALE", `The review read a different ${stale.map((key) => STATE_NAMES[key]).join(", ")} than the run has now.`, `Review the current change again from ${brief}, which carries the current digests, then run ${resume}.`);
+        return blocked("PAVED_REVIEW_STALE", `The review read a different ${stale.map((key) => STATE_NAMES[key]).join(", ")} than the run has now.`, `Paved rewrote ${brief} with the current digests. Review the current change again from it, then run ${resume}.${stale.includes("source_sha256")
+            ? " The source digest covers every source and test file in the checkout, so a file an editor, build or generator wrote since the review counts too."
+            : ""}`);
     }
     const ref = projectRelative(projectRoot, context.evidence);
     const digest = sha(readFileSync(context.evidence));

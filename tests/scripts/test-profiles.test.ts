@@ -39,6 +39,7 @@ test("the repository's fast and E2E profiles partition every test file", () => {
     "tests/plugins/host-discovery.e2e.test.ts",
     "tests/plugins/install.e2e.test.ts",
     "tests/plugins/project-command.e2e.test.ts",
+    "tests/workflows/bug.e2e.test.ts",
     "tests/workflows/delivery.e2e.test.ts",
     "tests/workflows/investigation-performance.e2e.test.ts",
   ]);

@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { stringify } from "yaml";
 import { atomicWriteFileSync } from "./atomic-write.js";
@@ -83,6 +83,31 @@ function workflowPlan(workflow, authoritative) {
  * Builds the workflow evidence record from what Paved already holds: the authoritative
  * verification record, the run's change and the workflow's verification plan.
  */
+/**
+ * The failing regression test recorded at discovery, as the reproduction a workflow such as
+ * core.bug requires. Without it, a run that did reproduce the bug could not complete.
+ */
+function reproduction(projectRoot, run, workflow, authoritative, createdAt) {
+    if (!workflow.evidence.required.includes("reproduction"))
+        return [];
+    if (authoritative.artifacts?.some((artifact) => artifact.kind === "reproduction"))
+        return [];
+    const ref = run.events.findLast((event) => event.phase === "discovery" && event.type === "evidence-recorded" && event.ref?.startsWith(".paved/generated/evidence/"))?.ref;
+    if (ref === undefined)
+        return [];
+    const path = resolveSafePath(projectRoot, ref);
+    if (!existsSync(path))
+        return [];
+    return [{
+            id: "regression-reproduction", kind: "reproduction", description: "The regression test that failed before the fix, recorded at discovery.",
+            recorded_by: "paved", revision: authoritative.change.revision, created_at: createdAt,
+            source: { type: "file", location: ref, sha256: sha(readFileSync(path, "utf8")) },
+        }];
+}
+/** The files the run changed so far, or undefined when the checkout is not a Git working tree. */
+export function changedFiles(projectRoot, run) {
+    return collectChange(runSourceRoot(projectRoot, run), run.revision)?.files;
+}
 export function writeWorkflowEvidence(input) {
     const { projectRoot, run, workflow } = input;
     if (!run.evidence)
@@ -129,6 +154,7 @@ export function writeWorkflowEvidence(input) {
                 recorded_by: "paved", revision: authoritative.change.revision, created_at: createdAt,
                 source: { type: "file", location: diffRef, sha256: sha(change.patch) },
             },
+            ...reproduction(projectRoot, run, workflow, authoritative, createdAt),
         ],
         ...(gaps.length ? { gaps } : {}),
         completion: authoritative.completion,

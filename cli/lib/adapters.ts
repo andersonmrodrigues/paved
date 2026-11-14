@@ -21,7 +21,7 @@ export interface ScopedProvider { scope: string; provider: string; source: 'expl
 export interface CapabilityResolution { status: 'resolved' | 'explicitly-selected' | 'scoped' | 'ambiguous' | 'unavailable'; provider?: AdapterContract; candidates: string[]; scopes: ScopedProvider[]; ambiguousScopes: string[]; diagnostics: Diagnostic[] }
 export interface CapabilityProviderEntry { id: string; status: CapabilityResolution['status']; candidates: string[]; providers: ScopedProvider[]; ambiguous_scopes?: string[] }
 const ignored = /^(?:\.|node_modules$|target$|dist$|build$)/;
-function globRegex(glob: string): RegExp {
+export function globRegex(glob: string): RegExp {
   const escaped = glob
     .replace(/\*\*\//g, '\u0001')
     .replace(/[.+^${}()|[\]\\]/g, '\\$&')

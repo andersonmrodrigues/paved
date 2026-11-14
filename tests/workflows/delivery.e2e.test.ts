@@ -136,6 +136,35 @@ describe("lifecycle remediation", () => {
 });
 
 describe("delivering an approved plan", () => {
+  it("skips a check whose applies_to matches none of the changed files", async () => {
+    const root = project(false);
+    write(root, ".paved/tools/docs/run.yaml", stringify({ ...TOOL, id: "project.docs.run", title: "Build the docs", capability: "verification-run" }));
+    write(root, ".paved/tool-implementations/docs/run.yaml", stringify({
+      apiVersion: "paved/v1", kind: "ToolImplementation", id: "project.docs.run", tool: "project.docs.run",
+      version: "0.1.0", contract: "^0.1.0", source: "project", environments: ["local"],
+      invocation: { type: "command", executable: process.execPath, arguments: ["-e", "process.exit(1)"], timeout_seconds: 30 }, availability: "available",
+    }));
+    write(root, ".paved/verification/checks/docs.yaml", stringify({
+      apiVersion: "paved/v1", kind: "Check", id: "project.docs.build", title: "Docs build", purpose: "The docs build.",
+      type: "build", tool: "project.docs.run", applies_to: ["docs/**"], expected: { description: "Exit 0.", exit_code: 0 }, timeout_seconds: 30,
+      environment: { kinds: ["local"] }, failure: "The docs did not build.", determinism: { class: "deterministic" }, retry: { class: "non-retryable" },
+    }));
+    write(root, ".paved/verification/profile.yaml", stringify({
+      apiVersion: "paved/v1", kind: "VerificationProfile", checks: ["project.testing.unit", "project.docs.build"],
+      unavailable: [{ type: "integration", reason: "No integration environment in this fixture." }],
+    }));
+    commitAll(root, "base");
+    const { id, invoke } = await approvedRun(root, ".paved/documents/plans/plan.md");
+    write(root, "feature.js", "export const enabled = true;\n");
+
+    const delivered = await invoke("execute", "--run", id, "--auto", "--note", "Enabled the behavior");
+    assert.equal((delivered.data as { currentPhase: string }).currentPhase, "review", JSON.stringify(delivered));
+    const evidence = parse(readFileSync(join(root, runState(root, id).evidence!), "utf8")) as { checks: { check: string; status: string; reason?: string }[] };
+    const docs = evidence.checks.find((check) => check.check === "project.docs.build");
+    assert.equal(docs?.status, "skipped", JSON.stringify(evidence.checks));
+    assert.match(docs?.reason ?? "", /No changed file matches applies_to \(docs\/\*\*\)/);
+  });
+
   it("runs tests, verification and evidence on its own and stops for the review", async () => {
     const root = project();
     const { id, invoke } = await approvedRun(root);
@@ -535,6 +564,22 @@ describe("independent review", () => {
     const stale = await invoke("execute", "--run", id, "--auto", "--evidence", record);
     assert.equal(stale.diagnostics[0]?.code, "PAVED_REVIEW_STALE", JSON.stringify(stale));
     assert.match(stale.diagnostics[0]!.message, /different source/);
+    assert.match(stale.diagnostics[0]!.remediation ?? "", /Paved rewrote .*brief\.md with the current digests/);
+    const current = (stale.data as { review?: { independent?: { brief: string; reviewed: { source_sha256: string } } } }).review?.independent;
+    assert.ok(current, JSON.stringify(stale));
+    const before = (stopped.data as { review: { independent: { reviewed: { source_sha256: string } } } }).review.independent.reviewed.source_sha256;
+    assert.notEqual(current.reviewed.source_sha256, before);
+    assert.match(readFileSync(join(root, current.brief), "utf8"), new RegExp(`source_sha256: ${current.reviewed.source_sha256}`));
+  });
+
+  it("names an evidence file that is not a record instead of reporting broken run state", async () => {
+    const root = project();
+    const { id, invoke } = await inReview(root);
+    write(root, "review.log", "Reviewed: looks good\nfindings: none: really\n");
+    const refused = await invoke("execute", "--run", id, "--auto", "--evidence", "review.log");
+    assert.equal(refused.diagnostics[0]?.code, "PAVED_EVIDENCE_FILE_INVALID", JSON.stringify(refused));
+    assert.match(refused.diagnostics[0]!.message, /review\.log is not valid YAML/);
+    assert.equal(runState(root, id).status, "running");
   });
 
   it("refuses a blocking finding that was not executed or reproduced", async () => {

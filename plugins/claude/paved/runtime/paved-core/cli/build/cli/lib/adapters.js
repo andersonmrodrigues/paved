@@ -4,7 +4,7 @@ import { parse } from 'yaml';
 import { createRegistry } from './schemas.js';
 import { compatible } from './tools.js';
 const ignored = /^(?:\.|node_modules$|target$|dist$|build$)/;
-function globRegex(glob) {
+export function globRegex(glob) {
     const escaped = glob
         .replace(/\*\*\//g, '\u0001')
         .replace(/[.+^${}()|[\]\\]/g, '\\$&')

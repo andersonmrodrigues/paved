@@ -19,7 +19,7 @@ function rel(projectRoot: string, path: string): string {
   return relative(realpathSync(projectRoot), realpathSync(path)).split(sep).join("/");
 }
 
-export async function verifyHandler(invocation: CommandInvocation, beforeRun?: ToolInvocationGuard): Promise<CommandResult> {
+export async function verifyHandler(invocation: CommandInvocation, beforeRun?: ToolInvocationGuard, scope: { changedFiles?: readonly string[] } = {}): Promise<CommandResult> {
   let result: VerificationRunResult;
   try {
     const outcome = runDecisionGate({
@@ -52,6 +52,7 @@ export async function verifyHandler(invocation: CommandInvocation, beforeRun?: T
       sourceRoot: invocation.paths.sourceRoot,
       coreRoot: invocation.paths.coreRoot,
       adapterSelections: invocation.flags.adapters,
+      ...(scope.changedFiles === undefined ? {} : { changedFiles: scope.changedFiles }),
       ...(beforeRun ? { beforeRun: (selected) => {
         const stopped = beforeRun(selected);
         if (stopped) throw new ToolInvocationStopped(stopped);

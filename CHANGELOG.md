@@ -5,6 +5,29 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- Workflow verification honors a Check's `applies_to`. When none of the files the run
+  changed match it, the check is recorded as `skipped` with the reason, and it is
+  neither required nor counted toward completion. Standalone `paved verify` still runs
+  every check.
+- `PAVED_EVIDENCE_FILE_INVALID` reports an `--evidence` file that is neither Markdown
+  nor valid YAML, such as a log, before any phase gate reads it. Previously this showed
+  up as `PAVED_WORKFLOW_STATE_INVALID`. `--help` says what `--evidence` takes in each
+  phase.
+
+### Fixed
+
+- A `bug` run now completes on its own. The workflow evidence record includes the
+  failing regression test recorded at discovery as its `reproduction` artifact, which
+  `core.bug` requires. Previously the evidence phase refused every run that had
+  reproduced the bug.
+- `PAVED_REVIEW_STALE` now rewrites the review brief with the current digests and
+  returns the `review` block. When the source digest moved, it explains that files
+  written by an editor, build or generator count too.
+- Source discovery skips `.idea`, `.vscode`, `.fleet` and `.vs`. An open IDE no longer
+  changes the source fingerprint and makes a finished review stale.
+
 ## [2.28.0] - 2026-11-13
 
 ### Added

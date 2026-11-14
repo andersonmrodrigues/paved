@@ -1,6 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { inspectConsumer } from "../lib/consumer-state.js";
+import { loadYaml } from "../lib/documents.js";
+import { changedFiles } from "../lib/workflow-evidence.js";
 import { acquireConsumerOperationLock, ConsumerOperationLockedError, withConsumerOperationScope } from "../lib/operation-lock.js";
 import { refreshFor, remediationFor } from "../lib/lifecycle-remediation.js";
 import { runDecisionGate, toProjection } from "../lib/decisions/gate.js";
@@ -384,6 +386,15 @@ function evidencePath(invocation) {
     const path = resolveSafePath(invocation.paths.projectRoot, invocation.flags.evidence);
     if (!existsSync(path))
         throw new Error(`Evidence file does not exist: ${invocation.flags.evidence}`);
+    // Anything but a Markdown document is a record; one that is not YAML would otherwise fail deep in a gate as invalid run state.
+    if (!/\.(md|markdown)$/i.test(path)) {
+        try {
+            loadYaml(path);
+        }
+        catch (error) {
+            throw new IntentError("PAVED_EVIDENCE_FILE_INVALID", `${invocation.flags.evidence} is not valid YAML: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`, "Pass a Paved record in the format the phase asks for (a Markdown plan or answer, a ChangeReview or an Evidence record), or omit --evidence and let Paved run the governed Tool; logs and raw output are not evidence files.");
+        }
+    }
     return path;
 }
 function completeAndStartNext(run, phase) {
@@ -687,7 +698,10 @@ async function resume(invocation, step, run, answers) {
             projectRoot, coreRoot, run, phase, workflow, approve: invocation.flags.approve === true,
             tools: {
                 test: async () => testHandler({ ...forwarded, command: "test" }, guard),
-                verify: async () => verifyHandler({ ...forwarded, command: "verify" }, guard),
+                verify: async () => {
+                    const changed = changedFiles(projectRoot, run);
+                    return verifyHandler({ ...forwarded, command: "verify" }, guard, changed === undefined ? {} : { changedFiles: changed });
+                },
             },
             ...(note ? { note } : {}), ...(evidence ? { evidence } : {}),
         });
@@ -702,6 +716,11 @@ async function resume(invocation, step, run, answers) {
         case "blocked":
             if (decisions.applied.length > 0)
                 writeRun(projectRoot, coreRoot, run);
+            // A stale review is redone from a brief that carries the run's current digests, so rewrite it now.
+            if (outcome.code === "PAVED_REVIEW_STALE") {
+                const review = reviewFor(projectRoot, run, coreRoot);
+                return blocked(step, outcome.code, outcome.message, outcome.remediation, { run: run.id, ...(review === undefined ? {} : { review }) });
+            }
             return blocked(step, outcome.code, outcome.message, outcome.remediation, { run: run.id });
         case "relay":
             return createResult({
