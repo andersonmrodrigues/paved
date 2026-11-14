@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.29.0] - 2026-11-14
+
 ### Added
 
 - Workflow verification honors a Check's `applies_to`. When none of the files the run
