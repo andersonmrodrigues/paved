@@ -16,7 +16,7 @@ function statusFor(diagnostics) {
 function rel(projectRoot, path) {
     return relative(realpathSync(projectRoot), realpathSync(path)).split(sep).join("/");
 }
-export async function verifyHandler(invocation, beforeRun) {
+export async function verifyHandler(invocation, beforeRun, scope = {}) {
     let result;
     try {
         const outcome = runDecisionGate({
@@ -49,6 +49,7 @@ export async function verifyHandler(invocation, beforeRun) {
             sourceRoot: invocation.paths.sourceRoot,
             coreRoot: invocation.paths.coreRoot,
             adapterSelections: invocation.flags.adapters,
+            ...(scope.changedFiles === undefined ? {} : { changedFiles: scope.changedFiles }),
             ...(beforeRun ? { beforeRun: (selected) => {
                     const stopped = beforeRun(selected);
                     if (stopped)

@@ -42,7 +42,10 @@ properties:
     propertyNames: { $ref: "urn:paved:schema:common:v1#/$defs/name" }
     additionalProperties: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
   applies_to:
-    description: Glob patterns of changed files that make the check relevant. Omitted means always relevant.
+    description: >
+      Glob patterns of changed files that make the check relevant. Omitted means always relevant.
+      A workflow run records a check whose patterns match none of its changed files as `skipped`;
+      a standalone `paved verify` runs it.
     $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyStringList"
   preconditions:
     description: >

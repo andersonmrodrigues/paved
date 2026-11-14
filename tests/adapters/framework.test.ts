@@ -387,3 +387,13 @@ test('Core has no consumer business names and adapters do not generate project p
     assert.ok((adapter.provides?.capabilities ?? []).every(c=>c.evidence.every(e=>!/(?:must|should|recommended)\b/i.test(e.statement))));
   }
 });
+
+test('source discovery skips editor settings, so an open IDE does not change the source fingerprint', () => {
+  const root = temporaryDirectory('paved-editors');
+  writeFileSync(join(root, 'index.js'), 'export const value = 1;\n');
+  for (const folder of ['.idea', '.vscode', '.fleet', '.vs']) {
+    mkdirSync(join(root, folder));
+    writeFileSync(join(root, folder, 'workspace.js'), 'export const layout = 1;\n');
+  }
+  assert.deepEqual(discoverSources(root).map(source => source.path), ['index.js']);
+});

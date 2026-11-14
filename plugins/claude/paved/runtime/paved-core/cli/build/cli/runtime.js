@@ -120,7 +120,7 @@ function commandUsage(command) {
         if (STEP_COMMANDS.includes(command))
             commandOptions.push("  --host-tool-approval <id>  Acknowledge the exact suspended Tool invocation after host mediation; grants no host permission.");
         if (STEP_COMMANDS.includes(command))
-            commandOptions.push("  --run <id> --advance --note <text> --evidence <path>  Advance the run within this step's phases.");
+            commandOptions.push("  --run <id> --advance --note <text> --evidence <path>  Advance the run within this step's phases. --evidence takes the phase's record: a Markdown plan or answer, a failing-test Evidence record at bug discovery, or the ChangeReview at review; never a log.");
         if (STEP_COMMANDS.includes(command))
             commandOptions.push("  --run <id> --abandon [--note <reason>]  Cancel the run so the same request can start again.");
         if (command === "plan")
