@@ -449,6 +449,7 @@ export const UNCHANGED_HANDLER = "run.unchanged";
 export const AMENDED_RETRY = "plan amended";
 export const REVIEW_HANDLER = "run.review";
 export const REVIEW_FIX = "review findings";
+export const SOURCE_CHANGED_AFTER_VERIFICATION = "source changed after verification";
 export const MEASUREMENT_STALE = "measured code changed";
 
 export function recoveryQuestion(phase: string, attempts: number): string {
@@ -463,12 +464,12 @@ export function recoveriesFor<T extends NonNullable<WorkflowRunRecord["decisions
 
 /**
  * Each "retry" the user chose, each approved plan amendment, each review finding sent
- * back to implementation and each performance measurement made stale by a later change
- * gives a phase a fresh set of attempts on top of the workflow's limit. An "amend" answer earns its round only once
+ * back to implementation, each stale performance measurement and each source change after
+ * verification gives a phase a fresh set of attempts on top of the workflow's limit. An "amend" answer earns its round only once
  * the amendment is approved, so it is counted there and not twice.
  */
 export function attemptRounds(run: Pick<WorkflowRunRecord, "decisions" | "events">, phase: string): number {
-  const amended = (run.events ?? []).filter((event) => (event.type === "retry-started" || event.type === "phase-reopened") && event.phase === phase && [AMENDED_RETRY, REVIEW_FIX, MEASUREMENT_STALE].includes(event.detail ?? "")).length;
+  const amended = (run.events ?? []).filter((event) => (event.type === "retry-started" || event.type === "phase-reopened") && event.phase === phase && [AMENDED_RETRY, REVIEW_FIX, MEASUREMENT_STALE, SOURCE_CHANGED_AFTER_VERIFICATION].includes(event.detail ?? "")).length;
   return 1 + recoveriesFor(run.decisions, phase).filter((decision) => decision.answer === "retry").length + amended;
 }
 
