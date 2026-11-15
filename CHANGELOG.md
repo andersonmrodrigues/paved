@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.29.1] - 2026-11-15
+
 ### Fixed
 
 - Source or test changes after verification now reopen implementation before review,
