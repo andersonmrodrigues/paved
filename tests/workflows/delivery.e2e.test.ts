@@ -9,6 +9,7 @@ import { initializeConsumer, runGenerators } from "../../cli/lib/generator-runti
 import { hasContextDrift, inspectConsumer } from "../../cli/lib/consumer-state.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
 import { analyzeGardener } from "../../cli/lib/gardener.ts";
+import { fingerprint } from "../../cli/lib/workflow-gates/shared.ts";
 import type { CommandResult } from "../../cli/result.ts";
 import { cleanupTemporaryDirectories, temporaryDirectory } from "../helpers.ts";
 
@@ -552,24 +553,84 @@ describe("independent review", () => {
     assert.equal(runState(root, id).phases.find((phase) => phase.phase === "review")?.status, "running");
   });
 
-  it("refuses a review that was not isolated or that read an older state", async () => {
+  it("refuses a review that was not isolated or that read an older plan or evidence", async () => {
     const root = project();
     const { id, invoke, stopped } = await inReview(root);
 
     const shared = await invoke("execute", "--run", id, "--auto", "--evidence", writeFindings(root, id, stopped, [], false));
     assert.equal(shared.diagnostics[0]?.code, "PAVED_REVIEW_NOT_INDEPENDENT", JSON.stringify(shared));
 
+    for (const field of ["plan_sha256", "evidence_sha256", "source_sha256"] as const) {
+      const record = writeFindings(root, id, stopped);
+      const findings = parse(readFileSync(join(root, record), "utf8")) as { reviewed: Record<string, string> };
+      findings.reviewed[field] = "a".repeat(64);
+      write(root, record, stringify(findings));
+      const stale = await invoke("execute", "--run", id, "--auto", "--evidence", record);
+      assert.equal(stale.diagnostics[0]?.code, "PAVED_REVIEW_STALE", JSON.stringify(stale));
+      assert.match(stale.diagnostics[0]!.message, new RegExp(`different ${field.split("_")[0]}`));
+      assert.match(stale.diagnostics[0]!.remediation ?? "", /Paved rewrote .*brief\.md with the current digests/);
+      const current = (stale.data as { review?: { independent?: { brief: string; reviewed: Record<string, string> } } }).review?.independent;
+      assert.ok(current, JSON.stringify(stale));
+      assert.match(readFileSync(join(root, current.brief), "utf8"), new RegExp(`${field}: ${current.reviewed[field]}`));
+    }
+  });
+
+  it("reopens implementation when source moves after verification and verifies the new change", async () => {
+    const root = project();
+    write(root, "tests/obsolete.js", "export const obsolete = true;\n");
+    const { id, invoke, stopped } = await inReview(root);
+    const before = runState(root, id).events.findLast((event) => event.detail?.startsWith("source_sha256=") && event.type === "verification-executed")!.detail;
+    assert.ok(!(await invoke("status")).diagnostics.some((item) => item.code === "PAVED_RUN_SOURCE_CHANGED_AFTER_VERIFICATION"));
+    write(root, "feature.js", "export const enabled = true; // follow-up\n");
+    rmSync(join(root, "tests/obsolete.js"));
+    write(root, "tests/new.js", "export const added = true;\n");
+    const current = fingerprint(root);
     const record = writeFindings(root, id, stopped);
-    write(root, "feature.js", "export const enabled = true; // changed after the review\n");
-    const stale = await invoke("execute", "--run", id, "--auto", "--evidence", record);
-    assert.equal(stale.diagnostics[0]?.code, "PAVED_REVIEW_STALE", JSON.stringify(stale));
-    assert.match(stale.diagnostics[0]!.message, /different source/);
-    assert.match(stale.diagnostics[0]!.remediation ?? "", /Paved rewrote .*brief\.md with the current digests/);
-    const current = (stale.data as { review?: { independent?: { brief: string; reviewed: { source_sha256: string } } } }).review?.independent;
-    assert.ok(current, JSON.stringify(stale));
-    const before = (stopped.data as { review: { independent: { reviewed: { source_sha256: string } } } }).review.independent.reviewed.source_sha256;
-    assert.notEqual(current.reviewed.source_sha256, before);
-    assert.match(readFileSync(join(root, current.brief), "utf8"), new RegExp(`source_sha256: ${current.reviewed.source_sha256}`));
+    const findings = parse(readFileSync(join(root, record), "utf8")) as { reviewed: Record<string, string> };
+    findings.reviewed.source_sha256 = current;
+    write(root, record, stringify(findings));
+
+    const status = await invoke("status");
+    const warning = status.diagnostics.find((item) => item.code === "PAVED_RUN_SOURCE_CHANGED_AFTER_VERIFICATION");
+    assert.ok(warning, JSON.stringify(status));
+    assert.match(warning.remediation ?? "", /paved execute --run/);
+    const reopened = await invoke("execute", "--run", id, "--auto", "--evidence", record);
+    assert.equal(reopened.status, "success", JSON.stringify(reopened));
+    assert.equal((reopened.data as { currentPhase: string }).currentPhase, "implementation", JSON.stringify(reopened));
+    assert.match((reopened.data as { nextAction: string }).nextAction, /feature\.js/);
+    assert.match((reopened.data as { nextAction: string }).nextAction, /tests\/obsolete\.js/);
+    assert.match((reopened.data as { nextAction: string }).nextAction, /tests\/new\.js/);
+    assert.doesNotMatch((reopened.data as { nextAction: string }).nextAction, /approximate/);
+    assert.match((reopened.data as { nextAction: string }).nextAction, /paved plan.*--amend/);
+    for (const phase of ["implementation", "validation", "verification", "evidence", "review"]) {
+      assert.ok(runState(root, id).events.some((event) => event.type === "phase-reopened" && event.phase === phase && event.detail === "source changed after verification"), phase);
+    }
+    assert.ok(!(await invoke("status")).diagnostics.some((item) => item.code === "PAVED_RUN_SOURCE_CHANGED_AFTER_VERIFICATION"));
+    const delivered = await invoke("execute", "--run", id, "--auto", "--note", "Finished the follow-up");
+    assert.equal((delivered.data as { currentPhase: string }).currentPhase, "review", JSON.stringify(delivered));
+    const after = runState(root, id).events.findLast((event) => event.detail?.startsWith("source_sha256=") && event.type === "verification-executed")!.detail;
+    assert.notEqual(after, before);
+    assert.equal(after, `source_sha256=${current}`);
+    assert.ok(!(await invoke("status")).diagnostics.some((item) => item.code === "PAVED_RUN_SOURCE_CHANGED_AFTER_VERIFICATION"));
+    await reviewClean(root, id, invoke, delivered);
+    assert.equal(runState(root, id).status, "completed");
+  });
+
+  it("keeps legacy review behavior when verification did not record a source fingerprint", async () => {
+    const root = project();
+    const { id, invoke, stopped } = await inReview(root);
+    const path = `.paved/generated/runs/${id}.yaml`;
+    const state = parse(readFileSync(join(root, path), "utf8")) as { events: { type: string; detail?: string }[] };
+    state.events = state.events.filter((event) => !(event.type === "verification-executed" && event.detail?.startsWith("source_sha256=")));
+    write(root, path, stringify(state));
+    write(root, "feature.js", "export const enabled = true; // legacy follow-up\n");
+    assert.ok(!(await invoke("status")).diagnostics.some((item) => item.code === "PAVED_RUN_SOURCE_CHANGED_AFTER_VERIFICATION"));
+    const record = writeFindings(root, id, stopped);
+    const findings = parse(readFileSync(join(root, record), "utf8")) as { reviewed: Record<string, string> };
+    findings.reviewed.source_sha256 = fingerprint(root);
+    write(root, record, stringify(findings));
+    const completed = await invoke("execute", "--run", id, "--auto", "--evidence", record);
+    assert.equal((completed.data as { status: string }).status, "completed", JSON.stringify(completed));
   });
 
   it("names an evidence file that is not a record instead of reporting broken run state", async () => {

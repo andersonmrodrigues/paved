@@ -101,7 +101,7 @@ class.
 | `approval-requested`, `approval-decided` | A human decision was asked for or made |
 | `decision-raised`, `decision-asked`, `decision-answered`, `decision-applied`, `decision-superseded` | A run-scoped decision changes state |
 | `retry-started` | A new attempt of a phase began |
-| `phase-reopened` | An approved plan amendment returned a phase to `pending`; the run goes back to implementation |
+| `phase-reopened` | A plan amendment, review fix, stale measurement or source change after verification returned a phase to `pending`; the run goes back to implementation |
 | `delegation-registered`, `delegation-task-started`, `delegation-task-completed`, `delegation-task-blocked`, `delegation-task-failed`, `delegation-superseded` | Delegation graph and task lifecycle observations |
 
 ## Plan approval
@@ -151,12 +151,23 @@ brief, and the subagent writes a `ChangeReview` record at
 `.paved/generated/reviews/<run-id>-findings.yaml`. Every coding agent Paved integrates
 with can start subagents, so this is a precondition, not an option.
 
+Verification records the source and test fingerprint and a per-file digest snapshot.
+Before considering findings, the review gate compares the current fingerprint with the
+latest recorded verification. If it changed, Paved reopens implementation and names
+the changed paths; the agent finishes the change and resumes so tests, verification,
+evidence and a new isolated review run again. If the work is outside the approved plan,
+the agent amends the plan and obtains approval first. `paved status --json` warns about
+this while the run is at review or a later phase. If the per-file snapshot is missing,
+the reported handoff paths are approximate. Older runs without a verification
+fingerprint retain their previous behavior.
+
 The agent passes the record with `paved execute --run <run-id> --auto --evidence
 <record>`. Paved refuses it when `reviewer.isolated` is not `true`
 (`PAVED_REVIEW_NOT_INDEPENDENT`) or when a digest differs from the run's current state
-(`PAVED_REVIEW_STALE`), so a review of an older change cannot close the run. Isolation
-is declared by the agent; like plan approval, it rests on the agent following the
-instruction.
+(`PAVED_REVIEW_STALE`). For a stale review, Paved rewrites the brief; a stale source
+digest here means the reviewer read an older brief while the current source still
+matches verification (when its fingerprint exists). Isolation is declared by the
+agent; like plan approval, it rests on the agent following the instruction.
 
 Each finding may carry a `proof` with the level the reviewer reached: `asserted`,
 `cited`, `reasoned`, `executed` (a command running the real code shows the defect) or

@@ -10,7 +10,7 @@ import { DecisionStoreError } from "../lib/decisions/store.js";
 import { repairProvider } from "../lib/decisions/providers/repair.js";
 import { repairHandler } from "../lib/decisions/handlers/repair.js";
 import { isOpen, runBelongsTo, runSourceRoot, scanRuns } from "../lib/workflow-runs.js";
-import { changedSinceVerification, fingerprint } from "../lib/workflow-gates/shared.js";
+import { changedSinceVerification, fingerprint, sourceChangedAction, sourceMovedSinceVerification } from "../lib/workflow-gates/shared.js";
 import { inspectVerificationConfig } from "../lib/verification-runner.js";
 import { loadMarkdown, loadYaml } from "../lib/documents.js";
 import { resolveSafePath } from "../lib/safe-path.js";
@@ -101,6 +101,19 @@ function staleCompletion(inspection, runs, sourceRoot) {
             remediation: "If the later edits belong to that change, start a new run for them (or run paved verify) so tests, verification and review cover the code that ships.",
         })];
 }
+function staleReviewSources(inspection, runs, sourceRoot) {
+    return runs.filter((run) => {
+        if (!isOpen(run) || !runBelongsTo(inspection.projectRoot, run, sourceRoot))
+            return false;
+        const review = run.phases.findIndex((phase) => phase.phase === "review");
+        const active = run.phases.findIndex((phase) => phase.status === "running");
+        return review >= 0 && active >= review && sourceMovedSinceVerification(inspection.projectRoot, run);
+    }).map((run) => createDiagnostic({
+        severity: "warning", category: "findings", code: "PAVED_RUN_SOURCE_CHANGED_AFTER_VERIFICATION", component: "consumer.runs",
+        message: `Source or test files changed after run ${run.id} was verified; review cannot accept the current source.`,
+        remediation: `Resume the run to reopen implementation. ${sourceChangedAction(inspection.projectRoot, run)}`,
+    }));
+}
 function recordedPatchId(projectRoot, evidence) {
     try {
         return loadYaml(resolveSafePath(projectRoot, evidence)).change?.patch_id;
@@ -166,7 +179,7 @@ function openRuns(inspection, sourceRoot, deliveryTarget) {
                 severity: "warning", category: "findings", code: "PAVED_WORKFLOW_RUN_INVALID", component: "consumer.runs",
                 message: `Workflow run ${run.id} could not be read: ${run.reason}`,
                 remediation: "Inspect .paved/generated/runs/ and restore or remove the invalid run document.",
-            })), ...staleCompletion(inspection, scanned.runs, sourceRoot), ...(delivery?.diagnostics ?? [])] };
+            })), ...staleCompletion(inspection, scanned.runs, sourceRoot), ...staleReviewSources(inspection, scanned.runs, sourceRoot), ...(delivery?.diagnostics ?? [])] };
 }
 /** An unreadable decision store is already reported by the inspection; repairs then wait for it to be fixed. */
 function repairs(invocation) {

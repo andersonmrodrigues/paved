@@ -5,6 +5,12 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Fixed
+
+- Source or test changes after verification now reopen implementation before review,
+  so the change is tested, verified and independently reviewed again. `paved status`
+  warns when an open run reaches review with source that no longer matches verification.
+
 ## [2.29.0] - 2026-11-14
 
 ### Added

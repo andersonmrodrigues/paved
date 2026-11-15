@@ -28,14 +28,30 @@ export function blocked(code: string, message: string, remediation: string): Pha
   return { kind: "blocked", code, message, remediation };
 }
 
+function sourceEntries(projectRoot: string): [string, string][] {
+  return discoverSources(projectRoot)
+    .filter((source) => source.kind === "source-module" || source.kind === "test")
+    .map((source) => [source.path, source.sha256]);
+}
+
 /** Digest of the project's source and test files, recorded when the run starts. */
 export function fingerprint(projectRoot: string): string {
-  return sha(JSON.stringify(discoverSources(projectRoot)
-    .filter((source) => source.kind === "source-module" || source.kind === "test")
-    .map((source) => [source.path, source.sha256])));
+  return sha(JSON.stringify(sourceEntries(projectRoot)));
 }
 
 export const VERIFIED_SOURCE = "source_sha256=";
+const VERIFIED_FILES = "source_files_sha256=";
+
+function verifiedSource(run: Run): string | undefined {
+  const recorded = run.events.findLast((event) => event.type === "verification-executed" && event.detail?.startsWith(VERIFIED_SOURCE))?.detail;
+  return recorded?.slice(VERIFIED_SOURCE.length);
+}
+
+/** True when source or test files differ from the latest recorded verification. */
+export function sourceMovedSinceVerification(projectRoot: string, run: Run): boolean {
+  const recorded = verifiedSource(run);
+  return recorded !== undefined && fingerprint(runSourceRoot(projectRoot, run)) !== recorded;
+}
 
 /**
  * True when a completed run's source and test files differ from what its verification saw,
@@ -43,10 +59,38 @@ export const VERIFIED_SOURCE = "source_sha256=";
  * recorded are never reported.
  */
 export function changedSinceVerification(projectRoot: string, run: Run): boolean {
-  if (run.status !== "completed") return false;
-  const recorded = run.events.findLast((event) => event.type === "verification-executed" && event.detail?.startsWith(VERIFIED_SOURCE))?.detail;
-  if (recorded === undefined) return false;
-  return fingerprint(runSourceRoot(projectRoot, run)) !== recorded.slice(VERIFIED_SOURCE.length);
+  return run.status === "completed" && sourceMovedSinceVerification(projectRoot, run);
+}
+
+/** Instructions shared by the review gate and status when verification no longer covers the source. */
+export function sourceChangedAction(projectRoot: string, run: Run): string {
+  const digest = verifiedSource(run);
+  const snapshot = run.events.findLast((event) => event.type === "verification-executed" && event.detail === `${VERIFIED_FILES}${digest}`)?.ref;
+  let entries: [string, string][] | undefined;
+  if (snapshot) {
+    const path = resolveSafePath(projectRoot, snapshot);
+    if (existsSync(path)) {
+      try {
+        const content: unknown = JSON.parse(readFileSync(path, "utf8"));
+        if (Array.isArray(content) && content.every((item: unknown) => Array.isArray(item) && item.length === 2
+          && typeof item[0] === "string" && typeof item[1] === "string") && sha(JSON.stringify(content)) === digest) {
+          entries = content as [string, string][];
+        }
+      } catch (error) {
+        if (!(error instanceof SyntaxError)) throw error;
+      }
+    }
+  }
+  const current = sourceEntries(runSourceRoot(projectRoot, run));
+  const previous = entries === undefined ? undefined : new Map(entries);
+  const next = new Map(current);
+  const paths = previous === undefined ? (run.handoff?.changed_paths ?? [])
+    : [...new Set([...previous.keys(), ...next.keys()])].filter((path) => previous.get(path) !== next.get(path)).sort();
+  const listed = paths.slice(0, 20).join(", ");
+  const description = previous === undefined
+    ? `Exact changed paths are unavailable; approximate handoff paths: ${listed || "none recorded"}.`
+    : `Changed paths: ${listed || "none identified"}${paths.length > 20 ? ` (and ${paths.length - 20} more)` : ""}.`;
+  return `Source changed after verification. ${description} Finish the change, then run paved execute --run ${run.id} --auto --note <what changed> --json; tests, verification, evidence and a new isolated review will run again. If the follow-up is outside the approved plan, amend it with paved plan --run ${run.id} --amend --note <what changed> --json, then request approval and run paved plan --run ${run.id} --approve --json.`;
 }
 
 export function recordObservation(context: PhaseContext, ref?: string): void {
@@ -357,9 +401,17 @@ const verification: PhaseHook = async (context) => {
     };
   }
   context.run.evidence = data.evidence[0]!;
-  // The digest lets paved status tell when the code changed after it was verified.
+  const entries = sourceEntries(runSourceRoot(context.projectRoot, context.run));
+  const content = JSON.stringify(entries);
+  const digest = sha(content);
+  const snapshot = `.paved/generated/verification-sources/${context.run.id}-${digest}.json`;
+  const snapshotPath = resolveSafePath(context.projectRoot, snapshot);
+  mkdirSync(dirname(snapshotPath), { recursive: true });
+  atomicWriteFileSync(snapshotPath, content);
+  context.run.events.push({ at: now(), type: "verification-executed", phase: "verification", ref: snapshot,
+    detail: `${VERIFIED_FILES}${digest}` });
   context.run.events.push({ at: now(), type: "verification-executed", phase: "verification", ref: context.run.evidence,
-    detail: `${VERIFIED_SOURCE}${fingerprint(runSourceRoot(context.projectRoot, context.run))}` });
+    detail: `${VERIFIED_SOURCE}${digest}` });
   return { kind: "pass" };
 };
 

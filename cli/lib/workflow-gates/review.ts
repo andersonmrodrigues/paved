@@ -3,10 +3,10 @@ import { join } from "node:path";
 import { loadYaml } from "../documents.ts";
 import { resolveSafePath } from "../safe-path.ts";
 import { createRegistry } from "../schemas.ts";
-import { REVIEW_FIX, REVIEW_HANDLER } from "../workflows.ts";
+import { REVIEW_FIX, REVIEW_HANDLER, SOURCE_CHANGED_AFTER_VERIFICATION } from "../workflows.ts";
 import { runSourceRoot, type Run } from "../workflow-runs.ts";
 import type { PhaseHook } from "./index.ts";
-import { blocked, fingerprint, now, projectRelative, reopenImplementation, sha } from "./shared.ts";
+import { blocked, fingerprint, now, projectRelative, reopenImplementation, sha, sourceChangedAction, sourceMovedSinceVerification } from "./shared.ts";
 
 export interface ReviewedState { readonly plan_sha256: string; readonly source_sha256: string; readonly evidence_sha256: string }
 export type ProofLevel = "asserted" | "cited" | "reasoned" | "executed" | "reproduced";
@@ -52,6 +52,11 @@ const STATE_NAMES: Readonly<Record<keyof ReviewedState, string>> = { plan_sha256
  */
 export const review: PhaseHook = (context) => {
   const { run, projectRoot } = context;
+  if (sourceMovedSinceVerification(projectRoot, run)) {
+    const nextAction = sourceChangedAction(projectRoot, run);
+    reopenImplementation(run, SOURCE_CHANGED_AFTER_VERIFICATION);
+    return { kind: "wait", nextAction };
+  }
   const expected = reviewedState(projectRoot, run);
   if (!expected) return blocked("PAVED_REVIEW_STATE_MISSING", "The review needs the approved plan and the run's recorded evidence.", "Complete the evidence phase before the review.");
   const brief = reviewBriefPath(run.id);
@@ -70,7 +75,7 @@ export const review: PhaseHook = (context) => {
   }
   const stale = (Object.keys(STATE_NAMES) as (keyof ReviewedState)[]).filter((key) => record.reviewed[key] !== expected[key]);
   if (stale.length) {
-    return blocked("PAVED_REVIEW_STALE", `The review read a different ${stale.map((key) => STATE_NAMES[key]).join(", ")} than the run has now.`,
+    return blocked("PAVED_REVIEW_STALE", `The review read a different ${stale.map((key) => STATE_NAMES[key]).join(", ")} than the run has now. When a verification fingerprint is available, the source still matches it.`,
       `Paved rewrote ${brief} with the current digests. Review the current change again from it, then run ${resume}.${stale.includes("source_sha256")
         ? " The source digest covers every source and test file in the checkout, so a file an editor, build or generator wrote since the review counts too."
         : ""}`);
