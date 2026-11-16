@@ -4,12 +4,23 @@ import { atomicWriteFileSync } from "./atomic-write.ts";
 import { loadYaml } from "./documents.ts";
 import { intentDocumentPath } from "./intent.ts";
 import { resolveSafePath } from "./safe-path.ts";
-import { findingLocation, planRef, reviewBriefPath, reviewedState, reviewRecordPath, type ChangeReview, type ReviewedState, type ReviewFinding } from "./workflow-gates/review.ts";
+import {
+  findingLocation, planRef, reviewBriefPath, reviewedState, reviewRecordCommand, reviewRecordPath, type ChangeReview, type ReviewedState, type ReviewFinding,
+} from "./workflow-gates/review.ts";
 import { loadContract, type Run } from "./workflow-runs.ts";
-import { phaseContext } from "./workflows.ts";
+import { phaseContext, type PhaseRouting, type ResolvedWorkflowPhase } from "./workflows.ts";
 
-/** Where a separate reviewer reads its brief and writes its findings, and what it must have read. */
-export interface IndependentReview { readonly brief: string; readonly record: string; readonly reviewed: ReviewedState }
+/**
+ * Where a separate reviewer reads its brief and writes its findings, what it must have read,
+ * how to route it (the review phase's routing) and the command that records its findings.
+ */
+export interface IndependentReview {
+  readonly brief: string;
+  readonly record: string;
+  readonly reviewed: ReviewedState;
+  readonly command: string;
+  readonly routing?: PhaseRouting;
+}
 
 export interface ReviewBlock { readonly target: string; readonly preview: string; readonly companions: readonly string[]; readonly independent?: IndependentReview }
 
@@ -88,13 +99,19 @@ export function writeReviewDocument(projectRoot: string, run: Run): string {
   return write(projectRoot, relative, lines);
 }
 
+function activeReviewPhase(coreRoot: string, run: Run): { workflow?: ReturnType<typeof loadContract>; phase?: ResolvedWorkflowPhase } {
+  if (run.workflow === undefined) return {};
+  const workflow = loadContract(coreRoot, run.workflow.id);
+  const phase = workflow.phases.find((item) => item.phase === "review" && run.phases.some((active) => active.phase === item.phase && active.status === "running"));
+  return { workflow, ...(phase === undefined ? {} : { phase }) };
+}
+
 /** Everything a reviewer with its own context needs, and nothing from the conversation that wrote the change. */
-export function writeReviewBrief(projectRoot: string, run: Run, reviewed: ReviewedState, coreRoot: string): string {
+export function writeReviewBrief(projectRoot: string, run: Run, reviewed: ReviewedState, coreRoot: string, resolved = activeReviewPhase(coreRoot, run)): string {
   const evidence = loadEvidence(projectRoot, run);
   const plan = planRef(run);
   const intent = intentDocumentPath(run.id);
-  const workflow = run.workflow === undefined ? undefined : loadContract(coreRoot, run.workflow.id);
-  const phase = workflow?.phases.find((item) => item.phase === "review" && run.phases.some((active) => active.phase === item.phase && active.status === "running"));
+  const { workflow, phase } = resolved;
   const diff = evidence.artifacts?.find((artifact) => artifact.kind === "diff")?.source?.location;
   const lines = [
     `# Review brief for ${run.id}`, "",
@@ -156,7 +173,12 @@ export function reviewFor(projectRoot: string, run: Run, coreRoot: string): Revi
   if (awaitingPlan && plan) return reviewBlock(plan, companionDocuments(projectRoot, run.id, plan));
   if (run.phases.some((phase) => phase.phase === "review" && phase.status === "running")) {
     const reviewed = reviewedState(projectRoot, run);
-    const independent = reviewed && { brief: writeReviewBrief(projectRoot, run, reviewed, coreRoot), record: reviewRecordPath(run.id), reviewed };
+    const resolved = activeReviewPhase(coreRoot, run);
+    const routing = resolved.phase?.routing;
+    const independent = reviewed && {
+      brief: writeReviewBrief(projectRoot, run, reviewed, coreRoot, resolved), record: reviewRecordPath(run.id), reviewed,
+      command: reviewRecordCommand(run.id), ...(routing === undefined ? {} : { routing }),
+    };
     return reviewBlock(writeReviewDocument(projectRoot, run), [], independent);
   }
   return undefined;

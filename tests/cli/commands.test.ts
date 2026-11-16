@@ -559,7 +559,7 @@ describe("status and doctor commands", () => {
       assert.equal(record.answer_source, "agent-relayed");
       const after = await run(project, "doctor");
       assert.equal(after.decisions?.length ?? 0, 0);
-      assert.ok(!codes(after).includes("PAVED_GENERATED_SOURCE_STALE"), JSON.stringify(after.diagnostics));
+      assert.ok(!codes(after).includes("PAVED_GENERATED_CONTEXT_STALE"), JSON.stringify(after.diagnostics));
     } finally { rmSync(project, { recursive: true, force: true }); }
   });
 
@@ -568,16 +568,19 @@ describe("status and doctor commands", () => {
     try {
       const first = await run(project, "doctor");
       const decision = first.decisions![0]!;
-      const driftBefore = codes(first).filter((code) => code === "PAVED_GENERATED_SOURCE_STALE").length;
+      const drift = (result: CommandResult) => result.diagnostics.filter((item) => item.code === "PAVED_GENERATED_CONTEXT_STALE");
+      assert.doesNotMatch(drift(first)[0]?.message ?? "", /app-routing\.module\.ts/);
       writeFileSync(join(project, "web/src/app-routing.module.ts"), "const routes = [{ path: 'courses', component: CoursesPage, title: 'Courses' }];\n");
       const second = await run(project, "doctor");
-      assert.ok(codes(second).filter((code) => code === "PAVED_GENERATED_SOURCE_STALE").length > driftBefore, JSON.stringify(second.diagnostics));
+      // More drift widens the one diagnostic instead of adding another.
+      assert.equal(drift(second).length, 1, JSON.stringify(second.diagnostics));
+      assert.match(drift(second)[0]!.message, /app-routing\.module\.ts/);
       assert.equal(second.decisions?.[0]?.id, decision.id);
       const applied = await run(project, "doctor", ["--answer", `${decision.id}=apply`, "--answered-by", "tester@example.com"]);
       assert.ok(!codes(applied).includes("PAVED_DECISION_ANSWER_INVALID"), JSON.stringify(applied.diagnostics));
       const record = parse(readFileSync(join(project, ".paved/decisions", `${decision.id}.yaml`), "utf8")) as { status: string };
       assert.equal(record.status, "APPLIED");
-      assert.ok(!codes(await run(project, "doctor")).includes("PAVED_GENERATED_SOURCE_STALE"));
+      assert.ok(!codes(await run(project, "doctor")).includes("PAVED_GENERATED_CONTEXT_STALE"));
     } finally { rmSync(project, { recursive: true, force: true }); }
   });
 

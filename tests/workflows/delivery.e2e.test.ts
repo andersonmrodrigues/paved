@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -195,9 +195,17 @@ describe("delivering an approved plan", () => {
     write(root, "feature.js", "export const enabled = true;\n");
     write(root, "README.md", "# Consumer\n\nThe behavior is enabled.\n");
     assert.equal(hasContextDrift(inspectConsumer({ projectRoot: root, coreRoot: core })), true);
+    const drift = (result: CommandResult) => result.diagnostics.filter((item) => item.code === "PAVED_GENERATED_CONTEXT_STALE");
 
+    const checkpoint = await invoke("execute", "--run", id, "--checkpoint", "--note", "Enabled the flag");
     const delivered = await invoke("execute", "--run", id, "--auto", "--note", "Enabled the behavior");
     assert.equal((delivered.data as { currentPhase: string }).currentPhase, "review", JSON.stringify(delivered));
+    // Mid-run steps stay quiet about drift; status reports it once, as a warning that blocks nothing.
+    assert.deepEqual([...drift(checkpoint), ...drift(delivered)], []);
+    const status = await invoke("status");
+    assert.equal(drift(status).length, 1, JSON.stringify(status.diagnostics));
+    assert.equal(drift(status)[0]!.severity, "warning");
+    assert.notEqual(status.status, "failed", JSON.stringify(status.diagnostics));
     const completed = await reviewClean(root, id, invoke, delivered);
 
     assert.equal(runState(root, id).status, "completed", JSON.stringify(completed));
@@ -546,6 +554,19 @@ describe("independent review", () => {
 
     assert.equal(refused.diagnostics[0]?.code, "PAVED_REVIEW_RECORD_REQUIRED", JSON.stringify(refused));
     assert.equal(runState(root, id).status, "running");
+    // The refusal carries what the agent needs to hand the review off and record it.
+    const command = `paved execute --run ${id} --auto --evidence .paved/generated/reviews/${id}-findings.yaml --json`;
+    const handoff = (refused.data as { review?: { independent?: { brief: string; record: string; command: string; routing?: { mode: string; capacity: string; reasoning_effort: string } } } }).review?.independent;
+    assert.ok(handoff, JSON.stringify(refused));
+    assert.equal(handoff.brief, independent.brief);
+    assert.equal(handoff.record, `.paved/generated/reviews/${id}-findings.yaml`);
+    assert.equal(handoff.command, command);
+    assert.deepEqual({ mode: handoff.routing?.mode, capacity: handoff.routing?.capacity, effort: handoff.routing?.reasoning_effort },
+      { mode: "subagent", capacity: "balanced", effort: "high" });
+    assert.ok(existsSync(join(root, handoff.brief)));
+    assert.ok(refused.diagnostics[0]!.remediation?.includes(command), refused.diagnostics[0]!.remediation);
+    assert.ok(refused.diagnostics[0]!.remediation?.includes(handoff.brief), refused.diagnostics[0]!.remediation);
+    assert.equal((stopped.data as { review: { independent: { command: string } } }).review.independent.command, command);
 
     write(root, `.paved/generated/reviews/${id}-findings.yaml`, "findings: [unclosed\n");
     const malformed = await invoke("execute", "--run", id, "--auto", "--evidence", `.paved/generated/reviews/${id}-findings.yaml`);
@@ -559,6 +580,7 @@ describe("independent review", () => {
 
     const shared = await invoke("execute", "--run", id, "--auto", "--evidence", writeFindings(root, id, stopped, [], false));
     assert.equal(shared.diagnostics[0]?.code, "PAVED_REVIEW_NOT_INDEPENDENT", JSON.stringify(shared));
+    assert.ok((shared.data as { review?: { independent?: { command: string } } }).review?.independent?.command, JSON.stringify(shared));
 
     for (const field of ["plan_sha256", "evidence_sha256", "source_sha256"] as const) {
       const record = writeFindings(root, id, stopped);
@@ -731,6 +753,30 @@ describe("starting work with execute", () => {
     assert.equal((started.data as { updated?: boolean }).updated, true);
     assert.ok((started.data as { run?: string }).run);
     assert.equal(hasContextDrift(inspectConsumer({ projectRoot: root, coreRoot: core })), false);
+  });
+
+  it("starts the request when regenerating drifted context fails", { skip: process.getuid?.() === 0 && "root ignores directory permissions" }, async () => {
+    const root = project();
+    runGenerators(core, root);
+    write(root, "README.md", "# Consumer, changed\n");
+    assert.equal(hasContextDrift(inspectConsumer({ projectRoot: root, coreRoot: core })), true);
+    // The update cannot write the regenerated context, so it fails.
+    const context = join(root, ".paved/project");
+    chmodSync(context, 0o555);
+    let started: CommandResult;
+    try {
+      started = await dispatchCli({ argv: ["execute", "Enable the behavior", "--workflow", "feature", "--because", "New behavior.", "--project", root, "--json"] });
+    } finally {
+      // The failed update may leave the read-only directory inside its backup, so restore write access everywhere.
+      spawnSync("chmod", ["-R", "u+w", root]);
+    }
+
+    assert.notEqual(started.status, "failed", JSON.stringify(started));
+    assert.ok((started.data as { run?: string }).run, JSON.stringify(started));
+    const drift = started.diagnostics.filter((item) => item.code === "PAVED_GENERATED_CONTEXT_STALE");
+    assert.equal(drift.length, 1, JSON.stringify(started.diagnostics));
+    assert.equal(drift[0]!.severity, "warning");
+    assert.match(drift[0]!.remediation ?? "", /Work is not blocked/);
   });
 
   it("takes a request through intent and planning to implementation with execute alone", async () => {

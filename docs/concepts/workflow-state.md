@@ -161,13 +161,20 @@ this while the run is at review or a later phase. If the per-file snapshot is mi
 the reported handoff paths are approximate. Older runs without a verification
 fingerprint retain their previous behavior.
 
-The agent passes the record with `paved execute --run <run-id> --auto --evidence
-<record>`. Paved refuses it when `reviewer.isolated` is not `true`
-(`PAVED_REVIEW_NOT_INDEPENDENT`) or when a digest differs from the run's current state
-(`PAVED_REVIEW_STALE`). For a stale review, Paved rewrites the brief; a stale source
-digest here means the reviewer read an older brief while the current source still
-matches verification (when its fingerprint exists). Isolation is declared by the
-agent; like plan approval, it rests on the agent following the instruction.
+The result's `review.independent` block carries what the handoff needs: `brief`, the
+`record` the reviewer writes, the `reviewed` digests, the review phase's `routing`
+(subagent mode, capacity and reasoning effort) and `command`, the exact
+`paved execute --run <run-id> --auto --evidence <record> --json` that records the
+findings. Paved refuses a missing record (`PAVED_REVIEW_RECORD_REQUIRED`), one that does
+not match the schema or the run (`PAVED_REVIEW_RECORD_INVALID`), one whose
+`reviewer.isolated` is not `true` (`PAVED_REVIEW_NOT_INDEPENDENT`), one whose digests
+differ from the run's current state (`PAVED_REVIEW_STALE`) and one with an unproven
+blocking finding (`PAVED_REVIEW_FINDING_UNPROVEN`). Each refusal rewrites the brief with
+the current digests, returns the `review` block again and names the record command in
+its remediation. A stale source digest means the reviewer read an older brief while the
+current source still matches verification (when its fingerprint exists). Isolation is
+declared by the agent; like plan approval, it rests on the agent following the
+instruction.
 
 Each finding may carry a `proof` with the level the reviewer reached: `asserted`,
 `cited`, `reasoned`, `executed` (a command running the real code shows the defect) or

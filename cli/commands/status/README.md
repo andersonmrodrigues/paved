@@ -29,8 +29,11 @@ The structured result summarizes initialization state, project name, Core and lo
 health, selected/detected/resolved adapters, generator state, pending proposals,
 conflicts, verification profile status and derived `lifecycleState`.
 `generatedContext` is `drifted` when generated project context cites source files that
-changed since it was generated; that drift is a warning that does not block work, and
-the repair decision or `paved update --json` regenerates the context.
+changed since it was generated, or new relevant source files appeared; `staleGenerators`
+then names the generators concerned. The drift is reported as one
+`PAVED_GENERATED_CONTEXT_STALE` warning that does not block work. The repair decision,
+`paved update --json`, or `paved generate <generator>... --json` regenerates the context,
+and an open run regenerates it when it completes.
 
 Missing verification profile is reported as a warning/finding, not as implicit
 authorization to verify anything.

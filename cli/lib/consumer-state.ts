@@ -100,6 +100,8 @@ export interface ConsumerInspection {
   readonly sourceRoot?: string;
   /** Linked worktrees the generated context was last generated from, when not projectRoot. */
   readonly contextWorktrees?: readonly string[];
+  /** Generators whose context drifted from the source, sorted; absent when none did. */
+  readonly staleGenerators?: readonly string[];
   readonly diagnostics: readonly Diagnostic[];
 }
 
@@ -109,17 +111,51 @@ export type ConsumerLifecycleState =
 
 /**
  * Source drift: generated context cites repository files that changed, or new relevant
- * source files appeared. Ordinary development causes it, so it is reported and offered
- * for regeneration but never moves the project to STALE; blocking on it would let the
- * change Paved supervises disable Paved. Integrity problems (lock, Core, generator
- * contract or manifest digests, missing outputs) still make the project STALE.
+ * source files appeared. Ordinary development causes it, so it is reported as one warning
+ * naming every drifted generator and offered for regeneration. It never moves the project
+ * to STALE: blocking on it would let the change Paved supervises disable Paved. Integrity
+ * problems (lock, Core, generator contract or manifest digests, missing outputs) still
+ * make the project STALE.
  */
-export const CONTEXT_DRIFT_CODES: ReadonlySet<string> = new Set([
-  "PAVED_GENERATED_SOURCE_STALE", "PAVED_GENERATOR_SOURCE_SET_STALE",
-]);
+export const CONTEXT_DRIFT_CODE = "PAVED_GENERATED_CONTEXT_STALE";
 
 export function hasContextDrift(inspection: Pick<ConsumerInspection, "diagnostics">): boolean {
-  return inspection.diagnostics.some((item) => CONTEXT_DRIFT_CODES.has(item.code));
+  return inspection.diagnostics.some((item) => item.code === CONTEXT_DRIFT_CODE);
+}
+
+/** Why each generator's context drifted, collected while inspecting and reported once. */
+type ContextDrift = Map<string, { readonly changed: Set<string>; added: boolean }>;
+
+/** Generated documents without a generator in their provenance. */
+const UNATTRIBUTED = "unattributed context";
+
+function driftOf(drift: ContextDrift, generator: string): { readonly changed: Set<string>; added: boolean } {
+  let entry = drift.get(generator);
+  if (entry === undefined) drift.set(generator, entry = { changed: new Set(), added: false });
+  return entry;
+}
+
+const listed = (items: readonly string[], limit: number): string =>
+  items.length <= limit ? items.join(", ") : `${items.slice(0, limit).join(", ")} and ${items.length - limit} more`;
+
+function contextDriftDiagnostic(drift: ContextDrift): Diagnostic | undefined {
+  if (drift.size === 0) return undefined;
+  const generators = [...drift.keys()].sort();
+  const reasons = generators.map((generator) => {
+    const entry = drift.get(generator)!;
+    const why = [
+      ...(entry.changed.size > 0 ? [`cited sources changed: ${listed([...entry.changed].sort(), 3)}`] : []),
+      ...(entry.added ? ["new relevant sources"] : []),
+    ];
+    return `${generator} (${why.join("; ")})`;
+  });
+  // paved generate takes generator ids, so it is offered only when every drifted document names its generator.
+  const generate = generators.includes(UNATTRIBUTED) ? "" : `, or only these generators with paved generate ${generators.join(" ")} --json`;
+  return diagnostic({
+    code: CONTEXT_DRIFT_CODE, component: "consumer.generated", category: "findings", severity: "warning",
+    message: `Generated project context is behind the source for ${generators.length} generator${generators.length === 1 ? "" : "s"}: ${reasons.join(", ")}.`.slice(0, 2000),
+    remediation: `Work is not blocked. Regenerate it with paved update --json${generate}. An open run regenerates it when it completes.`,
+  });
 }
 
 function lifecycleState(input: {
@@ -560,7 +596,7 @@ function recordedContextRoots(projectRoot: string): Map<string, string> {
   return roots;
 }
 
-function inspectLastRun(projectRoot: string, coreRoot: string, context: ContextSources, diagnostics: Diagnostic[]): ConsumerInspection["lastRun"] {
+function inspectLastRun(projectRoot: string, coreRoot: string, context: ContextSources, diagnostics: Diagnostic[], drift: ContextDrift): ConsumerInspection["lastRun"] {
   const path = join(projectRoot, ".paved/generated/state/last-run.json");
   const proposalRoot = join(projectRoot, ".paved/generated/proposals");
   const proposalsOnDisk: string[] = [];
@@ -606,11 +642,7 @@ function inspectLastRun(projectRoot: string, coreRoot: string, context: ContextS
         const current = context.scan(context.rootFor(execution.generator));
         const currentPaths = [...sourcesFor(execution.generator, current.sources).map((source) => source.path),
           ...relevantEvidenceFor(execution.generator, current.evidence).map((item) => item.source.path)];
-        if (currentPaths.some((path) => !cited.has(path))) {
-          diagnostics.push(diagnostic({ code: "PAVED_GENERATOR_SOURCE_SET_STALE", component: "consumer.generated", category: "findings",
-            message: `Generator ${execution.generator} has new relevant source evidence.`,
-            remediation: "Work is not blocked. Regenerate the context with paved update --json, or answer the repair decision from paved status." }));
-        }
+        if (currentPaths.some((path) => !cited.has(path))) driftOf(drift, execution.generator).added = true;
       }
       if (Array.isArray(execution.proposals)) {
         proposals.push(...execution.proposals.filter((proposal): proposal is string => typeof proposal === "string"));
@@ -671,6 +703,7 @@ function inspectProvenanceObject(
   body: string,
   path: string,
   diagnostics: Diagnostic[],
+  drift: ContextDrift,
 ): void {
   const validation = registry.validate(document);
   if (!validation.valid) {
@@ -710,32 +743,26 @@ function inspectProvenanceObject(
     if (entry.type !== "file" || typeof entry.location !== "string" || typeof entry.sha256 !== "string") continue;
     const sourcePath = safe(rootFor(provenance?.generator), entry.location);
     if (!existsSync(sourcePath) || hashFile(sourcePath) !== entry.sha256) {
-      diagnostics.push(diagnostic({
-        code: "PAVED_GENERATED_SOURCE_STALE",
-        component: "consumer.generated",
-        category: "findings",
-        message: `${path} cites a source file that is missing or whose digest has changed: ${entry.location}.`,
-        remediation: "Work is not blocked. Regenerate the context with paved update --json, or answer the repair decision from paved status.",
-      }));
+      driftOf(drift, typeof provenance?.generator === "string" ? provenance.generator : UNATTRIBUTED).changed.add(entry.location);
     }
   }
 }
 
-function inspectGeneratedProvenance(registry: SchemaRegistry, projectRoot: string, rootFor: ContextSources["rootFor"], diagnostics: Diagnostic[]): void {
+function inspectGeneratedProvenance(registry: SchemaRegistry, projectRoot: string, rootFor: ContextSources["rootFor"], diagnostics: Diagnostic[], drift: ContextDrift): void {
   walkFiles(join(projectRoot, ".paved/project"), (full) => {
     const repoPath = relative(projectRoot, full).split(sep).join("/");
     try {
       if (full.endsWith(".md")) {
         const markdown = loadMarkdown(full);
         if (markdown.frontmatter.kind === "ContextDocument") {
-          inspectProvenanceObject(registry, rootFor, markdown.frontmatter, markdown.body, repoPath, diagnostics);
+          inspectProvenanceObject(registry, rootFor, markdown.frontmatter, markdown.body, repoPath, diagnostics, drift);
         }
       } else if (full.endsWith(".yaml") || full.endsWith(".yml")) {
         const document = loadYaml(full);
         if (document !== null && typeof document === "object" && (document as { provenance?: unknown }).provenance !== undefined) {
           const withoutProvenance = structuredClone(document) as Record<string, unknown>;
           delete withoutProvenance.provenance;
-          inspectProvenanceObject(registry, rootFor, document as Record<string, unknown>, stringify(withoutProvenance), repoPath, diagnostics);
+          inspectProvenanceObject(registry, rootFor, document as Record<string, unknown>, stringify(withoutProvenance), repoPath, diagnostics, drift);
         }
       }
     } catch (error) {
@@ -1259,8 +1286,11 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
       return scan;
     },
   };
-  const lastRun = inspectLastRun(input.projectRoot, input.coreRoot, context, diagnostics);
-  inspectGeneratedProvenance(registry, input.projectRoot, context.rootFor, diagnostics);
+  const drift: ContextDrift = new Map();
+  const lastRun = inspectLastRun(input.projectRoot, input.coreRoot, context, diagnostics, drift);
+  inspectGeneratedProvenance(registry, input.projectRoot, context.rootFor, diagnostics, drift);
+  const driftDiagnostic = contextDriftDiagnostic(drift);
+  if (driftDiagnostic !== undefined) diagnostics.push(driftDiagnostic);
   const contextWorktrees = [...new Set(contextRoots.values())].sort();
 
   const lockHealth = lockHealthFromDiagnostics(lockResult.health, diagnostics);
@@ -1289,6 +1319,7 @@ export function inspectConsumer(input: InspectConsumerInput): ConsumerInspection
     lockHealth,
     ...(sharedSource === undefined ? {} : { sourceRoot: sharedSource }),
     ...(contextWorktrees.length === 0 ? {} : { contextWorktrees }),
+    ...(drift.size === 0 ? {} : { staleGenerators: [...drift.keys()].sort() }),
     selectedAdapters: selectedAdapters.map((adapter) => adapter.id).sort(),
     detectedAdapters: detectedAdapters.filter((detection) => detection.confidence !== "unknown").map((detection) => ({
       id: detection.adapter.id,

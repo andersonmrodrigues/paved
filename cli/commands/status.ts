@@ -64,6 +64,7 @@ export function statusData(inspection: ConsumerInspection): Record<string, unkno
     ...(inspection.sourceRoot === undefined ? {} : { stateRoot: inspection.projectRoot, sourceRoot: inspection.sourceRoot }),
     ...(inspection.contextWorktrees === undefined ? {} : { contextWorktrees: inspection.contextWorktrees }),
     generatedContext: drifted ? "drifted" : "current",
+    ...(inspection.staleGenerators === undefined ? {} : { staleGenerators: inspection.staleGenerators }),
     generatorState: inspection.lastRun ?? { present: false, proposals: [], conflicts: [] },
     proposals: inspection.proposals,
     conflicts: inspection.conflicts,

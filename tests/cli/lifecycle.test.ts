@@ -303,7 +303,17 @@ test("source drift in generated context does not block testing or starting work"
     assert.notEqual(data.lifecycleState, "STALE");
     assert.equal(data.generatedContext, "drifted");
     assert.match(data.nextAction, /paved update --json/);
-    assert.ok(status.diagnostics.some((item) => item.code === "PAVED_GENERATED_SOURCE_STALE" && item.severity === "warning"));
+    const drift = status.diagnostics.filter((item) => item.code === "PAVED_GENERATED_CONTEXT_STALE");
+    assert.equal(drift.length, 1, JSON.stringify(status.diagnostics));
+    assert.equal(drift[0]!.severity, "warning");
+    assert.equal(drift[0]!.category, "findings");
+    const stale = (status.data as { staleGenerators?: string[] }).staleGenerators ?? [];
+    assert.ok(stale.length > 1, JSON.stringify(status.data));
+    for (const generator of stale) assert.ok(drift[0]!.message.includes(generator), drift[0]!.message);
+    assert.ok(drift[0]!.message.includes("README.md"), drift[0]!.message);
+    assert.ok(drift[0]!.remediation?.includes("paved update --json"), drift[0]!.remediation);
+    assert.ok(drift[0]!.remediation?.includes(`paved generate ${stale.join(" ")} --json`), drift[0]!.remediation);
+    assert.equal(status.status, "warning");
     const tested = await dispatchCli({ argv: ["test", "--project", a, "--json"] });
     assert.ok(!tested.diagnostics.some((item) => item.code === "PAVED_TEST_LIFECYCLE_BLOCKED"), JSON.stringify(tested.diagnostics));
     const started = await dispatchCli({ argv: ["intent", "Change the behavior", "--workflow", "feature", "--because", "Requested.", "--project", a, "--json"] });
