@@ -15,6 +15,22 @@ releases, not the development sequence used to build them.
   carries a newer Core than the project pins, shows both versions in `coreUpdate`, and
   suggests `paved update` as the next action when nothing more urgent is pending. The
   launcher passes its Core version to the runtime in `PAVED_LAUNCHER_CORE_VERSION`.
+- `paved gardener correction --text "<words>" --evidence <file[:lines] | commit | url>`
+  turns a project rule a person stated in conversation into a draft Rule under
+  `.paved/generated/proposals/rules/corrections/`, with the statement verbatim and the
+  evidence in its provenance sidecar. A statement an existing Core or project rule already
+  makes writes nothing and names that rule; a restatement of a pending draft is merged into
+  it and counted. Each draft is a project decision: only the person's `adopt` answer writes
+  it to `.paved/rules/corrections/`. The core instructions and the `gardener` skill (0.5.0)
+  tell agents to use this after a correction instead of keeping the rule in their own notes.
+- `paved review --base <ref>` and `paved review --range <a>..<b>` prepare the independent
+  change review for a branch or commit range without a workflow run: the diff, a brief with
+  the rules in scope, and the record format. `paved review ... --evidence <record>` checks
+  the reviewer's record with the review gate's rules (current diff digest, isolated
+  reviewer, proven blocking findings) and renders it; proven blocking findings return a
+  warning. `ChangeReview` records accept a `target` with `reviewed.diff_sha256` in place of
+  `run`; existing records stay valid, and a workflow's review gate refuses a record without
+  a run. The `change-review` skill (0.8.0) describes the flow.
 
 ### Changed
 

@@ -13,7 +13,8 @@ export type ProofLevel = "asserted" | "cited" | "reasoned" | "executed" | "repro
 export interface FindingProof { readonly level: ProofLevel; readonly command?: string; readonly output_sha256?: string; readonly expected?: string }
 export interface ReviewFinding { readonly severity: "blocking" | "note"; readonly file: string; readonly line?: number; readonly summary: string; readonly proof?: FindingProof; readonly rule?: string }
 export interface ChangeReview {
-  readonly run: string;
+  /** Absent on a review of a target outside a run (`paved review`). */
+  readonly run?: string;
   readonly reviewer: { readonly agent: string; readonly isolated: boolean };
   readonly reviewed: ReviewedState;
   readonly passes: readonly string[];
@@ -80,7 +81,10 @@ export const review: PhaseHook = (context) => {
   const record = loadYaml(context.evidence) as ChangeReview;
   const schema = createRegistry(join(context.coreRoot, "schemas"), ["paved/v1"]).validate(record);
   if (!schema.valid) return blocked("PAVED_REVIEW_RECORD_INVALID", schema.errors.join("; "), `Write the findings in the format ${brief} shows, then run ${resume}.`);
-  if (record.run !== run.id) return blocked("PAVED_REVIEW_RECORD_INVALID", `The review is for run ${record.run}, not ${run.id}.`, `Have the reviewer review run ${run.id} from ${brief}, then run ${resume}.`);
+  if (record.run !== run.id) {
+    return blocked("PAVED_REVIEW_RECORD_INVALID", record.run === undefined ? `The review is of a change outside a run (paved review), not of run ${run.id}.` : `The review is for run ${record.run}, not ${run.id}.`,
+      `Have the reviewer review run ${run.id} from ${brief}, then run ${resume}.`);
+  }
   if (!record.reviewer.isolated) {
     return blocked("PAVED_REVIEW_NOT_INDEPENDENT", "The review was not made by an isolated reviewer, so it checks the change against the reasoning that produced it.",
       `Run the review in a subagent with its own context that sees only ${brief}, then run ${resume}.`);

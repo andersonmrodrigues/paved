@@ -189,6 +189,33 @@ decision: `fix` reopens implementation, and the fix runs through tests, verifica
 evidence and a new review; `accept` completes the run with the findings on record as
 accepted by the user.
 
+### Review outside a run
+
+A branch, or any range of commits, can get the same independent review without a
+workflow run, gate or decision:
+
+```bash
+paved review --base main --json            # everything since the merge base with main, uncommitted and untracked files included
+paved review --range v1.2.0..v1.3.0 --json # only those commits; a...b reviews b against the merge base
+```
+
+Paved writes the diff (`.paved/` and its update backup and lock excluded, as in a run) to
+`.paved/generated/reviews/review-<hash>.diff` and a brief next to it. The brief names the
+target, its base and head commits, the diff and its SHA-256, the Core and project rules
+whose scope covers a changed file, and the record format. With no intent or plan, the
+reviewer reads the commit messages. The record carries `target` and
+`reviewed.diff_sha256` instead of `run` and the run digests; the schema accepts exactly one
+of the two forms.
+
+`paved review <same target> --evidence <record> --json` recomputes the diff and applies
+the gate's rules: the record must be valid and not bound to a run
+(`PAVED_REVIEW_RECORD_INVALID`), name the same target and diff digest
+(`PAVED_REVIEW_STALE`), come from an isolated reviewer (`PAVED_REVIEW_NOT_INDEPENDENT`)
+and prove every blocking finding (`PAVED_REVIEW_FINDING_UNPROVEN`). A valid record is
+rendered to `review-<hash>.md`. Proven blocking findings return a warning
+(`PAVED_REVIEW_BLOCKING_FINDINGS`, exit code 1) for the person to act on; nothing is
+reopened, because there is no run.
+
 ## Lifetime
 
 Run records and local evidence live under `.paved/generated/`, are disposable and are

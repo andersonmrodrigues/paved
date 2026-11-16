@@ -171,6 +171,13 @@ something. Use the `gardener` skill to propose a fix at the strongest layer poss
 adopting one is a human decision taken with `paved gardener`. Propose; do not apply
 structural changes to Core or project rules on your own.
 
+When a person corrects you with something that holds for the project ("never edit an
+applied migration", "labels come from the translation files"), do not keep it only in
+your own notes or memory. Run `paved gardener correction --text "<their words>"
+--evidence <file[:lines] | commit | url> --json` and present the decision it returns.
+Paved drafts the rule, skips it when a rule already says it, and writes it to
+`.paved/rules/` only when the person adopts it.
+
 ## Further reading (load on demand)
 
 - `principles.md`: the principles behind these instructions.

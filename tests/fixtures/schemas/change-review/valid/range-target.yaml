@@ -1,0 +1,11 @@
+apiVersion: paved/v1
+kind: ChangeReview
+target: { kind: range, ref: main..feature, base: 0123456789abcdef0123456789abcdef01234567, head: 89abcdef0123456789abcdef0123456789abcdef, working_tree: false }
+reviewer: { agent: claude-code subagent, isolated: true }
+reviewed: { diff_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa }
+passes: [rules, diff, change]
+findings:
+  - severity: note
+    file: src/app.ts
+    summary: A concern the reviewer could not prove by running the code.
+    proof: { level: reasoned }

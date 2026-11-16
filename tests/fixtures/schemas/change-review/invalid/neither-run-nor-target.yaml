@@ -1,0 +1,7 @@
+# expect-error: must have required property 'run'
+apiVersion: paved/v1
+kind: ChangeReview
+reviewer: { agent: claude-code subagent, isolated: true }
+reviewed: { diff_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa }
+passes: [diff]
+findings: []

@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { parse, stringify } from "yaml";
 import { atomicWriteFileSync } from "../../atomic-write.ts";
 import { analyzeGardener, type GardenerProposal } from "../../gardener.ts";
+import { adoptCorrection, correctionPaths } from "../../gardener-corrections.ts";
 import { resolveSafePath } from "../../safe-path.ts";
 import { createRegistry } from "../../schemas.ts";
 import type { AnswerValue } from "../answers.ts";
@@ -49,3 +50,29 @@ function apply(answer: AnswerValue, context: DecisionContext): readonly string[]
 export const gardenerHandler: HandlerRegistration = {
   effect: "config-additive", apply, reject: (answer) => answer === "decline",
 };
+
+function correctionHandler(paths: { proposal: string; target: string }): HandlerRegistration {
+  return {
+    effect: "config-additive",
+    reject: (answer) => answer === "decline",
+    apply: (answer, context) => {
+      if (answer !== "adopt") throw new Error(`Unknown correction option: ${String(answer)}.`);
+      return [adoptCorrection({ projectRoot: context.projectRoot, coreRoot: context.coreRoot, ...paths })];
+    },
+  };
+}
+
+/**
+ * The gardener's handlers. Each correction proposal has its own decision and handler key,
+ * resolved on lookup so a decision answered before a crash still finds its handler.
+ */
+export class GardenerHandlers extends Map<string, HandlerRegistration> {
+  constructor() {
+    super([["gardener.adopt", gardenerHandler]]);
+  }
+
+  override get(key: string): HandlerRegistration | undefined {
+    const paths = correctionPaths(key);
+    return super.get(key) ?? (paths === undefined ? undefined : correctionHandler(paths));
+  }
+}

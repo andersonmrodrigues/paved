@@ -10,7 +10,7 @@ import { resolveSafePath } from "./safe-path.ts";
 import { runSourceRoot, type Run } from "./workflow-runs.ts";
 import { UNCHANGED_HANDLER, type WorkflowContract } from "./workflows.ts";
 
-interface ChangeDiff { readonly files: string[]; readonly patch: string; readonly base?: string }
+export interface ChangeDiff { readonly files: string[]; readonly patch: string; readonly base?: string }
 
 // Paved state is not part of the change it records.
 const PATHSPEC = ["--", ".", ":(exclude).paved", ":(exclude).paved.update-backup", ":(exclude).paved-operation-lock"];
@@ -24,8 +24,28 @@ function git(projectRoot: string, args: readonly string[], input?: string): { ok
 const sha = (value: string): string => createHash("sha256").update(value).digest("hex");
 const lines = (text: string): string[] => text.split("\n").map((line) => line.trim()).filter(Boolean);
 
-/** The change since the run started: committed, staged, unstaged and untracked files, against the run's revision. */
-function collectChange(projectRoot: string, revision: string): ChangeDiff | undefined {
+/** The full commit id `ref` names, or undefined when it names no commit here. */
+export function resolveCommit(root: string, ref: string): string | undefined {
+  if (ref.startsWith("-")) return undefined;
+  const result = git(root, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+  return result.ok ? result.stdout.trim() : undefined;
+}
+
+export function mergeBase(root: string, left: string, right: string): string | undefined {
+  const result = git(root, ["merge-base", left, right]);
+  return result.ok && result.stdout.trim() !== "" ? result.stdout.trim() : undefined;
+}
+
+/** The committed change between two commits, without Paved state. */
+export function commitRangeChange(root: string, base: string, head: string): ChangeDiff {
+  return {
+    files: lines(git(root, ["diff", "--name-only", base, head, ...PATHSPEC]).stdout).sort((a, b) => a.localeCompare(b, "en")),
+    patch: git(root, ["diff", "--no-color", base, head, ...PATHSPEC]).stdout, base,
+  };
+}
+
+/** The change since `revision`: committed, staged, unstaged and untracked files, without Paved state. */
+export function collectChange(projectRoot: string, revision: string): ChangeDiff | undefined {
   if (git(projectRoot, ["rev-parse", "--is-inside-work-tree"]).stdout.trim() !== "true") return undefined;
   // A run started before the repository had a commit changed every file it now holds.
   const base = revision === "unversioned"
