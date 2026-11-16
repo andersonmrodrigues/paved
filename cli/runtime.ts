@@ -57,6 +57,10 @@ export interface CliFlags {
   readonly base?: string;
   /** `review --range <a..b>`: the commit range to review. */
   readonly range?: string;
+  /** `gardener correction --text <words>`: a person's correction, verbatim. */
+  readonly text?: string;
+  /** `gardener correction --evidence <ref>`, repeatable: the files, commits or URLs that show the corrected mistake. */
+  readonly correctionEvidence: readonly string[];
   readonly toolCommand?: readonly string[];
   readonly task?: string;
   readonly file?: string;
@@ -224,6 +228,7 @@ function commandUsage(command: CommandName | undefined): string {
     if (command === "plan") commandOptions.push("  --approve        Record the user's approval of the current plan, given in the conversation.", "  --run <id> --amend --note <change> [--evidence <plan>]  Ask approval for a revised plan mid-run.");
     if (command === "execute") commandOptions.push("  \"<request>\"      Start new work: initialize Paved if needed and record the request.", "  --approve        Record the user's approval of the current plan, given in the conversation.", "  --auto           Advance through every phase that needs no human input.", "  --run <id> --checkpoint --note <progress>  Record a finished part of the plan without leaving implementation.");
     if (command === "status") commandOptions.push("  --base <ref>     Report whether the latest completed run's evidence still matches the patch HEAD proposes against this target.");
+    if (command === "gardener") commandOptions.push("  debt             List tracked shortcut: comments.", "  correction --text <words> --evidence <path[:line]|commit|url>  Propose a person's correction, verbatim, as a project rule; --evidence is repeatable.");
     if (command === "review") commandOptions.push("  --base <ref>     Review everything changed since the merge base with <ref>, including uncommitted and untracked files.", "  --range <a..b>   Review the commits in a range; a...b starts at their merge base.", "  --evidence <path>  Check the reviewer's ChangeReview against the change as it is now.");
     if (command === "tool") commandOptions.push("  --scope <dir>    Run the command from this project directory.", "  -- <executable> [args...]  The exact command; everything after -- is passed as argv.");
     if (command === "delegation") commandOptions.push("  plan --run <id> --file <path>; approve --run <id> --approve after showing the exact graph to the user.", "  start --run <id> --task <id> --host <codex|claude-code> --model <name> --effort <value> --isolation <shared-workspace|isolated-worktree>.", "  finish --run <id> --task <id> --outcome <completed|blocked|failed> [--result <path>] [--usage <json>] [--changed-path <path> ...].", "  recover --run <id> --task <id> --confirmed-stopped --note <reason>; capabilities --host <codex|claude-code>.", "  Session ids are hashed; usage and isolated-worktree changed paths are host-reported.");
@@ -322,6 +327,8 @@ function parse(argv: readonly string[]): Parsed {
   let scope: string | undefined;
   let base: string | undefined;
   let range: string | undefined;
+  let text: string | undefined;
+  const correctionEvidence: string[] = [];
   let toolCommand: string[] | undefined;
   let task: string | undefined;
   let file: string | undefined;
@@ -384,6 +391,15 @@ function parse(argv: readonly string[]): Parsed {
       if (typeof value !== "string") return { kind: "error", result: value };
       if (token === "--range") range = value;
       else evidence = value;
+      index += 1;
+      continue;
+    }
+
+    if (command === "gardener" && (token === "--text" || token === "--evidence")) {
+      const value = takeValue(argv, index, token, command);
+      if (typeof value !== "string") return { kind: "error", result: value };
+      if (token === "--text") text = value;
+      else correctionEvidence.push(value);
       index += 1;
       continue;
     }
@@ -646,6 +662,8 @@ function parse(argv: readonly string[]): Parsed {
     ...(scope === undefined ? {} : { scope }),
     ...(base === undefined ? {} : { base }),
     ...(range === undefined ? {} : { range }),
+    ...(text === undefined ? {} : { text }),
+    correctionEvidence,
     ...(toolCommand === undefined ? {} : { toolCommand }),
     ...(task === undefined ? {} : { task }),
     ...(file === undefined ? {} : { file }),
