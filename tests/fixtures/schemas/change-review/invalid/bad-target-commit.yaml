@@ -1,0 +1,8 @@
+# expect-error: must match pattern
+apiVersion: paved/v1
+kind: ChangeReview
+target: { kind: range, ref: main..feature, base: main, head: 89abcdef0123456789abcdef0123456789abcdef, working_tree: false }
+reviewer: { agent: claude-code subagent, isolated: true }
+reviewed: { diff_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa }
+passes: [diff]
+findings: []
