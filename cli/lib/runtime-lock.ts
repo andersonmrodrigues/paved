@@ -43,3 +43,28 @@ export function readActiveRuntimeSelection(projectRoot: string, coreRoot: string
     return undefined;
   }
 }
+
+const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
+
+export function isCoreVersion(value: string): boolean {
+  return SEMVER.test(value);
+}
+
+/**
+ * SemVer order with the launcher's rules: numeric parts first, then a prerelease sorts
+ * before its release. Callers validate both versions with isCoreVersion first.
+ */
+export function compareCoreVersions(a: string, b: string): number {
+  const left = SEMVER.exec(a);
+  const right = SEMVER.exec(b);
+  if (left === null || right === null) throw new Error(`Not a Core version: ${left === null ? a : b}.`);
+  for (let index = 1; index <= 3; index += 1) {
+    const difference = Number(left[index]) - Number(right[index]);
+    if (difference !== 0) return difference;
+  }
+  const [leftPre, rightPre] = [left[4], right[4]];
+  if (leftPre === rightPre) return 0;
+  if (leftPre === undefined) return 1;
+  if (rightPre === undefined) return -1;
+  return leftPre < rightPre ? -1 : 1;
+}

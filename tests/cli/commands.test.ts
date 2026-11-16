@@ -12,7 +12,7 @@ import { acquireConsumerOperationLock } from "../../cli/lib/operation-lock.ts";
 import { renderHuman, renderJson } from "../../cli/output.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
 import { exitCode, primaryCategory, type CommandResult } from "../../cli/result.ts";
-import { cleanupTemporaryDirectories, temporaryDirectory } from "../helpers.ts";
+import { cleanupTemporaryDirectories, CORE_VERSION, NEXT_PATCH_VERSION, temporaryDirectory } from "../helpers.ts";
 
 const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const HEALTHY_FIXTURE = join(ROOT, "tests/cli/fixtures/healthy");
@@ -705,6 +705,51 @@ describe("status and doctor commands", () => {
       assert.deepEqual(statusData.selectedAdapters, ["technology/java"]);
       assert.deepEqual(statusData.resolvedAdapters, ["technology/java"]);
       assert.equal(statusData.verificationProfile, "present");
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("reports a pinned Core older than the one the launcher carries, without changing anything", async () => {
+    const project = fixtureCopy("core-update");
+    try {
+      writeCurrentLock(project);
+      const lockBefore = readFileSync(join(project, ".paved/paved.lock"), "utf8");
+      const status = await dispatchCli({ argv: ["status", "--project", project, "--json"], launcherCoreVersion: NEXT_PATCH_VERSION });
+      const data = dataOf(status);
+      assert.equal(status.status, "warning");
+      assertCode(status, "PAVED_CORE_UPDATE_AVAILABLE");
+      const finding = status.diagnostics.find((item) => item.code === "PAVED_CORE_UPDATE_AVAILABLE");
+      assert.equal(finding?.severity, "warning");
+      assert.match(finding?.remediation ?? "", /paved update/);
+      assert.deepEqual(data.coreUpdate, {
+        pinnedVersion: CORE_VERSION, availableVersion: NEXT_PATCH_VERSION,
+        summary: `Project pins Paved Core ${CORE_VERSION}; the installed plugin carries ${NEXT_PATCH_VERSION}.`,
+      });
+      assert.match(String(data.nextAction), new RegExp(`Paved Core ${NEXT_PATCH_VERSION.replaceAll(".", "\\.")} is available.*paved update --json`));
+      assert.equal(readFileSync(join(project, ".paved/paved.lock"), "utf8"), lockBefore);
+
+      for (const launcherCoreVersion of [CORE_VERSION, "0.1.0", `${CORE_VERSION}-rc.1`, "latest"]) {
+        const same = await dispatchCli({ argv: ["status", "--project", project, "--json"], launcherCoreVersion });
+        assert.equal(same.diagnostics.some((item) => item.code === "PAVED_CORE_UPDATE_AVAILABLE"), false, launcherCoreVersion);
+        assert.equal(dataOf(same).coreUpdate, undefined);
+        assert.doesNotMatch(String(dataOf(same).nextAction), /paved update/);
+      }
+      const direct = await dispatchCli({ argv: ["status", "--project", project, "--json"] });
+      assert.equal(dataOf(direct).coreUpdate, undefined);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps a more urgent next action ahead of an available Core update", async () => {
+    const project = fixtureCopy("core-update-urgent");
+    try {
+      writeCurrentLock(project);
+      rmSync(join(project, ".paved/verification/profile.yaml"), { force: true });
+      const status = await dispatchCli({ argv: ["status", "--project", project, "--json"], launcherCoreVersion: NEXT_PATCH_VERSION });
+      assertCode(status, "PAVED_CORE_UPDATE_AVAILABLE");
+      assert.match(String(dataOf(status).nextAction), /paved verify/);
     } finally {
       rmSync(project, { recursive: true, force: true });
     }

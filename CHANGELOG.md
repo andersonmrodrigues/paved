@@ -11,6 +11,10 @@ releases, not the development sequence used to build them.
   its Paved block. `keep-local` adds it to the clone's `.git/info/exclude` (shared by
   linked worktrees, never `.gitignore`); `track` keeps today's behavior. A tracked or
   ignored `AGENTS.md`, or a directory outside git, is not asked about.
+- `paved status` warns with `PAVED_CORE_UPDATE_AVAILABLE` when the plugin launcher
+  carries a newer Core than the project pins, shows both versions in `coreUpdate`, and
+  suggests `paved update` as the next action when nothing more urgent is pending. The
+  launcher passes its Core version to the runtime in `PAVED_LAUNCHER_CORE_VERSION`.
 
 ## [2.29.1] - 2026-11-15
 

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,6 +9,7 @@ import { loadYaml } from "../../cli/lib/documents.ts";
 import { initializeConsumer } from "../../cli/lib/generator-runtime.ts";
 import { writeRun, type Run } from "../../cli/lib/workflow-runs.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
+import { NEXT_PATCH_VERSION } from "../helpers.ts";
 
 const coreRoot = join(import.meta.dirname, "..", "..");
 const pending = loadYaml(join(coreRoot, "tests/fixtures/schemas/workflow-run/valid/pending-classification.yaml")) as Run;
@@ -67,6 +69,20 @@ describe("status verification setup", () => {
       const status = await dispatchCli({ argv: ["status", "--project", projectRoot, "--json"] });
       const codes = (status.data as { actionableFindings: { code: string }[] }).actionableFindings.map((item) => item.code);
       assert.ok(codes.includes("PAVED_VERIFY_TOOL_UNRESOLVED"), codes.join(", "));
+    } finally { rmSync(projectRoot, { recursive: true, force: true }); }
+  });
+});
+
+describe("status Core update", () => {
+  it("reads the Core version the launcher carries from PAVED_LAUNCHER_CORE_VERSION", () => {
+    const projectRoot = consumer();
+    try {
+      const status = spawnSync(process.execPath, ["./cli/index.ts", "status", "--project", projectRoot, "--json"], {
+        cwd: coreRoot, encoding: "utf8", env: { ...process.env, PAVED_LAUNCHER_CORE_VERSION: NEXT_PATCH_VERSION },
+      });
+      const result = JSON.parse(status.stdout) as { data: { coreUpdate?: { availableVersion: string } }; diagnostics: { code: string }[] };
+      assert.equal(result.data.coreUpdate?.availableVersion, NEXT_PATCH_VERSION);
+      assert.ok(result.diagnostics.some((item) => item.code === "PAVED_CORE_UPDATE_AVAILABLE"));
     } finally { rmSync(projectRoot, { recursive: true, force: true }); }
   });
 });

@@ -18,13 +18,44 @@ import type { EvidenceRecord } from "../lib/evidence.ts";
 import { resolveSafePath } from "../lib/safe-path.ts";
 import { createRegistry } from "../lib/schemas.ts";
 import { headPatch, patchFreshness } from "../lib/workflow-evidence.ts";
+import { compareCoreVersions, isCoreVersion } from "../lib/runtime-lock.ts";
 
 function statusFor(diagnostics: readonly Diagnostic[]): ResultStatus {
   if (diagnostics.some((diagnostic) => diagnostic.category !== "findings")) return "failed";
   return diagnostics.some((diagnostic) => diagnostic.severity !== "info") ? "warning" : "success";
 }
 
-export function statusData(inspection: ConsumerInspection): Record<string, unknown> {
+export interface CoreUpdate {
+  readonly pinnedVersion: string;
+  readonly availableVersion: string;
+  readonly summary: string;
+}
+
+/**
+ * The Core the launcher carries, when it is newer than the one the project pins. Only the
+ * launcher knows it: the runtime it starts is always the pinned one.
+ */
+export function availableCoreUpdate(inspection: ConsumerInspection, launcherCoreVersion: string | undefined): CoreUpdate | undefined {
+  const pinned = inspection.core.lockedVersion;
+  if (!inspection.initialized || pinned === undefined || launcherCoreVersion === undefined) return undefined;
+  if (!isCoreVersion(pinned) || !isCoreVersion(launcherCoreVersion)) return undefined;
+  if (compareCoreVersions(launcherCoreVersion, pinned) <= 0) return undefined;
+  return {
+    pinnedVersion: pinned, availableVersion: launcherCoreVersion,
+    summary: `Project pins Paved Core ${pinned}; the installed plugin carries ${launcherCoreVersion}.`,
+  };
+}
+
+function coreUpdateFindings(update: CoreUpdate | undefined): Diagnostic[] {
+  if (update === undefined) return [];
+  return [createDiagnostic({
+    severity: "warning", category: "findings", code: "PAVED_CORE_UPDATE_AVAILABLE", component: "consumer.runtime",
+    message: `${update.summary} Fixes and changes released after ${update.pinnedVersion} do not apply to this project until it is updated.`,
+    remediation: `Run paved update to adopt Core ${update.availableVersion} through a transactional update (reversible with runtime rollback), then review and commit the changed .paved/paved.lock.`,
+  })];
+}
+
+export function statusData(inspection: ConsumerInspection, coreUpdate?: CoreUpdate): Record<string, unknown> {
   const waiting = inspection.pendingDecisions.filter((item) => item.required);
   const unavailableCommands = discoverAgentCommands(inspection.projectRoot, inspection.coreRoot, inspection.sourceRoot).commands
     .filter((command) => !command.available)
@@ -44,7 +75,9 @@ export function statusData(inspection: ConsumerInspection): Record<string, unkno
         : inspection.lifecycleState === "BROKEN" || inspection.lifecycleState === "INCOMPATIBLE"
           ? "Run paved status and answer its repair decisions."
           : inspection.verificationProfile !== "present" ? "Run paved verify to choose repository checks."
-            : 'Start work with paved intent "<request>" --json.';
+            : coreUpdate !== undefined
+              ? `Paved Core ${coreUpdate.availableVersion} is available (this project pins ${coreUpdate.pinnedVersion}): run paved update --json to adopt it, then start work with paved intent "<request>" --json.`
+              : 'Start work with paved intent "<request>" --json.';
   const nextAction = drifted && inspection.lifecycleState !== "STALE"
     ? `${baseAction} Generated project context cites changed source files; this does not block work, and paved update --json regenerates it.`
     : baseAction;
@@ -60,6 +93,7 @@ export function statusData(inspection: ConsumerInspection): Record<string, unkno
     resolvedAdapters: inspection.resolvedAdapters,
     capabilityProviders: inspection.capabilityProviders,
     lockHealth: inspection.lockHealth,
+    ...(coreUpdate === undefined ? {} : { coreUpdate }),
     verificationProfile: inspection.verificationProfile,
     ...(inspection.sourceRoot === undefined ? {} : { stateRoot: inspection.projectRoot, sourceRoot: inspection.sourceRoot }),
     ...(inspection.contextWorktrees === undefined ? {} : { contextWorktrees: inspection.contextWorktrees }),
@@ -346,7 +380,8 @@ export function diagnose(invocation: CommandInvocation, command: "status" | "doc
     remediation: "Use the offered option id and provide the required human-authored approval.",
   }));
   const runs = openRuns(inspection, invocation.paths.sourceRoot, invocation.flags.base);
-  const diagnostics = [...inspection.diagnostics, ...agentsBlockFindings(inspection), ...runs.diagnostics,
+  const coreUpdate = availableCoreUpdate(inspection, invocation.launcherCoreVersion);
+  const diagnostics = [...inspection.diagnostics, ...agentsBlockFindings(inspection), ...coreUpdateFindings(coreUpdate), ...runs.diagnostics,
     ...verificationFindings(invocation, inspection),
     ...(inspection.initialized ? inspectVerificationGuides(inspection.projectRoot, inspection.coreRoot) : []), ...decisionDiagnostics];
   const onlyOpenRun = runs.runs.length === 1 ? runs.runs[0] : undefined;
@@ -356,7 +391,7 @@ export function diagnose(invocation: CommandInvocation, command: "status" | "doc
     status: statusFor(diagnostics),
     decisions: outcome.projections,
     data: {
-      ...statusData(inspection),
+      ...statusData(inspection, coreUpdate),
       openRuns: runs.runs,
       ...(runs.delivery === undefined ? {} : { delivery: runs.delivery }),
       ...(resumeAction === undefined ? {} : { nextAction: resumeAction }),

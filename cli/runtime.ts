@@ -89,6 +89,8 @@ export interface CommandInvocation {
   readonly selectors: readonly string[];
   readonly paths: CommandPaths;
   readonly rawArgv: readonly string[];
+  /** The Core version the plugin launcher carries, when a launcher started this runtime. */
+  readonly launcherCoreVersion?: string;
 }
 
 export type CommandHandler = (invocation: CommandInvocation) => CommandResult | Promise<CommandResult>;
@@ -99,6 +101,7 @@ export interface DispatchOptions {
   readonly cwd?: string;
   readonly executablePath?: string;
   readonly handlers?: CommandHandlers;
+  readonly launcherCoreVersion?: string;
 }
 
 interface CommandRule {
@@ -734,6 +737,7 @@ export async function dispatchCli(options: DispatchOptions = {}): Promise<Comman
       selectors: parsed.state.selectors,
       paths,
       rawArgv: argv,
+      ...(options.launcherCoreVersion === undefined ? {} : { launcherCoreVersion: options.launcherCoreVersion }),
     });
   } catch (error) {
     if (error instanceof CliPathError) {
