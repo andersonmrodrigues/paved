@@ -5,6 +5,16 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Changed
+
+- Every review refusal that leaves the run without an acceptable record
+  (`PAVED_REVIEW_RECORD_REQUIRED`, `PAVED_REVIEW_RECORD_INVALID`,
+  `PAVED_REVIEW_NOT_INDEPENDENT`, `PAVED_REVIEW_STALE`, `PAVED_REVIEW_FINDING_UNPROVEN`)
+  now rewrites the brief and returns the `review` block, as `PAVED_REVIEW_STALE` already
+  did. `review.independent` also carries the review phase's `routing` and `command`, the
+  exact command that records the findings, and each remediation names that command. The
+  review must still come from a reviewer that did not write the change.
+
 ## [2.29.1] - 2026-11-15
 
 ### Fixed

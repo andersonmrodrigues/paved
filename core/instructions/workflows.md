@@ -247,6 +247,9 @@ in scope, the question to answer) and ask for findings with file and line refere
 file contents; then continue from its report. `cli`: Paved runs the work; relay the
 result. Tiers are relative: `paved delegation capabilities --host <host>` maps them to the
 host's models. A host without subagents or per-subagent models runs the phase here.
+For the `review` phase, `review.independent` in the result names the `brief` to hand the
+reviewer subagent, its `routing`, the `record` it writes and the `command` that records
+its findings; every review refusal returns that block again. Never review your own change.
 Apply the same economy outside runs: search-heavy or mechanical work with an easy to
 check result belongs to a light subagent, while decisions the user approves stay here.
 

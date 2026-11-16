@@ -22,6 +22,17 @@ export interface ChangeReview {
 
 export const reviewBriefPath = (runId: string): string => `.paved/generated/reviews/${runId}-brief.md`;
 export const reviewRecordPath = (runId: string): string => `.paved/generated/reviews/${runId}-findings.yaml`;
+/** The command that hands the reviewer's findings to the review gate. */
+export const reviewRecordCommand = (runId: string): string => `paved execute --run ${runId} --auto --evidence ${reviewRecordPath(runId)} --json`;
+
+/**
+ * Refusals that leave the run without a review record it can accept. Each one returns the
+ * `review` block, so the agent has the brief, the routing and the record command at hand.
+ */
+export const REVIEW_RECORD_CODES: ReadonlySet<string> = new Set([
+  "PAVED_REVIEW_RECORD_REQUIRED", "PAVED_REVIEW_RECORD_INVALID", "PAVED_REVIEW_NOT_INDEPENDENT",
+  "PAVED_REVIEW_STALE", "PAVED_REVIEW_FINDING_UNPROVEN",
+]);
 export const planRef = (run: Run): string | undefined => run.events.findLast((event) => event.type === "approval-requested" && event.phase === "planning")?.ref;
 
 /** What a review must have read to count for the run as it is now. */
@@ -60,15 +71,16 @@ export const review: PhaseHook = (context) => {
   const expected = reviewedState(projectRoot, run);
   if (!expected) return blocked("PAVED_REVIEW_STATE_MISSING", "The review needs the approved plan and the run's recorded evidence.", "Complete the evidence phase before the review.");
   const brief = reviewBriefPath(run.id);
-  const resume = `paved execute --run ${run.id} --auto --evidence ${reviewRecordPath(run.id)} --json`;
+  const resume = reviewRecordCommand(run.id);
   if (!context.evidence) {
     return blocked("PAVED_REVIEW_RECORD_REQUIRED", "The review phase needs findings from a reviewer that did not write the change.",
-      `Start a subagent with its own context, give it only ${brief}, let it write ${reviewRecordPath(run.id)}, then run ${resume}.`);
+      `Start a subagent with its own context, at the capacity and effort in review.independent.routing, and give it only ${brief}. `
+      + `It writes its findings to ${reviewRecordPath(run.id)}; you do not review the change yourself. Then record the findings with ${resume}.`);
   }
   const record = loadYaml(context.evidence) as ChangeReview;
   const schema = createRegistry(join(context.coreRoot, "schemas"), ["paved/v1"]).validate(record);
   if (!schema.valid) return blocked("PAVED_REVIEW_RECORD_INVALID", schema.errors.join("; "), `Write the findings in the format ${brief} shows, then run ${resume}.`);
-  if (record.run !== run.id) return blocked("PAVED_REVIEW_RECORD_INVALID", `The review is for run ${record.run}, not ${run.id}.`, `Review run ${run.id} from ${brief}.`);
+  if (record.run !== run.id) return blocked("PAVED_REVIEW_RECORD_INVALID", `The review is for run ${record.run}, not ${run.id}.`, `Have the reviewer review run ${run.id} from ${brief}, then run ${resume}.`);
   if (!record.reviewer.isolated) {
     return blocked("PAVED_REVIEW_NOT_INDEPENDENT", "The review was not made by an isolated reviewer, so it checks the change against the reasoning that produced it.",
       `Run the review in a subagent with its own context that sees only ${brief}, then run ${resume}.`);

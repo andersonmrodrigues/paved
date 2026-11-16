@@ -16,6 +16,7 @@ import { readDelegation } from "../lib/delegation.ts";
 import { reportNewProposals } from "../lib/gardener-report.ts";
 import { reviewFor } from "../lib/review-block.ts";
 import { relaysAnswers, runPhase, type PhaseOutcome } from "../lib/workflow-gates/index.ts";
+import { REVIEW_RECORD_CODES } from "../lib/workflow-gates/review.ts";
 import { fingerprint, now, projectRelative, readApproval, reopenImplementation, sha, sharedPhase, sourceUnchanged } from "../lib/workflow-gates/shared.ts";
 import {
   isOpen, loadContract, readRun, runBelongsTo, runSourceRoot, scanRuns, runCommand, runPath, TERMINAL_STATUSES, writeRun, WorkflowToolPolicyError, type Failure, type Gate, type Phase, type Run,
@@ -102,7 +103,7 @@ function result(projectRoot: string, coreRoot: string, step: Step, run: Run, nex
   const open = extras.decisions ?? (run.decisions ?? []).filter((item) => item.status === "ASKED").map(toProjection);
   const status = failed ? "failed" : run.status === "awaiting-input" ? "awaiting_input" : run.status === "awaiting-approval" ? "warning" : "success";
   const review = failed ? undefined : reviewFor(projectRoot, run, coreRoot);
-  const independentText = review?.independent === undefined ? "" : ` Start a subagent with its own context, give it only ${review.independent.brief}, and let it write ${review.independent.record}; then run paved execute --run ${run.id} --auto --evidence ${review.independent.record} --json.`;
+  const independentText = review?.independent === undefined ? "" : ` Start a subagent with its own context, give it only ${review.independent.brief}, and let it write ${review.independent.record}; then run ${review.independent.command}.`;
   const reviewText = review === undefined ? "" : `${independentText} Summarize ${review.target}${review.companions.length ? ` and ${review.companions.join(", ")}` : ""} for the user and ask in the conversation. If the user wants to comment inline, open it in the preview (${review.preview}) and keep paved preview wait running until they say the review is finished; the preview approves nothing.`;
   const guidedStop = run.autonomy_profile === "guided" && run.status === "running"
     && run.events.at(-1)?.type === "phase-started" && run.events.at(-2)?.type === "phase-completed"
@@ -700,8 +701,8 @@ async function resume(invocation: CommandInvocation, step: Step, run: Run, answe
   switch (outcome.kind) {
     case "blocked":
       if (decisions.applied.length > 0) writeRun(projectRoot, coreRoot, run);
-      // A stale review is redone from a brief that carries the run's current digests, so rewrite it now.
-      if (outcome.code === "PAVED_REVIEW_STALE") {
+      // Without an acceptable record the review is (re)done from a brief carrying the run's current digests, so rewrite it now.
+      if (REVIEW_RECORD_CODES.has(outcome.code)) {
         const review = reviewFor(projectRoot, run, coreRoot);
         return blocked(step, outcome.code, outcome.message, outcome.remediation, { run: run.id, ...(review === undefined ? {} : { review }) });
       }
