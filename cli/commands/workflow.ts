@@ -18,7 +18,8 @@ import { reviewFor } from "../lib/review-block.ts";
 import { relaysAnswers, runPhase, type PhaseOutcome } from "../lib/workflow-gates/index.ts";
 import { fingerprint, now, projectRelative, readApproval, reopenImplementation, sha, sharedPhase, sourceUnchanged } from "../lib/workflow-gates/shared.ts";
 import {
-  isOpen, loadContract, readRun, runBelongsTo, runSourceRoot, scanRuns, runCommand, runPath, TERMINAL_STATUSES, writeRun, WorkflowToolPolicyError, type Failure, type Gate, type Phase, type Run,
+  activePhase, amendmentPending, isOpen, loadContract, ownerOf, owningStep, planGate, readRun, runBelongsTo, runSourceRoot, scanRuns, runCommand, runPath, TERMINAL_STATUSES, writeRun,
+  WorkflowToolPolicyError, type Failure, type Phase, type Run, type Step,
 } from "../lib/workflow-runs.ts";
 import { AMENDED_RETRY, attemptRounds, phaseContext, resolvePhaseToolPolicies, RECOVER_HANDLER, recoveriesFor, recoveryQuestion, REVIEW_HANDLER, UNCHANGED_HANDLER, type WorkflowContract } from "../lib/workflows.ts";
 import { createDiagnostic, createResult, type CommandResult, type DecisionProjection, type Diagnostic } from "../result.ts";
@@ -28,15 +29,6 @@ import { publicToolInvocation, sanitizeToolOutput, ToolInvocationStopped, type T
 import { testHandler } from "./test.ts";
 import { updateHandler } from "./update.ts";
 import { verifyHandler } from "./verify.ts";
-
-export type Step = "intent" | "plan" | "execute";
-export const STEP_PHASES: Readonly<Record<Step, readonly string[]>> = {
-  intent: ["context", "discovery"],
-  plan: ["planning"],
-  execute: ["implementation", "validation", "verification", "evidence", "review", "completion"],
-};
-const STEPS = Object.keys(STEP_PHASES) as Step[];
-export const ownerOf = (phase: string): Step | undefined => STEPS.find((step) => STEP_PHASES[step].includes(phase));
 
 const answerId = (answer: string): string => answer.slice(0, answer.indexOf("="));
 const RUN_HANDLERS: ReadonlyMap<string, HandlerRegistration> = new Map(["run.record", UNCHANGED_HANDLER, RECOVER_HANDLER, REVIEW_HANDLER]
@@ -59,10 +51,6 @@ function revision(projectRoot: string): string {
 function linkedWorktree(invocation: CommandInvocation): string | undefined {
   const { projectRoot, sourceRoot } = invocation.paths;
   return sourceRoot === projectRoot ? undefined : sourceRoot;
-}
-
-function activePhase(run: Run): Phase | undefined {
-  return run.phases.find((phase) => phase.status === "running") ?? run.phases.find((phase) => phase.status === "failed");
 }
 
 function nextStepAction(run: Run): string {
@@ -352,14 +340,6 @@ function startWork(invocation: CommandInvocation): CommandResult {
   return { ...started, data: { ...(started.data as Record<string, unknown>), initialized: true }, diagnostics: [...initialized.diagnostics, ...started.diagnostics] };
 }
 
-/** The step that owns the run's current phase; paved execute hands a run that is not yet planned to it. */
-function owningStep(run: Run): Step | undefined {
-  if (!run.workflow) return "intent";
-  if (amendmentPending(run)) return "plan";
-  const phase = activePhase(run);
-  return phase === undefined ? undefined : ownerOf(phase.phase);
-}
-
 /** Whether a repeated intent asks for a classification the open run does not have. */
 function contradicts(existing: Run, requested: Run): boolean {
   if (requested.workflow !== undefined && requested.workflow.id !== existing.workflow?.id) return true;
@@ -425,10 +405,6 @@ function failRun(run: Run, phase: Phase, reason: string, nextAction: string): vo
   run.events.push({ at: now(), type: "phase-failed", phase: phase.phase, detail: reason }, { at: now(), type: "run-failed", phase: phase.phase });
 }
 
-function planGate(run: Run): Gate | undefined {
-  return run.phases.find((phase) => phase.phase === "planning")?.gates?.find((gate) => gate.id === "plan-approved");
-}
-
 function planApproved(run: Run): boolean {
   return planGate(run)?.status === "approved";
 }
@@ -436,11 +412,6 @@ function planApproved(run: Run): boolean {
 /** A run whose workflow changes nothing (an investigation) has no plan to approve. */
 function readOnly(run: Run): boolean {
   return !run.phases.some((phase) => phase.phase === "planning" || phase.phase === "implementation");
-}
-
-/** A revised plan awaits approval after planning already completed. */
-function amendmentPending(run: Run): boolean {
-  return run.phases.find((phase) => phase.phase === "planning")?.status === "completed" && planGate(run)?.status === "awaiting-approval";
 }
 
 function cancelRun(run: Run, detail: string): void {
@@ -596,6 +567,29 @@ function toolPolicyGuard(invocation: CommandInvocation, step: Step, run: Run, ph
   };
 }
 
+/**
+ * Names the exact command that continues the run instead of acting for it: this step's
+ * flags (--approve, --advance with a plan as evidence) mean something else in another
+ * step's phases, so replaying them there could record a plan note as a context
+ * observation or advance a phase the user did not ask to advance. `execute` alone stands
+ * in for the owning step, as documented.
+ */
+function outOfRange(step: Step, run: Run, phase: string | undefined, owner: Step | undefined): CommandResult {
+  const where = phase ?? "classification";
+  const abandonCommand = `paved ${owner ?? step} --run ${run.id} --abandon --note "<reason>" --json`;
+  if (owner === undefined) {
+    const nextCommand = "paved status --json";
+    return blocked(step, "PAVED_WORKFLOW_STEP_OUT_OF_RANGE", `Run ${run.id} is in ${where}, which no step owns, so paved ${step} cannot continue it.`,
+      `Run ${nextCommand} to inspect the run. If it is no longer wanted, cancel it with ${abandonCommand}.`,
+      { run: run.id, currentPhase: phase, requestedStep: step, nextCommand, abandonCommand });
+  }
+  const nextCommand = `paved ${owner} --run ${run.id} --json`;
+  const nextAction = nextStepAction(run);
+  return blocked(step, "PAVED_WORKFLOW_STEP_OUT_OF_RANGE", `Run ${run.id} is in ${where}, which paved ${owner} owns, not paved ${step}.`,
+    `Run ${nextCommand} next; it reports what ${where} still needs. ${nextAction}`,
+    { run: run.id, currentPhase: phase, owner, requestedStep: step, nextCommand, nextAction, abandonCommand });
+}
+
 async function resume(invocation: CommandInvocation, step: Step, run: Run, answers: readonly string[]): Promise<CommandResult> {
   const { projectRoot, coreRoot } = invocation.paths;
   if (TERMINAL_STATUSES.has(run.status)) return result(projectRoot, coreRoot, step, run, nextStepAction(run));
@@ -608,9 +602,7 @@ async function resume(invocation: CommandInvocation, step: Step, run: Run, answe
   if (step === "execute" && run.workflow && !readOnly(run) && !planApproved(run)) {
     return blocked(step, "PAVED_WORKFLOW_PLAN_UNAPPROVED", `Run ${run.id} has no approved plan.`, nextStepAction(run), { run: run.id });
   }
-  if (owner !== step) {
-    return blocked(step, "PAVED_WORKFLOW_STEP_OUT_OF_RANGE", `Run ${run.id} is in ${current?.phase ?? "classification"}, which paved ${owner ?? "<none>"} owns.`, nextStepAction(run), { run: run.id, currentPhase: current?.phase, owner });
-  }
+  if (owner !== step) return outOfRange(step, run, current?.phase, owner);
   const runIds = new Set((run.decisions ?? []).map((decision) => decision.id));
   const runAnswers = answers.filter((answer) => runIds.has(answerId(answer)));
   const toolAnswers = answers.filter((answer) => !runIds.has(answerId(answer)));

@@ -13,6 +13,11 @@ releases, not the development sequence used to build them.
   time. A lock held by a running process still fails with `PAVED_OPERATION_IN_PROGRESS`,
   whose message now names that operation, pid and start time. Locks from another host,
   links and locks holding unexpected files are never reclaimed.
+- `PAVED_WORKFLOW_STEP_OUT_OF_RANGE` now gives the exact command to run next, such as
+  `paved intent --run <id> --json`, at the start of its remediation and as
+  `data.nextCommand`, with the owning step, the requested step and an `abandonCommand`
+  in its data. `intent` and `plan` still do not act for another step, since their
+  flags would mean something else in its phases.
 
 ## [2.29.1] - 2026-11-15
 

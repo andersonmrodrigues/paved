@@ -294,9 +294,28 @@ describe("intent, plan and execute", () => {
 
   it("each step refuses phases it does not own and names the owner", async () => {
     const id = runOf(await invoke("intent", "Add CSV export", "--workflow", "feature", "--because", "New behavior."));
+    const before = readFileSync(join(project, ".paved/generated/runs", `${id}.yaml`), "utf8");
     const plan = await invoke("plan", "--run", id, "--advance", "--note", "x");
     assert.equal(plan.diagnostics[0]?.code, "PAVED_WORKFLOW_STEP_OUT_OF_RANGE");
-    assert.match(plan.diagnostics[0]?.remediation ?? "", /paved intent --run/);
+    assert.match(plan.diagnostics[0]?.message ?? "", new RegExp(`Run ${id} is in context, which paved intent owns, not paved plan\\.`));
+    assert.ok(plan.diagnostics[0]?.remediation?.startsWith(`Run paved intent --run ${id} --json next;`), plan.diagnostics[0]?.remediation);
+    const data = plan.data as Record<string, string>;
+    assert.equal(data.owner, "intent");
+    assert.equal(data.requestedStep, "plan");
+    assert.equal(data.currentPhase, "context");
+    assert.equal(data.nextCommand, `paved intent --run ${id} --json`);
+    assert.equal(data.abandonCommand, `paved intent --run ${id} --abandon --note "<reason>" --json`);
+    assert.equal(readFileSync(join(project, ".paved/generated/runs", `${id}.yaml`), "utf8"), before, "the refused step records nothing");
+
+    // Following the named command works without guessing, and continues the run where it is.
+    const followed = await invoke(...data.nextCommand!.split(" ").slice(1, -1));
+    assert.equal(followed.status, "success", JSON.stringify(followed));
+    assert.equal((followed.data as { currentPhase: string }).currentPhase, "context");
+
+    const unclassified = runOf(await invoke("intent", "Speed up the export"));
+    const classification = await invoke("plan", "--run", unclassified);
+    assert.match(classification.diagnostics[0]?.message ?? "", /is in classification, which paved intent owns/);
+    assert.equal((classification.data as Record<string, string>).nextCommand, `paved intent --run ${unclassified} --json`);
   });
 
   it("execute stands in for the step that owns an unplanned run and implements nothing", async () => {

@@ -56,8 +56,14 @@ and each owns a fixed range of its workflow's phases:
 | `execute` | `implementation` through `completion` |
 
 Within its range a step advances with `--advance`, `--note`, `--evidence` and `--answer`. A
-step invoked outside its range returns `PAVED_WORKFLOW_STEP_OUT_OF_RANGE` and names the
-step that owns the run's current phase. `execute` is the exception: it acts as the step
+step invoked outside its range returns `PAVED_WORKFLOW_STEP_OUT_OF_RANGE` and changes
+nothing. Its remediation starts with the exact command to run next, and its data names
+the owning step (`owner`), the `requestedStep`, the run's `currentPhase`, that command
+as `nextCommand` (`paved <owner> --run <id> --json`) and an `abandonCommand` for a run
+that is no longer wanted. `intent` and `plan` do not act for the owning step, because
+their flags mean something else there: replaying `plan --advance --evidence <plan>` in
+`context` would record the plan as a context observation and advance a phase the user
+did not ask to advance. `execute` is the exception: it acts as the step
 that owns the current phase, so one command can drive a whole run, and `execute --approve`
 records the plan approval like `plan --approve`. Implementation still starts only once the
 plan is approved.
