@@ -2,7 +2,7 @@ import { remediationFor } from "../lib/lifecycle-remediation.ts";
 import { createDiagnostic, createResult, type CommandResult, type Diagnostic } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
 import { inspectConsumer } from "../lib/consumer-state.ts";
-import { resolveTestingTool, runTestingTool, type TestToolOutcome } from "../lib/test-runner.ts";
+import { outOfScope, resolveTestingTool, runTestingTool, type TestToolOutcome } from "../lib/test-runner.ts";
 import { acquireConsumerOperationLock, ConsumerOperationLockedError } from "../lib/operation-lock.ts";
 import { runDecisionGate } from "../lib/decisions/gate.ts";
 import { testingProvider } from "../lib/decisions/providers/testing.ts";
@@ -14,15 +14,39 @@ function statusFor(diagnostics: readonly Diagnostic[], failed: boolean): "succes
   return diagnostics.length > 0 ? "warning" : "success";
 }
 
-/** Names each Tool that did not pass, so a suite failure says which modules to look at. */
-function failureMessage(outcomes: readonly TestToolOutcome[] | undefined): string {
-  const failing = (outcomes ?? []).filter((item) => item.status !== "passed");
-  if (failing.length === 0 || (outcomes ?? []).length < 2) return "The declared testing Tool failed or timed out.";
-  const list = failing.map((item) => `${item.tool} in ${item.workingDirectory}${item.evidence ? ` (${item.evidence})` : ""}`).join("; ");
-  return `${failing.length} of ${outcomes!.length} testing Tools failed or timed out: ${list}.`;
+const describe = (item: TestToolOutcome): string => `${item.tool} in ${item.workingDirectory}${item.evidence ? ` (${item.evidence})` : ""}`;
+
+/**
+ * Names each Tool that did not pass, so a suite failure says which modules to look at. A
+ * Tool that ran out of time is reported apart from one whose tests failed: the fix for it
+ * is a faster suite or a longer limit, not a code change.
+ */
+function failureDiagnostics(outcomes: readonly TestToolOutcome[] | undefined): Diagnostic[] {
+  const all = outcomes ?? [];
+  const ran = all.filter((item) => item.status !== "skipped");
+  const timedOut = all.filter((item) => item.status === "timed-out");
+  const failing = all.filter((item) => item.status !== "passed" && item.status !== "skipped" && item.status !== "timed-out");
+  const diagnostics: Diagnostic[] = [];
+  if (timedOut.length > 0) {
+    const list = timedOut.map((item) => `${describe(item)} after ${item.timeoutSeconds ?? "its"} seconds`).join("; ");
+    diagnostics.push(createDiagnostic({
+      severity: "error", category: "verification", code: "PAVED_TEST_TOOL_TIMED_OUT", component: "cli.commands.test",
+      message: ran.length < 2 ? `The declared testing Tool timed out: ${list}.` : `${timedOut.length} of ${ran.length} testing Tools timed out: ${list}.`,
+      remediation: "Make the tests finish sooner, or raise timeout_seconds on the Tool contract and its ToolImplementation (the binding may lower the contract's limit, never exceed it).",
+    }));
+  }
+  if (failing.length > 0 || timedOut.length === 0) {
+    diagnostics.push(createDiagnostic({
+      severity: "error", category: "verification", code: "PAVED_TEST_TOOL_FAILED", component: "cli.commands.test",
+      message: failing.length === 0 || ran.length < 2 ? "The declared testing Tool failed."
+        : `${failing.length} of ${ran.length} testing Tools failed: ${failing.map(describe).join("; ")}.`,
+      remediation: "Inspect the recorded Tool result and sanitized evidence log, then address the test failure.",
+    }));
+  }
+  return diagnostics;
 }
 
-export async function testHandler(invocation: CommandInvocation, beforeRun?: ToolInvocationGuard): Promise<CommandResult> {
+export async function testHandler(invocation: CommandInvocation, beforeRun?: ToolInvocationGuard, scope: { changedFiles?: readonly string[] } = {}): Promise<CommandResult> {
   let inputs: Record<string, unknown> = {};
   if (invocation.flags.inputs !== undefined) {
     try {
@@ -93,7 +117,9 @@ export async function testHandler(invocation: CommandInvocation, beforeRun?: Too
     try {
       const selected = resolveTestingTool(invocation.paths.projectRoot, invocation.paths.coreRoot, invocation.paths.sourceRoot);
       if (beforeRun && (selected.status === "resolved" || selected.status === "suite")) {
-        const stopped = beforeRun((selected.status === "suite" ? selected.members : [selected]).map((member) => ({ ...member, inputs })));
+        const skipped = outOfScope(selected, scope.changedFiles);
+        const running = (selected.status === "suite" ? selected.members : [selected]).filter((member) => !skipped.has(member.tool.id));
+        const stopped = beforeRun(running.map((member) => ({ ...member, inputs })));
         if (stopped) return stopped;
       }
       const result = await runTestingTool({
@@ -101,6 +127,7 @@ export async function testHandler(invocation: CommandInvocation, beforeRun?: Too
         sourceRoot: invocation.paths.sourceRoot,
         coreRoot: invocation.paths.coreRoot,
         inputs,
+        ...(scope.changedFiles === undefined ? {} : { changedFiles: scope.changedFiles }),
       }, selected);
       return createResult({
         command: "test",
@@ -116,16 +143,7 @@ export async function testHandler(invocation: CommandInvocation, beforeRun?: Too
         },
         diagnostics: [
           ...result.diagnostics,
-          ...(result.status === "failed" && result.diagnostics.length === 0
-            ? [createDiagnostic({
-                severity: "error",
-                category: "verification",
-                code: "PAVED_TEST_TOOL_FAILED",
-                component: "cli.commands.test",
-                message: failureMessage(result.outcomes),
-                remediation: "Inspect the recorded Tool result and sanitized evidence log, then address the test failure.",
-              })]
-            : []),
+          ...(result.status === "failed" && result.diagnostics.length === 0 ? failureDiagnostics(result.outcomes) : []),
         ],
       });
     } finally {

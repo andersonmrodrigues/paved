@@ -29,6 +29,8 @@ it("orders transitive local Maven dependencies and installs every consumed artif
   const plan = planMavenDependencies(root, ["api", "service", "library"]);
   assert.deepEqual(plan.scopes, ["library", "service", "api"]);
   assert.deepEqual([...plan.installs].sort(), ["library", "service"]);
+  assert.deepEqual(Object.fromEntries([...plan.dependencies].map(([scope, used]) => [scope, [...used]])),
+    { api: ["service"], service: ["library"], library: [] });
 });
 
 it("rejects a local Maven dependency cycle", () => {
