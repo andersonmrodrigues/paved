@@ -27,7 +27,7 @@ const cli = (cwd: string, ...argv: string[]): Promise<CommandResult> =>
 const codes = (result: CommandResult): string[] => result.diagnostics.map((item) => item.code);
 
 /**
- * A committed consumer whose `.paved/` stays untracked, so only the main worktree has it,
+ * A committed consumer whose `.paved/` and `AGENTS.md` stay untracked, so only the main worktree has them,
  * and a linked worktree whose source differs: its tests pass where the main worktree's fail.
  */
 async function repository(): Promise<{ main: string; linked: string }> {
@@ -37,7 +37,7 @@ async function repository(): Promise<{ main: string; linked: string }> {
   writeFileSync(join(main, "src/feature.js"), "export const ready = false;\n");
   writeFileSync(join(main, "check.mjs"),
     'import { readFileSync } from "node:fs";\nprocess.exitCode = readFileSync("src/feature.js", "utf8").includes("true") ? 0 : 1;\n');
-  writeFileSync(join(main, ".gitignore"), ".paved/\n");
+  writeFileSync(join(main, ".gitignore"), ".paved/\n/AGENTS.md\n");
   git(main, "init", "-q");
   git(main, "add", ".");
   git(main, "commit", "-qm", "base");

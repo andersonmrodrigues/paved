@@ -38,6 +38,17 @@ and an open run regenerates it when it completes.
 Missing verification profile is reported as a warning/finding, not as implicit
 authorization to verify anything.
 
+When the plugin launcher started the runtime, it passes the Core version it carries in
+`PAVED_LAUNCHER_CORE_VERSION`. If that version is newer than the Core pinned by
+`.paved/paved.lock`, status adds the warning `PAVED_CORE_UPDATE_AVAILABLE` with the
+remediation `paved update`, and `data.coreUpdate` holds `pinnedVersion`,
+`availableVersion` and a one-line `summary`. When nothing more urgent applies (no
+waiting decisions, repairs, verification setup or open run), `nextAction` asks to run
+`paved update --json` before starting work. Status never updates anything itself. The
+direct CLI passes no launcher version and reports nothing; projects pinned to a runtime
+older than this check only show the launcher's `PAVED_RUNTIME_UPDATE_AVAILABLE` notice
+on standard error until they update once.
+
 ## Writes
 
 Nothing.
