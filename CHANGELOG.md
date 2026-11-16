@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [2.30.0] - 2026-11-16
+
 ### Added
 
 - `paved init` asks, as an optional decision that never holds up setup, whether an
