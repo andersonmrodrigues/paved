@@ -22,7 +22,7 @@ import {
   activePhase, amendmentPending, isOpen, loadContract, ownerOf, owningStep, planGate, readRun, runBelongsTo, runSourceRoot, scanRuns, runCommand, runPath, TERMINAL_STATUSES, writeRun,
   WorkflowToolPolicyError, type Failure, type Phase, type Run, type Step,
 } from "../lib/workflow-runs.ts";
-import { AMENDED_RETRY, attemptRounds, phaseContext, resolvePhaseToolPolicies, RECOVER_HANDLER, recoveriesFor, recoveryQuestion, REVIEW_HANDLER, UNCHANGED_HANDLER, type WorkflowContract } from "../lib/workflows.ts";
+import { AMENDED_RETRY, attemptRounds, phaseContext, PRE_EXISTING_HANDLER, resolvePhaseToolPolicies, RECOVER_HANDLER, recoveriesFor, recoveryQuestion, REVIEW_HANDLER, UNCHANGED_HANDLER, type WorkflowContract } from "../lib/workflows.ts";
 import { createDiagnostic, createResult, type CommandResult, type DecisionProjection, type Diagnostic } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
 import { initHandler } from "./init.ts";
@@ -32,7 +32,7 @@ import { updateHandler } from "./update.ts";
 import { verifyHandler } from "./verify.ts";
 
 const answerId = (answer: string): string => answer.slice(0, answer.indexOf("="));
-const RUN_HANDLERS: ReadonlyMap<string, HandlerRegistration> = new Map(["run.record", UNCHANGED_HANDLER, RECOVER_HANDLER, REVIEW_HANDLER]
+const RUN_HANDLERS: ReadonlyMap<string, HandlerRegistration> = new Map(["run.record", UNCHANGED_HANDLER, RECOVER_HANDLER, REVIEW_HANDLER, PRE_EXISTING_HANDLER]
   .map((id) => [id, { effect: "record-only" as const, apply: () => [] }]));
 
 function diagnostic(code: string, message: string, remediation: string): Diagnostic {
@@ -687,7 +687,11 @@ async function resume(invocation: CommandInvocation, step: Step, run: Run, answe
     outcome = await runPhase({
       projectRoot, coreRoot, run, phase, workflow, approve: invocation.flags.approve === true,
       tools: {
-        test: async () => testHandler({ ...forwarded, command: "test" }, guard),
+        test: async (options) => {
+          // Nothing changed yet means nothing to scope by, so every Tool runs.
+          const changed = options?.all === true ? undefined : changedFiles(projectRoot, run);
+          return testHandler({ ...forwarded, command: "test" }, guard, changed === undefined || changed.length === 0 ? {} : { changedFiles: changed });
+        },
         verify: async () => {
           const changed = changedFiles(projectRoot, run);
           return verifyHandler({ ...forwarded, command: "verify" }, guard, changed === undefined ? {} : { changedFiles: changed });

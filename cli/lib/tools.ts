@@ -36,6 +36,8 @@ export interface ToolImplementation {
   source: "core" | "adapter" | "project";
   environments: string[];
   invocation: { type: "command" | "synthetic"; executable?: string; arguments?: string[]; input_bindings?: { input: string; flag?: string }[]; working_directory?: string; timeout_seconds?: number; synthetic_result?: Record<string, unknown> };
+  /** Changed-file globs that make a testing binding relevant to a workflow run; defaults to its working directory. */
+  applies_to?: string[];
   availability: "available" | "planned" | "disabled";
 }
 

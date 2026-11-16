@@ -116,6 +116,16 @@ async function reviewClean(root: string, id: string, invoke: (...argv: string[])
   return invoke("execute", "--run", id, "--auto", "--evidence", writeFindings(root, id, stopped));
 }
 
+/**
+ * Advances into a validation failure. The fixture's tests already fail at approval, so
+ * validation first asks about pre-existing failures; the user chooses to fix them.
+ */
+async function failValidation(invoke: (...argv: string[]) => Promise<CommandResult>, id: string, ...flags: string[]): Promise<CommandResult> {
+  const outcome = await invoke("execute", "--run", id, ...flags);
+  const asked = outcome.decisions?.find((decision) => decision.options.some((option) => option.id === "fix"));
+  return asked ? invoke("execute", "--run", id, ...flags, "--answer", `${asked.id}=fix`, "--answered-by", "owner@example.com") : outcome;
+}
+
 async function amendPlan(root: string, id: string, invoke: (...argv: string[]) => Promise<CommandResult>): Promise<void> {
   write(root, "docs/plan.md", "Enable the behavior in feature.js with a boolean flag.\n");
   const amended = await invoke("plan", "--run", id, "--amend", "--note", "Use a boolean flag");
@@ -241,7 +251,7 @@ describe("delivering an approved plan", () => {
     const { id, invoke } = await approvedRun(root);
     write(root, "feature.js", "export const enabled = 'no';\n");
     await invoke("execute", "--run", id, "--advance", "--note", "Tried something");
-    await invoke("execute", "--run", id, "--advance");
+    await failValidation(invoke, id, "--advance");
     await invoke("execute", "--run", id, "--advance");
 
     const exhausted = await invoke("execute", "--run", id, "--advance");
@@ -264,7 +274,7 @@ describe("delivering an approved plan", () => {
       const { id, invoke } = await approvedRun(root);
       write(root, "feature.js", "export const enabled = 'no';\n");
       await invoke("execute", "--run", id, "--advance", "--note", "Tried something");
-      await invoke("execute", "--run", id, "--advance");
+      await failValidation(invoke, id, "--advance");
       await invoke("execute", "--run", id, "--advance");
       const exhausted = await invoke("execute", "--run", id, "--advance");
       const answer = (value: string) => invoke("execute", "--run", id, "--advance",
@@ -343,7 +353,7 @@ describe("delivering an approved plan", () => {
     const { id, invoke } = await approvedRun(root);
     write(root, "feature.js", "export const enabled = 'no';\n");
     await invoke("execute", "--run", id, "--advance", "--note", "Tried something");
-    await invoke("execute", "--run", id, "--advance");
+    await failValidation(invoke, id, "--advance");
     assert.equal(runState(root, id).status, "failed");
     write(root, "docs/plan.md", "Enable the behavior in feature.js with a boolean flag.\n");
 
@@ -397,12 +407,120 @@ describe("telling regressions from the environment", () => {
     assert.match(recorded?.ref ?? "", /^\.paved\/generated\/evidence\//);
     write(root, "feature.js", "export const enabled = 'no';\n");
     await invoke("execute", "--run", id, "--advance", "--note", "Tried something");
-    const failed = await invoke("execute", "--run", id, "--advance");
+    const asked = await invoke("execute", "--run", id, "--advance");
+    assert.equal(asked.status, "awaiting_input", JSON.stringify(asked));
+    const decision = asked.decisions?.[0];
+    assert.ok(decision, JSON.stringify(asked));
+    assert.deepEqual(decision.options.map((option) => option.id), ["accept", "fix"]);
+    assert.equal(decision.recommended, undefined, "Paved must not recommend accepting failures");
+    assert.deepEqual(decision.evidence.map((item) => item.location), [recorded!.ref!]);
+    assert.equal(runState(root, id).phases.find((phase) => phase.phase === "validation")?.attempts, 1);
+
+    const refused = await invoke("execute", "--run", id, "--advance", "--answer", `${decision.id}=accept`);
+    assert.equal(refused.status, "failed", "an answer needs the identity of the person who gave it");
+    const failed = await invoke("execute", "--run", id, "--advance", "--answer", `${decision.id}=fix`, "--answered-by", "dana");
 
     assert.equal(runState(root, id).status, "failed", JSON.stringify(failed));
     const attribution = failed.diagnostics.find((item) => item.code === "PAVED_WORKFLOW_BASELINE_FAILING");
     assert.ok(attribution, JSON.stringify(failed));
     assert.ok(attribution.message.includes(recorded!.ref!));
+  });
+});
+
+describe("pre-existing test failures", () => {
+  it("passes validation once the user accepts failures the baseline already showed, and keeps that in the evidence", async () => {
+    const root = suiteProject();
+    // Verification runs the Tool that passes, so the run can reach its evidence.
+    const check = parse(readFileSync(join(root, ".paved/verification/checks/unit.yaml"), "utf8")) as Record<string, unknown>;
+    write(root, ".paved/verification/checks/unit.yaml", stringify({ ...check, tool: "project.testing-detected-a.run" }));
+    commitAll(root, "verify module a");
+    const { id, invoke } = await approvedRun(root);
+    write(root, "a.js", "ok, refined\n");
+
+    const asked = await invoke("execute", "--run", id, "--auto", "--note", "Refined a.js");
+    assert.equal(asked.status, "awaiting_input", JSON.stringify(asked));
+    const decision = asked.decisions![0]!;
+    assert.match(decision.question, /project\.testing-detected-b\.run/);
+    assert.doesNotMatch(decision.question, /detected-a/);
+
+    const delivered = await invoke("execute", "--run", id, "--auto", "--answer", `${decision.id}=accept`, "--answered-by", "dana");
+    assert.equal((delivered.data as { currentPhase: string }).currentPhase, "review", JSON.stringify(delivered));
+    const state = parse(readFileSync(join(root, ".paved/generated/runs", `${id}.yaml`), "utf8")) as {
+      evidence: string; decisions: { handler: string; status: string; answer: string; answered_by: string; evidence: { location: string }[] }[];
+      events: { type: string; phase?: string; ref?: string; detail?: string }[];
+    };
+    const recorded = state.decisions.find((item) => item.handler === "run.pre-existing-failures");
+    assert.equal(recorded?.status, "APPLIED");
+    assert.equal(recorded?.answered_by, "dana");
+    const baselineRef = state.events.find((event) => event.phase === "planning" && event.type === "tool-invoked")?.ref;
+    assert.deepEqual(recorded?.evidence.map((item) => item.location), [baselineRef]);
+    assert.equal(state.events.findLast((event) => event.phase === "validation" && event.type === "tool-invoked")?.detail,
+      "accepted pre-existing failures=project.testing-detected-b.run");
+
+    const evidence = parse(readFileSync(join(root, state.evidence), "utf8")) as { gaps?: { description: string; reason: string; accepted_by?: string }[] };
+    const gap = evidence.gaps?.find((item) => item.description.includes("project.testing-detected-b.run"));
+    assert.ok(gap, JSON.stringify(evidence.gaps));
+    assert.equal(gap.accepted_by, "dana");
+    assert.ok(gap.reason.includes(baselineRef!));
+  });
+
+  it("still fails when a Tool that passed at approval fails now, without asking", async () => {
+    const root = suiteProject();
+    const { id, invoke } = await approvedRun(root);
+    write(root, "a.js", "fail\n");
+    await invoke("execute", "--run", id, "--advance", "--note", "Changed a.js");
+    const failed = await invoke("execute", "--run", id, "--advance");
+    assert.equal(failed.status, "failed", JSON.stringify(failed));
+    assert.equal(failed.decisions, undefined);
+    assert.equal(runState(root, id).status, "failed");
+  });
+});
+
+/** Two module Tools in their own directories: a/ passes while a/a.js says ok, b/ always fails. */
+function scopedSuiteProject(): string {
+  const root = project(false);
+  rmSync(join(root, ".paved/tools/testing/run.yaml"));
+  rmSync(join(root, ".paved/tool-implementations/testing/run.yaml"));
+  write(root, "a/a.js", "ok\n");
+  write(root, "a/test.mjs", 'import { readFileSync } from "node:fs";\nprocess.exit(readFileSync("a.js", "utf8").includes("ok") ? 0 : 1);\n');
+  write(root, "b/test.mjs", "process.exit(1);\n");
+  for (const name of ["a", "b"]) {
+    const id = `project.testing-detected-${name}.run`;
+    write(root, `.paved/tools/testing-${name}.yaml`, stringify({ ...TOOL, id }));
+    write(root, `.paved/tool-implementations/testing-${name}.yaml`, stringify({
+      apiVersion: "paved/v1", kind: "ToolImplementation", id: `project.testing-binding-${name}.run`, tool: id,
+      version: "0.1.0", contract: "^0.1.0", source: "project", environments: ["local"],
+      invocation: { type: "command", executable: process.execPath, arguments: ["test.mjs"], working_directory: name, timeout_seconds: 30 },
+      availability: "available",
+    }));
+  }
+  const check = parse(readFileSync(join(root, ".paved/verification/checks/unit.yaml"), "utf8")) as Record<string, unknown>;
+  write(root, ".paved/verification/checks/unit.yaml", stringify({ ...check, tool: "project.testing-detected-a.run" }));
+  commitAll(root, "base");
+  return root;
+}
+
+describe("testing Tools scoped to the change", () => {
+  it("runs every Tool for the baseline but skips, during validation, a module the change does not touch", async () => {
+    const root = scopedSuiteProject();
+    const { id, invoke } = await approvedRun(root);
+    const events = () => runState(root, id).events as { type: string; phase?: string; detail?: string }[];
+    assert.equal(events().find((event) => event.phase === "planning" && event.type === "tool-invoked")?.detail,
+      "baseline status=failed; failing=project.testing-detected-b.run");
+
+    write(root, "a/a.js", "ok, refined\n");
+    await invoke("execute", "--run", id, "--advance", "--note", "Refined module a");
+    const validated = await invoke("execute", "--run", id, "--advance");
+    assert.equal((validated.data as { currentPhase: string }).currentPhase, "verification", JSON.stringify(validated));
+    assert.equal(validated.decisions, undefined);
+    const scoped = validated.diagnostics.find((item) => item.code === "PAVED_WORKFLOW_TESTS_SCOPED");
+    assert.equal(scoped?.severity, "info", JSON.stringify(validated.diagnostics));
+    assert.equal(events().findLast((event) => event.phase === "validation" && event.type === "tool-invoked")?.detail,
+      "skipped=project.testing-detected-b.run (No changed file is under b.)");
+
+    const standalone = await invoke("test");
+    assert.equal(standalone.status, "failed", "paved test still runs every Tool");
+    assert.deepEqual((standalone.data as { outcomes: { status: string }[] }).outcomes.map((item) => item.status), ["passed", "failed"]);
   });
 });
 
@@ -944,7 +1062,9 @@ describe("autonomy continuation and hard stops", () => {
       assert.equal((waiting.data as { currentPhase: string }).currentPhase, "implementation");
       const answered = await invoke("execute", "--run", id, "--auto", "--note", "Implemented",
         "--answer", `${waiting.decisions![0]!.id}=first`, "--answered-by", "owner");
-      const failure = autonomy === "guided" ? await invoke("execute", "--run", id, "--auto") : answered;
+      const asked = answered.decisions?.find((decision) => decision.options.some((option) => option.id === "fix"));
+      const failure = autonomy === "guided" ? await failValidation(invoke, id, "--auto")
+        : asked ? await invoke("execute", "--run", id, "--auto", "--answer", `${asked.id}=fix`, "--answered-by", "owner") : answered;
       assert.equal(failure.status, "failed", JSON.stringify(failure));
       assert.equal(runState(root, id).phases.find((phase) => phase.phase === "validation")?.status, "failed");
       assert.equal(runState(root, id).phases.find((phase) => phase.phase === "verification")?.status, "pending");

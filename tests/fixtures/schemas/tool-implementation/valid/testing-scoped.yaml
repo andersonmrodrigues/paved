@@ -1,0 +1,20 @@
+apiVersion: paved/v1
+kind: ToolImplementation
+id: project.testing-binding-backend.run
+tool: project.testing-detected-backend.run
+version: 0.1.0
+contract: ^0.1.0
+source: project
+environments:
+  - local
+invocation:
+  type: command
+  executable: mvn
+  arguments:
+    - test
+  working_directory: backend
+  timeout_seconds: 1800
+applies_to:
+  - backend/**
+  - shared/schema/**
+availability: available

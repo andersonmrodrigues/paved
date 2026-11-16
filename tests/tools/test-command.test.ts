@@ -215,21 +215,26 @@ describe("governed test command", () => {
     }
   });
 
-  it("records a timed-out Tool as failed evidence", async () => {
+  it("reports a timed-out Tool apart from a failed one and names its limit", async () => {
     const { parent, project } = sandbox("paved-test-timeout-");
     try {
       await initialize(project);
-      const { tool } = projectTool(project);
-      tool.timeout_seconds = 1;
+      const { tool, implementation } = projectTool(project);
+      tool.timeout_seconds = 30;
       writeFileSync(join(project, ".paved/tools/testing-run.yaml"), stringify(tool));
+      // The binding lowers the contract's limit for this Tool only.
+      implementation.invocation.timeout_seconds = 1;
+      writeFileSync(join(project, ".paved/tool-implementations/testing-run.yaml"), stringify(implementation));
       writeFileSync(join(project, ".paved/tools/test-runner.mjs"), "setTimeout(() => process.stdout.write('{}'), 10000);\n");
 
       const result = await runTest(project);
       assert.equal(result.status, "failed");
-      assert.equal(result.diagnostics[0]?.code, "PAVED_TEST_TOOL_FAILED");
-      const data = result.data as { evidence: string; tool: { status: string; error_code: string } };
+      assert.deepEqual(result.diagnostics.map((item) => item.code), ["PAVED_TEST_TOOL_TIMED_OUT"], JSON.stringify(result.diagnostics));
+      assert.match(result.diagnostics[0]!.message, /timed out: project\.testing\.run in \. \(.*\) after 1 seconds/);
+      const data = result.data as { evidence: string; tool: { status: string; error_code: string }; outcomes: { status: string; timeoutSeconds: number }[] };
       assert.equal(data.tool.status, "timed-out");
       assert.equal(data.tool.error_code, "timeout");
+      assert.deepEqual(data.outcomes.map((item) => [item.status, item.timeoutSeconds]), [["timed-out", 1]]);
       const evidencePath = join(project, data.evidence);
       assert.equal(existsSync(evidencePath), true);
       const evidence = parse(readFileSync(evidencePath, "utf8")) as { artifacts: { source: { location: string } }[] };
