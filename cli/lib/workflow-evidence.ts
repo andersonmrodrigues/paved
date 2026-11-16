@@ -8,7 +8,7 @@ import { loadYaml } from "./documents.ts";
 import { coveredTypes, type EvidenceRecord } from "./evidence.ts";
 import { resolveSafePath } from "./safe-path.ts";
 import { runSourceRoot, type Run } from "./workflow-runs.ts";
-import { UNCHANGED_HANDLER, type WorkflowContract } from "./workflows.ts";
+import { PRE_EXISTING_HANDLER, UNCHANGED_HANDLER, type WorkflowContract } from "./workflows.ts";
 
 interface ChangeDiff { readonly files: string[]; readonly patch: string; readonly base?: string }
 
@@ -120,6 +120,27 @@ function reproduction(projectRoot: string, run: Run, workflow: WorkflowContract,
   }];
 }
 
+/** Detail of the validation event recorded when the user accepted pre-existing test failures. */
+export const ACCEPTED_PRE_EXISTING = "accepted pre-existing failures=";
+
+/**
+ * Pre-existing test failures the user accepted for the run, as a gap that names who
+ * accepted them and the baseline evidence. Only the latest validation counts: a run
+ * reopened and validated again with passing tests records no gap.
+ */
+function acceptedFailures(run: Run): object[] {
+  const latest = run.events.findLast((event) => event.type === "tool-invoked" && event.phase === "validation");
+  if (latest?.detail?.startsWith(ACCEPTED_PRE_EXISTING) !== true) return [];
+  const tools = latest.detail.slice(ACCEPTED_PRE_EXISTING.length).split(",").filter(Boolean);
+  const by = run.decisions?.findLast((decision) => decision.handler === PRE_EXISTING_HANDLER && decision.status === "APPLIED")?.answered_by;
+  return [{
+    description: `Testing Tools that already failed when the plan was approved still fail: ${tools.join(", ")}.`,
+    reason: `Accepted for this run as pre-existing failures; baseline evidence ${latest.ref ?? "not recorded"}.`,
+    risk: "medium",
+    ...(by === undefined ? {} : { accepted_by: by }),
+  }];
+}
+
 /** The files the run changed so far, or undefined when the checkout is not a Git working tree. */
 export function changedFiles(projectRoot: string, run: Run): string[] | undefined {
   return collectChange(runSourceRoot(projectRoot, run), run.revision)?.files;
@@ -151,12 +172,12 @@ export function writeWorkflowEvidence(input: {
   const covered = new Set(authoritative.checks.filter((check) => check.status === "passed").flatMap(coveredTypes));
   const profilePath = resolveSafePath(projectRoot, ".paved/verification/profile.yaml");
   const unavailable = existsSync(profilePath) ? (loadYaml(profilePath) as ProfileDocument).unavailable ?? [] : [];
-  const gaps = (plan.recommended ?? []).filter((type) => !covered.has(type)).map((type) => ({
+  const gaps = [...(plan.recommended ?? []).filter((type) => !covered.has(type)).map((type) => ({
     check_type: type,
     description: `No ${type} check ran for this change.`,
     reason: unavailable.find((item) => item.type === type)?.reason ?? "The verification profile configures no check of this type.",
     risk: "low",
-  }));
+  })), ...acceptedFailures(run)];
   const record = {
     apiVersion: "paved/v1", kind: "Evidence", id: `${run.id}-workflow${suffix}`, created_at: createdAt,
     producer: { agent: "paved-cli", workflow: workflow.id, run: run.id },

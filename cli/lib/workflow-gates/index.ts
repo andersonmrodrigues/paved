@@ -12,7 +12,11 @@ import { implementationChanged, recordObservation, SHARED_GATES, sharedPhase } f
 
 /** The testing Tool and verification, invoked with only the answers meant for them. */
 export interface PhaseTools {
-  readonly test: () => Promise<CommandResult>;
+  /**
+   * Runs the testing Tools the run's changed files concern, or every Tool with `all`
+   * (a baseline taken before anything changed).
+   */
+  readonly test: (options?: { readonly all?: boolean }) => Promise<CommandResult>;
   readonly verify: () => Promise<CommandResult>;
 }
 
