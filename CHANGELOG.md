@@ -5,6 +5,31 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- Workflow validation runs only the testing Tools the change concerns. A Tool runs when a
+  file the run changed is under its binding's working directory, or matches the new
+  ToolImplementation `applies_to` globs. For local Maven modules, the modules that
+  depend on a running module run too, and so do the modules a running one must
+  install. Other Tools are recorded as `skipped` with the reason and reported as
+  `PAVED_WORKFLOW_TESTS_SCOPED`. The baseline at plan approval, a refactor's baseline
+  and standalone `paved test` still run every Tool.
+- When validation fails only on testing Tools that already failed at plan approval, it
+  asks the user (`run.pre-existing-failures`) instead of failing: accept those
+  failures for this run, or fix them. Accepting passes validation with a
+  `PAVED_WORKFLOW_BASELINE_ACCEPTED` warning. The decision records who answered and
+  cites the baseline evidence, and the workflow evidence record lists the failures as a
+  gap with `accepted_by`. Paved never answers this decision itself. A Tool that passed at
+  approval and fails now still fails validation without asking.
+
+### Changed
+
+- A testing Tool that reaches its time limit is reported as `timed-out` with
+  `PAVED_TEST_TOOL_TIMED_OUT` and the limit in seconds, apart from
+  `PAVED_TEST_TOOL_FAILED`. Test outcomes carry `timeoutSeconds`, and the baseline
+  records `timed_out=<ids>`. The limit is still set per Tool contract and lowered per
+  binding (`invocation.timeout_seconds`); the schema now documents this.
+
 ## [2.29.1] - 2026-11-15
 
 ### Fixed

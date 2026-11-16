@@ -90,7 +90,11 @@ of their own, the step returns them and passes the user's answers through when i
   consume a phase attempt either. Approving the plan runs the tests once as a baseline
   and reports `PAVED_WORKFLOW_BASELINE_FAILING` with the approval when they already fail;
   a later validation failure on those tests carries it again, separating Tools that
-  started failing from Tools that already failed.
+  started failing from Tools that already failed. When only Tools that already failed
+  still fail, validation asks the user whether to accept those pre-existing failures for
+  the run or fix them; an accepted failure stays in the run and its evidence as a gap.
+- During a run, validation runs only the testing Tools whose working directory (or
+  `applies_to`) holds a changed file and records the others as `skipped`.
 - `execute --run <id> --checkpoint --note <part>` records a finished part of a multi-part
   plan without leaving implementation; advancing implementation starts validation. The
   checkpoint also stores a portable handoff summary and checkout fingerprint. `status`,
