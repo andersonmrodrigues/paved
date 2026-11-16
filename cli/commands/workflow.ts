@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { inspectConsumer } from "../lib/consumer-state.ts";
+import { CONTEXT_DRIFT_CODE, inspectConsumer } from "../lib/consumer-state.ts";
 import { loadYaml } from "../lib/documents.ts";
 import { changedFiles } from "../lib/workflow-evidence.ts";
 import { acquireConsumerOperationLock, ConsumerOperationLockedError, withConsumerOperationScope } from "../lib/operation-lock.ts";
@@ -338,7 +338,17 @@ function startWork(invocation: CommandInvocation): CommandResult {
     && listDecisions(projectRoot, coreRoot).some((decision) => decision.command === "init" && OPEN_DECISION.has(decision.status));
   if (!initPending && refreshFor(inspection)?.command === "paved update --json") {
     const updated = updateHandler({ ...invocation, command: "update", selectors: [] });
-    if (updated.status === "failed") return updated;
+    if (updated.status === "failed") {
+      if (remediationFor(lifecycle) !== undefined) return updated;
+      // Only drifted context was being refreshed. No gate reads it, so a failed refresh must not stop the request.
+      const started = startIntent(invocation);
+      const reason = updated.diagnostics.find((item) => item.severity === "error")?.message ?? "the update failed";
+      return { ...started, diagnostics: [...started.diagnostics, createDiagnostic({
+        severity: "warning", category: "findings", code: CONTEXT_DRIFT_CODE, component: "workflow.runtime",
+        message: `Generated project context is behind the source and could not be regenerated: ${reason}`.slice(0, 2000),
+        remediation: "Work is not blocked. Run paved update --json to see why regeneration failed, or paved status to see the drifted generators.",
+      })] };
+    }
     const started = startIntent(invocation);
     return { ...started, data: { ...(started.data as Record<string, unknown>), updated: true }, diagnostics: [...updated.diagnostics, ...started.diagnostics] };
   }

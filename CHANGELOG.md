@@ -14,6 +14,19 @@ releases, not the development sequence used to build them.
   did. `review.independent` also carries the review phase's `routing` and `command`, the
   exact command that records the findings, and each remediation names that command. The
   review must still come from a reviewer that did not write the change.
+- Drifted generated context is reported as one `PAVED_GENERATED_CONTEXT_STALE` warning
+  that names every drifted generator and why, instead of one
+  `PAVED_GENERATOR_SOURCE_SET_STALE` per generator and one `PAVED_GENERATED_SOURCE_STALE`
+  per changed cited file; those two codes are retired. Its remediation names
+  `paved update --json` and `paved generate <generators> --json`, and `paved status`
+  lists the generators in `staleGenerators`. Workflow steps still never report it while a
+  run is open.
+
+### Fixed
+
+- `paved execute "<request>"` no longer fails when regenerating merely drifted context
+  fails; the request starts and the failure is reported as a warning. An update that
+  the lifecycle requires (`STALE`, `INCOMPATIBLE`) still blocks.
 
 ## [2.29.1] - 2026-11-15
 

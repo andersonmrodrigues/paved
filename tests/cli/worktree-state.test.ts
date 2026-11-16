@@ -83,7 +83,7 @@ test("a normal checkout keeps a single root and its own source", async () => {
   assert.ok(lastRun.executions.every((execution) => !("sourceWorktree" in execution)));
   // A linked worktree's different source never makes the main worktree's context drift.
   writeFileSync(join(linked, "README.md"), "# Changed only in the linked worktree\n");
-  assert.ok(!codes(await cli(main, "status")).includes("PAVED_GENERATED_SOURCE_STALE"));
+  assert.ok(!codes(await cli(main, "status")).includes("PAVED_GENERATED_CONTEXT_STALE"));
 });
 
 test("a linked worktree uses the main worktree's state and its own source for tests and digests", async () => {
@@ -116,11 +116,11 @@ test("a linked worktree uses the main worktree's state and its own source for te
 
   // The context describes the linked worktree: a change in the main worktree is not drift.
   writeFileSync(join(main, "README.md"), "# Changed only in the main worktree\n");
-  assert.ok(!codes(await cli(main, "status")).includes("PAVED_GENERATED_SOURCE_STALE"));
-  assert.ok(!codes(await cli(linked, "status")).includes("PAVED_GENERATED_SOURCE_STALE"));
+  assert.ok(!codes(await cli(main, "status")).includes("PAVED_GENERATED_CONTEXT_STALE"));
+  assert.ok(!codes(await cli(linked, "status")).includes("PAVED_GENERATED_CONTEXT_STALE"));
   writeFileSync(join(linked, "README.md"), "# Changed in the linked worktree\n");
-  assert.ok(codes(await cli(main, "status")).includes("PAVED_GENERATED_SOURCE_STALE"));
-  assert.ok(codes(await cli(linked, "status")).includes("PAVED_GENERATED_SOURCE_STALE"));
+  assert.ok(codes(await cli(main, "status")).includes("PAVED_GENERATED_CONTEXT_STALE"));
+  assert.ok(codes(await cli(linked, "status")).includes("PAVED_GENERATED_CONTEXT_STALE"));
 });
 
 test("a run started in one worktree is refused from another", async () => {

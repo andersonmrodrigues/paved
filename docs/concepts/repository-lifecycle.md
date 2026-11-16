@@ -32,13 +32,19 @@ context has been reviewed.
 | `BROKEN` | Manifest, Core metadata or generated metadata is invalid. |
 
 Source drift is not `STALE`. When files that generated context cites change, or new
-relevant source files appear (`PAVED_GENERATED_SOURCE_STALE`,
-`PAVED_GENERATOR_SOURCE_SET_STALE`), the repository keeps its state and `status` reports
-`generatedContext: drifted` with warnings. Ordinary development causes this drift, so it
-must not block `test`, `intent`, `plan` or `execute`. `status` offers a repair decision to
-regenerate the context; `execute "<request>"` regenerates it before starting, and a run
-regenerates it again when it completes. Integrity problems above stay `STALE` and block
-work until `paved update` resolves them.
+relevant source files appear, the repository keeps its state and `status` reports
+`generatedContext: drifted`, `staleGenerators`, and one `PAVED_GENERATED_CONTEXT_STALE`
+warning that names every drifted generator and why. Its remediation is
+`paved update --json`, or `paved generate <generator>... --json` to regenerate only those
+generators. Ordinary development causes this drift, so it must not block `test`,
+`intent`, `plan` or `execute`, and no workflow gate reads generated context, so drift
+cannot make a gate unsound (the source fingerprint that review and verification compare
+excludes `.paved/`). While a run is open, workflow steps do not report drift; `status`
+reports it, and the run's completion regenerates the context or names the command that
+does. `status` offers a repair decision to regenerate the context, and
+`execute "<request>"` regenerates it before starting; a failed regeneration there is
+reported as the same warning and the request still starts. Integrity problems above
+stay `STALE` and block work until `paved update` resolves them.
 
 Diagnostics and exit categories remain separate from lifecycle state. A stale
 consumer may also have a conflict, and a missing profile can be reported alongside
