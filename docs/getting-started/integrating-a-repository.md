@@ -46,6 +46,11 @@ then choose an offered option. Paved writes the approved profile itself.
 /paved:status   → GENERATED → VALIDATED → READY
 ```
 
+In a git repository whose `AGENTS.md` is not tracked, `init` also asks whether that file
+should be versioned (`track`) or kept local (`keep-local`, which adds it to
+`.git/info/exclude`, never to `.gitignore`). It writes the Paved block into `AGENTS.md`
+only after that answer.
+
 When a command returns `awaiting_input`, use the exact decision id and option from its
 result and resume the same command with `--answer <id>=<value> --answered-by <identity>`.
 The identity must come from you. If Paved reports a blocking diagnostic without a

@@ -5,6 +5,13 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- `paved init` asks whether an untracked `AGENTS.md` should be versioned before writing
+  its Paved block. `keep-local` adds it to the clone's `.git/info/exclude` (shared by
+  linked worktrees, never `.gitignore`); `track` keeps today's behavior. A tracked or
+  ignored `AGENTS.md`, or a directory outside git, is not asked about.
+
 ## [2.29.1] - 2026-11-15
 
 ### Fixed
