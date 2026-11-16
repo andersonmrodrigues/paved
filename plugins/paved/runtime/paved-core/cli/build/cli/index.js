@@ -27,6 +27,8 @@ const dispatched = await dispatchCli({
     argv,
     cwd: process.cwd(),
     executablePath: fileURLToPath(import.meta.url),
+    // The plugin launcher names the Core it carries, which may be newer than the pinned one.
+    ...(process.env.PAVED_LAUNCHER_CORE_VERSION ? { launcherCoreVersion: process.env.PAVED_LAUNCHER_CORE_VERSION } : {}),
 }).catch((error) => internalResult(error));
 const result = withPavedCommand(dispatched, process.env.PAVED_COMMAND);
 const selectedOutput = outputMode(argv) === "json" ? renderJson(result) : renderHuman(result);

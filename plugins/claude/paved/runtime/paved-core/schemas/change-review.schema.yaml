@@ -2,15 +2,33 @@ $schema: https://json-schema.org/draft/2020-12/schema
 $id: urn:paved:schema:change-review:v1
 title: Paved change review
 description: >-
-  Findings of a reviewer that did not write the change, recorded against the exact plan,
-  source and evidence it read, so a review of an older state cannot close the run.
+  Findings of a reviewer that did not write the change, recorded against the exact state
+  it read, so a review of an older state cannot count. A review inside a workflow names its
+  `run` and the plan, source and evidence digests; a review of a commit range or of
+  everything changed since a base ref (`paved review`) names its `target` and the digest
+  of the diff instead.
 type: object
 additionalProperties: false
-required: [apiVersion, kind, run, reviewer, reviewed, passes, findings]
+required: [apiVersion, kind, reviewer, reviewed, passes, findings]
 properties:
   apiVersion: { const: paved/v1 }
   kind: { const: ChangeReview }
   run: { type: string, minLength: 1 }
+  target:
+    description: The change reviewed outside a workflow run.
+    type: object
+    additionalProperties: false
+    required: [kind, ref, base, head, working_tree]
+    properties:
+      kind:
+        description: "`base`: everything changed since the merge base with `ref`; `range`: the commits in `ref`."
+        enum: [base, range]
+      ref: { type: string, minLength: 1, maxLength: 500 }
+      base: { $ref: "#/$defs/commit" }
+      head: { $ref: "#/$defs/commit" }
+      working_tree:
+        type: boolean
+        description: The diff includes uncommitted or untracked files on top of `head`.
   reviewer:
     type: object
     additionalProperties: false
@@ -23,11 +41,13 @@ properties:
   reviewed:
     type: object
     additionalProperties: false
-    required: [plan_sha256, source_sha256, evidence_sha256]
     properties:
       plan_sha256: { $ref: "#/$defs/sha256" }
       source_sha256: { $ref: "#/$defs/sha256" }
       evidence_sha256: { $ref: "#/$defs/sha256" }
+      diff_sha256:
+        description: SHA-256 of the diff file `paved review` wrote for the target.
+        $ref: "#/$defs/sha256"
   passes:
     type: array
     minItems: 1
@@ -48,8 +68,19 @@ properties:
         rule:
           description: The in-scope rule the finding shows broken, when it breaks one.
           $ref: "urn:paved:schema:common:v1#/$defs/ruleRef"
+# A review names either a run or a target, and the digests that one needs.
+if: { required: [target] }
+then:
+  not: { required: [run] }
+  properties:
+    reviewed: { type: object, required: [diff_sha256] }
+else:
+  required: [run]
+  properties:
+    reviewed: { type: object, required: [plan_sha256, source_sha256, evidence_sha256] }
 $defs:
   sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+  commit: { type: string, pattern: '^[a-f0-9]{40}([a-f0-9]{24})?$' }
   proof:
     type: object
     description: >-

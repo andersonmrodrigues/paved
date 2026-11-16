@@ -1,0 +1,16 @@
+# expect-error: /applies_to must NOT have fewer than 1 items
+apiVersion: paved/v1
+kind: ToolImplementation
+id: project.testing-binding-backend.run
+tool: project.testing-detected-backend.run
+version: 0.1.0
+contract: ^0.1.0
+source: project
+environments:
+  - local
+invocation:
+  type: command
+  executable: mvn
+  working_directory: backend
+applies_to: []
+availability: available

@@ -161,13 +161,20 @@ this while the run is at review or a later phase. If the per-file snapshot is mi
 the reported handoff paths are approximate. Older runs without a verification
 fingerprint retain their previous behavior.
 
-The agent passes the record with `paved execute --run <run-id> --auto --evidence
-<record>`. Paved refuses it when `reviewer.isolated` is not `true`
-(`PAVED_REVIEW_NOT_INDEPENDENT`) or when a digest differs from the run's current state
-(`PAVED_REVIEW_STALE`). For a stale review, Paved rewrites the brief; a stale source
-digest here means the reviewer read an older brief while the current source still
-matches verification (when its fingerprint exists). Isolation is declared by the
-agent; like plan approval, it rests on the agent following the instruction.
+The result's `review.independent` block carries what the handoff needs: `brief`, the
+`record` the reviewer writes, the `reviewed` digests, the review phase's `routing`
+(subagent mode, capacity and reasoning effort) and `command`, the exact
+`paved execute --run <run-id> --auto --evidence <record> --json` that records the
+findings. Paved refuses a missing record (`PAVED_REVIEW_RECORD_REQUIRED`), one that does
+not match the schema or the run (`PAVED_REVIEW_RECORD_INVALID`), one whose
+`reviewer.isolated` is not `true` (`PAVED_REVIEW_NOT_INDEPENDENT`), one whose digests
+differ from the run's current state (`PAVED_REVIEW_STALE`) and one with an unproven
+blocking finding (`PAVED_REVIEW_FINDING_UNPROVEN`). Each refusal rewrites the brief with
+the current digests, returns the `review` block again and names the record command in
+its remediation. A stale source digest means the reviewer read an older brief while the
+current source still matches verification (when its fingerprint exists). Isolation is
+declared by the agent; like plan approval, it rests on the agent following the
+instruction.
 
 Each finding may carry a `proof` with the level the reviewer reached: `asserted`,
 `cited`, `reasoned`, `executed` (a command running the real code shows the defect) or
@@ -181,6 +188,33 @@ document. Blocking findings become a run
 decision: `fix` reopens implementation, and the fix runs through tests, verification,
 evidence and a new review; `accept` completes the run with the findings on record as
 accepted by the user.
+
+### Review outside a run
+
+A branch, or any range of commits, can get the same independent review without a
+workflow run, gate or decision:
+
+```bash
+paved review --base main --json            # everything since the merge base with main, uncommitted and untracked files included
+paved review --range v1.2.0..v1.3.0 --json # only those commits; a...b reviews b against the merge base
+```
+
+Paved writes the diff (`.paved/` and its update backup and lock excluded, as in a run) to
+`.paved/generated/reviews/review-<hash>.diff` and a brief next to it. The brief names the
+target, its base and head commits, the diff and its SHA-256, the Core and project rules
+whose scope covers a changed file, and the record format. With no intent or plan, the
+reviewer reads the commit messages. The record carries `target` and
+`reviewed.diff_sha256` instead of `run` and the run digests; the schema accepts exactly one
+of the two forms.
+
+`paved review <same target> --evidence <record> --json` recomputes the diff and applies
+the gate's rules: the record must be valid and not bound to a run
+(`PAVED_REVIEW_RECORD_INVALID`), name the same target and diff digest
+(`PAVED_REVIEW_STALE`), come from an isolated reviewer (`PAVED_REVIEW_NOT_INDEPENDENT`)
+and prove every blocking finding (`PAVED_REVIEW_FINDING_UNPROVEN`). A valid record is
+rendered to `review-<hash>.md`. Proven blocking findings return a warning
+(`PAVED_REVIEW_BLOCKING_FINDINGS`, exit code 1) for the person to act on; nothing is
+reopened, because there is no run.
 
 ## Lifetime
 

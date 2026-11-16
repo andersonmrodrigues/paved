@@ -6,6 +6,7 @@ import { decisionHandler } from "./commands/decision.ts";
 import { agentHandler } from "./commands/agent.ts";
 import { generateHandler } from "./commands/generate.ts";
 import { gardenerHandler } from "./commands/gardener.ts";
+import { reviewHandler } from "./commands/review.ts";
 import { initHandler } from "./commands/init.ts";
 import { statusHandler } from "./commands/status.ts";
 import { testHandler } from "./commands/test.ts";
@@ -19,8 +20,9 @@ import { delegationHandler } from "./commands/delegation.ts";
 import { createDiagnostic, createResult, type CommandResult } from "./result.ts";
 import { CliPathError, resolveCoreRoot, resolveProjectRoot } from "./paths.ts";
 import { assertAnswerIdentity, parseAnswerFlags, recordedIdentity } from "./lib/decisions/answers.ts";
+import { reclaimedLockDiagnostics } from "./lib/operation-lock.ts";
 
-export const COMMAND_NAMES = ["init", "status", "intent", "plan", "execute", "delegation", "test", "verify", "update", "doctor", "gardener", "generate", "agent", "decision", "preview", "workbench", "tool"] as const;
+export const COMMAND_NAMES = ["init", "status", "intent", "plan", "execute", "delegation", "test", "verify", "update", "doctor", "gardener", "review", "generate", "agent", "decision", "preview", "workbench", "tool"] as const;
 const STEP_COMMANDS: readonly string[] = ["intent", "plan", "execute"];
 export type CommandName = (typeof COMMAND_NAMES)[number];
 
@@ -52,8 +54,16 @@ export interface CliFlags {
   readonly parts: readonly string[];
   readonly intentInputs: readonly string[];
   readonly scope?: string;
-  /** `status --base <ref>`: the target a change request from HEAD would merge into. */
+  /** `status --base <ref>`: the target a change request from HEAD would merge into; `review --base <ref>`: the base of the change to review. */
   readonly base?: string;
+  /** `review --range <a..b>`: the commit range to review. */
+  readonly range?: string;
+  /** `gardener correction --text <words>`: a person's correction, verbatim. */
+  readonly text?: string;
+  /** `gardener correction --evidence <ref>`, repeatable: the files, commits or URLs that show the corrected mistake. */
+  readonly correctionEvidence: readonly string[];
+  /** `status --stale-after <hours>`: how long an open run may go without an event. */
+  readonly staleAfterHours?: number;
   readonly toolCommand?: readonly string[];
   readonly task?: string;
   readonly file?: string;
@@ -89,6 +99,8 @@ export interface CommandInvocation {
   readonly selectors: readonly string[];
   readonly paths: CommandPaths;
   readonly rawArgv: readonly string[];
+  /** The Core version the plugin launcher carries, when a launcher started this runtime. */
+  readonly launcherCoreVersion?: string;
 }
 
 export type CommandHandler = (invocation: CommandInvocation) => CommandResult | Promise<CommandResult>;
@@ -99,6 +111,7 @@ export interface DispatchOptions {
   readonly cwd?: string;
   readonly executablePath?: string;
   readonly handlers?: CommandHandlers;
+  readonly launcherCoreVersion?: string;
 }
 
 interface CommandRule {
@@ -131,6 +144,7 @@ const COMMAND_RULES: Record<CommandName, CommandRule> = {
   status: { adapters: true, dryRun: false, noGenerate: false, selectors: false },
   doctor: { adapters: true, dryRun: false, noGenerate: false, selectors: false },
   gardener: { adapters: false, dryRun: true, noGenerate: false, selectors: true },
+  review: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
   test: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
   agent: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   decision: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
@@ -219,7 +233,9 @@ function commandUsage(command: CommandName | undefined): string {
     if (STEP_COMMANDS.includes(command)) commandOptions.push("  --run <id> --abandon [--note <reason>]  Cancel the run so the same request can start again.");
     if (command === "plan") commandOptions.push("  --approve        Record the user's approval of the current plan, given in the conversation.", "  --run <id> --amend --note <change> [--evidence <plan>]  Ask approval for a revised plan mid-run.");
     if (command === "execute") commandOptions.push("  \"<request>\"      Start new work: initialize Paved if needed and record the request.", "  --approve        Record the user's approval of the current plan, given in the conversation.", "  --auto           Advance through every phase that needs no human input.", "  --run <id> --checkpoint --note <progress>  Record a finished part of the plan without leaving implementation.");
-    if (command === "status") commandOptions.push("  --base <ref>     Report whether the latest completed run's evidence still matches the patch HEAD proposes against this target.");
+    if (command === "status") commandOptions.push("  --base <ref>     Report whether the latest completed run's evidence still matches the patch HEAD proposes against this target.", "  --stale-after <hours>  Warn about open runs without an event for this many hours (default 24).");
+    if (command === "gardener") commandOptions.push("  debt             List tracked shortcut: comments.", "  correction --text <words> --evidence <path[:line]|commit|url>  Propose a person's correction, verbatim, as a project rule; --evidence is repeatable.");
+    if (command === "review") commandOptions.push("  --base <ref>     Review everything changed since the merge base with <ref>, including uncommitted and untracked files.", "  --range <a..b>   Review the commits in a range; a...b starts at their merge base.", "  --evidence <path>  Check the reviewer's ChangeReview against the change as it is now.");
     if (command === "tool") commandOptions.push("  --scope <dir>    Run the command from this project directory.", "  -- <executable> [args...]  The exact command; everything after -- is passed as argv.");
     if (command === "delegation") commandOptions.push("  plan --run <id> --file <path>; approve --run <id> --approve after showing the exact graph to the user.", "  start --run <id> --task <id> --host <codex|claude-code> --model <name> --effort <value> --isolation <shared-workspace|isolated-worktree>.", "  finish --run <id> --task <id> --outcome <completed|blocked|failed> [--result <path>] [--usage <json>] [--changed-path <path> ...].", "  recover --run <id> --task <id> --confirmed-stopped --note <reason>; capabilities --host <codex|claude-code>.", "  Session ids are hashed; usage and isolated-worktree changed paths are host-reported.");
     return [
@@ -316,6 +332,10 @@ function parse(argv: readonly string[]): Parsed {
   const intentInputs: string[] = [];
   let scope: string | undefined;
   let base: string | undefined;
+  let range: string | undefined;
+  let text: string | undefined;
+  const correctionEvidence: string[] = [];
+  let staleAfterHours: number | undefined;
   let toolCommand: string[] | undefined;
   let task: string | undefined;
   let file: string | undefined;
@@ -364,10 +384,41 @@ function parse(argv: readonly string[]): Parsed {
     }
 
     if (token === "--base") {
-      if (command !== "status") return { kind: "error", result: usage(command ?? "cli", "--base is supported only by status.") };
+      if (command !== "status" && command !== "review") return { kind: "error", result: usage(command ?? "cli", "--base is supported only by status and review.") };
       const value = takeValue(argv, index, token, command);
       if (typeof value !== "string") return { kind: "error", result: value };
       base = value;
+      index += 1;
+      continue;
+    }
+
+    if (token === "--range" || (token === "--evidence" && command === "review")) {
+      if (command !== "review") return { kind: "error", result: usage(command ?? "cli", "--range is supported only by review.") };
+      const value = takeValue(argv, index, token, command);
+      if (typeof value !== "string") return { kind: "error", result: value };
+      if (token === "--range") range = value;
+      else evidence = value;
+      index += 1;
+      continue;
+    }
+
+    if (command === "gardener" && (token === "--text" || token === "--evidence")) {
+      const value = takeValue(argv, index, token, command);
+      if (typeof value !== "string") return { kind: "error", result: value };
+      if (token === "--text") text = value;
+      else correctionEvidence.push(value);
+        index += 1;
+        continue;
+      }
+
+    if (token === "--stale-after") {
+      if (command !== "status") return { kind: "error", result: usage(command ?? "cli", "--stale-after is supported only by status.") };
+      const value = takeValue(argv, index, token, command);
+      if (typeof value !== "string") return { kind: "error", result: value };
+      if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 8760) {
+        return { kind: "error", result: usage(command, "--stale-after takes a whole number of hours from 1 to 8760.") };
+      }
+      staleAfterHours = Number(value);
       index += 1;
       continue;
     }
@@ -629,6 +680,10 @@ function parse(argv: readonly string[]): Parsed {
     ...(decision === undefined ? {} : { decision }),
     ...(scope === undefined ? {} : { scope }),
     ...(base === undefined ? {} : { base }),
+    ...(range === undefined ? {} : { range }),
+    ...(text === undefined ? {} : { text }),
+    correctionEvidence,
+    ...(staleAfterHours === undefined ? {} : { staleAfterHours }),
     ...(toolCommand === undefined ? {} : { toolCommand }),
     ...(task === undefined ? {} : { task }),
     ...(file === undefined ? {} : { file }),
@@ -685,6 +740,7 @@ const DEFAULT_HANDLERS: CommandHandlers = {
   doctor: doctorHandler,
   generate: generateHandler,
   gardener: gardenerHandler,
+  review: reviewHandler,
   init: initHandler,
   status: statusHandler,
   test: testHandler,
@@ -725,20 +781,27 @@ export async function dispatchCli(options: DispatchOptions = {}): Promise<Comman
     }
   }
 
+  let result: CommandResult;
   try {
     const paths = pathsFor(parsed.state, cwd, executablePath);
     const handler = options.handlers?.[parsed.state.command] ?? DEFAULT_HANDLERS[parsed.state.command] ?? defaultHandler;
-    return await handler({
+    result = await handler({
       command: parsed.state.command,
       flags: parsed.state.flags,
       selectors: parsed.state.selectors,
       paths,
       rawArgv: argv,
+      ...(options.launcherCoreVersion === undefined ? {} : { launcherCoreVersion: options.launcherCoreVersion }),
     });
   } catch (error) {
-    if (error instanceof CliPathError) {
-      return environment(parsed.state.command, error.message);
-    }
-    return internal(parsed.state.command, error);
+    result = error instanceof CliPathError ? environment(parsed.state.command, error.message) : internal(parsed.state.command, error);
   }
+  return withReclaimedLocks(result);
+}
+
+/** A stale operation lock reclaimed while the command ran is reported whatever the command did. */
+function withReclaimedLocks(result: CommandResult): CommandResult {
+  const warnings = reclaimedLockDiagnostics();
+  if (warnings.length === 0) return result;
+  return { ...result, status: result.status === "success" ? "warning" : result.status, diagnostics: [...result.diagnostics, ...warnings] };
 }

@@ -36,7 +36,13 @@ but remain CLI subcommands for CI, the launcher and the runtime itself; `decisio
 `generate`, `agent` and `workbench` are unchanged. `workbench` serves a loopback-only,
 read-only dashboard over existing run records and volatile agent hook activity.
 `paved gardener debt` lists tracked `shortcut:` comments with their revisit condition;
-it is read-only and does not create or modify a ledger file.
+it is read-only and does not create or modify a ledger file. `paved gardener correction`
+drafts a project rule from a correction a person stated, for that person to adopt (see
+[Gardener](gardener.md#stated-corrections)).
+
+`paved review --base <ref>` or `--range <a>..<b>` is a CLI subcommand, not an agent
+command: the `change-review` skill uses it when a person asks for a review outside a
+workflow run (see [workflow state](workflow-state.md#review-outside-a-run)).
 
 Each command contract also reports its interaction mode, decision source (`runtime` or
 `agent`) and answer channel (`relayed` or `human-authored`). Conversational commands
@@ -56,8 +62,14 @@ and each owns a fixed range of its workflow's phases:
 | `execute` | `implementation` through `completion` |
 
 Within its range a step advances with `--advance`, `--note`, `--evidence` and `--answer`. A
-step invoked outside its range returns `PAVED_WORKFLOW_STEP_OUT_OF_RANGE` and names the
-step that owns the run's current phase. `execute` is the exception: it acts as the step
+step invoked outside its range returns `PAVED_WORKFLOW_STEP_OUT_OF_RANGE` and changes
+nothing. Its remediation starts with the exact command to run next, and its data names
+the owning step (`owner`), the `requestedStep`, the run's `currentPhase`, that command
+as `nextCommand` (`paved <owner> --run <id> --json`) and an `abandonCommand` for a run
+that is no longer wanted. `intent` and `plan` do not act for the owning step, because
+their flags mean something else there: replaying `plan --advance --evidence <plan>` in
+`context` would record the plan as a context observation and advance a phase the user
+did not ask to advance. `execute` is the exception: it acts as the step
 that owns the current phase, so one command can drive a whole run, and `execute --approve`
 records the plan approval like `plan --approve`. Implementation still starts only once the
 plan is approved.
@@ -90,7 +102,11 @@ of their own, the step returns them and passes the user's answers through when i
   consume a phase attempt either. Approving the plan runs the tests once as a baseline
   and reports `PAVED_WORKFLOW_BASELINE_FAILING` with the approval when they already fail;
   a later validation failure on those tests carries it again, separating Tools that
-  started failing from Tools that already failed.
+  started failing from Tools that already failed. When only Tools that already failed
+  still fail, validation asks the user whether to accept those pre-existing failures for
+  the run or fix them; an accepted failure stays in the run and its evidence as a gap.
+- During a run, validation runs only the testing Tools whose working directory (or
+  `applies_to`) holds a changed file and records the others as `skipped`.
 - `execute --run <id> --checkpoint --note <part>` records a finished part of a multi-part
   plan without leaving implementation; advancing implementation starts validation. The
   checkpoint also stores a portable handoff summary and checkout fingerprint. `status`,
@@ -104,6 +120,13 @@ of their own, the step returns them and passes the user's answers through when i
   `execute` is refused until `plan --approve`; approval restarts the failed phase.
 - `--abandon --note <why>` cancels the run. A cancelled run no longer holds its request,
   so the same request starts a new run.
+- `status` reports `PAVED_WORKFLOW_RUN_STALE` for each open run in the checkout that has
+  had no event for 24 hours (`status --stale-after <hours>` changes the period, from 1 to
+  8760), or that is still in a phase `intent` owns while a newer run was started. Its
+  `openRuns` entry carries `owner`, `lastEventAt` and `stale` (`reasons`, `lastEventAt`,
+  `supersededBy`, `abandonCommand`), and the remediation gives both the command that
+  continues the run and `paved <owner> --run <id> --abandon --note "<reason>" --json`.
+  Paved never cancels a run on its own; the agent asks the user first.
 - A lifecycle block that `paved init` or `paved update` resolves carries
   `data.remediation.command`; agents run it and repeat the original command.
 

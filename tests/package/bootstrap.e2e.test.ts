@@ -28,8 +28,10 @@ describe("project-local agent bootstrap", () => {
       writeFileSync(join(consumer, "package.json"), JSON.stringify({ name: "clean-consumer", private: true, type: "module" }));
       mkdirSync(join(consumer, "src"));
       writeFileSync(join(consumer, "src", "feature.js"), "export const enabled = false;\n");
+      // The team already keeps AGENTS.md out of version control, so init asks nothing about it.
+      writeFileSync(join(consumer, ".gitignore"), "/AGENTS.md\n");
       assert.equal(spawnSync("git", ["init", "-q"], { cwd: consumer }).status, 0);
-      assert.equal(spawnSync("git", ["add", "README.md", "package.json", "src/feature.js"], { cwd: consumer }).status, 0);
+      assert.equal(spawnSync("git", ["add", ".gitignore", "README.md", "package.json", "src/feature.js"], { cwd: consumer }).status, 0);
       assert.equal(spawnSync("git", ["-c", "user.name=Paved Test", "-c", "user.email=paved@example.invalid", "commit", "-qm", "baseline"], { cwd: consumer }).status, 0);
       const installer = join(workspace, "installer");
       const installed = spawnSync("npm", ["install", "--offline", "--ignore-scripts", "--no-bin-links", "--prefix", installer, join(workspace, artifact.filename)], {

@@ -309,6 +309,8 @@ export function assessWorkflowQuality(files, context) {
 }
 export const RECOVER_HANDLER = "run.recover";
 export const UNCHANGED_HANDLER = "run.unchanged";
+/** Whether testing Tools that already failed at plan approval may keep failing in this run. */
+export const PRE_EXISTING_HANDLER = "run.pre-existing-failures";
 export const AMENDED_RETRY = "plan amended";
 export const REVIEW_HANDLER = "run.review";
 export const REVIEW_FIX = "review findings";

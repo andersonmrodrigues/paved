@@ -42,6 +42,8 @@ export interface MavenDependencyPlan {
   readonly scopes: readonly string[];
   /** Modules whose tests must also install their artifact for local consumers. */
   readonly installs: ReadonlySet<string>;
+  /** Direct local Maven dependencies of each project directory. */
+  readonly dependencies: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 /** Resolve direct local Maven dependencies without guessing about external artifacts. */
@@ -80,5 +82,5 @@ export function planMavenDependencies(projectRoot: string, scopes: readonly stri
     ordered.push(scope);
   };
   for (const scope of [...dependencies.keys()].sort()) visit(scope);
-  return { scopes: ordered, installs };
+  return { scopes: ordered, installs, dependencies };
 }

@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { inspectConsumer } from "../lib/consumer-state.js";
+import { CONTEXT_DRIFT_CODE, inspectConsumer } from "../lib/consumer-state.js";
 import { loadYaml } from "../lib/documents.js";
 import { changedFiles } from "../lib/workflow-evidence.js";
 import { acquireConsumerOperationLock, ConsumerOperationLockedError, withConsumerOperationScope } from "../lib/operation-lock.js";
@@ -14,24 +14,18 @@ import { readDelegation } from "../lib/delegation.js";
 import { reportNewProposals } from "../lib/gardener-report.js";
 import { reviewFor } from "../lib/review-block.js";
 import { relaysAnswers, runPhase } from "../lib/workflow-gates/index.js";
+import { REVIEW_RECORD_CODES } from "../lib/workflow-gates/review.js";
 import { fingerprint, now, projectRelative, readApproval, reopenImplementation, sha, sharedPhase, sourceUnchanged } from "../lib/workflow-gates/shared.js";
-import { isOpen, loadContract, readRun, runBelongsTo, runSourceRoot, scanRuns, runCommand, runPath, TERMINAL_STATUSES, writeRun, WorkflowToolPolicyError, } from "../lib/workflow-runs.js";
-import { AMENDED_RETRY, attemptRounds, phaseContext, resolvePhaseToolPolicies, RECOVER_HANDLER, recoveriesFor, recoveryQuestion, REVIEW_HANDLER, UNCHANGED_HANDLER } from "../lib/workflows.js";
+import { activePhase, amendmentPending, isOpen, loadContract, ownerOf, owningStep, planGate, readRun, runBelongsTo, runSourceRoot, scanRuns, runCommand, runPath, TERMINAL_STATUSES, writeRun, WorkflowToolPolicyError, } from "../lib/workflow-runs.js";
+import { AMENDED_RETRY, attemptRounds, phaseContext, PRE_EXISTING_HANDLER, resolvePhaseToolPolicies, RECOVER_HANDLER, recoveriesFor, recoveryQuestion, REVIEW_HANDLER, UNCHANGED_HANDLER } from "../lib/workflows.js";
 import { createDiagnostic, createResult } from "../result.js";
 import { initHandler } from "./init.js";
 import { publicToolInvocation, sanitizeToolOutput, ToolInvocationStopped } from "../lib/tools.js";
 import { testHandler } from "./test.js";
 import { updateHandler } from "./update.js";
 import { verifyHandler } from "./verify.js";
-export const STEP_PHASES = {
-    intent: ["context", "discovery"],
-    plan: ["planning"],
-    execute: ["implementation", "validation", "verification", "evidence", "review", "completion"],
-};
-const STEPS = Object.keys(STEP_PHASES);
-export const ownerOf = (phase) => STEPS.find((step) => STEP_PHASES[step].includes(phase));
 const answerId = (answer) => answer.slice(0, answer.indexOf("="));
-const RUN_HANDLERS = new Map(["run.record", UNCHANGED_HANDLER, RECOVER_HANDLER, REVIEW_HANDLER]
+const RUN_HANDLERS = new Map(["run.record", UNCHANGED_HANDLER, RECOVER_HANDLER, REVIEW_HANDLER, PRE_EXISTING_HANDLER]
     .map((id) => [id, { effect: "record-only", apply: () => [] }]));
 function diagnostic(code, message, remediation) {
     return createDiagnostic({ severity: "error", category: "config", code, component: "workflow.runtime", message, remediation });
@@ -47,9 +41,6 @@ function revision(projectRoot) {
 function linkedWorktree(invocation) {
     const { projectRoot, sourceRoot } = invocation.paths;
     return sourceRoot === projectRoot ? undefined : sourceRoot;
-}
-function activePhase(run) {
-    return run.phases.find((phase) => phase.status === "running") ?? run.phases.find((phase) => phase.status === "failed");
 }
 function nextStepAction(run) {
     if (TERMINAL_STATUSES.has(run.status))
@@ -89,7 +80,7 @@ function result(projectRoot, coreRoot, step, run, nextAction, diagnostics = [], 
     const open = extras.decisions ?? (run.decisions ?? []).filter((item) => item.status === "ASKED").map(toProjection);
     const status = failed ? "failed" : run.status === "awaiting-input" ? "awaiting_input" : run.status === "awaiting-approval" ? "warning" : "success";
     const review = failed ? undefined : reviewFor(projectRoot, run, coreRoot);
-    const independentText = review?.independent === undefined ? "" : ` Start a subagent with its own context, give it only ${review.independent.brief}, and let it write ${review.independent.record}; then run paved execute --run ${run.id} --auto --evidence ${review.independent.record} --json.`;
+    const independentText = review?.independent === undefined ? "" : ` Start a subagent with its own context, give it only ${review.independent.brief}, and let it write ${review.independent.record}; then run ${review.independent.command}.`;
     const reviewText = review === undefined ? "" : `${independentText} Summarize ${review.target}${review.companions.length ? ` and ${review.companions.join(", ")}` : ""} for the user and ask in the conversation. If the user wants to comment inline, open it in the preview (${review.preview}) and keep paved preview wait running until they say the review is finished; the preview approves nothing.`;
     const guidedStop = run.autonomy_profile === "guided" && run.status === "running"
         && run.events.at(-1)?.type === "phase-started" && run.events.at(-2)?.type === "phase-completed"
@@ -326,8 +317,18 @@ function startWork(invocation) {
         && listDecisions(projectRoot, coreRoot).some((decision) => decision.command === "init" && OPEN_DECISION.has(decision.status));
     if (!initPending && refreshFor(inspection)?.command === "paved update --json") {
         const updated = updateHandler({ ...invocation, command: "update", selectors: [] });
-        if (updated.status === "failed")
-            return updated;
+        if (updated.status === "failed") {
+            if (remediationFor(lifecycle) !== undefined)
+                return updated;
+            // Only drifted context was being refreshed. No gate reads it, so a failed refresh must not stop the request.
+            const started = startIntent(invocation);
+            const reason = updated.diagnostics.find((item) => item.severity === "error")?.message ?? "the update failed";
+            return { ...started, diagnostics: [...started.diagnostics, createDiagnostic({
+                        severity: "warning", category: "findings", code: CONTEXT_DRIFT_CODE, component: "workflow.runtime",
+                        message: `Generated project context is behind the source and could not be regenerated: ${reason}`.slice(0, 2000),
+                        remediation: "Work is not blocked. Run paved update --json to see why regeneration failed, or paved status to see the drifted generators.",
+                    })] };
+        }
         const started = startIntent(invocation);
         return { ...started, data: { ...started.data, updated: true }, diagnostics: [...updated.diagnostics, ...started.diagnostics] };
     }
@@ -342,15 +343,6 @@ function startWork(invocation) {
     }
     const started = startIntent(invocation);
     return { ...started, data: { ...started.data, initialized: true }, diagnostics: [...initialized.diagnostics, ...started.diagnostics] };
-}
-/** The step that owns the run's current phase; paved execute hands a run that is not yet planned to it. */
-function owningStep(run) {
-    if (!run.workflow)
-        return "intent";
-    if (amendmentPending(run))
-        return "plan";
-    const phase = activePhase(run);
-    return phase === undefined ? undefined : ownerOf(phase.phase);
 }
 /** Whether a repeated intent asks for a classification the open run does not have. */
 function contradicts(existing, requested) {
@@ -421,19 +413,12 @@ function failRun(run, phase, reason, nextAction) {
     run.ended_at = now();
     run.events.push({ at: now(), type: "phase-failed", phase: phase.phase, detail: reason }, { at: now(), type: "run-failed", phase: phase.phase });
 }
-function planGate(run) {
-    return run.phases.find((phase) => phase.phase === "planning")?.gates?.find((gate) => gate.id === "plan-approved");
-}
 function planApproved(run) {
     return planGate(run)?.status === "approved";
 }
 /** A run whose workflow changes nothing (an investigation) has no plan to approve. */
 function readOnly(run) {
     return !run.phases.some((phase) => phase.phase === "planning" || phase.phase === "implementation");
-}
-/** A revised plan awaits approval after planning already completed. */
-function amendmentPending(run) {
-    return run.phases.find((phase) => phase.phase === "planning")?.status === "completed" && planGate(run)?.status === "awaiting-approval";
 }
 function cancelRun(run, detail) {
     for (const phase of run.phases)
@@ -597,6 +582,24 @@ function toolPolicyGuard(invocation, step, run, phase, workflow) {
                     message: `Phase ${phase.phase} requires host-mediated approval before invoking ${asked.map(({ tool }) => tool.id).join(", ")}.`, remediation: nextAction })] });
     };
 }
+/**
+ * Names the exact command that continues the run instead of acting for it: this step's
+ * flags (--approve, --advance with a plan as evidence) mean something else in another
+ * step's phases, so replaying them there could record a plan note as a context
+ * observation or advance a phase the user did not ask to advance. `execute` alone stands
+ * in for the owning step, as documented.
+ */
+function outOfRange(step, run, phase, owner) {
+    const where = phase ?? "classification";
+    const abandonCommand = `paved ${owner ?? step} --run ${run.id} --abandon --note "<reason>" --json`;
+    if (owner === undefined) {
+        const nextCommand = "paved status --json";
+        return blocked(step, "PAVED_WORKFLOW_STEP_OUT_OF_RANGE", `Run ${run.id} is in ${where}, which no step owns, so paved ${step} cannot continue it.`, `Run ${nextCommand} to inspect the run. If it is no longer wanted, cancel it with ${abandonCommand}.`, { run: run.id, currentPhase: phase, requestedStep: step, nextCommand, abandonCommand });
+    }
+    const nextCommand = `paved ${owner} --run ${run.id} --json`;
+    const nextAction = nextStepAction(run);
+    return blocked(step, "PAVED_WORKFLOW_STEP_OUT_OF_RANGE", `Run ${run.id} is in ${where}, which paved ${owner} owns, not paved ${step}.`, `Run ${nextCommand} next; it reports what ${where} still needs. ${nextAction}`, { run: run.id, currentPhase: phase, owner, requestedStep: step, nextCommand, nextAction, abandonCommand });
+}
 async function resume(invocation, step, run, answers) {
     const { projectRoot, coreRoot } = invocation.paths;
     if (TERMINAL_STATUSES.has(run.status))
@@ -611,9 +614,8 @@ async function resume(invocation, step, run, answers) {
     if (step === "execute" && run.workflow && !readOnly(run) && !planApproved(run)) {
         return blocked(step, "PAVED_WORKFLOW_PLAN_UNAPPROVED", `Run ${run.id} has no approved plan.`, nextStepAction(run), { run: run.id });
     }
-    if (owner !== step) {
-        return blocked(step, "PAVED_WORKFLOW_STEP_OUT_OF_RANGE", `Run ${run.id} is in ${current?.phase ?? "classification"}, which paved ${owner ?? "<none>"} owns.`, nextStepAction(run), { run: run.id, currentPhase: current?.phase, owner });
-    }
+    if (owner !== step)
+        return outOfRange(step, run, current?.phase, owner);
     const runIds = new Set((run.decisions ?? []).map((decision) => decision.id));
     const runAnswers = answers.filter((answer) => runIds.has(answerId(answer)));
     const toolAnswers = answers.filter((answer) => !runIds.has(answerId(answer)));
@@ -697,7 +699,11 @@ async function resume(invocation, step, run, answers) {
         outcome = await runPhase({
             projectRoot, coreRoot, run, phase, workflow, approve: invocation.flags.approve === true,
             tools: {
-                test: async () => testHandler({ ...forwarded, command: "test" }, guard),
+                test: async (options) => {
+                    // Nothing changed yet means nothing to scope by, so every Tool runs.
+                    const changed = options?.all === true ? undefined : changedFiles(projectRoot, run);
+                    return testHandler({ ...forwarded, command: "test" }, guard, changed === undefined || changed.length === 0 ? {} : { changedFiles: changed });
+                },
                 verify: async () => {
                     const changed = changedFiles(projectRoot, run);
                     return verifyHandler({ ...forwarded, command: "verify" }, guard, changed === undefined ? {} : { changedFiles: changed });
@@ -716,8 +722,8 @@ async function resume(invocation, step, run, answers) {
         case "blocked":
             if (decisions.applied.length > 0)
                 writeRun(projectRoot, coreRoot, run);
-            // A stale review is redone from a brief that carries the run's current digests, so rewrite it now.
-            if (outcome.code === "PAVED_REVIEW_STALE") {
+            // Without an acceptable record the review is (re)done from a brief carrying the run's current digests, so rewrite it now.
+            if (REVIEW_RECORD_CODES.has(outcome.code)) {
                 const review = reviewFor(projectRoot, run, coreRoot);
                 return blocked(step, outcome.code, outcome.message, outcome.remediation, { run: run.id, ...(review === undefined ? {} : { review }) });
             }
@@ -845,7 +851,7 @@ export async function stepHandler(invocation) {
     }
     catch (error) {
         if (error instanceof ConsumerOperationLockedError) {
-            return withPhaseContext(invocation, blocked(invocation.command, "PAVED_OPERATION_IN_PROGRESS", error.message, "Wait for the active Paved operation to finish before starting or resuming a workflow."));
+            return withPhaseContext(invocation, blocked(invocation.command, "PAVED_OPERATION_IN_PROGRESS", error.message, error.remediation));
         }
         throw error;
     }

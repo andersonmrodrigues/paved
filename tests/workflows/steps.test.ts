@@ -294,9 +294,28 @@ describe("intent, plan and execute", () => {
 
   it("each step refuses phases it does not own and names the owner", async () => {
     const id = runOf(await invoke("intent", "Add CSV export", "--workflow", "feature", "--because", "New behavior."));
+    const before = readFileSync(join(project, ".paved/generated/runs", `${id}.yaml`), "utf8");
     const plan = await invoke("plan", "--run", id, "--advance", "--note", "x");
     assert.equal(plan.diagnostics[0]?.code, "PAVED_WORKFLOW_STEP_OUT_OF_RANGE");
-    assert.match(plan.diagnostics[0]?.remediation ?? "", /paved intent --run/);
+    assert.match(plan.diagnostics[0]?.message ?? "", new RegExp(`Run ${id} is in context, which paved intent owns, not paved plan\\.`));
+    assert.ok(plan.diagnostics[0]?.remediation?.startsWith(`Run paved intent --run ${id} --json next;`), plan.diagnostics[0]?.remediation);
+    const data = plan.data as Record<string, string>;
+    assert.equal(data.owner, "intent");
+    assert.equal(data.requestedStep, "plan");
+    assert.equal(data.currentPhase, "context");
+    assert.equal(data.nextCommand, `paved intent --run ${id} --json`);
+    assert.equal(data.abandonCommand, `paved intent --run ${id} --abandon --note "<reason>" --json`);
+    assert.equal(readFileSync(join(project, ".paved/generated/runs", `${id}.yaml`), "utf8"), before, "the refused step records nothing");
+
+    // Following the named command works without guessing, and continues the run where it is.
+    const followed = await invoke(...data.nextCommand!.split(" ").slice(1, -1));
+    assert.equal(followed.status, "success", JSON.stringify(followed));
+    assert.equal((followed.data as { currentPhase: string }).currentPhase, "context");
+
+    const unclassified = runOf(await invoke("intent", "Speed up the export"));
+    const classification = await invoke("plan", "--run", unclassified);
+    assert.match(classification.diagnostics[0]?.message ?? "", /is in classification, which paved intent owns/);
+    assert.equal((classification.data as Record<string, string>).nextCommand, `paved intent --run ${unclassified} --json`);
   });
 
   it("execute stands in for the step that owns an unplanned run and implements nothing", async () => {
@@ -304,6 +323,54 @@ describe("intent, plan and execute", () => {
     const advanced = await invoke("execute", "--run", id, "--advance", "--note", "Scope is clear");
     assert.equal(advanced.command, "intent", JSON.stringify(advanced));
     assert.equal((advanced.data as { currentPhase: string }).currentPhase, "discovery");
+  });
+
+  it("status warns about open runs left behind with the command to abandon each, and cancels none", async () => {
+    type OpenRun = { run: string; owner?: string; lastEventAt?: string; stale?: { reasons: string[]; supersededBy?: string; abandonCommand: string } };
+    const openRuns = (result: { data?: unknown }) => (result.data as { openRuns: OpenRun[] }).openRuns;
+    const staleWarnings = (result: { diagnostics: readonly { code: string; message: string; remediation?: string }[] }) =>
+      result.diagnostics.filter((item) => item.code === "PAVED_WORKFLOW_RUN_STALE");
+
+    const older = runOf(await invoke("intent", "Add CSV export", "--workflow", "feature", "--because", "New behavior."));
+    const fresh = await invoke("status");
+    assert.deepEqual(staleWarnings(fresh), [], JSON.stringify(fresh.diagnostics));
+    assert.equal(openRuns(fresh)[0]?.owner, "intent");
+
+    // Shift the run three days back, as if it had been left there.
+    const path = join(project, ".paved/generated/runs", `${older}.yaml`);
+    const record = readRunFile(older);
+    const shift = (at: string) => new Date(Date.parse(at) - 72 * 3_600_000).toISOString();
+    record.started_at = shift(record.started_at);
+    for (const event of record.events) event.at = shift(event.at);
+    writeFileSync(path, stringify(record));
+    const lastEventAt = record.events.at(-1)!.at;
+
+    const newer = runOf(await invoke("intent", "Add JSON export", "--workflow", "feature", "--because", "New behavior."));
+    const before = readFileSync(path, "utf8");
+    const status = await invoke("status");
+    assert.equal(status.status, "warning", JSON.stringify(status.diagnostics));
+    const warnings = staleWarnings(status);
+    assert.equal(warnings.length, 1, JSON.stringify(status.diagnostics));
+    const abandonCommand = `paved intent --run ${older} --abandon --note "<reason>" --json`;
+    assert.equal(warnings[0]!.message,
+      `Open run ${older} (context) has had no event since ${lastEventAt} (over 24 hours) and is still in context, which paved intent owns, while newer run ${newer} was started.`);
+    assert.match(warnings[0]!.remediation ?? "", new RegExp(`cancel it with ${abandonCommand.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}; otherwise continue it with paved intent --run ${older} --json\\. Paved never cancels a run on its own\\.`));
+    const listed = openRuns(status).find((item) => item.run === older);
+    assert.deepEqual(listed?.stale, { reasons: ["idle", "superseded"], lastEventAt, supersededBy: newer, abandonCommand });
+    assert.equal(openRuns(status).find((item) => item.run === newer)?.stale, undefined);
+    assert.equal(readFileSync(path, "utf8"), before, "status never changes a run");
+
+    // A longer period leaves only the superseded reason.
+    const patient = await invoke("status", "--stale-after", "100");
+    assert.deepEqual(openRuns(patient).find((item) => item.run === older)?.stale?.reasons, ["superseded"]);
+    assert.equal((await invoke("status", "--stale-after", "0")).diagnostics[0]?.code, "PAVED_CLI_USAGE");
+
+    // Following the abandon command clears the warning.
+    const abandoned = await invoke(...abandonCommand.replace('"<reason>"', "superseded").split(" ").slice(1, -1));
+    assert.equal((abandoned.data as { status: string }).status, "cancelled", JSON.stringify(abandoned));
+    const after = await invoke("status");
+    assert.deepEqual(staleWarnings(after), []);
+    assert.deepEqual(openRuns(after).map((item) => item.run), [newer]);
   });
 
   it("plan and execute act on the only open run, and ask when several are open", async () => {

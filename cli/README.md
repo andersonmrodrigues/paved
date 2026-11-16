@@ -19,7 +19,8 @@ this CLI yet.
 | [`paved status`](commands/status/README.md) | Report initialized state, lock health, adapters, generator state, proposals, verification profile state, open runs, diagnostics and repair decisions | nothing, unless a repair decision is answered |
 | `paved workbench` | Start a local dashboard for runs and recent Codex/Claude Code hook activity, or inspect/stop it | disposable `.paved/generated/workbench/server.json`; activity stays in memory |
 | [`paved doctor`](commands/doctor/README.md) | The diagnostics and repair decisions of `status`, kept as a CLI subcommand for the launcher and CI | nothing, unless a repair decision is answered |
-| `paved gardener` | Analyze existing consumer evidence and report review proposals | nothing |
+| `paved gardener` | Analyze existing consumer evidence and report review proposals; `correction` drafts a rule from a correction a person stated | nothing; `correction` writes a draft under `.paved/generated/proposals/` and adoption writes `.paved/rules/corrections/` |
+| `paved review` | Prepare an independent review of `--base <ref>` or `--range <a>..<b>` outside a workflow run, and check the reviewer's record with `--evidence` | the diff, brief and rendered review under `.paved/generated/reviews/` |
 | `paved agent` | List, discover/resolve shared agent command contracts, validate, install, update or uninstall project-local agent projections | `.agents/`, `.claude/` or `.claude-plugin/` projection files |
 | `paved intent` | Classify a request into the `feature`, `bug`, `refactor`, `performance` or `investigation` workflow, write the Intent, and run `context` and `discovery` | `.paved/generated/runs/`, `.paved/documents/intents/`, evidence |
 | `paved plan` | Run `planning` on the open run and record the approval the user gives in the conversation | `.paved/generated/runs/`, `.paved/approvals/` |
@@ -58,7 +59,8 @@ Command-specific options are intentionally narrow:
 | `verify` | `--adapter <id>` repeatable for content-root selection; no selectors, `--profile`, `--check`, shell command, or `--dry-run` |
 | `status` | `--adapter <id>` repeatable; read-only unless `--answer` answers a repair decision |
 | `doctor` | `--adapter <id>` repeatable; read-only unless `--answer` answers a repair decision; no `--run-checks` |
-| `gardener` | `--dry-run`; read-only; no selectors or adapter selection |
+| `gardener` | `--dry-run`; read-only unless `--answer` adopts a proposal; optional selector `debt` or `correction`; `correction` takes `--text <words>` and repeatable `--evidence <file[:lines] \| commit \| url>` |
+| `review` | Exactly one of `--base <ref>` or `--range <a>..<b>` (or `a...b`); `--evidence <record>` checks the reviewer's ChangeReview; no selectors or adapter selection |
 | `agent` | `list`, `commands [codex\|claude-code]`, `command <name>`, or `<install\|update\|uninstall\|status\|validate> [codex\|claude-code]` |
 | `intent` | The request, with `--workflow <feature\|bug\|refactor> --because <evidence>`, or `--recommend <id> --because <evidence>`, or one `--part <request>` per part; `--input <id>=<value>` repeatable |
 | `intent`, `plan`, `execute` | `--run <id>` (required only when several runs are open), `--advance` with `--note` and `--evidence` as required, `--answer` |

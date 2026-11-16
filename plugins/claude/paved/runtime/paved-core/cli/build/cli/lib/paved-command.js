@@ -1,7 +1,7 @@
 import { COMMAND_NAMES } from "../runtime.js";
 // A remediation may name any CLI command, or the launcher's own `runtime`.
 const MENTION = new RegExp(`(^|[\\s\`'"(])paved (?=(?:${[...COMMAND_NAMES, "runtime"].join("|")})\\b)`, "g");
-const GUIDANCE_KEYS = new Set(["nextAction", "next_action", "remediation", "recommendedNextAction"]);
+const GUIDANCE_KEYS = new Set(["nextAction", "next_action", "remediation", "recommendedNextAction", "nextCommand", "abandonCommand"]);
 function rewrite(value, command, guidance) {
     if (typeof value === "string")
         return guidance ? value.replace(MENTION, (_match, lead) => `${lead}${command} `) : value;

@@ -1,0 +1,9 @@
+# expect-error: must NOT be valid
+apiVersion: paved/v1
+kind: ChangeReview
+run: intent-0123456789abcdef0123
+target: { kind: base, ref: main, base: 0123456789abcdef0123456789abcdef01234567, head: 89abcdef0123456789abcdef0123456789abcdef, working_tree: false }
+reviewer: { agent: claude-code subagent, isolated: true }
+reviewed: { diff_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa }
+passes: [diff]
+findings: []

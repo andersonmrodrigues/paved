@@ -1,7 +1,7 @@
 import { remediationFor } from "../lib/lifecycle-remediation.js";
 import { createDiagnostic, createResult } from "../result.js";
 import { inspectConsumer } from "../lib/consumer-state.js";
-import { resolveTestingTool, runTestingTool } from "../lib/test-runner.js";
+import { outOfScope, resolveTestingTool, runTestingTool } from "../lib/test-runner.js";
 import { acquireConsumerOperationLock, ConsumerOperationLockedError } from "../lib/operation-lock.js";
 import { runDecisionGate } from "../lib/decisions/gate.js";
 import { testingProvider } from "../lib/decisions/providers/testing.js";
@@ -12,15 +12,37 @@ function statusFor(diagnostics, failed) {
         return "failed";
     return diagnostics.length > 0 ? "warning" : "success";
 }
-/** Names each Tool that did not pass, so a suite failure says which modules to look at. */
-function failureMessage(outcomes) {
-    const failing = (outcomes ?? []).filter((item) => item.status !== "passed");
-    if (failing.length === 0 || (outcomes ?? []).length < 2)
-        return "The declared testing Tool failed or timed out.";
-    const list = failing.map((item) => `${item.tool} in ${item.workingDirectory}${item.evidence ? ` (${item.evidence})` : ""}`).join("; ");
-    return `${failing.length} of ${outcomes.length} testing Tools failed or timed out: ${list}.`;
+const describe = (item) => `${item.tool} in ${item.workingDirectory}${item.evidence ? ` (${item.evidence})` : ""}`;
+/**
+ * Names each Tool that did not pass, so a suite failure says which modules to look at. A
+ * Tool that ran out of time is reported apart from one whose tests failed: the fix for it
+ * is a faster suite or a longer limit, not a code change.
+ */
+function failureDiagnostics(outcomes) {
+    const all = outcomes ?? [];
+    const ran = all.filter((item) => item.status !== "skipped");
+    const timedOut = all.filter((item) => item.status === "timed-out");
+    const failing = all.filter((item) => item.status !== "passed" && item.status !== "skipped" && item.status !== "timed-out");
+    const diagnostics = [];
+    if (timedOut.length > 0) {
+        const list = timedOut.map((item) => `${describe(item)} after ${item.timeoutSeconds ?? "its"} seconds`).join("; ");
+        diagnostics.push(createDiagnostic({
+            severity: "error", category: "verification", code: "PAVED_TEST_TOOL_TIMED_OUT", component: "cli.commands.test",
+            message: ran.length < 2 ? `The declared testing Tool timed out: ${list}.` : `${timedOut.length} of ${ran.length} testing Tools timed out: ${list}.`,
+            remediation: "Make the tests finish sooner, or raise timeout_seconds on the Tool contract and its ToolImplementation (the binding may lower the contract's limit, never exceed it).",
+        }));
+    }
+    if (failing.length > 0 || timedOut.length === 0) {
+        diagnostics.push(createDiagnostic({
+            severity: "error", category: "verification", code: "PAVED_TEST_TOOL_FAILED", component: "cli.commands.test",
+            message: failing.length === 0 || ran.length < 2 ? "The declared testing Tool failed."
+                : `${failing.length} of ${ran.length} testing Tools failed: ${failing.map(describe).join("; ")}.`,
+            remediation: "Inspect the recorded Tool result and sanitized evidence log, then address the test failure.",
+        }));
+    }
+    return diagnostics;
 }
-export async function testHandler(invocation, beforeRun) {
+export async function testHandler(invocation, beforeRun, scope = {}) {
     let inputs = {};
     if (invocation.flags.inputs !== undefined) {
         try {
@@ -91,7 +113,9 @@ export async function testHandler(invocation, beforeRun) {
         try {
             const selected = resolveTestingTool(invocation.paths.projectRoot, invocation.paths.coreRoot, invocation.paths.sourceRoot);
             if (beforeRun && (selected.status === "resolved" || selected.status === "suite")) {
-                const stopped = beforeRun((selected.status === "suite" ? selected.members : [selected]).map((member) => ({ ...member, inputs })));
+                const skipped = outOfScope(selected, scope.changedFiles);
+                const running = (selected.status === "suite" ? selected.members : [selected]).filter((member) => !skipped.has(member.tool.id));
+                const stopped = beforeRun(running.map((member) => ({ ...member, inputs })));
                 if (stopped)
                     return stopped;
             }
@@ -100,6 +124,7 @@ export async function testHandler(invocation, beforeRun) {
                 sourceRoot: invocation.paths.sourceRoot,
                 coreRoot: invocation.paths.coreRoot,
                 inputs,
+                ...(scope.changedFiles === undefined ? {} : { changedFiles: scope.changedFiles }),
             }, selected);
             return createResult({
                 command: "test",
@@ -115,16 +140,7 @@ export async function testHandler(invocation, beforeRun) {
                 },
                 diagnostics: [
                     ...result.diagnostics,
-                    ...(result.status === "failed" && result.diagnostics.length === 0
-                        ? [createDiagnostic({
-                                severity: "error",
-                                category: "verification",
-                                code: "PAVED_TEST_TOOL_FAILED",
-                                component: "cli.commands.test",
-                                message: failureMessage(result.outcomes),
-                                remediation: "Inspect the recorded Tool result and sanitized evidence log, then address the test failure.",
-                            })]
-                        : []),
+                    ...(result.status === "failed" && result.diagnostics.length === 0 ? failureDiagnostics(result.outcomes) : []),
                 ],
             });
         }
@@ -145,7 +161,7 @@ export async function testHandler(invocation, beforeRun) {
                         code: "PAVED_OPERATION_IN_PROGRESS",
                         component: "consumer.operation",
                         message: error.message,
-                        remediation: "Wait for the active Paved operation to finish before running tests.",
+                        remediation: error.remediation,
                     })],
             });
         }

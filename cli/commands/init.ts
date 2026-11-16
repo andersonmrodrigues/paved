@@ -15,6 +15,8 @@ import { rulesHandler } from "../lib/decisions/handlers/rules.ts";
 import { capabilityProvider, capabilityHandler } from "../lib/decisions/providers/capability.ts";
 import { testingAdoptProvider } from "../lib/decisions/providers/testing.ts";
 import { testingAdoptHandler } from "../lib/decisions/handlers/testing.ts";
+import { agentsVersioningProvider } from "../lib/decisions/providers/agents.ts";
+import { agentsVersioningHandler } from "../lib/decisions/handlers/agents.ts";
 import { ensureAgentsBlock } from "../lib/agents-block.ts";
 import { createDiagnostic, createResult, type CommandResult, type Diagnostic, type ResultStatus } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
@@ -229,12 +231,13 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
       answers: invocation.flags.answers,
       ...(invocation.flags.answeredBy === undefined ? {} : { answeredBy: invocation.flags.answeredBy }),
     },
-    providers: [verificationProvider, testingAdoptProvider, rulesProvider, capabilityProvider],
+    providers: [verificationProvider, testingAdoptProvider, rulesProvider, capabilityProvider, agentsVersioningProvider],
     handlers: new Map([
       ["verification.adopt", verificationHandler],
       ["testing.adopt", testingAdoptHandler],
       ["rules.adopt", rulesHandler],
       ["capability.select", capabilityHandler],
+      ["agents.versioning", agentsVersioningHandler],
     ]),
     persist: true,
   });

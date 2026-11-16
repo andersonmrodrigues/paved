@@ -11,6 +11,8 @@ const result = () => createResult({
     remediation: { command: "paved update --json", reason: "Context drifted." },
     summary: "paved status reported nothing",
     note: "Commit .paved/paved.lock and keep paved plans small.",
+    nextCommand: "paved intent --run intent-x --json",
+    abandonCommand: "paved intent --run intent-x --abandon --note \"<reason>\" --json",
   },
   diagnostics: [createDiagnostic({
     severity: "warning", category: "findings", code: "PAVED_X", component: "test",
@@ -25,6 +27,8 @@ describe("pasteable Paved commands", () => {
     assert.equal(data.nextAction, "Run '/repo dir/.paved/runtime/bin/paved' update --json, then `'/repo dir/.paved/runtime/bin/paved' status`.");
     assert.deepEqual(data.remediation, { command: "'/repo dir/.paved/runtime/bin/paved' update --json", reason: "Context drifted." });
     assert.equal(rewritten.diagnostics[0]?.remediation, "Run '/repo dir/.paved/runtime/bin/paved' verify --json.");
+    assert.equal(data.nextCommand, "'/repo dir/.paved/runtime/bin/paved' intent --run intent-x --json");
+    assert.match(String(data.abandonCommand), /^'\/repo dir\/.paved\/runtime\/bin\/paved' intent --run intent-x --abandon/);
   });
 
   it("leaves other text, paths and prose alone", () => {

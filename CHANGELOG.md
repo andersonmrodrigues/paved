@@ -5,6 +5,92 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- `paved init` asks, as an optional decision that never holds up setup, whether an
+  untracked `AGENTS.md` should be versioned. `keep-local` adds it to the clone's `.git/info/exclude` (shared by
+  linked worktrees, never `.gitignore`); `track` keeps today's behavior. A tracked or
+  ignored `AGENTS.md`, or a directory outside git, is not asked about.
+- `paved status` warns with `PAVED_CORE_UPDATE_AVAILABLE` when the plugin launcher
+  carries a newer Core than the project pins, shows both versions in `coreUpdate`, and
+  suggests `paved update` as the next action when nothing more urgent is pending. The
+  launcher passes its Core version to the runtime in `PAVED_LAUNCHER_CORE_VERSION`.
+- `paved gardener correction --text "<words>" --evidence <file[:lines] | commit | url>`
+  turns a project rule a person stated in conversation into a draft Rule under
+  `.paved/generated/proposals/rules/corrections/`, with the statement verbatim and the
+  evidence in its provenance sidecar. A statement an existing Core or project rule already
+  makes writes nothing and names that rule; a restatement of a pending draft is merged into
+  it and counted. Each draft is a project decision: only the person's `adopt` answer writes
+  it to `.paved/rules/corrections/`. The core instructions and the `gardener` skill (0.5.0)
+  tell agents to use this after a correction instead of keeping the rule in their own notes.
+- `paved review --base <ref>` and `paved review --range <a>..<b>` prepare the independent
+  change review for a branch or commit range without a workflow run: the diff, a brief with
+  the rules in scope, and the record format. `paved review ... --evidence <record>` checks
+  the reviewer's record with the review gate's rules (current diff digest, isolated
+  reviewer, proven blocking findings) and renders it; proven blocking findings return a
+  warning. `ChangeReview` records accept a `target` with `reviewed.diff_sha256` in place of
+  `run`; existing records stay valid, and a workflow's review gate refuses a record without
+  a run. The `change-review` skill (0.8.0) describes the flow.
+- `paved status` warns with `PAVED_WORKFLOW_RUN_STALE` about open runs left behind:
+  no event for 24 hours (`--stale-after <hours>` changes it), or still in a phase
+  `intent` owns while a newer run was started. Each warning gives the command that
+  continues the run and the `--abandon --note` command that cancels it; `openRuns`
+  entries now carry `owner`, `lastEventAt` and `stale`. Paved never cancels a run on
+  its own.
+- Workflow validation runs only the testing Tools the change concerns. A Tool runs when a
+  file the run changed is under its binding's working directory, or matches the new
+  ToolImplementation `applies_to` globs. For local Maven modules, the modules that
+  depend on a running module run too, and so do the modules a running one must
+  install. Other Tools are recorded as `skipped` with the reason and reported as
+  `PAVED_WORKFLOW_TESTS_SCOPED`. The baseline at plan approval, a refactor's baseline
+  and standalone `paved test` still run every Tool.
+- When validation fails only on testing Tools that already failed at plan approval, it
+  asks the user (`run.pre-existing-failures`) instead of failing: accept those
+  failures for this run, or fix them. Accepting passes validation with a
+  `PAVED_WORKFLOW_BASELINE_ACCEPTED` warning. The decision records who answered and
+  cites the baseline evidence, and the workflow evidence record lists the failures as a
+  gap with `accepted_by`. Paved never answers this decision itself. A Tool that passed at
+  approval and fails now still fails validation without asking.
+
+### Changed
+
+- Every review refusal that leaves the run without an acceptable record
+  (`PAVED_REVIEW_RECORD_REQUIRED`, `PAVED_REVIEW_RECORD_INVALID`,
+  `PAVED_REVIEW_NOT_INDEPENDENT`, `PAVED_REVIEW_STALE`, `PAVED_REVIEW_FINDING_UNPROVEN`)
+  now rewrites the brief and returns the `review` block, as `PAVED_REVIEW_STALE` already
+  did. `review.independent` also carries the review phase's `routing` and `command`, the
+  exact command that records the findings, and each remediation names that command. The
+  review must still come from a reviewer that did not write the change.
+- Drifted generated context is reported as one `PAVED_GENERATED_CONTEXT_STALE` warning
+  that names every drifted generator and why, instead of one
+  `PAVED_GENERATOR_SOURCE_SET_STALE` per generator and one `PAVED_GENERATED_SOURCE_STALE`
+  per changed cited file; those two codes are retired. Its remediation names
+  `paved update --json` and `paved generate <generators> --json`, and `paved status`
+  lists the generators in `staleGenerators`. Workflow steps still never report it while a
+  run is open.
+- A testing Tool that reaches its time limit is reported as `timed-out` with
+  `PAVED_TEST_TOOL_TIMED_OUT` and the limit in seconds, apart from
+  `PAVED_TEST_TOOL_FAILED`. Test outcomes carry `timeoutSeconds`, and the baseline
+  records `timed_out=<ids>`. The limit is still set per Tool contract and lowered per
+  binding (`invocation.timeout_seconds`); the schema now documents this.
+
+### Fixed
+
+- `paved execute "<request>"` no longer fails when regenerating merely drifted context
+  fails; the request starts and the failure is reported as a warning. An update that
+  the lifecycle requires (`STALE`, `INCOMPATIBLE`) still blocks.
+- A `.paved-operation-lock` left by a process that no longer runs on this host, or one
+  without a readable `owner.json` for 10 minutes, is now reclaimed automatically with a
+  `PAVED_OPERATION_LOCK_RECLAIMED` warning naming the previous operation, pid and start
+  time. A lock held by a running process still fails with `PAVED_OPERATION_IN_PROGRESS`,
+  whose message now names that operation, pid and start time. Locks from another host,
+  links and locks holding unexpected files are never reclaimed.
+- `PAVED_WORKFLOW_STEP_OUT_OF_RANGE` now gives the exact command to run next, such as
+  `paved intent --run <id> --json`, at the start of its remediation and as
+  `data.nextCommand`, with the owning step, the requested step and an `abandonCommand`
+  in its data. `intent` and `plan` still do not act for another step, since their
+  flags would mean something else in its phases.
+
 ## [2.29.1] - 2026-11-15
 
 ### Fixed

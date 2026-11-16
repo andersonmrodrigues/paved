@@ -209,6 +209,40 @@ export function scanRuns(projectRoot: string, coreRoot: string): { runs: Run[]; 
 
 export const isOpen = (run: Pick<Run, "status">): boolean => !TERMINAL_STATUSES.has(run.status);
 
+/** The workflow commands; each owns a fixed range of phases. */
+export type Step = "intent" | "plan" | "execute";
+export const STEP_PHASES: Readonly<Record<Step, readonly string[]>> = {
+  intent: ["context", "discovery"],
+  plan: ["planning"],
+  execute: ["implementation", "validation", "verification", "evidence", "review", "completion"],
+};
+const STEPS = Object.keys(STEP_PHASES) as Step[];
+export const ownerOf = (phase: string): Step | undefined => STEPS.find((step) => STEP_PHASES[step].includes(phase));
+
+export function activePhase(run: Run): Phase | undefined {
+  return run.phases.find((phase) => phase.status === "running") ?? run.phases.find((phase) => phase.status === "failed");
+}
+
+export function planGate(run: Run): Gate | undefined {
+  return run.phases.find((phase) => phase.phase === "planning")?.gates?.find((gate) => gate.id === "plan-approved");
+}
+
+/** A revised plan awaits approval after planning already completed. */
+export function amendmentPending(run: Run): boolean {
+  return run.phases.find((phase) => phase.phase === "planning")?.status === "completed" && planGate(run)?.status === "awaiting-approval";
+}
+
+/**
+ * The step that owns the run's current phase, so the command that continues it; paved
+ * execute hands a run that is not yet planned to it. Undefined without an active phase.
+ */
+export function owningStep(run: Run): Step | undefined {
+  if (!run.workflow) return "intent";
+  if (amendmentPending(run)) return "plan";
+  const phase = activePhase(run);
+  return phase === undefined ? undefined : ownerOf(phase.phase);
+}
+
 /** The command that created the run, from its id prefix: `intent`, or `feature` / `fix` / `refactor` for 1.x runs. */
 export function runCommand(run: Pick<Run, "id">): string {
   return run.id.slice(0, run.id.indexOf("-"));

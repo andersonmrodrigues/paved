@@ -137,7 +137,7 @@ export function generateHandler(invocation) {
                     code: "PAVED_OPERATION_IN_PROGRESS",
                     component: "consumer.operation",
                     message: error.message,
-                    remediation: "Wait for the active operation to finish. For a stale lock, confirm no Paved process is active before removing .paved-operation-lock.",
+                    remediation: error.remediation,
                 })],
         });
     }

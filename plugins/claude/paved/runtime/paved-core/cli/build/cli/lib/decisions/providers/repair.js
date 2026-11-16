@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { CONTEXT_DRIFT_CODES, inspectConsumer } from "../../consumer-state.js";
+import { CONTEXT_DRIFT_CODE, inspectConsumer } from "../../consumer-state.js";
 const REPAIRABLE = new Set([
-    ...CONTEXT_DRIFT_CODES, "PAVED_GENERATOR_INPUTS_STALE", "PAVED_GENERATED_OUTPUT_MISSING",
+    CONTEXT_DRIFT_CODE, "PAVED_GENERATOR_INPUTS_STALE", "PAVED_GENERATED_OUTPUT_MISSING",
 ]);
 export const repairProvider = (context) => {
     const findings = inspectConsumer({ projectRoot: context.projectRoot, coreRoot: context.coreRoot, ...(context.sourceRoot === undefined ? {} : { sourceRoot: context.sourceRoot }) }).diagnostics

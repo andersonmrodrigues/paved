@@ -56,6 +56,31 @@ matches the code, and that the failure names a phase that actually failed or is 
 - A phase that can reach a destructive tool must not be `retryable`
   (`assessWorkflowQuality`).
 
+## Testing Tools scoped to the change
+
+During a workflow run, the testing Tools run only where the change is, as Checks honor
+`applies_to`. A testing Tool runs when one of the files the run changed is under its
+binding's `invocation.working_directory`, or matches the binding's `applies_to` globs when
+the ToolImplementation declares them. A binding at the repository root always runs. Local
+build dependencies widen the set: a Maven module that consumes a running module runs too,
+and so does every module a running one needs installed. The other Tools are recorded as
+`skipped` with the reason (in the test result's `outcomes` and in the `validation`
+`tool-invoked` event as `skipped=<id> (<reason>)`), reported as
+`PAVED_WORKFLOW_TESTS_SCOPED`, and do not decide the outcome.
+
+Scoping needs changed files. The baseline at plan approval and a refactor's baseline run
+every Tool, as does validation of a run with no changed file. Standalone `paved test`
+always runs every Tool.
+
+## Timeouts
+
+A testing Tool runs under its contract's `timeout_seconds`, lowered by its binding's
+`invocation.timeout_seconds` and by an approved override; a binding cannot exceed its
+contract. A Tool that reaches its limit is reported as `timed-out` with
+`PAVED_TEST_TOOL_TIMED_OUT` and the limit in seconds, apart from `PAVED_TEST_TOOL_FAILED`.
+In a workflow both count as a test failure. To give one module longer, raise the limit on
+that module's Tool and binding (`.paved/tools/` and `.paved/tool-implementations/`).
+
 ## Environment failures and the baseline
 
 A failed test run is not always a regression. When the testing Tool's output shows a
@@ -67,10 +92,10 @@ instead of failing: no attempt is spent, and the run continues once the environm
 available or those tests are excluded from the testing Tool. The classification only
 changes how a failure is reported; it never lets a run pass.
 
-When the plan is approved and nothing has changed yet, Paved runs the testing Tool once
+When the plan is approved and nothing has changed yet, Paved runs every testing Tool once
 and records the outcome as the run's baseline (a `tool-invoked` event in `planning` with
-`baseline status=passed|failed|environment-unavailable`, followed by `; failing=<ids>` and
-`; unavailable=<ids>` for the Tools of a suite). A baseline that did not pass is reported
+`baseline status=passed|failed|environment-unavailable`, followed by `; failing=<ids>`,
+`; timed_out=<ids>` and `; unavailable=<ids>` for the Tools of a suite). A baseline that did not pass is reported
 with the approval itself as a `PAVED_WORKFLOW_BASELINE_FAILING` finding naming each Tool,
 its working directory and its evidence, so the user decides before implementation whether
 to fix those tests in this change, exclude them, or make their environment available.
@@ -79,10 +104,24 @@ Approval is not blocked: in a test-first change the tests are expected to fail.
 If validation later fails and the baseline had failed too, the failure carries
 `PAVED_WORKFLOW_BASELINE_FAILING` again. For a suite it separates the Tools that passed at
 approval and fail now, which the change likely broke, from the Tools that were already
-failing. Validation still requires every Tool to pass.
+failing.
+
+When every Tool that fails now already failed (or timed out) at approval, nothing points
+at the change, so validation asks the user instead of failing: a required run decision
+(`run.pre-existing-failures`) that cites the baseline evidence and offers two options,
+with no recommendation.
+
+- `accept`: validation passes for this run with a `PAVED_WORKFLOW_BASELINE_ACCEPTED`
+  warning. The decision records who answered (`--answered-by`), the validation event
+  records `accepted pre-existing failures=<ids>` with the baseline evidence as its ref,
+  and the workflow evidence record lists the failures as a gap with `accepted_by`.
+- `fix`: validation fails as before until the tests pass.
+
+Paved never answers this decision itself. A Tool that passed at approval and fails now is
+a fresh failure: validation fails without asking, whatever was accepted earlier.
 
 Limits: each testing Tool reports one exit code and text output, so the baseline compares
-Tools, not individual tests, and a failure on a failing baseline still spends an attempt.
+Tools, not individual tests, and a failure the user chose to fix still spends an attempt.
 Comparing failing tests one by one (for example from JUnit reports), applying the same
 baseline to verification checks, and having onboarding detect tests that need external
 infrastructure and propose excluding or tagging them are follow-up work.

@@ -1,0 +1,8 @@
+# expect-error: must have required property 'diff_sha256'
+apiVersion: paved/v1
+kind: ChangeReview
+target: { kind: base, ref: main, base: 0123456789abcdef0123456789abcdef01234567, head: 89abcdef0123456789abcdef0123456789abcdef, working_tree: true }
+reviewer: { agent: claude-code subagent, isolated: true }
+reviewed: { plan_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa }
+passes: [diff]
+findings: []

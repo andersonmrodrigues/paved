@@ -260,7 +260,9 @@ If refreshed skills or hooks need a session restart, the agent reports that as w
 Updating the plugin never changes a repository's runtime by itself. The lock in
 each repository stays authoritative; when the plugin carries a different runtime,
 commands keep using the locked one and print a `PAVED_RUNTIME_UPDATE_AVAILABLE`
-notice on stderr.
+notice on stderr. When the plugin's runtime is newer than the pin, `paved status` also
+reports `PAVED_CORE_UPDATE_AVAILABLE` with both versions and points its next action at
+`paved update`; it never updates by itself.
 
 ## Upgrade or roll back a repository's runtime
 

@@ -8,7 +8,7 @@ import { loadYaml } from "./documents.js";
 import { coveredTypes } from "./evidence.js";
 import { resolveSafePath } from "./safe-path.js";
 import { runSourceRoot } from "./workflow-runs.js";
-import { UNCHANGED_HANDLER } from "./workflows.js";
+import { PRE_EXISTING_HANDLER, UNCHANGED_HANDLER } from "./workflows.js";
 // Paved state is not part of the change it records.
 const PATHSPEC = ["--", ".", ":(exclude).paved", ":(exclude).paved.update-backup", ":(exclude).paved-operation-lock"];
 function git(projectRoot, args, input) {
@@ -18,8 +18,26 @@ function git(projectRoot, args, input) {
 }
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 const lines = (text) => text.split("\n").map((line) => line.trim()).filter(Boolean);
-/** The change since the run started: committed, staged, unstaged and untracked files, against the run's revision. */
-function collectChange(projectRoot, revision) {
+/** The full commit id `ref` names, or undefined when it names no commit here. */
+export function resolveCommit(root, ref) {
+    if (ref.startsWith("-"))
+        return undefined;
+    const result = git(root, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+    return result.ok ? result.stdout.trim() : undefined;
+}
+export function mergeBase(root, left, right) {
+    const result = git(root, ["merge-base", left, right]);
+    return result.ok && result.stdout.trim() !== "" ? result.stdout.trim() : undefined;
+}
+/** The committed change between two commits, without Paved state. */
+export function commitRangeChange(root, base, head) {
+    return {
+        files: lines(git(root, ["diff", "--name-only", base, head, ...PATHSPEC]).stdout).sort((a, b) => a.localeCompare(b, "en")),
+        patch: git(root, ["diff", "--no-color", base, head, ...PATHSPEC]).stdout, base,
+    };
+}
+/** The change since `revision`: committed, staged, unstaged and untracked files, without Paved state. */
+export function collectChange(projectRoot, revision) {
     if (git(projectRoot, ["rev-parse", "--is-inside-work-tree"]).stdout.trim() !== "true")
         return undefined;
     // A run started before the repository had a commit changed every file it now holds.
@@ -104,6 +122,26 @@ function reproduction(projectRoot, run, workflow, authoritative, createdAt) {
             source: { type: "file", location: ref, sha256: sha(readFileSync(path, "utf8")) },
         }];
 }
+/** Detail of the validation event recorded when the user accepted pre-existing test failures. */
+export const ACCEPTED_PRE_EXISTING = "accepted pre-existing failures=";
+/**
+ * Pre-existing test failures the user accepted for the run, as a gap that names who
+ * accepted them and the baseline evidence. Only the latest validation counts: a run
+ * reopened and validated again with passing tests records no gap.
+ */
+function acceptedFailures(run) {
+    const latest = run.events.findLast((event) => event.type === "tool-invoked" && event.phase === "validation");
+    if (latest?.detail?.startsWith(ACCEPTED_PRE_EXISTING) !== true)
+        return [];
+    const tools = latest.detail.slice(ACCEPTED_PRE_EXISTING.length).split(",").filter(Boolean);
+    const by = run.decisions?.findLast((decision) => decision.handler === PRE_EXISTING_HANDLER && decision.status === "APPLIED")?.answered_by;
+    return [{
+            description: `Testing Tools that already failed when the plan was approved still fail: ${tools.join(", ")}.`,
+            reason: `Accepted for this run as pre-existing failures; baseline evidence ${latest.ref ?? "not recorded"}.`,
+            risk: "medium",
+            ...(by === undefined ? {} : { accepted_by: by }),
+        }];
+}
 /** The files the run changed so far, or undefined when the checkout is not a Git working tree. */
 export function changedFiles(projectRoot, run) {
     return collectChange(runSourceRoot(projectRoot, run), run.revision)?.files;
@@ -131,12 +169,12 @@ export function writeWorkflowEvidence(input) {
     const covered = new Set(authoritative.checks.filter((check) => check.status === "passed").flatMap(coveredTypes));
     const profilePath = resolveSafePath(projectRoot, ".paved/verification/profile.yaml");
     const unavailable = existsSync(profilePath) ? loadYaml(profilePath).unavailable ?? [] : [];
-    const gaps = (plan.recommended ?? []).filter((type) => !covered.has(type)).map((type) => ({
-        check_type: type,
-        description: `No ${type} check ran for this change.`,
-        reason: unavailable.find((item) => item.type === type)?.reason ?? "The verification profile configures no check of this type.",
-        risk: "low",
-    }));
+    const gaps = [...(plan.recommended ?? []).filter((type) => !covered.has(type)).map((type) => ({
+            check_type: type,
+            description: `No ${type} check ran for this change.`,
+            reason: unavailable.find((item) => item.type === type)?.reason ?? "The verification profile configures no check of this type.",
+            risk: "low",
+        })), ...acceptedFailures(run)];
     const record = {
         apiVersion: "paved/v1", kind: "Evidence", id: `${run.id}-workflow${suffix}`, created_at: createdAt,
         producer: { agent: "paved-cli", workflow: workflow.id, run: run.id },

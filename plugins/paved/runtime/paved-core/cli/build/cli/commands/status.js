@@ -9,19 +9,46 @@ import { runDecisionGate } from "../lib/decisions/gate.js";
 import { DecisionStoreError } from "../lib/decisions/store.js";
 import { repairProvider } from "../lib/decisions/providers/repair.js";
 import { repairHandler } from "../lib/decisions/handlers/repair.js";
-import { isOpen, runBelongsTo, runSourceRoot, scanRuns } from "../lib/workflow-runs.js";
+import { activePhase, isOpen, owningStep, runBelongsTo, runSourceRoot, scanRuns } from "../lib/workflow-runs.js";
 import { changedSinceVerification, fingerprint, sourceChangedAction, sourceMovedSinceVerification } from "../lib/workflow-gates/shared.js";
 import { inspectVerificationConfig } from "../lib/verification-runner.js";
 import { loadMarkdown, loadYaml } from "../lib/documents.js";
 import { resolveSafePath } from "../lib/safe-path.js";
 import { createRegistry } from "../lib/schemas.js";
 import { headPatch, patchFreshness } from "../lib/workflow-evidence.js";
+import { compareCoreVersions, isCoreVersion } from "../lib/runtime-lock.js";
 function statusFor(diagnostics) {
     if (diagnostics.some((diagnostic) => diagnostic.category !== "findings"))
         return "failed";
     return diagnostics.some((diagnostic) => diagnostic.severity !== "info") ? "warning" : "success";
 }
-export function statusData(inspection) {
+/**
+ * The Core the launcher carries, when it is newer than the one the project pins. Only the
+ * launcher knows it: the runtime it starts is always the pinned one.
+ */
+export function availableCoreUpdate(inspection, launcherCoreVersion) {
+    const pinned = inspection.core.lockedVersion;
+    if (!inspection.initialized || pinned === undefined || launcherCoreVersion === undefined)
+        return undefined;
+    if (!isCoreVersion(pinned) || !isCoreVersion(launcherCoreVersion))
+        return undefined;
+    if (compareCoreVersions(launcherCoreVersion, pinned) <= 0)
+        return undefined;
+    return {
+        pinnedVersion: pinned, availableVersion: launcherCoreVersion,
+        summary: `Project pins Paved Core ${pinned}; the installed plugin carries ${launcherCoreVersion}.`,
+    };
+}
+function coreUpdateFindings(update) {
+    if (update === undefined)
+        return [];
+    return [createDiagnostic({
+            severity: "warning", category: "findings", code: "PAVED_CORE_UPDATE_AVAILABLE", component: "consumer.runtime",
+            message: `${update.summary} Fixes and changes released after ${update.pinnedVersion} do not apply to this project until it is updated.`,
+            remediation: `Run paved update to adopt Core ${update.availableVersion} through a transactional update (reversible with runtime rollback), then review and commit the changed .paved/paved.lock.`,
+        })];
+}
+export function statusData(inspection, coreUpdate) {
     const waiting = inspection.pendingDecisions.filter((item) => item.required);
     const unavailableCommands = discoverAgentCommands(inspection.projectRoot, inspection.coreRoot, inspection.sourceRoot).commands
         .filter((command) => !command.available)
@@ -41,7 +68,9 @@ export function statusData(inspection) {
                 : inspection.lifecycleState === "BROKEN" || inspection.lifecycleState === "INCOMPATIBLE"
                     ? "Run paved status and answer its repair decisions."
                     : inspection.verificationProfile !== "present" ? "Run paved verify to choose repository checks."
-                        : 'Start work with paved intent "<request>" --json.';
+                        : coreUpdate !== undefined
+                            ? `Paved Core ${coreUpdate.availableVersion} is available (this project pins ${coreUpdate.pinnedVersion}): run paved update --json to adopt it, then start work with paved intent "<request>" --json.`
+                            : 'Start work with paved intent "<request>" --json.';
     const nextAction = drifted && inspection.lifecycleState !== "STALE"
         ? `${baseAction} Generated project context cites changed source files; this does not block work, and paved update --json regenerates it.`
         : baseAction;
@@ -57,10 +86,12 @@ export function statusData(inspection) {
         resolvedAdapters: inspection.resolvedAdapters,
         capabilityProviders: inspection.capabilityProviders,
         lockHealth: inspection.lockHealth,
+        ...(coreUpdate === undefined ? {} : { coreUpdate }),
         verificationProfile: inspection.verificationProfile,
         ...(inspection.sourceRoot === undefined ? {} : { stateRoot: inspection.projectRoot, sourceRoot: inspection.sourceRoot }),
         ...(inspection.contextWorktrees === undefined ? {} : { contextWorktrees: inspection.contextWorktrees }),
         generatedContext: drifted ? "drifted" : "current",
+        ...(inspection.staleGenerators === undefined ? {} : { staleGenerators: inspection.staleGenerators }),
         generatorState: inspection.lastRun ?? { present: false, proposals: [], conflicts: [] },
         proposals: inspection.proposals,
         conflicts: inspection.conflicts,
@@ -162,24 +193,89 @@ function deliveryReadiness(inspection, runs, sourceRoot, target) {
     }
     return { delivery: { target, ready: true, ...facts }, diagnostics: [] };
 }
-function openRuns(inspection, sourceRoot, deliveryTarget) {
+export const DEFAULT_STALE_RUN_HOURS = 24;
+/** The latest recorded time in the run; events are append-only, but the maximum is robust to clock skew. */
+function lastEvent(run) {
+    return [run.started_at, ...run.events.map((event) => event.at)]
+        .map((at) => ({ at, ms: Date.parse(at) }))
+        .filter((item) => Number.isFinite(item.ms))
+        .reduce((latest, item) => latest === undefined || item.ms > latest.ms ? item : latest, undefined);
+}
+/**
+ * Open runs left behind: no event for `hours`, or still in a phase `intent` owns while a
+ * newer run was started in the same checkout. Only reported; Paved never cancels a run.
+ */
+function staleRuns(runs, hours, now) {
+    const stale = new Map();
+    for (const run of runs.filter(isOpen)) {
+        const last = lastEvent(run);
+        if (last === undefined)
+            continue;
+        const startedMs = Date.parse(run.started_at);
+        const newer = owningStep(run) === "intent" && Number.isFinite(startedMs)
+            ? runs.filter((other) => other.id !== run.id && Date.parse(other.started_at) > startedMs)
+                .sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at))[0]
+            : undefined;
+        const reasons = [
+            ...(now - last.ms >= hours * 3_600_000 ? ["idle"] : []),
+            ...(newer === undefined ? [] : ["superseded"]),
+        ];
+        if (reasons.length === 0)
+            continue;
+        stale.set(run.id, {
+            reasons, lastEventAt: last.at, ...(newer === undefined ? {} : { supersededBy: newer.id }),
+            abandonCommand: `paved ${owningStep(run) ?? "execute"} --run ${run.id} --abandon --note "<reason>" --json`,
+        });
+    }
+    return stale;
+}
+function staleRunDiagnostic(run, stale, hours) {
+    const phase = run.workflow === undefined ? "classification" : activePhase(run)?.phase ?? "no active phase";
+    const why = [
+        ...(stale.reasons.includes("idle") ? [`has had no event since ${stale.lastEventAt} (over ${hours} hours)`] : []),
+        ...(stale.supersededBy === undefined ? [] : [`is still in ${phase}, which paved intent owns, while newer run ${stale.supersededBy} was started`]),
+    ];
+    const owner = owningStep(run);
+    const resume = owner === undefined ? "inspect it before deciding" : `continue it with paved ${owner} --run ${run.id} --json`;
+    return createDiagnostic({
+        severity: "warning", category: "findings", code: "PAVED_WORKFLOW_RUN_STALE", component: "consumer.runs",
+        message: `Open run ${run.id} (${phase}) ${why.join(" and ")}.`,
+        remediation: `Ask the user whether run ${run.id} is still wanted. If not, cancel it with ${stale.abandonCommand}; otherwise ${resume}. Paved never cancels a run on its own.`,
+    });
+}
+function openRuns(inspection, sourceRoot, deliveryTarget, staleAfterHours = DEFAULT_STALE_RUN_HOURS, now = Date.now()) {
     if (!inspection.initialized)
         return { runs: [], diagnostics: [] };
     const scanned = scanRuns(inspection.projectRoot, inspection.coreRoot);
-    const runs = scanned.runs.filter((run) => isOpen(run) && runBelongsTo(inspection.projectRoot, run, sourceRoot)).map((run) => ({
-        run: run.id, status: run.status, ...(run.workflow === undefined ? {} : { workflow: run.workflow.id }),
-        ...(run.worktree === undefined ? {} : { worktree: run.worktree }),
-        currentPhase: run.phases.find((phase) => phase.status === "running")?.phase,
-        ...(run.handoff === undefined ? {} : { handoff: {
-                ...run.handoff, fresh: fingerprint(runSourceRoot(inspection.projectRoot, run)) === run.handoff.source_sha256,
-            } }),
-    }));
+    const local = scanned.runs.filter((run) => runBelongsTo(inspection.projectRoot, run, sourceRoot));
+    const open = local.filter(isOpen);
+    const stale = staleRuns(local, staleAfterHours, now);
+    const runs = open.map((run) => {
+        const owner = owningStep(run);
+        const last = lastEvent(run);
+        const leftBehind = stale.get(run.id);
+        return {
+            run: run.id, status: run.status, ...(run.workflow === undefined ? {} : { workflow: run.workflow.id }),
+            ...(run.worktree === undefined ? {} : { worktree: run.worktree }),
+            currentPhase: run.phases.find((phase) => phase.status === "running")?.phase,
+            ...(owner === undefined ? {} : { owner }),
+            ...(last === undefined ? {} : { lastEventAt: last.at }),
+            ...(leftBehind === undefined ? {} : { stale: leftBehind }),
+            ...(run.handoff === undefined ? {} : { handoff: {
+                    ...run.handoff, fresh: fingerprint(runSourceRoot(inspection.projectRoot, run)) === run.handoff.source_sha256,
+                } }),
+        };
+    });
+    const staleDiagnostics = open.flatMap((run) => {
+        const leftBehind = stale.get(run.id);
+        return leftBehind === undefined ? [] : [staleRunDiagnostic(run, leftBehind, staleAfterHours)];
+    });
     const delivery = deliveryTarget === undefined ? undefined : deliveryReadiness(inspection, scanned.runs, sourceRoot, deliveryTarget);
     return { runs, ...(delivery === undefined ? {} : { delivery: delivery.delivery }), diagnostics: [...scanned.unreadable.map((run) => createDiagnostic({
                 severity: "warning", category: "findings", code: "PAVED_WORKFLOW_RUN_INVALID", component: "consumer.runs",
                 message: `Workflow run ${run.id} could not be read: ${run.reason}`,
                 remediation: "Inspect .paved/generated/runs/ and restore or remove the invalid run document.",
-            })), ...staleCompletion(inspection, scanned.runs, sourceRoot), ...staleReviewSources(inspection, scanned.runs, sourceRoot), ...(delivery?.diagnostics ?? [])] };
+            })), ...staleCompletion(inspection, scanned.runs, sourceRoot), ...staleReviewSources(inspection, scanned.runs, sourceRoot), ...staleDiagnostics, ...(delivery?.diagnostics ?? [])] };
 }
 /** An unreadable decision store is already reported by the inspection; repairs then wait for it to be fixed. */
 function repairs(invocation) {
@@ -340,8 +436,9 @@ export function diagnose(invocation, command) {
         component: `cli.${command}`, message,
         remediation: "Use the offered option id and provide the required human-authored approval.",
     }));
-    const runs = openRuns(inspection, invocation.paths.sourceRoot, invocation.flags.base);
-    const diagnostics = [...inspection.diagnostics, ...agentsBlockFindings(inspection), ...runs.diagnostics,
+    const runs = openRuns(inspection, invocation.paths.sourceRoot, invocation.flags.base, invocation.flags.staleAfterHours);
+    const coreUpdate = availableCoreUpdate(inspection, invocation.launcherCoreVersion);
+    const diagnostics = [...inspection.diagnostics, ...agentsBlockFindings(inspection), ...coreUpdateFindings(coreUpdate), ...runs.diagnostics,
         ...verificationFindings(invocation, inspection),
         ...(inspection.initialized ? inspectVerificationGuides(inspection.projectRoot, inspection.coreRoot) : []), ...decisionDiagnostics];
     const onlyOpenRun = runs.runs.length === 1 ? runs.runs[0] : undefined;
@@ -351,7 +448,7 @@ export function diagnose(invocation, command) {
         status: statusFor(diagnostics),
         decisions: outcome.projections,
         data: {
-            ...statusData(inspection),
+            ...statusData(inspection, coreUpdate),
             openRuns: runs.runs,
             ...(runs.delivery === undefined ? {} : { delivery: runs.delivery }),
             ...(resumeAction === undefined ? {} : { nextAction: resumeAction }),

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { afterEach, describe, it } from "node:test";
@@ -12,7 +12,7 @@ import { acquireConsumerOperationLock } from "../../cli/lib/operation-lock.ts";
 import { renderHuman, renderJson } from "../../cli/output.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
 import { exitCode, primaryCategory, type CommandResult } from "../../cli/result.ts";
-import { cleanupTemporaryDirectories, temporaryDirectory } from "../helpers.ts";
+import { cleanupTemporaryDirectories, CORE_VERSION, NEXT_PATCH_VERSION, temporaryDirectory } from "../helpers.ts";
 
 const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const HEALTHY_FIXTURE = join(ROOT, "tests/cli/fixtures/healthy");
@@ -204,6 +204,22 @@ describe("command output, exit, and safety regressions", () => {
       release?.();
       rmSync(project, { recursive: true, force: true });
     }
+  });
+
+  it("reclaims a lock left by an exited process and reports it as a warning", async () => {
+    const project = freshConsumer("operation-lock-reclaim");
+    initializeConsumer(ROOT, project, "operation-lock-reclaim");
+    const exited = spawnSync(process.execPath, ["-e", ""]).pid!;
+    mkdirSync(join(project, ".paved-operation-lock"));
+    writeFileSync(join(project, ".paved-operation-lock/owner.json"), JSON.stringify({ operation: "update", pid: exited, started_at: "2026-11-01T10:00:00.000Z" }));
+
+    const generate = await run(project, "generate");
+    const warning = generate.diagnostics.find((item) => item.code === "PAVED_OPERATION_LOCK_RECLAIMED");
+    assert.equal(warning?.severity, "warning", JSON.stringify(generate.diagnostics));
+    assert.match(warning?.message ?? "", new RegExp(`update \\(pid ${exited}, started 2026-11-01T10:00:00.000Z\\)`));
+    assert.notEqual(generate.status, "success");
+    assert.equal(existsSync(join(project, ".paved-operation-lock")), false);
+    assert.equal((await run(project, "generate")).diagnostics.some((item) => item.code === "PAVED_OPERATION_LOCK_RECLAIMED"), false);
   });
 
   it("keeps warning exit behavior and JSON/human parity for actual command results", async () => {
@@ -559,7 +575,7 @@ describe("status and doctor commands", () => {
       assert.equal(record.answer_source, "agent-relayed");
       const after = await run(project, "doctor");
       assert.equal(after.decisions?.length ?? 0, 0);
-      assert.ok(!codes(after).includes("PAVED_GENERATED_SOURCE_STALE"), JSON.stringify(after.diagnostics));
+      assert.ok(!codes(after).includes("PAVED_GENERATED_CONTEXT_STALE"), JSON.stringify(after.diagnostics));
     } finally { rmSync(project, { recursive: true, force: true }); }
   });
 
@@ -568,16 +584,19 @@ describe("status and doctor commands", () => {
     try {
       const first = await run(project, "doctor");
       const decision = first.decisions![0]!;
-      const driftBefore = codes(first).filter((code) => code === "PAVED_GENERATED_SOURCE_STALE").length;
+      const drift = (result: CommandResult) => result.diagnostics.filter((item) => item.code === "PAVED_GENERATED_CONTEXT_STALE");
+      assert.doesNotMatch(drift(first)[0]?.message ?? "", /app-routing\.module\.ts/);
       writeFileSync(join(project, "web/src/app-routing.module.ts"), "const routes = [{ path: 'courses', component: CoursesPage, title: 'Courses' }];\n");
       const second = await run(project, "doctor");
-      assert.ok(codes(second).filter((code) => code === "PAVED_GENERATED_SOURCE_STALE").length > driftBefore, JSON.stringify(second.diagnostics));
+      // More drift widens the one diagnostic instead of adding another.
+      assert.equal(drift(second).length, 1, JSON.stringify(second.diagnostics));
+      assert.match(drift(second)[0]!.message, /app-routing\.module\.ts/);
       assert.equal(second.decisions?.[0]?.id, decision.id);
       const applied = await run(project, "doctor", ["--answer", `${decision.id}=apply`, "--answered-by", "tester@example.com"]);
       assert.ok(!codes(applied).includes("PAVED_DECISION_ANSWER_INVALID"), JSON.stringify(applied.diagnostics));
       const record = parse(readFileSync(join(project, ".paved/decisions", `${decision.id}.yaml`), "utf8")) as { status: string };
       assert.equal(record.status, "APPLIED");
-      assert.ok(!codes(await run(project, "doctor")).includes("PAVED_GENERATED_SOURCE_STALE"));
+      assert.ok(!codes(await run(project, "doctor")).includes("PAVED_GENERATED_CONTEXT_STALE"));
     } finally { rmSync(project, { recursive: true, force: true }); }
   });
 
@@ -705,6 +724,51 @@ describe("status and doctor commands", () => {
       assert.deepEqual(statusData.selectedAdapters, ["technology/java"]);
       assert.deepEqual(statusData.resolvedAdapters, ["technology/java"]);
       assert.equal(statusData.verificationProfile, "present");
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("reports a pinned Core older than the one the launcher carries, without changing anything", async () => {
+    const project = fixtureCopy("core-update");
+    try {
+      writeCurrentLock(project);
+      const lockBefore = readFileSync(join(project, ".paved/paved.lock"), "utf8");
+      const status = await dispatchCli({ argv: ["status", "--project", project, "--json"], launcherCoreVersion: NEXT_PATCH_VERSION });
+      const data = dataOf(status);
+      assert.equal(status.status, "warning");
+      assertCode(status, "PAVED_CORE_UPDATE_AVAILABLE");
+      const finding = status.diagnostics.find((item) => item.code === "PAVED_CORE_UPDATE_AVAILABLE");
+      assert.equal(finding?.severity, "warning");
+      assert.match(finding?.remediation ?? "", /paved update/);
+      assert.deepEqual(data.coreUpdate, {
+        pinnedVersion: CORE_VERSION, availableVersion: NEXT_PATCH_VERSION,
+        summary: `Project pins Paved Core ${CORE_VERSION}; the installed plugin carries ${NEXT_PATCH_VERSION}.`,
+      });
+      assert.match(String(data.nextAction), new RegExp(`Paved Core ${NEXT_PATCH_VERSION.replaceAll(".", "\\.")} is available.*paved update --json`));
+      assert.equal(readFileSync(join(project, ".paved/paved.lock"), "utf8"), lockBefore);
+
+      for (const launcherCoreVersion of [CORE_VERSION, "0.1.0", `${CORE_VERSION}-rc.1`, "latest"]) {
+        const same = await dispatchCli({ argv: ["status", "--project", project, "--json"], launcherCoreVersion });
+        assert.equal(same.diagnostics.some((item) => item.code === "PAVED_CORE_UPDATE_AVAILABLE"), false, launcherCoreVersion);
+        assert.equal(dataOf(same).coreUpdate, undefined);
+        assert.doesNotMatch(String(dataOf(same).nextAction), /paved update/);
+      }
+      const direct = await dispatchCli({ argv: ["status", "--project", project, "--json"] });
+      assert.equal(dataOf(direct).coreUpdate, undefined);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps a more urgent next action ahead of an available Core update", async () => {
+    const project = fixtureCopy("core-update-urgent");
+    try {
+      writeCurrentLock(project);
+      rmSync(join(project, ".paved/verification/profile.yaml"), { force: true });
+      const status = await dispatchCli({ argv: ["status", "--project", project, "--json"], launcherCoreVersion: NEXT_PATCH_VERSION });
+      assertCode(status, "PAVED_CORE_UPDATE_AVAILABLE");
+      assert.match(String(dataOf(status).nextAction), /paved verify/);
     } finally {
       rmSync(project, { recursive: true, force: true });
     }
