@@ -143,7 +143,7 @@ export async function testHandler(invocation: CommandInvocation, beforeRun?: Too
           code: "PAVED_OPERATION_IN_PROGRESS",
           component: "consumer.operation",
           message: error.message,
-          remediation: "Wait for the active Paved operation to finish before running tests.",
+          remediation: error.remediation,
         })],
       });
     }

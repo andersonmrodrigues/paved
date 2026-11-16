@@ -19,6 +19,7 @@ import { delegationHandler } from "./commands/delegation.ts";
 import { createDiagnostic, createResult, type CommandResult } from "./result.ts";
 import { CliPathError, resolveCoreRoot, resolveProjectRoot } from "./paths.ts";
 import { assertAnswerIdentity, parseAnswerFlags, recordedIdentity } from "./lib/decisions/answers.ts";
+import { reclaimedLockDiagnostics } from "./lib/operation-lock.ts";
 
 export const COMMAND_NAMES = ["init", "status", "intent", "plan", "execute", "delegation", "test", "verify", "update", "doctor", "gardener", "generate", "agent", "decision", "preview", "workbench", "tool"] as const;
 const STEP_COMMANDS: readonly string[] = ["intent", "plan", "execute"];
@@ -725,10 +726,11 @@ export async function dispatchCli(options: DispatchOptions = {}): Promise<Comman
     }
   }
 
+  let result: CommandResult;
   try {
     const paths = pathsFor(parsed.state, cwd, executablePath);
     const handler = options.handlers?.[parsed.state.command] ?? DEFAULT_HANDLERS[parsed.state.command] ?? defaultHandler;
-    return await handler({
+    result = await handler({
       command: parsed.state.command,
       flags: parsed.state.flags,
       selectors: parsed.state.selectors,
@@ -736,9 +738,14 @@ export async function dispatchCli(options: DispatchOptions = {}): Promise<Comman
       rawArgv: argv,
     });
   } catch (error) {
-    if (error instanceof CliPathError) {
-      return environment(parsed.state.command, error.message);
-    }
-    return internal(parsed.state.command, error);
+    result = error instanceof CliPathError ? environment(parsed.state.command, error.message) : internal(parsed.state.command, error);
   }
+  return withReclaimedLocks(result);
+}
+
+/** A stale operation lock reclaimed while the command ran is reported whatever the command did. */
+function withReclaimedLocks(result: CommandResult): CommandResult {
+  const warnings = reclaimedLockDiagnostics();
+  if (warnings.length === 0) return result;
+  return { ...result, status: result.status === "success" ? "warning" : result.status, diagnostics: [...result.diagnostics, ...warnings] };
 }

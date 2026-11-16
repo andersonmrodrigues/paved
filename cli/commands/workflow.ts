@@ -824,7 +824,7 @@ export async function stepHandler(invocation: CommandInvocation): Promise<Comman
     return await withConsumerOperationScope(invocation.paths.projectRoot, async () => withPhaseContext(invocation, await dispatchStep(invocation)));
   } catch (error) {
     if (error instanceof ConsumerOperationLockedError) {
-      return withPhaseContext(invocation, blocked(invocation.command as Step, "PAVED_OPERATION_IN_PROGRESS", error.message, "Wait for the active Paved operation to finish before starting or resuming a workflow."));
+      return withPhaseContext(invocation, blocked(invocation.command as Step, "PAVED_OPERATION_IN_PROGRESS", error.message, error.remediation));
     }
     throw error;
   } finally { release?.(); }

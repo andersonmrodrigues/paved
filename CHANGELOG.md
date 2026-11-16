@@ -5,6 +5,15 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Fixed
+
+- A `.paved-operation-lock` left by a process that no longer runs on this host, or one
+  without a readable `owner.json` for 10 minutes, is now reclaimed automatically with a
+  `PAVED_OPERATION_LOCK_RECLAIMED` warning naming the previous operation, pid and start
+  time. A lock held by a running process still fails with `PAVED_OPERATION_IN_PROGRESS`,
+  whose message now names that operation, pid and start time. Locks from another host,
+  links and locks holding unexpected files are never reclaimed.
+
 ## [2.29.1] - 2026-11-15
 
 ### Fixed
