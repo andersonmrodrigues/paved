@@ -338,7 +338,8 @@ describe("plugin launcher failure modes", () => {
   });
 
   it("adopts a lock written by the direct CLI only through an explicit, reversible upgrade", () => {
-    const target = project();
+    // The direct CLI runs the current Core, which asks about an untracked AGENTS.md; this repository already ignores it.
+    const target = project({ ".gitignore": "/AGENTS.md\n" });
     const direct = spawnSync(process.execPath, [join(ROOT, "cli", "build", "cli", "index.js"), "init", "--project", target, "--json"], { encoding: "utf8" });
     assert.ok(direct.status === 0 || direct.status === 1, direct.stdout + direct.stderr);
     const lockPath = join(target, ".paved", "paved.lock");
