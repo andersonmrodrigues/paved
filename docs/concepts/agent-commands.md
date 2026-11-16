@@ -110,6 +110,13 @@ of their own, the step returns them and passes the user's answers through when i
   `execute` is refused until `plan --approve`; approval restarts the failed phase.
 - `--abandon --note <why>` cancels the run. A cancelled run no longer holds its request,
   so the same request starts a new run.
+- `status` reports `PAVED_WORKFLOW_RUN_STALE` for each open run in the checkout that has
+  had no event for 24 hours (`status --stale-after <hours>` changes the period, from 1 to
+  8760), or that is still in a phase `intent` owns while a newer run was started. Its
+  `openRuns` entry carries `owner`, `lastEventAt` and `stale` (`reasons`, `lastEventAt`,
+  `supersededBy`, `abandonCommand`), and the remediation gives both the command that
+  continues the run and `paved <owner> --run <id> --abandon --note "<reason>" --json`.
+  Paved never cancels a run on its own; the agent asks the user first.
 - A lifecycle block that `paved init` or `paved update` resolves carries
   `data.remediation.command`; agents run it and repeat the original command.
 

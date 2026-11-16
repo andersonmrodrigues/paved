@@ -5,6 +5,15 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- `paved status` warns with `PAVED_WORKFLOW_RUN_STALE` about open runs left behind:
+  no event for 24 hours (`--stale-after <hours>` changes it), or still in a phase
+  `intent` owns while a newer run was started. Each warning gives the command that
+  continues the run and the `--abandon --note` command that cancels it; `openRuns`
+  entries now carry `owner`, `lastEventAt` and `stale`. Paved never cancels a run on
+  its own.
+
 ### Fixed
 
 - A `.paved-operation-lock` left by a process that no longer runs on this host, or one

@@ -55,6 +55,8 @@ export interface CliFlags {
   readonly scope?: string;
   /** `status --base <ref>`: the target a change request from HEAD would merge into. */
   readonly base?: string;
+  /** `status --stale-after <hours>`: how long an open run may go without an event. */
+  readonly staleAfterHours?: number;
   readonly toolCommand?: readonly string[];
   readonly task?: string;
   readonly file?: string;
@@ -220,7 +222,7 @@ function commandUsage(command: CommandName | undefined): string {
     if (STEP_COMMANDS.includes(command)) commandOptions.push("  --run <id> --abandon [--note <reason>]  Cancel the run so the same request can start again.");
     if (command === "plan") commandOptions.push("  --approve        Record the user's approval of the current plan, given in the conversation.", "  --run <id> --amend --note <change> [--evidence <plan>]  Ask approval for a revised plan mid-run.");
     if (command === "execute") commandOptions.push("  \"<request>\"      Start new work: initialize Paved if needed and record the request.", "  --approve        Record the user's approval of the current plan, given in the conversation.", "  --auto           Advance through every phase that needs no human input.", "  --run <id> --checkpoint --note <progress>  Record a finished part of the plan without leaving implementation.");
-    if (command === "status") commandOptions.push("  --base <ref>     Report whether the latest completed run's evidence still matches the patch HEAD proposes against this target.");
+    if (command === "status") commandOptions.push("  --base <ref>     Report whether the latest completed run's evidence still matches the patch HEAD proposes against this target.", "  --stale-after <hours>  Warn about open runs without an event for this many hours (default 24).");
     if (command === "tool") commandOptions.push("  --scope <dir>    Run the command from this project directory.", "  -- <executable> [args...]  The exact command; everything after -- is passed as argv.");
     if (command === "delegation") commandOptions.push("  plan --run <id> --file <path>; approve --run <id> --approve after showing the exact graph to the user.", "  start --run <id> --task <id> --host <codex|claude-code> --model <name> --effort <value> --isolation <shared-workspace|isolated-worktree>.", "  finish --run <id> --task <id> --outcome <completed|blocked|failed> [--result <path>] [--usage <json>] [--changed-path <path> ...].", "  recover --run <id> --task <id> --confirmed-stopped --note <reason>; capabilities --host <codex|claude-code>.", "  Session ids are hashed; usage and isolated-worktree changed paths are host-reported.");
     return [
@@ -317,6 +319,7 @@ function parse(argv: readonly string[]): Parsed {
   const intentInputs: string[] = [];
   let scope: string | undefined;
   let base: string | undefined;
+  let staleAfterHours: number | undefined;
   let toolCommand: string[] | undefined;
   let task: string | undefined;
   let file: string | undefined;
@@ -369,6 +372,18 @@ function parse(argv: readonly string[]): Parsed {
       const value = takeValue(argv, index, token, command);
       if (typeof value !== "string") return { kind: "error", result: value };
       base = value;
+      index += 1;
+      continue;
+    }
+
+    if (token === "--stale-after") {
+      if (command !== "status") return { kind: "error", result: usage(command ?? "cli", "--stale-after is supported only by status.") };
+      const value = takeValue(argv, index, token, command);
+      if (typeof value !== "string") return { kind: "error", result: value };
+      if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 8760) {
+        return { kind: "error", result: usage(command, "--stale-after takes a whole number of hours from 1 to 8760.") };
+      }
+      staleAfterHours = Number(value);
       index += 1;
       continue;
     }
@@ -630,6 +645,7 @@ function parse(argv: readonly string[]): Parsed {
     ...(decision === undefined ? {} : { decision }),
     ...(scope === undefined ? {} : { scope }),
     ...(base === undefined ? {} : { base }),
+    ...(staleAfterHours === undefined ? {} : { staleAfterHours }),
     ...(toolCommand === undefined ? {} : { toolCommand }),
     ...(task === undefined ? {} : { task }),
     ...(file === undefined ? {} : { file }),
