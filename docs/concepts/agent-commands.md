@@ -62,8 +62,14 @@ and each owns a fixed range of its workflow's phases:
 | `execute` | `implementation` through `completion` |
 
 Within its range a step advances with `--advance`, `--note`, `--evidence` and `--answer`. A
-step invoked outside its range returns `PAVED_WORKFLOW_STEP_OUT_OF_RANGE` and names the
-step that owns the run's current phase. `execute` is the exception: it acts as the step
+step invoked outside its range returns `PAVED_WORKFLOW_STEP_OUT_OF_RANGE` and changes
+nothing. Its remediation starts with the exact command to run next, and its data names
+the owning step (`owner`), the `requestedStep`, the run's `currentPhase`, that command
+as `nextCommand` (`paved <owner> --run <id> --json`) and an `abandonCommand` for a run
+that is no longer wanted. `intent` and `plan` do not act for the owning step, because
+their flags mean something else there: replaying `plan --advance --evidence <plan>` in
+`context` would record the plan as a context observation and advance a phase the user
+did not ask to advance. `execute` is the exception: it acts as the step
 that owns the current phase, so one command can drive a whole run, and `execute --approve`
 records the plan approval like `plan --approve`. Implementation still starts only once the
 plan is approved.
@@ -110,6 +116,13 @@ of their own, the step returns them and passes the user's answers through when i
   `execute` is refused until `plan --approve`; approval restarts the failed phase.
 - `--abandon --note <why>` cancels the run. A cancelled run no longer holds its request,
   so the same request starts a new run.
+- `status` reports `PAVED_WORKFLOW_RUN_STALE` for each open run in the checkout that has
+  had no event for 24 hours (`status --stale-after <hours>` changes the period, from 1 to
+  8760), or that is still in a phase `intent` owns while a newer run was started. Its
+  `openRuns` entry carries `owner`, `lastEventAt` and `stale` (`reasons`, `lastEventAt`,
+  `supersededBy`, `abandonCommand`), and the remediation gives both the command that
+  continues the run and `paved <owner> --run <id> --abandon --note "<reason>" --json`.
+  Paved never cancels a run on its own; the agent asks the user first.
 - A lifecycle block that `paved init` or `paved update` resolves carries
   `data.remediation.command`; agents run it and repeat the original command.
 

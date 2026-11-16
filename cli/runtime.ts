@@ -20,6 +20,7 @@ import { delegationHandler } from "./commands/delegation.ts";
 import { createDiagnostic, createResult, type CommandResult } from "./result.ts";
 import { CliPathError, resolveCoreRoot, resolveProjectRoot } from "./paths.ts";
 import { assertAnswerIdentity, parseAnswerFlags, recordedIdentity } from "./lib/decisions/answers.ts";
+import { reclaimedLockDiagnostics } from "./lib/operation-lock.ts";
 
 export const COMMAND_NAMES = ["init", "status", "intent", "plan", "execute", "delegation", "test", "verify", "update", "doctor", "gardener", "review", "generate", "agent", "decision", "preview", "workbench", "tool"] as const;
 const STEP_COMMANDS: readonly string[] = ["intent", "plan", "execute"];
@@ -61,6 +62,8 @@ export interface CliFlags {
   readonly text?: string;
   /** `gardener correction --evidence <ref>`, repeatable: the files, commits or URLs that show the corrected mistake. */
   readonly correctionEvidence: readonly string[];
+  /** `status --stale-after <hours>`: how long an open run may go without an event. */
+  readonly staleAfterHours?: number;
   readonly toolCommand?: readonly string[];
   readonly task?: string;
   readonly file?: string;
@@ -230,7 +233,7 @@ function commandUsage(command: CommandName | undefined): string {
     if (STEP_COMMANDS.includes(command)) commandOptions.push("  --run <id> --abandon [--note <reason>]  Cancel the run so the same request can start again.");
     if (command === "plan") commandOptions.push("  --approve        Record the user's approval of the current plan, given in the conversation.", "  --run <id> --amend --note <change> [--evidence <plan>]  Ask approval for a revised plan mid-run.");
     if (command === "execute") commandOptions.push("  \"<request>\"      Start new work: initialize Paved if needed and record the request.", "  --approve        Record the user's approval of the current plan, given in the conversation.", "  --auto           Advance through every phase that needs no human input.", "  --run <id> --checkpoint --note <progress>  Record a finished part of the plan without leaving implementation.");
-    if (command === "status") commandOptions.push("  --base <ref>     Report whether the latest completed run's evidence still matches the patch HEAD proposes against this target.");
+    if (command === "status") commandOptions.push("  --base <ref>     Report whether the latest completed run's evidence still matches the patch HEAD proposes against this target.", "  --stale-after <hours>  Warn about open runs without an event for this many hours (default 24).");
     if (command === "gardener") commandOptions.push("  debt             List tracked shortcut: comments.", "  correction --text <words> --evidence <path[:line]|commit|url>  Propose a person's correction, verbatim, as a project rule; --evidence is repeatable.");
     if (command === "review") commandOptions.push("  --base <ref>     Review everything changed since the merge base with <ref>, including uncommitted and untracked files.", "  --range <a..b>   Review the commits in a range; a...b starts at their merge base.", "  --evidence <path>  Check the reviewer's ChangeReview against the change as it is now.");
     if (command === "tool") commandOptions.push("  --scope <dir>    Run the command from this project directory.", "  -- <executable> [args...]  The exact command; everything after -- is passed as argv.");
@@ -332,6 +335,7 @@ function parse(argv: readonly string[]): Parsed {
   let range: string | undefined;
   let text: string | undefined;
   const correctionEvidence: string[] = [];
+  let staleAfterHours: number | undefined;
   let toolCommand: string[] | undefined;
   let task: string | undefined;
   let file: string | undefined;
@@ -403,6 +407,18 @@ function parse(argv: readonly string[]): Parsed {
       if (typeof value !== "string") return { kind: "error", result: value };
       if (token === "--text") text = value;
       else correctionEvidence.push(value);
+        index += 1;
+        continue;
+      }
+
+    if (token === "--stale-after") {
+      if (command !== "status") return { kind: "error", result: usage(command ?? "cli", "--stale-after is supported only by status.") };
+      const value = takeValue(argv, index, token, command);
+      if (typeof value !== "string") return { kind: "error", result: value };
+      if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 8760) {
+        return { kind: "error", result: usage(command, "--stale-after takes a whole number of hours from 1 to 8760.") };
+      }
+      staleAfterHours = Number(value);
       index += 1;
       continue;
     }
@@ -667,6 +683,7 @@ function parse(argv: readonly string[]): Parsed {
     ...(range === undefined ? {} : { range }),
     ...(text === undefined ? {} : { text }),
     correctionEvidence,
+    ...(staleAfterHours === undefined ? {} : { staleAfterHours }),
     ...(toolCommand === undefined ? {} : { toolCommand }),
     ...(task === undefined ? {} : { task }),
     ...(file === undefined ? {} : { file }),
@@ -764,10 +781,11 @@ export async function dispatchCli(options: DispatchOptions = {}): Promise<Comman
     }
   }
 
+  let result: CommandResult;
   try {
     const paths = pathsFor(parsed.state, cwd, executablePath);
     const handler = options.handlers?.[parsed.state.command] ?? DEFAULT_HANDLERS[parsed.state.command] ?? defaultHandler;
-    return await handler({
+    result = await handler({
       command: parsed.state.command,
       flags: parsed.state.flags,
       selectors: parsed.state.selectors,
@@ -776,9 +794,14 @@ export async function dispatchCli(options: DispatchOptions = {}): Promise<Comman
       ...(options.launcherCoreVersion === undefined ? {} : { launcherCoreVersion: options.launcherCoreVersion }),
     });
   } catch (error) {
-    if (error instanceof CliPathError) {
-      return environment(parsed.state.command, error.message);
-    }
-    return internal(parsed.state.command, error);
+    result = error instanceof CliPathError ? environment(parsed.state.command, error.message) : internal(parsed.state.command, error);
   }
+  return withReclaimedLocks(result);
+}
+
+/** A stale operation lock reclaimed while the command ran is reported whatever the command did. */
+function withReclaimedLocks(result: CommandResult): CommandResult {
+  const warnings = reclaimedLockDiagnostics();
+  if (warnings.length === 0) return result;
+  return { ...result, status: result.status === "success" ? "warning" : result.status, diagnostics: [...result.diagnostics, ...warnings] };
 }

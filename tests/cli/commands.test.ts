@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { afterEach, describe, it } from "node:test";
@@ -204,6 +204,22 @@ describe("command output, exit, and safety regressions", () => {
       release?.();
       rmSync(project, { recursive: true, force: true });
     }
+  });
+
+  it("reclaims a lock left by an exited process and reports it as a warning", async () => {
+    const project = freshConsumer("operation-lock-reclaim");
+    initializeConsumer(ROOT, project, "operation-lock-reclaim");
+    const exited = spawnSync(process.execPath, ["-e", ""]).pid!;
+    mkdirSync(join(project, ".paved-operation-lock"));
+    writeFileSync(join(project, ".paved-operation-lock/owner.json"), JSON.stringify({ operation: "update", pid: exited, started_at: "2026-11-01T10:00:00.000Z" }));
+
+    const generate = await run(project, "generate");
+    const warning = generate.diagnostics.find((item) => item.code === "PAVED_OPERATION_LOCK_RECLAIMED");
+    assert.equal(warning?.severity, "warning", JSON.stringify(generate.diagnostics));
+    assert.match(warning?.message ?? "", new RegExp(`update \\(pid ${exited}, started 2026-11-01T10:00:00.000Z\\)`));
+    assert.notEqual(generate.status, "success");
+    assert.equal(existsSync(join(project, ".paved-operation-lock")), false);
+    assert.equal((await run(project, "generate")).diagnostics.some((item) => item.code === "PAVED_OPERATION_LOCK_RECLAIMED"), false);
   });
 
   it("keeps warning exit behavior and JSON/human parity for actual command results", async () => {

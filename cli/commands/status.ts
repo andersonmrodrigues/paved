@@ -10,7 +10,7 @@ import { runDecisionGate } from "../lib/decisions/gate.ts";
 import { DecisionStoreError } from "../lib/decisions/store.ts";
 import { repairProvider } from "../lib/decisions/providers/repair.ts";
 import { repairHandler } from "../lib/decisions/handlers/repair.ts";
-import { isOpen, runBelongsTo, runSourceRoot, scanRuns, type Run } from "../lib/workflow-runs.ts";
+import { activePhase, isOpen, owningStep, runBelongsTo, runSourceRoot, scanRuns, type Run } from "../lib/workflow-runs.ts";
 import { changedSinceVerification, fingerprint, sourceChangedAction, sourceMovedSinceVerification } from "../lib/workflow-gates/shared.ts";
 import { inspectVerificationConfig } from "../lib/verification-runner.ts";
 import { loadMarkdown, loadYaml } from "../lib/documents.ts";
@@ -201,23 +201,97 @@ function deliveryReadiness(inspection: ConsumerInspection, runs: readonly Run[],
   return { delivery: { target, ready: true, ...facts }, diagnostics: [] };
 }
 
-function openRuns(inspection: ConsumerInspection, sourceRoot: string, deliveryTarget?: string): { runs: Record<string, unknown>[]; diagnostics: Diagnostic[]; delivery?: Record<string, unknown> } {
+export const DEFAULT_STALE_RUN_HOURS = 24;
+
+interface StaleRun {
+  readonly reasons: readonly ("idle" | "superseded")[];
+  readonly lastEventAt: string;
+  readonly supersededBy?: string;
+  readonly abandonCommand: string;
+}
+
+/** The latest recorded time in the run; events are append-only, but the maximum is robust to clock skew. */
+function lastEvent(run: Run): { at: string; ms: number } | undefined {
+  return [run.started_at, ...run.events.map((event) => event.at)]
+    .map((at) => ({ at, ms: Date.parse(at) }))
+    .filter((item) => Number.isFinite(item.ms))
+    .reduce<{ at: string; ms: number } | undefined>((latest, item) => latest === undefined || item.ms > latest.ms ? item : latest, undefined);
+}
+
+/**
+ * Open runs left behind: no event for `hours`, or still in a phase `intent` owns while a
+ * newer run was started in the same checkout. Only reported; Paved never cancels a run.
+ */
+function staleRuns(runs: readonly Run[], hours: number, now: number): Map<string, StaleRun> {
+  const stale = new Map<string, StaleRun>();
+  for (const run of runs.filter(isOpen)) {
+    const last = lastEvent(run);
+    if (last === undefined) continue;
+    const startedMs = Date.parse(run.started_at);
+    const newer = owningStep(run) === "intent" && Number.isFinite(startedMs)
+      ? runs.filter((other) => other.id !== run.id && Date.parse(other.started_at) > startedMs)
+        .sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at))[0]
+      : undefined;
+    const reasons = [
+      ...(now - last.ms >= hours * 3_600_000 ? ["idle" as const] : []),
+      ...(newer === undefined ? [] : ["superseded" as const]),
+    ];
+    if (reasons.length === 0) continue;
+    stale.set(run.id, {
+      reasons, lastEventAt: last.at, ...(newer === undefined ? {} : { supersededBy: newer.id }),
+      abandonCommand: `paved ${owningStep(run) ?? "execute"} --run ${run.id} --abandon --note "<reason>" --json`,
+    });
+  }
+  return stale;
+}
+
+function staleRunDiagnostic(run: Run, stale: StaleRun, hours: number): Diagnostic {
+  const phase = run.workflow === undefined ? "classification" : activePhase(run)?.phase ?? "no active phase";
+  const why = [
+    ...(stale.reasons.includes("idle") ? [`has had no event since ${stale.lastEventAt} (over ${hours} hours)`] : []),
+    ...(stale.supersededBy === undefined ? [] : [`is still in ${phase}, which paved intent owns, while newer run ${stale.supersededBy} was started`]),
+  ];
+  const owner = owningStep(run);
+  const resume = owner === undefined ? "inspect it before deciding" : `continue it with paved ${owner} --run ${run.id} --json`;
+  return createDiagnostic({
+    severity: "warning", category: "findings", code: "PAVED_WORKFLOW_RUN_STALE", component: "consumer.runs",
+    message: `Open run ${run.id} (${phase}) ${why.join(" and ")}.`,
+    remediation: `Ask the user whether run ${run.id} is still wanted. If not, cancel it with ${stale.abandonCommand}; otherwise ${resume}. Paved never cancels a run on its own.`,
+  });
+}
+
+function openRuns(inspection: ConsumerInspection, sourceRoot: string, deliveryTarget?: string, staleAfterHours = DEFAULT_STALE_RUN_HOURS, now = Date.now()): { runs: Record<string, unknown>[]; diagnostics: Diagnostic[]; delivery?: Record<string, unknown> } {
   if (!inspection.initialized) return { runs: [], diagnostics: [] };
   const scanned = scanRuns(inspection.projectRoot, inspection.coreRoot);
-  const runs = scanned.runs.filter((run) => isOpen(run) && runBelongsTo(inspection.projectRoot, run, sourceRoot)).map((run) => ({
-    run: run.id, status: run.status, ...(run.workflow === undefined ? {} : { workflow: run.workflow.id }),
-    ...(run.worktree === undefined ? {} : { worktree: run.worktree }),
-    currentPhase: run.phases.find((phase) => phase.status === "running")?.phase,
-    ...(run.handoff === undefined ? {} : { handoff: {
-      ...run.handoff, fresh: fingerprint(runSourceRoot(inspection.projectRoot, run)) === run.handoff.source_sha256,
-    } }),
-  }));
+  const local = scanned.runs.filter((run) => runBelongsTo(inspection.projectRoot, run, sourceRoot));
+  const open = local.filter(isOpen);
+  const stale = staleRuns(local, staleAfterHours, now);
+  const runs = open.map((run) => {
+    const owner = owningStep(run);
+    const last = lastEvent(run);
+    const leftBehind = stale.get(run.id);
+    return {
+      run: run.id, status: run.status, ...(run.workflow === undefined ? {} : { workflow: run.workflow.id }),
+      ...(run.worktree === undefined ? {} : { worktree: run.worktree }),
+      currentPhase: run.phases.find((phase) => phase.status === "running")?.phase,
+      ...(owner === undefined ? {} : { owner }),
+      ...(last === undefined ? {} : { lastEventAt: last.at }),
+      ...(leftBehind === undefined ? {} : { stale: leftBehind }),
+      ...(run.handoff === undefined ? {} : { handoff: {
+        ...run.handoff, fresh: fingerprint(runSourceRoot(inspection.projectRoot, run)) === run.handoff.source_sha256,
+      } }),
+    };
+  });
+  const staleDiagnostics = open.flatMap((run) => {
+    const leftBehind = stale.get(run.id);
+    return leftBehind === undefined ? [] : [staleRunDiagnostic(run, leftBehind, staleAfterHours)];
+  });
   const delivery = deliveryTarget === undefined ? undefined : deliveryReadiness(inspection, scanned.runs, sourceRoot, deliveryTarget);
   return { runs, ...(delivery === undefined ? {} : { delivery: delivery.delivery }), diagnostics: [...scanned.unreadable.map((run) => createDiagnostic({
     severity: "warning", category: "findings", code: "PAVED_WORKFLOW_RUN_INVALID", component: "consumer.runs",
     message: `Workflow run ${run.id} could not be read: ${run.reason}`,
     remediation: "Inspect .paved/generated/runs/ and restore or remove the invalid run document.",
-  })), ...staleCompletion(inspection, scanned.runs, sourceRoot), ...staleReviewSources(inspection, scanned.runs, sourceRoot), ...(delivery?.diagnostics ?? [])] };
+  })), ...staleCompletion(inspection, scanned.runs, sourceRoot), ...staleReviewSources(inspection, scanned.runs, sourceRoot), ...staleDiagnostics, ...(delivery?.diagnostics ?? [])] };
 }
 
 /** An unreadable decision store is already reported by the inspection; repairs then wait for it to be fixed. */
@@ -380,7 +454,7 @@ export function diagnose(invocation: CommandInvocation, command: "status" | "doc
     component: `cli.${command}`, message,
     remediation: "Use the offered option id and provide the required human-authored approval.",
   }));
-  const runs = openRuns(inspection, invocation.paths.sourceRoot, invocation.flags.base);
+  const runs = openRuns(inspection, invocation.paths.sourceRoot, invocation.flags.base, invocation.flags.staleAfterHours);
   const coreUpdate = availableCoreUpdate(inspection, invocation.launcherCoreVersion);
   const diagnostics = [...inspection.diagnostics, ...agentsBlockFindings(inspection), ...coreUpdateFindings(coreUpdate), ...runs.diagnostics,
     ...verificationFindings(invocation, inspection),

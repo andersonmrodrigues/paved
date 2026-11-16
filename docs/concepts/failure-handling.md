@@ -41,11 +41,26 @@ disable the rest.
   `.paved-update-*` staging directories are not authoritative and may be removed after
   confirming no Paved process is still using them.
 - **Consumer mutations are serialized.** Generation, verification and update acquire
-  `.paved-operation-lock` before writing. A collision fails with
-  `PAVED_OPERATION_IN_PROGRESS`; a lock left by process termination is not removed
-  automatically. Inspect `owner.json` and confirm no Paved process remains before
-  manually removing a stale lock. Read-only status, doctor and Gardener operations do
-  not acquire the lock and may observe either side of an update swap.
+  `.paved-operation-lock` before writing. Its `owner.json` records the operation, pid,
+  host and start time. A collision with a running operation fails with
+  `PAVED_OPERATION_IN_PROGRESS`, and the message names that operation, pid and start
+  time. A lock is reclaimed automatically, with a `PAVED_OPERATION_LOCK_RECLAIMED`
+  warning naming the previous operation, only when it is stale:
+  - its owner pid no longer exists on this host (`kill(pid, 0)` reports `ESRCH`); or
+  - `owner.json` is missing or unreadable and the lock has not changed for 10 minutes
+    (the only gap without an owner is between creating the directory and writing it).
+
+  A lock taken on another host, a lock whose pid is running (even a reused pid), a
+  symbolic link, or a lock directory holding anything besides `owner.json` and its
+  temporary write files is never reclaimed; the diagnostic says why and what to check
+  before removing it by hand. Reclaimers serialize on `.paved-operation-lock.reclaim`
+  and re-check that the lock is the same stale one before removing it, so two processes
+  never both reclaim it and a freshly taken lock is never removed. If a reclaimer is
+  killed mid-way, that marker stays and the lock is left alone; after 10 minutes the
+  diagnostic asks for the marker to be removed once no Paved process is active. The
+  update child that borrows a launcher's lock through `PAVED_PARENT_OPERATION_TOKEN`
+  never reclaims it while the launcher runs. Read-only status, doctor and Gardener
+  operations do not acquire the lock and may observe either side of an update swap.
 - **Isolate by unit.** An invalid feature document invalidates that document, not
   the whole feature map. An incompatible adapter disables that adapter, not the Core.
 - **Human knowledge is never the recovery path.** No failure mode overwrites a

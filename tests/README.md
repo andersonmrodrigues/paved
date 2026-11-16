@@ -36,14 +36,16 @@ parallel test frameworks:
 | Integration / end-to-end | CLI dispatch and executable tests, consumer lifecycle and command side effects. |
 | Failure / recovery | Invalid state, failed checks, staged update rejection, directory-swap rollback, unfinished-backup detection, ownership conflicts, stale operation locks, safe dry runs and atomic file replacement. |
 | Determinism / idempotency | Repeated generation and Gardener analysis, ordered adapter/generator resolution and stable evidence. |
-| Concurrency | Generation, verification and update acquire one consumer-level exclusive lock; lock collisions fail with `PAVED_OPERATION_IN_PROGRESS`. Gardener is read-only and may observe either side of the atomic update swap rather than a cross-file snapshot. |
+| Concurrency | Generation, verification and update acquire one consumer-level exclusive lock; collisions with a running operation fail with `PAVED_OPERATION_IN_PROGRESS`, and a lock whose owner exited is reclaimed with `PAVED_OPERATION_LOCK_RECLAIMED`. Gardener is read-only and may observe either side of the atomic update swap rather than a cross-file snapshot. |
 | Regression | Added beside the capability that owns the behavior, rather than in a duplicate regression framework. |
 
 Automatic schema migrations and remote distribution are not implemented, so there is no
 migration engine or remote compatibility matrix to exercise. The suite uses synthetic
 consumer repositories; an Apecatus checkout is not required or bundled. Hard process
 termination is not simulated. Exclusive lock acquisition and collision behavior are
-tested deterministically; no timing-sensitive multi-process stress test is used.
+tested deterministically. Concurrent reclamation of one stale lock runs in several
+processes; its assertions (one reclamation, no overlapping holders) do not depend on
+timing.
 Transaction tests cover controlled stage failures and synchronous state-change detection.
 
 ## Focused runs and temporary repositories

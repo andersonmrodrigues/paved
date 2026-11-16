@@ -31,6 +31,12 @@ releases, not the development sequence used to build them.
   warning. `ChangeReview` records accept a `target` with `reviewed.diff_sha256` in place of
   `run`; existing records stay valid, and a workflow's review gate refuses a record without
   a run. The `change-review` skill (0.8.0) describes the flow.
+- `paved status` warns with `PAVED_WORKFLOW_RUN_STALE` about open runs left behind:
+  no event for 24 hours (`--stale-after <hours>` changes it), or still in a phase
+  `intent` owns while a newer run was started. Each warning gives the command that
+  continues the run and the `--abandon --note` command that cancels it; `openRuns`
+  entries now carry `owner`, `lastEventAt` and `stale`. Paved never cancels a run on
+  its own.
 
 ### Changed
 
@@ -54,6 +60,17 @@ releases, not the development sequence used to build them.
 - `paved execute "<request>"` no longer fails when regenerating merely drifted context
   fails; the request starts and the failure is reported as a warning. An update that
   the lifecycle requires (`STALE`, `INCOMPATIBLE`) still blocks.
+- A `.paved-operation-lock` left by a process that no longer runs on this host, or one
+  without a readable `owner.json` for 10 minutes, is now reclaimed automatically with a
+  `PAVED_OPERATION_LOCK_RECLAIMED` warning naming the previous operation, pid and start
+  time. A lock held by a running process still fails with `PAVED_OPERATION_IN_PROGRESS`,
+  whose message now names that operation, pid and start time. Locks from another host,
+  links and locks holding unexpected files are never reclaimed.
+- `PAVED_WORKFLOW_STEP_OUT_OF_RANGE` now gives the exact command to run next, such as
+  `paved intent --run <id> --json`, at the start of its remediation and as
+  `data.nextCommand`, with the owning step, the requested step and an `abandonCommand`
+  in its data. `intent` and `plan` still do not act for another step, since their
+  flags would mean something else in its phases.
 
 ## [2.29.1] - 2026-11-15
 

@@ -156,7 +156,7 @@ export function updateHandler(invocation: CommandInvocation): CommandResult {
       const diagnostic = createDiagnostic({
         severity: "error", category: "conflict", code: "PAVED_OPERATION_IN_PROGRESS", component: "consumer.operation",
         message: error.message,
-        remediation: "Wait for the active operation to finish. For a stale lock, confirm no Paved process is active before removing .paved-operation-lock.",
+        remediation: error.remediation,
       });
       return createResult({ command: "update", status: "failed", data: updateData(plan, false), diagnostics: [...plan.diagnostics, diagnostic] });
     }

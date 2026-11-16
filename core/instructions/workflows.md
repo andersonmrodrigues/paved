@@ -6,8 +6,8 @@ this file says how to carry it out, what to do when something fails, and what to
 ## Steps
 
 A run goes through three steps over one run id. Each step owns a fixed range of phases;
-a step invoked outside its range returns `PAVED_WORKFLOW_STEP_OUT_OF_RANGE` and names the
-step that owns the current phase.
+a step invoked outside its range returns `PAVED_WORKFLOW_STEP_OUT_OF_RANGE`, changes
+nothing and gives the owning step's command as `data.nextCommand`; run that next.
 
 | Step | Phases |
 |---|---|
