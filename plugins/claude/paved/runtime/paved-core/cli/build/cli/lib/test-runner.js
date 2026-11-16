@@ -5,6 +5,7 @@ import { join, relative, sep } from "node:path";
 import { parse, stringify } from "yaml";
 import { planMavenDependencies } from "../../adapters/technology/java/maven-dependencies.js";
 import { createDiagnostic } from "../result.js";
+import { globRegex } from "./adapters.js";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { loadYaml } from "./documents.js";
 import { inspectOverrides } from "./override-safety.js";
@@ -186,7 +187,7 @@ function resolveTestingToolCandidate(projectRoot, coreRoot, sourceRoot, selected
                         return 1;
                     return a.tool.id.localeCompare(b.tool.id, "en");
                 });
-                return { status: "suite", members: resolved };
+                return { status: "suite", members: resolved, dependencies: plan.dependencies };
             }
             catch (error) {
                 return {
@@ -429,7 +430,7 @@ async function runOneTestingTool(input, selected) {
         executable: command.executable,
         argv: command.argv,
         cwd,
-        timeoutSeconds: Math.min(tool.timeout_seconds, override?.timeout_seconds ?? tool.timeout_seconds, implementation.invocation.timeout_seconds ?? tool.timeout_seconds),
+        timeoutSeconds: timeoutOf(selected),
     });
     const finishedAt = new Date().toISOString();
     if (processResult.kind === "launch-error") {
@@ -555,13 +556,87 @@ async function runOneTestingTool(input, selected) {
         evidence: relative(realpathSync(input.projectRoot), realpathSync(recordPath)).split(sep).join("/"),
     };
 }
+/**
+ * The limit a testing Tool runs under: its contract's `timeout_seconds`, lowered by the
+ * ToolImplementation's `invocation.timeout_seconds` and by an approved override.
+ */
+export function timeoutOf(selected) {
+    const { tool, implementation, override } = selected;
+    return Math.min(tool.timeout_seconds, override?.timeout_seconds ?? tool.timeout_seconds, implementation.invocation.timeout_seconds ?? tool.timeout_seconds);
+}
+const workingDirectoryOf = (selected) => (selected.implementation.invocation.working_directory ?? ".").replace(/^(\.\/)+/, "").replace(/\/+$/, "") || ".";
 function outcomeOf(selected, result) {
     const status = result.tool === undefined ? "not-run"
         : result.status === "success" ? "passed"
-            : result.diagnostics.some((item) => item.code === ENVIRONMENT_UNAVAILABLE) ? "environment-unavailable" : "failed";
+            : result.tool.status === "timed-out" ? "timed-out"
+                : result.diagnostics.some((item) => item.code === ENVIRONMENT_UNAVAILABLE) ? "environment-unavailable" : "failed";
     return {
         tool: selected.tool.id, status, workingDirectory: selected.implementation.invocation.working_directory ?? ".",
+        timeoutSeconds: timeoutOf(selected),
         ...(result.evidence === undefined ? {} : { evidence: result.evidence }),
+    };
+}
+/** Why no changed file concerns the Tool, or undefined when one does. */
+function irrelevance(selected, changedFiles) {
+    const patterns = selected.implementation.applies_to ?? [];
+    if (patterns.length > 0) {
+        const expressions = patterns.map(globRegex);
+        return changedFiles.some((file) => expressions.some((expression) => expression.test(file)))
+            ? undefined : `No changed file matches applies_to (${patterns.join(", ")}).`;
+    }
+    const directory = workingDirectoryOf(selected);
+    if (directory === ".")
+        return undefined;
+    return changedFiles.some((file) => file === directory || file.startsWith(`${directory}/`))
+        ? undefined : `No changed file is under ${directory}.`;
+}
+/**
+ * The testing Tools a workflow change does not concern, with the reason for each. A Tool
+ * runs when a changed file is in its working directory or matches its implementation's
+ * `applies_to`. Local build dependencies widen that set: a module that depends on a
+ * running module runs too, and so does every module a running one needs installed.
+ * Without changed files nothing is skipped.
+ */
+export function outOfScope(selected, changedFiles) {
+    const skipped = new Map();
+    if (changedFiles === undefined || changedFiles.length === 0)
+        return skipped;
+    if (selected.status === "resolved") {
+        const reason = irrelevance(selected, changedFiles);
+        if (reason !== undefined)
+            skipped.set(selected.tool.id, reason);
+        return skipped;
+    }
+    if (selected.status !== "suite")
+        return skipped;
+    const reasons = new Map(selected.members.map((member) => [member.tool.id, irrelevance(member, changedFiles)]));
+    const running = new Set([...reasons].filter(([, reason]) => reason === undefined).map(([id]) => id));
+    const dependencies = selected.dependencies ?? new Map();
+    const scopeOf = new Map(selected.members.map((member) => [member.tool.id, workingDirectoryOf(member)]));
+    const membersWhere = (predicate) => selected.members.filter((member) => predicate(scopeOf.get(member.tool.id))).map((member) => member.tool.id);
+    const close = (next) => {
+        const queue = [...running];
+        while (queue.length > 0) {
+            for (const id of next(scopeOf.get(queue.pop()))) {
+                if (running.has(id))
+                    continue;
+                running.add(id);
+                queue.push(id);
+            }
+        }
+    };
+    // Dependents first, so the modules they consume are then installed for them as well.
+    close((scope) => membersWhere((candidate) => dependencies.get(candidate)?.has(scope) === true));
+    close((scope) => membersWhere((candidate) => dependencies.get(scope)?.has(candidate) === true));
+    for (const [id, reason] of reasons)
+        if (!running.has(id) && reason !== undefined)
+            skipped.set(id, reason);
+    return skipped;
+}
+function skippedOutcome(selected, reason) {
+    return {
+        tool: selected.tool.id, status: "skipped", workingDirectory: selected.implementation.invocation.working_directory ?? ".",
+        timeoutSeconds: timeoutOf(selected), reason,
     };
 }
 /** A pre-resolved snapshot lets a phase guard inspect the exact suite before any member runs. */
@@ -569,23 +644,32 @@ export async function runTestingTool(input, selected = resolveTestingTool(input.
     if (selected.status === "unavailable" || selected.status === "ambiguous") {
         return { status: "failed", diagnostics: [diagnostic(selected.code, "config", selected.message, selected.remediation)] };
     }
+    const skipped = outOfScope(selected, input.changedFiles);
     if (selected.status === "resolved") {
+        const reason = skipped.get(selected.tool.id);
+        if (reason !== undefined)
+            return { status: "success", diagnostics: [], outcomes: [skippedOutcome(selected, reason)] };
         const result = await runOneTestingTool(input, selected);
         return { ...result, outcomes: [outcomeOf(selected, result)] };
     }
-    // Every member runs, so one run reports every module that fails, not only the first.
+    // Every member in scope runs, so one run reports every module that fails, not only the first.
     const results = [];
-    for (const member of selected.members)
-        results.push(await runOneTestingTool(input, member));
-    const failed = results.find((result) => result.status === "failed");
-    const representative = failed ?? results[0];
+    for (const member of selected.members) {
+        results.push(skipped.has(member.tool.id) ? undefined : await runOneTestingTool(input, member));
+    }
+    const ran = results.filter((result) => result !== undefined);
+    const failed = ran.find((result) => result.status === "failed");
+    const representative = failed ?? ran[0];
     return {
         status: failed ? "failed" : "success",
-        outcomes: selected.members.map((member, index) => outcomeOf(member, results[index])),
-        diagnostics: results.flatMap((result) => result.diagnostics),
+        outcomes: selected.members.map((member, index) => {
+            const result = results[index];
+            return result === undefined ? skippedOutcome(member, skipped.get(member.tool.id)) : outcomeOf(member, result);
+        }),
+        diagnostics: ran.flatMap((result) => result.diagnostics),
         ...(representative?.tool === undefined ? {} : { tool: representative.tool }),
         ...(representative?.evidence === undefined ? {} : { evidence: representative.evidence }),
-        tools: results.flatMap((result) => result.tool ? [result.tool] : []),
-        evidences: results.flatMap((result) => result.evidence ? [result.evidence] : []),
+        tools: ran.flatMap((result) => result.tool ? [result.tool] : []),
+        evidences: ran.flatMap((result) => result.evidence ? [result.evidence] : []),
     };
 }

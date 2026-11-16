@@ -79,7 +79,7 @@ describe("AGENTS.md versioning decision", () => {
     const project = repository();
     const [candidate] = agentsVersioningProvider(context(project));
     assert.ok(candidate);
-    assert.equal(candidate.required, true);
+    assert.equal(candidate.required, false);
     assert.equal(candidate.effect, "config-additive");
     assert.deepEqual(candidate.options.map((option) => option.id), ["track", "keep-local"]);
     assert.equal(candidate.recommended, undefined);
@@ -88,18 +88,17 @@ describe("AGENTS.md versioning decision", () => {
     assert.deepEqual(agentsVersioningProvider(context(project))[0]?.candidates, candidate.candidates);
   });
 
-  it("defers the AGENTS.md write during init until the project answers, then keeps it local", async () => {
+  it("asks without holding up init, writes the block, then keeps AGENTS.md local on answer", async () => {
     const project = repository();
     const asked = await init(project);
     const decision = versioningDecision(asked.decisions);
     assert.ok(decision, JSON.stringify(asked.decisions));
-    assert.equal(asked.status, "awaiting_input");
-    assert.equal((asked.data as { agentsBlock?: string }).agentsBlock, "deferred");
-    assert.equal(existsSync(join(project, "AGENTS.md")), false);
+    assert.notEqual(asked.status, "awaiting_input");
+    assert.equal((asked.data as { agentsBlock?: string }).agentsBlock, "created");
+    assert.match(readFileSync(join(project, "AGENTS.md"), "utf8"), /paved:begin managed/);
 
     const answered = await init(project, "--answer", `${decision.id}=keep-local`, "--answered-by", "user@example.com");
     assert.equal(versioningDecision(answered.decisions), undefined);
-    assert.equal((answered.data as { agentsBlock?: string }).agentsBlock, "created");
     assert.match(readFileSync(join(project, "AGENTS.md"), "utf8"), /paved:begin managed/);
     assert.equal(exclude(project).split("\n").filter((line) => line === "/AGENTS.md").length, 1);
     assert.equal(git(project, "status", "--porcelain", "--untracked-files=all", "--", "AGENTS.md"), "");
@@ -111,8 +110,7 @@ describe("AGENTS.md versioning decision", () => {
     const decision = versioningDecision((await init(project)).decisions);
     assert.ok(decision);
     const before = existsSync(join(project, ".git/info/exclude")) ? exclude(project) : "";
-    const answered = await init(project, "--answer", `${decision.id}=track`, "--answered-by", "user@example.com");
-    assert.equal((answered.data as { agentsBlock?: string }).agentsBlock, "created");
+    await init(project, "--answer", `${decision.id}=track`, "--answered-by", "user@example.com");
     assert.equal(existsSync(join(project, ".git/info/exclude")) ? exclude(project) : "", before);
     assert.match(git(project, "status", "--porcelain", "--", "AGENTS.md"), /\?\? AGENTS\.md/);
   });

@@ -7,8 +7,8 @@ releases, not the development sequence used to build them.
 
 ### Added
 
-- `paved init` asks whether an untracked `AGENTS.md` should be versioned before writing
-  its Paved block. `keep-local` adds it to the clone's `.git/info/exclude` (shared by
+- `paved init` asks, as an optional decision that never holds up setup, whether an
+  untracked `AGENTS.md` should be versioned. `keep-local` adds it to the clone's `.git/info/exclude` (shared by
   linked worktrees, never `.gitignore`); `track` keeps today's behavior. A tracked or
   ignored `AGENTS.md`, or a directory outside git, is not asked about.
 - `paved status` warns with `PAVED_CORE_UPDATE_AVAILABLE` when the plugin launcher

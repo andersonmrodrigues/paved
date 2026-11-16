@@ -15,7 +15,7 @@ import { rulesHandler } from "../lib/decisions/handlers/rules.ts";
 import { capabilityProvider, capabilityHandler } from "../lib/decisions/providers/capability.ts";
 import { testingAdoptProvider } from "../lib/decisions/providers/testing.ts";
 import { testingAdoptHandler } from "../lib/decisions/handlers/testing.ts";
-import { AGENTS_VERSIONING_QUESTION, agentsVersioningProvider } from "../lib/decisions/providers/agents.ts";
+import { agentsVersioningProvider } from "../lib/decisions/providers/agents.ts";
 import { agentsVersioningHandler } from "../lib/decisions/handlers/agents.ts";
 import { ensureAgentsBlock } from "../lib/agents-block.ts";
 import { createDiagnostic, createResult, type CommandResult, type Diagnostic, type ResultStatus } from "../result.ts";
@@ -247,10 +247,7 @@ export function initHandler(invocation: CommandInvocation): CommandResult {
   const generation = invocation.flags.noGenerate
     ? undefined
     : runGenerators(invocation.paths.coreRoot, invocation.paths.projectRoot, { sourceRoot: invocation.paths.sourceRoot });
-  // An untracked AGENTS.md is written only once the project said whether to version it,
-  // so a broad `git add` cannot commit it before anyone was asked.
-  const agentsDeferred = outcome.projections.some((decision) => decision.question === AGENTS_VERSIONING_QUESTION);
-  const agents = agentsDeferred ? { status: "deferred" as const } : ensureAgentsBlock(invocation.paths.coreRoot, invocation.paths.projectRoot);
+  const agents = ensureAgentsBlock(invocation.paths.coreRoot, invocation.paths.projectRoot);
   const diagnostics = [
     ...planningDiagnostics,
     ...(generation === undefined ? [] : diagnosticsForRun(generation, false)),

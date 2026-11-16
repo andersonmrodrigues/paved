@@ -39,8 +39,25 @@ A successful non-dry run writes:
 - generated project context/proposals and generator state unless `--no-generate`
   is present
 
-`init` does not edit application source files. The current implementation does not
-write an `AGENTS.md` block.
+`init` does not edit application source files. It maintains a delimited Paved block in
+the root `AGENTS.md`, creating the file when it is missing and never changing text
+outside the block.
+
+When the project is a git working tree and `AGENTS.md` is neither tracked nor ignored,
+`init` first returns a required decision asking whether to version it:
+
+- `track` writes the block as usual; committing the file is left to the team.
+- `keep-local` adds `/AGENTS.md` (anchored at the project's path in the repository) to
+  the clone's `info/exclude`, resolved with `git rev-parse --git-path info/exclude` so
+  every linked worktree shares it. It never edits `.gitignore`, which would itself be a
+  tracked change, and it never adds the pattern twice.
+
+The decision is optional, so setup never waits on it: `init` writes the block right away
+and the agent presents the question in the same turn. Answer `keep-local` before the next
+commit if the file must stay out of version control. A tracked
+or already-ignored `AGENTS.md` is never asked about, and outside git the block is
+written without a question. `paved update` only refreshes an existing block and never
+creates the file, so it asks nothing.
 
 If `.paved/`, `.paved/manifest.yaml` or `.paved/paved.lock` already exists, `init`
 validates the existing manifest/lock and then refuses to reset or update that

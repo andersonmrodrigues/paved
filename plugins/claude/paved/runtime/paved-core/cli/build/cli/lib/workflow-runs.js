@@ -186,6 +186,35 @@ export function scanRuns(projectRoot, coreRoot) {
     return { runs, unreadable };
 }
 export const isOpen = (run) => !TERMINAL_STATUSES.has(run.status);
+export const STEP_PHASES = {
+    intent: ["context", "discovery"],
+    plan: ["planning"],
+    execute: ["implementation", "validation", "verification", "evidence", "review", "completion"],
+};
+const STEPS = Object.keys(STEP_PHASES);
+export const ownerOf = (phase) => STEPS.find((step) => STEP_PHASES[step].includes(phase));
+export function activePhase(run) {
+    return run.phases.find((phase) => phase.status === "running") ?? run.phases.find((phase) => phase.status === "failed");
+}
+export function planGate(run) {
+    return run.phases.find((phase) => phase.phase === "planning")?.gates?.find((gate) => gate.id === "plan-approved");
+}
+/** A revised plan awaits approval after planning already completed. */
+export function amendmentPending(run) {
+    return run.phases.find((phase) => phase.phase === "planning")?.status === "completed" && planGate(run)?.status === "awaiting-approval";
+}
+/**
+ * The step that owns the run's current phase, so the command that continues it; paved
+ * execute hands a run that is not yet planned to it. Undefined without an active phase.
+ */
+export function owningStep(run) {
+    if (!run.workflow)
+        return "intent";
+    if (amendmentPending(run))
+        return "plan";
+    const phase = activePhase(run);
+    return phase === undefined ? undefined : ownerOf(phase.phase);
+}
 /** The command that created the run, from its id prefix: `intent`, or `feature` / `fix` / `refactor` for 1.x runs. */
 export function runCommand(run) {
     return run.id.slice(0, run.id.indexOf("-"));

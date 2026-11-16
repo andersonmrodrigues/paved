@@ -9,7 +9,7 @@ description: >-
 ## When to use
 
 In the `review` phase, after verification and evidence. Also when a human asks for a
-review of a change made by anyone.
+review of a change made by anyone, such as a branch or a commit range.
 
 ## Required context
 
@@ -33,6 +33,11 @@ brief Paved wrote (`.paved/generated/reviews/<run-id>-brief.md`), and does not r
 change itself. The brief names the intent, plan, evidence, diff and rules in scope, and the
 digests the findings must carry. Paved refuses a review that was not isolated or that read
 an older plan, source or evidence.
+
+Outside a workflow, `paved review --base <ref> --json` (all changes since the merge base,
+uncommitted files included) or `--range <a>..<b>` writes the same kind of brief with no
+run or gate; review against its commit messages, then check the record with the same
+target and `--evidence <record>`.
 
 Run three passes, each reading the diff afresh. When the reviewer can start reviewers of its
 own, run each pass as one, given only the intent and the diff, on a different model
@@ -121,9 +126,8 @@ In a Paved workflow, a review record at `.paved/generated/reviews/<run-id>-findi
 in the brief's format: the reviewer, the digests it read, the passes it ran and each finding,
 `blocking` or `note`, with its `proof` and the in-scope `rule` it breaks, if any.
 Blocking findings go to the user, who decides to fix them (implementation reopens, and the
-fix is tested, verified and reviewed again) or to accept them on record. Outside a workflow,
-report the same content in the conversation. The review supports no claim; it prepares the
-human review.
+fix is tested, verified and reviewed again) or to accept them on record. Outside a workflow
+the record names its `target` instead of a run. The review supports no claim.
 
 ## Completion criteria
 

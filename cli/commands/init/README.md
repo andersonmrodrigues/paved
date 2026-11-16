@@ -52,8 +52,9 @@ When the project is a git working tree and `AGENTS.md` is neither tracked nor ig
   every linked worktree shares it. It never edits `.gitignore`, which would itself be a
   tracked change, and it never adds the pattern twice.
 
-Until that decision is answered, `init` does not write `AGENTS.md` (`agentsBlock` is
-`deferred`), so a broad `git add` cannot commit it before anyone was asked. A tracked
+The decision is optional, so setup never waits on it: `init` writes the block right away
+and the agent presents the question in the same turn. Answer `keep-local` before the next
+commit if the file must stay out of version control. A tracked
 or already-ignored `AGENTS.md` is never asked about, and outside git the block is
 written without a question. `paved update` only refreshes an existing block and never
 creates the file, so it asks nothing.

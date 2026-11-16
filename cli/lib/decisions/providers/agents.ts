@@ -43,7 +43,7 @@ export const agentsVersioningProvider: DecisionProvider = (context) => {
   return [{
     scope: "project",
     question: AGENTS_VERSIONING_QUESTION,
-    reason: `${versioning.repositoryPath} is not tracked by git. Paved keeps its managed block there so agents find the project's Paved setup; whether that file belongs in version control is a team choice, so Paved writes it only after the answer.`,
+    reason: `${versioning.repositoryPath} is not tracked by git. Paved keeps its managed block there so agents find the project's Paved setup; whether that file belongs in version control is a team choice, so Paved asks without holding up setup.`,
     options: [
       {
         id: "track", label: "Version it",
@@ -57,7 +57,8 @@ export const agentsVersioningProvider: DecisionProvider = (context) => {
       },
     ],
     evidence: [],
-    required: true,
+    // Optional: setup never waits on it. The block is written now, and keep-local excludes it.
+    required: false,
     requiredAnswer: { type: "single-choice" },
     effect: "config-additive",
     handler: "agents.versioning",

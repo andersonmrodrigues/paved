@@ -69,5 +69,5 @@ export function planMavenDependencies(projectRoot, scopes) {
     };
     for (const scope of [...dependencies.keys()].sort())
         visit(scope);
-    return { scopes: ordered, installs };
+    return { scopes: ordered, installs, dependencies };
 }

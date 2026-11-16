@@ -548,7 +548,8 @@ function launch(ctx, config, argv) {
   const project = argv.some((arg) => arg === '--project' || arg.startsWith('--project=')) ? [] : ['--project', ctx.sourceRoot];
   const command = installProjectCommand(ctx, config);
   const { PAVED_CALLER_CWD: _caller, ...inherited } = process.env;
-  const env = command === undefined ? inherited : { ...inherited, PAVED_COMMAND: command };
+  // The runtime reports in `status` when the plugin carries a newer Core than the pin.
+  const env = { ...inherited, PAVED_LAUNCHER_CORE_VERSION: config.version, ...(command === undefined ? {} : { PAVED_COMMAND: command }) };
   const child = spawnSync(process.execPath, [executable, ...project, ...argv], { cwd: ctx.sourceRoot, shell: false, stdio: 'inherit', env });
   if (child.error) fail('PAVED_RUNTIME_EXECUTION_FAILED', child.error.message, 'Inspect the installed runtime and retry.');
   process.exit(child.status ?? 1);

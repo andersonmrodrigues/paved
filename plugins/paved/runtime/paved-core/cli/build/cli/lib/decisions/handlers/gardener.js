@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { parse, stringify } from "yaml";
 import { atomicWriteFileSync } from "../../atomic-write.js";
 import { analyzeGardener } from "../../gardener.js";
+import { adoptCorrection, correctionPaths } from "../../gardener-corrections.js";
 import { resolveSafePath } from "../../safe-path.js";
 import { createRegistry } from "../../schemas.js";
 function ruleFor(proposal) {
@@ -47,3 +48,27 @@ function apply(answer, context) {
 export const gardenerHandler = {
     effect: "config-additive", apply, reject: (answer) => answer === "decline",
 };
+function correctionHandler(paths) {
+    return {
+        effect: "config-additive",
+        reject: (answer) => answer === "decline",
+        apply: (answer, context) => {
+            if (answer !== "adopt")
+                throw new Error(`Unknown correction option: ${String(answer)}.`);
+            return [adoptCorrection({ projectRoot: context.projectRoot, coreRoot: context.coreRoot, ...paths })];
+        },
+    };
+}
+/**
+ * The gardener's handlers. Each correction proposal has its own decision and handler key,
+ * resolved on lookup so a decision answered before a crash still finds its handler.
+ */
+export class GardenerHandlers extends Map {
+    constructor() {
+        super([["gardener.adopt", gardenerHandler]]);
+    }
+    get(key) {
+        const paths = correctionPaths(key);
+        return super.get(key) ?? (paths === undefined ? undefined : correctionHandler(paths));
+    }
+}

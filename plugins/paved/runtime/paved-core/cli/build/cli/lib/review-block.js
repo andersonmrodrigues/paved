@@ -4,7 +4,7 @@ import { atomicWriteFileSync } from "./atomic-write.js";
 import { loadYaml } from "./documents.js";
 import { intentDocumentPath } from "./intent.js";
 import { resolveSafePath } from "./safe-path.js";
-import { findingLocation, planRef, reviewBriefPath, reviewedState, reviewRecordPath } from "./workflow-gates/review.js";
+import { findingLocation, planRef, reviewBriefPath, reviewedState, reviewRecordCommand, reviewRecordPath, } from "./workflow-gates/review.js";
 import { loadContract } from "./workflow-runs.js";
 import { phaseContext } from "./workflows.js";
 export function reviewBlock(target, companions = [], independent) {
@@ -74,13 +74,19 @@ export function writeReviewDocument(projectRoot, run) {
     ];
     return write(projectRoot, relative, lines);
 }
+function activeReviewPhase(coreRoot, run) {
+    if (run.workflow === undefined)
+        return {};
+    const workflow = loadContract(coreRoot, run.workflow.id);
+    const phase = workflow.phases.find((item) => item.phase === "review" && run.phases.some((active) => active.phase === item.phase && active.status === "running"));
+    return { workflow, ...(phase === undefined ? {} : { phase }) };
+}
 /** Everything a reviewer with its own context needs, and nothing from the conversation that wrote the change. */
-export function writeReviewBrief(projectRoot, run, reviewed, coreRoot) {
+export function writeReviewBrief(projectRoot, run, reviewed, coreRoot, resolved = activeReviewPhase(coreRoot, run)) {
     const evidence = loadEvidence(projectRoot, run);
     const plan = planRef(run);
     const intent = intentDocumentPath(run.id);
-    const workflow = run.workflow === undefined ? undefined : loadContract(coreRoot, run.workflow.id);
-    const phase = workflow?.phases.find((item) => item.phase === "review" && run.phases.some((active) => active.phase === item.phase && active.status === "running"));
+    const { workflow, phase } = resolved;
     const diff = evidence.artifacts?.find((artifact) => artifact.kind === "diff")?.source?.location;
     const lines = [
         `# Review brief for ${run.id}`, "",
@@ -143,7 +149,12 @@ export function reviewFor(projectRoot, run, coreRoot) {
         return reviewBlock(plan, companionDocuments(projectRoot, run.id, plan));
     if (run.phases.some((phase) => phase.phase === "review" && phase.status === "running")) {
         const reviewed = reviewedState(projectRoot, run);
-        const independent = reviewed && { brief: writeReviewBrief(projectRoot, run, reviewed, coreRoot), record: reviewRecordPath(run.id), reviewed };
+        const resolved = activeReviewPhase(coreRoot, run);
+        const routing = resolved.phase?.routing;
+        const independent = reviewed && {
+            brief: writeReviewBrief(projectRoot, run, reviewed, coreRoot, resolved), record: reviewRecordPath(run.id), reviewed,
+            command: reviewRecordCommand(run.id), ...(routing === undefined ? {} : { routing }),
+        };
         return reviewBlock(writeReviewDocument(projectRoot, run), [], independent);
     }
     return undefined;

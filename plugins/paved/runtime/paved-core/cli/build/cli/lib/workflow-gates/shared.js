@@ -10,8 +10,8 @@ import { resolveSafePath } from "../safe-path.js";
 import { createRegistry } from "../schemas.js";
 import { ENVIRONMENT_UNAVAILABLE, isTestingToolEvidence } from "../test-runner.js";
 import { sanitizeToolOutput } from "../tools.js";
-import { writeWorkflowEvidence } from "../workflow-evidence.js";
-import { assessWorkflowEvidence, UNCHANGED_HANDLER } from "../workflows.js";
+import { ACCEPTED_PRE_EXISTING, writeWorkflowEvidence } from "../workflow-evidence.js";
+import { assessWorkflowEvidence, PRE_EXISTING_HANDLER, UNCHANGED_HANDLER } from "../workflows.js";
 import { runSourceRoot } from "../workflow-runs.js";
 import { createDiagnostic } from "../../result.js";
 import { previewTarget } from "../preview-review.js";
@@ -210,15 +210,18 @@ async function recordBaseline(context) {
     const { run, projectRoot } = context;
     if (run.events.some((event) => event.type === "tool-invoked") || !sourceUnchanged(projectRoot, run))
         return [];
-    const tested = await context.tools.test();
+    // Nothing has changed yet, so there is nothing to scope by: every testing Tool runs.
+    const tested = await context.tools.test({ all: true });
     const ref = tested.data?.evidence;
     if (tested.status === "awaiting_input" || ref === undefined)
         return [];
     const outcome = tested.status === "success" ? "passed" : environmentProblem(tested.diagnostics) ? "environment-unavailable" : "failed";
     const outcomes = testOutcomes(tested);
     const failing = outcomes.filter((item) => item.status === "failed").map((item) => item.tool);
+    const timedOut = outcomes.filter((item) => item.status === "timed-out").map((item) => item.tool);
     const unavailable = outcomes.filter((item) => item.status === "environment-unavailable").map((item) => item.tool);
     const detail = [`${BASELINE}${outcome}`, ...(failing.length ? [`failing=${failing.join(",")}`] : []),
+        ...(timedOut.length ? [`timed_out=${timedOut.join(",")}`] : []),
         ...(unavailable.length ? [`unavailable=${unavailable.join(",")}`] : [])].join("; ");
     run.events.push({ at: now(), type: "tool-invoked", phase: "planning", ref, detail });
     if (outcome === "passed")
@@ -228,10 +231,11 @@ async function recordBaseline(context) {
     return [createDiagnostic({
             severity: "info", category: "findings", code: "PAVED_WORKFLOW_BASELINE_FAILING", component: "workflow.runtime",
             message: outcome === "failed"
-                ? `The tests already fail before any change: ${which}. Validation requires them to pass, so this run cannot complete until they do.`
+                ? `The tests already fail before any change: ${which}. Validation skips the Tools the change does not touch; `
+                    + "if these are still the only failures then, it asks the user whether to accept them for this run or fix them."
                 : `The tests cannot reach their environment before any change: ${which}. Validation blocks until they can.`,
-            remediation: "Tell the user now, before implementing: either include fixing these tests in the plan (paved plan --amend), "
-                + "or exclude the tests that cannot pass here from the testing Tool, or make their environment available.",
+            remediation: "Tell the user now, before implementing: they may include fixing these tests in the plan (paved plan --amend), "
+                + "accept them as pre-existing when validation asks, exclude the tests that cannot pass here from the testing Tool, or make their environment available.",
         })];
 }
 /** The baseline recorded at plan approval, when one ran. */
@@ -240,8 +244,49 @@ export function baseline(run) {
     if (event === undefined)
         return undefined;
     const [status, ...fields] = event.detail.slice(BASELINE.length).split("; ");
-    const failing = fields.find((field) => field.startsWith("failing="))?.slice("failing=".length).split(",").filter(Boolean) ?? [];
-    return { outcome: status, failing, ...(event.ref === undefined ? {} : { ref: event.ref }) };
+    const listed = (name) => fields.find((field) => field.startsWith(`${name}=`))?.slice(name.length + 1).split(",").filter(Boolean) ?? [];
+    return { outcome: status, failing: [...listed("failing"), ...listed("timed_out")], ...(event.ref === undefined ? {} : { ref: event.ref }) };
+}
+const ACCEPT_PRE_EXISTING = "accept";
+const FAILING_TOOL = "tool:";
+/**
+ * The user's latest answer about pre-existing failures that covers every one of these
+ * Tools. An answer about other Tools does not carry over: a different set is asked again.
+ */
+function preExistingFailuresAnswer(run, tools) {
+    const decision = run.decisions?.findLast((item) => {
+        if (item.handler !== PRE_EXISTING_HANDLER || item.status !== "APPLIED")
+            return false;
+        const covered = new Set(item.fingerprint.inputs.filter((input) => input.startsWith(`candidate:${FAILING_TOOL}`))
+            .map((input) => input.slice(`candidate:${FAILING_TOOL}`.length)));
+        return tools.every((tool) => covered.has(tool));
+    });
+    if (decision === undefined || typeof decision.answer !== "string")
+        return undefined;
+    return { answer: decision.answer, ...(decision.answered_by === undefined ? {} : { answeredBy: decision.answered_by }) };
+}
+function preExistingQuestion(run, ref, baselineSha, still) {
+    const tools = still.map((item) => item.tool).sort();
+    return {
+        kind: "ask",
+        nextAction: `Ask the user, then resume with paved execute --run ${run.id} --advance --answer <id>=<value> --answered-by <you> --json.`,
+        candidate: {
+            scope: "run",
+            question: `Testing Tools that already failed when the plan was approved still fail: ${tools.join(", ")}. Accept these pre-existing failures for this run, or fix them first?`,
+            reason: `No testing Tool that passed at approval fails now, so nothing points at this change. The baseline evidence (${ref}) shows the same Tools failing before implementation. `
+                + `Failing now: ${describeTools(still)}.`,
+            options: [
+                { id: ACCEPT_PRE_EXISTING, label: "Accept for this run", description: "These failures predate the change and are handled separately.",
+                    consequence: "Validation passes with a PAVED_WORKFLOW_BASELINE_ACCEPTED warning. Who accepted, and the baseline evidence, stay in the run and its evidence record. A Tool that starts failing later still fails validation." },
+                { id: "fix", label: "Fix them first", description: "Make the failing tests pass as part of this run.",
+                    consequence: "Validation fails as before until every testing Tool passes." },
+            ],
+            evidence: [{ type: "file", location: ref, sha256: baselineSha }],
+            required: true, requiredAnswer: { type: "single-choice" }, effect: "record-only", handler: PRE_EXISTING_HANDLER,
+            // The failing Tools are part of the decision's identity, so an answer covers exactly them.
+            candidates: [ACCEPT_PRE_EXISTING, "fix", ...tools.map((tool) => `${FAILING_TOOL}${tool}`)],
+        },
+    };
 }
 // The testing Tool could not reach what it needs; neither a regression nor a setup mistake.
 const ENVIRONMENT_CODES = new Set([ENVIRONMENT_UNAVAILABLE, "PAVED_TEST_LAUNCH_FAILED"]);
@@ -331,7 +376,7 @@ function approvePlan(context) {
 }
 // Only these mean the project's code failed. Anything else (a malformed Tool, a missing
 // profile, an unresolvable implementation) is setup the agent fixes without spending an attempt.
-const TEST_FAILURE_CODES = new Set(["PAVED_TEST_TOOL_FAILED"]);
+const TEST_FAILURE_CODES = new Set(["PAVED_TEST_TOOL_FAILED", "PAVED_TEST_TOOL_TIMED_OUT"]);
 const VERIFY_FAILURE_CODES = new Set(["PAVED_VERIFY_INCOMPLETE"]);
 function codeFailed(diagnostics, failureCodes) {
     const errors = diagnostics.filter((item) => item.category !== "findings");
@@ -342,12 +387,28 @@ function setupBlocked(what, diagnostics) {
     const detail = problems.map((item) => `${item.code}: ${item.message}${item.remediation ? ` (${item.remediation})` : ""}`).join("; ");
     return blocked("PAVED_WORKFLOW_SETUP_INVALID", `The ${what} setup could not run${detail ? `: ${detail}` : "."}`, `Fix the ${what} configuration and advance again; a setup problem does not consume a phase attempt.`);
 }
+/** Says which testing Tools the change did not concern, and that no test ran when none did. */
+function scopeFinding(outcomes) {
+    const skipped = outcomes.filter((item) => item.status === "skipped");
+    if (skipped.length === 0)
+        return [];
+    const none = skipped.length === outcomes.length;
+    return [createDiagnostic({
+            severity: none ? "warning" : "info", category: "findings", code: "PAVED_WORKFLOW_TESTS_SCOPED", component: "workflow.runtime",
+            message: `${none ? "No testing Tool covers the files this run changed, so no test ran" : "Testing Tools the change does not concern were skipped"}: `
+                + `${skipped.map((item) => `${item.tool} (${item.reason ?? "out of scope"})`).join("; ")}.`,
+            remediation: "Declare applies_to on a testing ToolImplementation when its tests cover files outside its working directory; paved test still runs every Tool.",
+        })];
+}
 const validation = async (context) => {
     const tested = await context.tools.test();
     if (tested.status === "awaiting_input")
         return { kind: "relay", result: tested };
     const ref = tested.data?.evidence;
-    context.run.events.push({ at: now(), type: "tool-invoked", phase: "validation", ref: ref ?? "testing-run" });
+    const outcomes = testOutcomes(tested);
+    const skipped = outcomes.filter((item) => item.status === "skipped");
+    context.run.events.push({ at: now(), type: "tool-invoked", phase: "validation", ref: ref ?? "testing-run",
+        ...(skipped.length ? { detail: `skipped=${skipped.map((item) => `${item.tool} (${item.reason ?? "out of scope"})`).join("; ")}` } : {}) });
     if (tested.status !== "success") {
         const unavailable = environmentBlocked(tested.diagnostics);
         if (unavailable)
@@ -356,11 +417,30 @@ const validation = async (context) => {
             return setupBlocked("testing", tested.diagnostics);
         const before = baseline(context.run);
         if (before?.outcome === "failed") {
-            const failing = testOutcomes(tested).filter((item) => item.status === "failed");
+            const failing = outcomes.filter((item) => item.status === "failed" || item.status === "timed-out");
             const known = new Set(before.failing);
             // Per-Tool attribution needs a baseline that recorded which Tools failed.
             const fresh = known.size === 0 ? [] : failing.filter((item) => !known.has(item.tool));
             const still = known.size === 0 ? [] : failing.filter((item) => known.has(item.tool));
+            // Only failures the baseline already showed can be accepted, and only by the user.
+            const baselineRef = before.ref;
+            if (still.length > 0 && fresh.length === 0 && baselineRef !== undefined && existsSync(resolveSafePath(context.projectRoot, baselineRef))) {
+                const tools = still.map((item) => item.tool).sort();
+                const answer = preExistingFailuresAnswer(context.run, tools);
+                if (answer === undefined) {
+                    return preExistingQuestion(context.run, baselineRef, sha(readFileSync(resolveSafePath(context.projectRoot, baselineRef))), still);
+                }
+                if (answer.answer === ACCEPT_PRE_EXISTING) {
+                    context.run.events.push({ at: now(), type: "tool-invoked", phase: "validation", ref: baselineRef,
+                        detail: `${ACCEPTED_PRE_EXISTING}${tools.join(",")}` });
+                    return { kind: "pass", warnings: [...scopeFinding(outcomes), createDiagnostic({
+                                severity: "warning", category: "findings", code: "PAVED_WORKFLOW_BASELINE_ACCEPTED", component: "workflow.runtime",
+                                message: `Validation passed with pre-existing failures that ${answer.answeredBy ?? "the user"} accepted for this run: ${describeTools(still)}. `
+                                    + `They already failed at approval (${before.ref}); the run's evidence record lists them as an accepted gap.`,
+                                remediation: "Fix these tests in a separate change. A testing Tool that starts failing later still fails validation.",
+                            })] };
+                }
+            }
             const attribution = known.size === 0 || failing.length === 0
                 ? `The testing Tool already failed when the plan was approved${before.ref ? ` (${before.ref})` : ""}; this failure is not attributed to the change by itself.`
                 : [fresh.length ? `Newly failing since approval, likely caused by this change: ${describeTools(fresh)}.` : "No testing Tool that passed at approval fails now.",
@@ -380,7 +460,8 @@ const validation = async (context) => {
         }
         return { kind: "fail", reason: "The governed regression test did not pass.", nextAction: "Fix the failure and resume this run with paved execute --advance.", diagnostics: tested.diagnostics };
     }
-    return { kind: "pass" };
+    const findings = scopeFinding(outcomes);
+    return findings.length > 0 ? { kind: "pass", warnings: findings } : { kind: "pass" };
 };
 const verification = async (context) => {
     const verified = await context.tools.verify();
