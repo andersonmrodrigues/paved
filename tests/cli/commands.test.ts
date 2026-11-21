@@ -12,11 +12,13 @@ import { acquireConsumerOperationLock } from "../../cli/lib/operation-lock.ts";
 import { renderHuman, renderJson } from "../../cli/output.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
 import { exitCode, primaryCategory, type CommandResult } from "../../cli/result.ts";
+import { loadAdapters } from "../../cli/lib/adapters.ts";
 import { cleanupTemporaryDirectories, CORE_VERSION, NEXT_PATCH_VERSION, temporaryDirectory } from "../helpers.ts";
 
 const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const HEALTHY_FIXTURE = join(ROOT, "tests/cli/fixtures/healthy");
 const VERIFICATION_FIXTURE = join(ROOT, "tests/cli/fixtures/verification");
+const CURRENT_ADAPTER_VERSIONS = new Map(loadAdapters(ROOT).map((adapter) => [adapter.id, adapter.version]));
 afterEach(cleanupTemporaryDirectories);
 
 interface ResolvedLockEntry {
@@ -63,12 +65,16 @@ function currentLock(adapterIds = ["technology/java"]): LockDocument {
       source: "local-core",
       sha256: hashLocalCore(ROOT),
     },
-    adapters: adapterIds.map((id) => ({
-      id,
-      version: "0.1.0",
-      source: "local-core",
-      sha256: hashLocalTree(ROOT, [`adapters/${id}`]),
-    })),
+    adapters: adapterIds.map((id) => {
+      const version = CURRENT_ADAPTER_VERSIONS.get(id);
+      if (!version) throw new Error(`No bundled adapter contract found for ${id}.`);
+      return {
+        id,
+        version,
+        source: "local-core",
+        sha256: hashLocalTree(ROOT, [`adapters/${id}`]),
+      };
+    }),
     generators: localGeneratorEntries(),
   };
 }
@@ -319,6 +325,7 @@ describe("command output, exit, and safety regressions", () => {
       const project = fixtureCopy("update-unchanged");
       try {
         writeCurrentLock(project);
+        writeFileSync(join(project, ".paved/models.yaml"), readFileSync(join(ROOT, "core/templates/models.yaml"), "utf8"));
         const before = snapshotFiles(project);
 
         const result = await run(project, "update");
@@ -345,7 +352,7 @@ describe("command output, exit, and safety regressions", () => {
           kind: "Project",
           project: { name: "incompatible-core" },
           paved: { core: "^9.0.0" },
-          adapters: [{ id: "technology/java", version: "^0.1.0" }],
+          adapters: [{ id: "technology/java", version: "^0.2.0" }],
         });
         writeManifest(incompatibleAdapter, {
           apiVersion: "paved/v1",
@@ -672,6 +679,22 @@ describe("status and doctor commands", () => {
     }
   });
 
+  it("keeps projected skill prose out of the runtime digest but retains its contract", () => {
+    const core = sandbox("core-digest-skill-prose");
+    try {
+      mkdirSync(join(core, "core/skills/bootstrap/paved"), { recursive: true });
+      writeFileSync(join(core, "core/skills/bootstrap/paved/SKILL.md"), "Initial instructions.\n");
+      writeFileSync(join(core, "core/skills/bootstrap/paved/skill.yaml"), "id: core.bootstrap.paved\nversion: 0.1.0\n");
+      const before = hashLocalCore(core);
+      writeFileSync(join(core, "core/skills/bootstrap/paved/SKILL.md"), "Updated instructions.\n");
+      assert.equal(hashLocalCore(core), before);
+      writeFileSync(join(core, "core/skills/bootstrap/paved/skill.yaml"), "id: core.bootstrap.paved\nversion: 0.2.0\n");
+      assert.notEqual(hashLocalCore(core), before);
+    } finally {
+      rmSync(core, { recursive: true, force: true });
+    }
+  });
+
   it("uses the same local Core digest when writing and checking the lock", async () => {
     const project = sandbox("runtime-lock-digest");
     try {
@@ -831,7 +854,7 @@ describe("status and doctor commands", () => {
         kind: "Project",
         project: { name: "undetected-adapter" },
         paved: { core: "^0.2.0" },
-        adapters: [{ id: "technology/angular", version: "^0.2.0" }],
+        adapters: [{ id: "technology/angular", version: "^0.3.0" }],
       });
       writeCurrentLock(undetected, ["technology/angular"]);
       const lock = currentLock();
@@ -875,8 +898,8 @@ describe("status and doctor commands", () => {
         project: { name: "ambiguous" },
         paved: { core: "^0.2.0" },
         adapters: [
-          { id: "technology/java", version: "^0.1.0" },
-          { id: "technology/java-alt", version: "^0.1.0" },
+          { id: "technology/java", version: "^0.2.0" },
+          { id: "technology/java-alt", version: "^0.2.0" },
         ],
       });
       writeFileSync(join(project, ".paved/paved.lock"), stringify({
@@ -885,8 +908,8 @@ describe("status and doctor commands", () => {
         resolved_at: "2026-09-27T00:00:00Z",
         core: { version: "0.2.0", source: "local-core", sha256: hashLocalCore(core) },
         adapters: [
-          { id: "technology/java", version: "0.1.0", source: "local-core", sha256: hashLocalTree(core, ["adapters/technology/java"]) },
-          { id: "technology/java-alt", version: "0.1.0", source: "local-core", sha256: hashLocalTree(core, ["adapters/technology/java-alt"]) },
+          { id: "technology/java", version: "0.2.0", source: "local-core", sha256: hashLocalTree(core, ["adapters/technology/java"]) },
+          { id: "technology/java-alt", version: "0.2.0", source: "local-core", sha256: hashLocalTree(core, ["adapters/technology/java-alt"]) },
         ],
         generators: [],
       }));

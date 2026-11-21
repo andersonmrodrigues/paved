@@ -1,0 +1,8 @@
+# expect-error: must NOT have fewer than 1 items
+apiVersion: paved/v1
+kind: ModelPolicy
+roles:
+  explorer: [session]
+  implementer: []
+  reviewer: [session]
+  mechanical: [session]

@@ -38,8 +38,13 @@ function record(run: Run, findings: ReviewFinding[]): { path: string; digest: st
   const path = join(projectRoot, reviewRecordPath(id));
   mkdirSync(join(path, ".."), { recursive: true });
   writeFileSync(path, stringify({
-    apiVersion: "paved/v1", kind: "ChangeReview", run: id, reviewer: { agent: "test reviewer", isolated: true },
-    reviewed: reviewedState(projectRoot, run), passes: ["rules", "diff", "change"], findings,
+    apiVersion: "paved/v1", kind: "ChangeReviewBundle", run: id,
+    reviewed: reviewedState(projectRoot, run),
+    reviews: (["Skeptic", "Architect", "Minimalist"] as const).map((lens, index) => ({
+      reviewer: { agent: `test reviewer ${index + 1}`, isolated: true, lens },
+      passes: ["rules", "diff", "change"],
+      findings: index === 0 ? findings : [],
+    })),
   }));
   return { path, digest: createHash("sha256").update(readFileSync(path)).digest("hex") };
 }
@@ -47,6 +52,27 @@ function record(run: Run, findings: ReviewFinding[]): { path: string; digest: st
 const gate = (run: Run, evidence: string) => review({ run, projectRoot, coreRoot, evidence } as unknown as PhaseContext);
 
 describe("review gate proof", () => {
+  it("rejects duplicate reviewer identities across required independent lenses", async () => {
+    const run = inReview();
+    const path = join(projectRoot, reviewRecordPath(id));
+    mkdirSync(join(path, ".."), { recursive: true });
+    writeFileSync(path, stringify({
+      apiVersion: "paved/v1", kind: "ChangeReviewBundle", run: id,
+      reviewed: reviewedState(projectRoot, run),
+      reviews: ["Skeptic", "Architect", "Minimalist"].map((lens) => ({
+        reviewer: { agent: "same reviewer", isolated: true, lens },
+        passes: ["rules", "diff", "change"],
+        findings: [],
+      })),
+    }));
+
+    const outcome = await gate(run, path);
+
+    assert.equal(outcome.kind, "blocked");
+    assert.ok(outcome.kind === "blocked");
+    assert.equal(outcome.code, "PAVED_REVIEW_DUPLICATE_REVIEWER");
+  });
+
   it("refuses a blocking finding with no proof or with proof short of execution", async () => {
     const run = inReview();
     const { path } = record(run, [

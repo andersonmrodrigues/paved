@@ -16,7 +16,7 @@ function safe(root, path) {
 export function hashLocalFile(root, path) {
     return sha256(readFileSync(safe(root, path)));
 }
-export function hashLocalTree(root, paths) {
+export function hashLocalTree(root, paths, excludeFile) {
     const entries = [];
     function collect(path) {
         const full = safe(root, path);
@@ -29,12 +29,13 @@ export function hashLocalTree(root, paths) {
                 collect(`${path}/${child}`);
             return;
         }
-        entries.push(`${path.replace(/\\/g, "/")}\0${hashLocalFile(root, path)}`);
+        if (!excludeFile?.(path))
+            entries.push(`${path.replace(/\\/g, "/")}\0${hashLocalFile(root, path)}`);
     }
     for (const path of [...paths].sort())
         collect(path);
     return sha256(entries.join("\n"));
 }
 export function hashLocalCore(root) {
-    return hashLocalTree(root, LOCAL_CORE_DIGEST_PATHS);
+    return hashLocalTree(root, LOCAL_CORE_DIGEST_PATHS, (path) => path.startsWith("core/skills/") && !path.endsWith(".yaml"));
 }

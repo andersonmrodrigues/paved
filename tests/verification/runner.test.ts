@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
-import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -11,6 +12,7 @@ import { runVerification, signalProcessGroup, verificationEnvironment } from "..
 import { dispatchCli } from "../../cli/runtime.ts";
 import { exitCode, primaryCategory, type CommandResult } from "../../cli/result.ts";
 import { schemas } from "../helpers.ts";
+import { doneTask, startTask } from "../../cli/lib/task-handoff.ts";
 
 const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const FIXTURE = join(ROOT, "tests/cli/fixtures/verification");
@@ -109,6 +111,203 @@ async function runCli(projectRoot: string, extra: readonly string[] = []): Promi
 }
 
 describe("verification runner", () => {
+  it("attaches actual verification evidence to an explicitly selected task", async () => {
+    const project = sandbox("task-evidence");
+    try {
+      const task = startTask(project, "work", "Make a change");
+      const result = await runCli(project, ["--task", "work"]);
+      assert.equal(result.status, "success", JSON.stringify(result));
+      const evidence = (result.data as { evidence: string[] }).evidence;
+      assert.ok(evidence.length > 0);
+      const content = readFileSync(task.path, "utf8");
+      assert.match(content, /## Evidence\n[\s\S]*Verification success:[\s\S]*## Next step/);
+      for (const path of evidence) assert.ok(content.includes(path));
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("does not run checks when the selected task is missing", async () => {
+    const project = sandbox("task-missing");
+    try {
+      const result = await runCli(project, ["--task", "missing"]);
+      assert.equal(result.status, "failed");
+      assert.equal(result.diagnostics[0]?.code, "PAVED_VERIFY_TASK_INVALID");
+      assert.equal(existsSync(markerPath(project)), false);
+      assert.equal(evidenceFiles(project).length, 0);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("records failed verification as failed in the task", async () => {
+    const project = sandbox("task-failed-evidence");
+    try {
+      const task = startTask(project, "work", "Make a change");
+      writeProfile(project, ["project.verify.failure"]);
+      const result = await runCli(project, ["--task", "work"]);
+      assert.equal(result.status, "failed");
+      const evidence = (result.data as { evidence: string[] }).evidence;
+      assert.ok(evidence.length > 0);
+      const content = readFileSync(task.path, "utf8");
+      assert.match(content, /## Evidence\n[\s\S]*Verification failed:/);
+      assert.ok(content.includes(evidence[0]!));
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("does not run checks for a completed task", async () => {
+    const project = sandbox("task-done");
+    try {
+      startTask(project, "work", "Make a change");
+      doneTask(project, "work", "Finished");
+      const result = await runCli(project, ["--task", "work"]);
+      assert.equal(result.status, "failed");
+      assert.equal(result.diagnostics[0]?.code, "PAVED_VERIFY_TASK_INVALID");
+      assert.equal(existsSync(markerPath(project)), false);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("returns failure and preserves evidence when attaching it to a locked task fails", async () => {
+    const project = sandbox("task-locked");
+    try {
+      const task = startTask(project, "work", "Make a change");
+      mkdirSync(`${task.path}.lock`);
+      const result = await runCli(project, ["--task", "work"]);
+      assert.equal(result.status, "failed");
+      assert.equal(result.diagnostics.at(-1)?.code, "PAVED_VERIFY_TASK_EVIDENCE_FAILED");
+      const evidence = (result.data as { evidence: string[] }).evidence;
+      assert.ok(evidence.length > 0);
+      assert.ok(existsSync(join(project, evidence[0]!)));
+      assert.equal(readFileSync(task.path, "utf8"), task.content);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("runs checks selected by untracked changes with verify --changed", async () => {
+    const project = sandbox("changed-untracked");
+    try {
+      execFileSync("git", ["init", "-q", project]);
+      const path = join(project, ".paved/verification/checks/marker.yaml");
+      const check = parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+      writeFileSync(path, stringify({ ...check, applies_to: ["src/**"] }));
+      writeFileSync(join(project, ".paved/verification/checks/docs.yaml"), stringify({
+        ...check, id: "project.verify.docs", applies_to: ["docs/**"],
+      }));
+      writeProfile(project, ["project.verify.marker", "project.verify.docs"]);
+      execFileSync("git", ["-C", project, "add", "-f", ".paved"]);
+      execFileSync("git", ["-C", project, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "baseline"]);
+      mkdirSync(join(project, "src"), { recursive: true });
+      writeFileSync(join(project, "src", "main.js"), "export const value = 1;\n");
+
+      const result = await runCli(project, ["--changed"]);
+
+      assert.equal(result.status, "success", JSON.stringify(result));
+      assert.equal(existsSync(markerPath(project)), true);
+      assert.equal(evidenceFiles(project).length, 1);
+      assert.deepEqual((result.data as { checks: { id: string; status: string }[] }).checks.map(({ id, status }) => [id, status]),
+        [["project.verify.marker", "passed"], ["project.verify.docs", "skipped"]]);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("runs all checks when verification configuration changes", async () => {
+    const project = sandbox("changed-configuration");
+    try {
+      execFileSync("git", ["init", "-q", project]);
+      const path = join(project, ".paved/verification/checks/marker.yaml");
+      const check = parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+      writeFileSync(path, stringify({ ...check, applies_to: ["src/**"] }));
+      execFileSync("git", ["-C", project, "add", "-f", ".paved"]);
+      execFileSync("git", ["-C", project, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "baseline"]);
+      writeFileSync(path, stringify({ ...check, applies_to: ["src/**"], purpose: "Updated verification." }));
+
+      const result = await runCli(project, ["--changed"]);
+
+      assert.equal(result.status, "success", JSON.stringify(result));
+      assert.equal(existsSync(markerPath(project)), true);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("includes committed branch changes when given a base", async () => {
+    const project = sandbox("changed-branch");
+    try {
+      execFileSync("git", ["init", "-q", "-b", "main", project]);
+      const path = join(project, ".paved/verification/checks/marker.yaml");
+      const check = parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+      writeFileSync(path, stringify({ ...check, applies_to: ["src/**"] }));
+      mkdirSync(join(project, "src"), { recursive: true });
+      writeFileSync(join(project, "src/main.js"), "export const value = 1;\n");
+      execFileSync("git", ["-C", project, "add", "-f", ".paved", "src"]);
+      execFileSync("git", ["-C", project, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "baseline"]);
+      execFileSync("git", ["-C", project, "checkout", "-qb", "feature"]);
+      writeFileSync(join(project, "src/main.js"), "export const value = 2;\n");
+      execFileSync("git", ["-C", project, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qam", "change"]);
+
+      const result = await runCli(project, ["--changed", "--base", "main"]);
+
+      assert.equal(result.status, "success", JSON.stringify(result));
+      assert.equal(existsSync(markerPath(project)), true);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed when the changed-file scope cannot be determined", async () => {
+    const project = mkdtempSync(join(tmpdir(), "paved-changed-nongit-"));
+    try {
+      cpSync(FIXTURE, project, { recursive: true });
+
+      const result = await runCli(project, ["--changed"]);
+
+      assert.equal(result.status, "failed");
+      assert.equal(result.diagnostics[0]?.code, "PAVED_VERIFY_CHANGE_SCOPE_UNAVAILABLE");
+      assert.equal(existsSync(markerPath(project)), false);
+      assert.deepEqual(evidenceFiles(project), []);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("uses project-relative change paths inside a larger Git repository", async () => {
+    const root = mkdtempSync(join(tmpdir(), "paved-nested-git-"));
+    try {
+      execFileSync("git", ["init", "-q", root]);
+      const project = join(root, "nested");
+      cpSync(FIXTURE, project, { recursive: true });
+      chmodSync(join(project, ".paved/tools/marker.mjs"), 0o755);
+      const path = join(project, ".paved/verification/checks/marker.yaml");
+      const check = parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+      writeFileSync(path, stringify({ ...check, applies_to: ["src/**"] }));
+      execFileSync("git", ["-C", root, "add", "-f", "nested/.paved"]);
+      execFileSync("git", ["-C", root, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "baseline"]);
+      mkdirSync(join(project, "src"), { recursive: true });
+      writeFileSync(join(project, "src/main.js"), "export const value = 1;\n");
+
+      const result = await runCli(project, ["--changed"]);
+
+      assert.equal(result.status, "success", JSON.stringify(result));
+      assert.equal(existsSync(markerPath(project)), true);
+      rmSync(join(project, "src/main.js"));
+      rmSync(markerPath(project));
+      writeFileSync(path, stringify({ ...check, applies_to: ["src/**"], purpose: "Changed configuration." }));
+
+      const afterConfigChange = await runCli(project, ["--changed"]);
+
+      assert.equal(afterConfigChange.status, "success", JSON.stringify(afterConfigChange));
+      assert.equal(existsSync(markerPath(project)), true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("reports a missing profile and never scans or runs unlisted scripts", async () => {
     const project = sandbox("missing-profile");
     try {

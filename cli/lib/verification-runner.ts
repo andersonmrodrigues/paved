@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, realpathSync, type Stats } from "node:fs";
+import { dirname, join, sep } from "node:path";
 import { parse as parseYaml, stringify } from "yaml";
 import { createDiagnostic, type Diagnostic } from "../result.ts";
 import { globRegex } from "./adapters.ts";
@@ -329,18 +329,126 @@ function contentRoots(input: VerificationRunInput): Roots {
   };
 }
 
-function currentRevision(projectRoot: string): { revision: string; uncommitted: boolean; worktreeSha?: string } {
-  const git = (args: string[]) => spawnSync("git", args, { cwd: projectRoot, shell: false, encoding: "utf8" });
-  const revision = git(["rev-parse", "HEAD"]);
-  if (revision.status !== 0 || !revision.stdout.trim()) {
-    return { revision: "unversioned", uncommitted: false };
+export interface WorktreeFingerprint {
+  readonly revision: string;
+  readonly uncommitted: boolean;
+  readonly worktreeSha?: string;
+}
+
+function excludedFingerprintPath(path: string): boolean {
+  return path === ".git" || path.startsWith(`.git${sep}`)
+    || path === ".paved/generated" || path.startsWith(`.paved${sep}generated${sep}`)
+    || path === ".paved/tasks" || path.startsWith(`.paved${sep}tasks${sep}`)
+    || path === ".paved-operation-lock" || path.startsWith(`.paved-operation-lock${sep}`);
+}
+
+function stableContent(path: string | Buffer, before: Stats): Buffer {
+  let content: Buffer;
+  if (before.isSymbolicLink()) {
+    content = readlinkSync(path, { encoding: "buffer" });
+  } else if (before.isFile()) {
+    if (typeof constants.O_NOFOLLOW !== "number") throw new Error("Cannot safely open a file.");
+    const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const opened = fstatSync(fd);
+      if (opened.dev !== before.dev || opened.ino !== before.ino) throw new Error("File changed while reading.");
+      content = readFileSync(fd);
+      const after = fstatSync(fd);
+      if (opened.size !== after.size || opened.mtimeMs !== after.mtimeMs || opened.ctimeMs !== after.ctimeMs) {
+        throw new Error("File changed while reading.");
+      }
+    } finally {
+      closeSync(fd);
+    }
+  } else {
+    throw new Error("Cannot fingerprint a non-file.");
   }
-  const status = git(["status", "--porcelain=v1"]);
-  const uncommitted = status.status === 0 && status.stdout.trim().length > 0;
-  if (!uncommitted) return { revision: revision.stdout.trim(), uncommitted };
-  const diff = git(["diff", "HEAD", "--binary"]);
-  const material = `${status.stdout}\n${diff.stdout}`;
-  return { revision: revision.stdout.trim(), uncommitted, worktreeSha: sha(material) };
+  const after = lstatSync(path);
+  if (before.dev !== after.dev || before.ino !== after.ino || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) {
+    throw new Error("File changed while reading.");
+  }
+  return content;
+}
+
+function fingerprintUnversionedTree(projectRoot: string): WorktreeFingerprint {
+  const digest = createHash("sha256");
+  digest.update("\0root\0").update(realpathSync(projectRoot));
+  const walk = (directory: string, prefix: string): void => {
+    const before = lstatSync(directory);
+    if (!before.isDirectory()) throw new Error("Cannot fingerprint a non-directory.");
+    for (const name of readdirSync(directory).sort()) {
+      const path = prefix ? `${prefix}/${name}` : name;
+      if (excludedFingerprintPath(path.split("/").join(sep))) continue;
+      const absolute = join(directory, name);
+      const entry = lstatSync(absolute);
+      const normalized = path.split(sep).join("/");
+      if (entry.isDirectory()) {
+        digest.update("\0directory\0").update(String(Buffer.byteLength(normalized))).update("\0").update(normalized)
+          .update("\0").update(String(entry.mode)).update("\0");
+        walk(absolute, path);
+      } else {
+        const content = stableContent(absolute, entry);
+        digest.update("\0entry\0").update(String(Buffer.byteLength(normalized))).update("\0").update(normalized)
+          .update("\0").update(String(entry.mode)).update("\0").update(String(content.length)).update("\0").update(content);
+      }
+    }
+    const after = lstatSync(directory);
+    if (before.dev !== after.dev || before.ino !== after.ino || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) {
+      throw new Error("Directory changed while reading.");
+    }
+  };
+  walk(projectRoot, "");
+  return { revision: "unversioned", uncommitted: true, worktreeSha: digest.digest("hex") };
+}
+
+export function fingerprintWorktree(projectRoot: string): WorktreeFingerprint {
+  const git = (args: string[]) => spawnSync("git", args, {
+    cwd: projectRoot, shell: false, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, LC_ALL: "C" },
+  });
+  const repository = git(["rev-parse", "--is-inside-work-tree"]);
+  if (repository.error) throw new Error("Cannot determine whether the project is in Git.");
+  if (repository.status !== 0) {
+    if (!repository.stderr?.toString("utf8").includes("not a git repository")) {
+      throw new Error("Cannot determine whether the project is in Git.");
+    }
+    return fingerprintUnversionedTree(projectRoot);
+  }
+  if (repository.stdout?.toString("utf8").trim() !== "true") throw new Error("The project is not a Git working tree.");
+  const head = git(["rev-parse", "HEAD"]);
+  if (head.error) throw new Error("Cannot determine the Git revision.");
+  const hasHead = head.status === 0 && Boolean(head.stdout?.toString("utf8").trim());
+  if (!hasHead) {
+    const branch = git(["symbolic-ref", "-q", "HEAD"]);
+    if (branch.error || branch.status !== 0 || !branch.stdout?.toString("utf8").trim()) {
+      throw new Error("Cannot determine the Git revision.");
+    }
+  }
+  const revision = hasHead ? head.stdout!.toString("utf8").trim() : "unversioned";
+  const pathspec = ["--", ".", ":(exclude).paved/generated", ":(exclude).paved/tasks", ":(exclude).paved-operation-lock"];
+  const status = git(["status", "--porcelain=v1", "--untracked-files=all", ...pathspec]);
+  const staged = git(["diff", "--cached", "--binary", "--no-ext-diff", "--no-textconv", ...pathspec]);
+  const unstaged = git(["diff", "--binary", "--no-ext-diff", "--no-textconv", ...pathspec]);
+  const untracked = git(["ls-files", "--others", "--exclude-standard", "-z", ...pathspec]);
+  if (status.status !== 0 || staged.status !== 0 || unstaged.status !== 0 || untracked.status !== 0
+    || !status.stdout || !staged.stdout || !unstaged.stdout || !untracked.stdout) {
+    throw new Error("Cannot determine the working tree fingerprint.");
+  }
+  if (status.stdout.length === 0) return { revision, uncommitted: false };
+  const digest = createHash("sha256").update("\0root\0").update(realpathSync(projectRoot))
+    .update(status.stdout).update("\n").update(staged.stdout).update("\n").update(unstaged.stdout);
+  const entries = untracked.stdout;
+  for (let start = 0; start < entries.length;) {
+    const end = entries.indexOf(0, start);
+    if (end < 0 || end === start) throw new Error("Cannot parse untracked file paths.");
+    const name = entries.subarray(start, end);
+    const path = Buffer.concat([Buffer.from(`${projectRoot}${sep}`), name]);
+    const before = lstatSync(path);
+    const content = stableContent(path, before);
+    digest.update("\0untracked\0").update(String(name.length)).update("\0").update(name)
+      .update("\0").update(String(before.mode)).update("\0").update(String(content.length)).update("\0").update(content);
+    start = end + 1;
+  }
+  return { revision, uncommitted: true, worktreeSha: digest.digest("hex") };
 }
 
 function collectChunk(chunks: Buffer[], next: Buffer, state: { bytes: number; truncated: boolean }): void {
@@ -506,9 +614,10 @@ function buildEvidence(args: {
   checks: readonly CheckContract[];
   evidenceChecks: EvidenceRecord["checks"];
   outputLogs: readonly { relativePath: string; content: string }[];
+  change: WorktreeFingerprint;
 }): { record: EvidenceRecord; evaluation: ReturnType<typeof evaluateCompletion> } {
   const now = new Date().toISOString();
-  const change = currentRevision(args.sourceRoot);
+  const change = args.change;
   const id = evidenceId();
   // A Check the change does not concern is on record as skipped, but neither required nor counted.
   const ran = args.evidenceChecks.filter((check) => check.status !== "skipped");
@@ -1002,7 +1111,19 @@ async function runVerificationUnlocked(input: VerificationRunInput): Promise<Ver
   const { profile, profilePath, checks, tools, implementations, diagnostics } = resolved;
 
   const sourceRoot = input.sourceRoot ?? input.projectRoot;
-  const revision = currentRevision(sourceRoot).revision;
+  const fingerprintFailure = (message: string): VerificationRunResult => ({
+    status: "failed", checks: [], evidenceFiles: [], diagnostics: [...diagnostics, diagnostic({
+      code: "PAVED_VERIFY_CHANGE_UNPROVEN", category: "verification", component: "verification.evidence",
+      message, remediation: "Restore a readable, stable working tree and run verification again.",
+    })],
+  });
+  let change: WorktreeFingerprint;
+  try {
+    change = fingerprintWorktree(sourceRoot);
+  } catch {
+    return fingerprintFailure("Cannot fingerprint the working tree before verification.");
+  }
+  const revision = change.revision;
   // Resolve the complete set first: an ask or deny on a later Check must not partially run verification.
   input.beforeRun?.(checks.filter((check) => irrelevance(check, input.changedFiles) === undefined).flatMap((check) => {
     const selected = resolveTool(check.tool, tools, implementations, "local");
@@ -1021,6 +1142,15 @@ async function runVerificationUnlocked(input: VerificationRunInput): Promise<Ver
     if (result.log) logs.push(result.log);
   }
 
+  try {
+    const after = fingerprintWorktree(sourceRoot);
+    if (after.revision !== change.revision || after.uncommitted !== change.uncommitted || after.worktreeSha !== change.worktreeSha) {
+      return fingerprintFailure("The working tree changed during verification.");
+    }
+  } catch {
+    return fingerprintFailure("Cannot fingerprint the working tree after verification.");
+  }
+
   const profileSha = sha(readFileSync(profilePath));
   const built = buildEvidence({
     projectRoot: input.projectRoot,
@@ -1032,6 +1162,7 @@ async function runVerificationUnlocked(input: VerificationRunInput): Promise<Ver
     checks,
     evidenceChecks,
     outputLogs: logs,
+    change,
   });
   const definitions = new Map(checks.map((check) => [check.id, check]));
   const evidenceFiles = writeValidatedEvidence({

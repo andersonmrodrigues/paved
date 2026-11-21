@@ -61,6 +61,17 @@ Workflow evolution also checks the effective contract after fragment composition
   breaking-change rules. Do not add defaults or policies to built-ins merely to exercise
   a new optional schema field. Rebuild plugin snapshots from their sources.
 
+## v2 to v3 consumer migration
+
+`paved update` must not infer migration readiness from a major-version change alone. It
+plans the v2 run archive only when the target Core contains
+`core/migrations/v2-to-v3.ready` with the exact contents
+`v3-routing-and-gates-verified`. Add that marker only after v3 routing and gates are
+implemented and their contract tests pass. Without it, a v2-to-v3 update remains blocked
+and leaves the consumer manifest, lock and run files unchanged. When enabled, the update
+stages the full `.paved/` state, checks archive path conflicts, verifies archived run bytes
+before removing the staged originals, and swaps the staged state only after validation.
+
 ## Releasing
 
 Releases go through a pull request; nothing pushes to `main` directly.

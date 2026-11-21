@@ -1,7 +1,7 @@
 apiVersion: paved/v1
 kind: Tool
 id: core.change-request.merge
-version: 0.1.0
+version: 0.2.0
 title: Merge a change request
 purpose: >
   Merge one change request into its target branch, only if its head is still the exact
@@ -21,6 +21,11 @@ environments:
 inputs:
   - name: change
     description: Number, location or branch of the change request to merge.
+    required: true
+    pattern: ^(?!-)[^\s]+$
+    type: string
+  - name: target
+    description: Exact target branch whose patch was verified and reviewed.
     required: true
     pattern: ^(?!-)[^\s]+$
     type: string
@@ -72,4 +77,4 @@ evidence:
     - output-digest
 examples:
   - description: Merge change request 42 only while its head is the verified revision.
-    inputs: { change: "42", head: 4f2c9e1b7a3d8c21e5f60a9b2d4c6e8f01a3b5c7 }
+    inputs: { change: "42", target: main, head: 4f2c9e1b7a3d8c21e5f60a9b2d4c6e8f01a3b5c7 }

@@ -1,15 +1,79 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { applyProjection, metadata, planProjection, removeProjection, renderCommand } from "../../integrations/shared/projection.ts";
 import { AGENT_COMMANDS } from "../../integrations/shared/commands.ts";
+import { loadCanonicalSkills, skillResources } from "../../integrations/shared/catalog.ts";
 import { at } from "../helpers.ts";
 
 const coreRoot = at(".");
 
 describe("agent projections", () => {
+  it("copies supporting resources for both hosts and preserves edits and unlisted resources", () => {
+    for (const agent of ["codex", "claude-code"] as const) {
+      const project = mkdtempSync(join(coreRoot, ".paved-projection-test-"));
+      try {
+        const plan = planProjection(agent, project, coreRoot);
+        const prefix = agent === "codex" ? "" : "skills";
+        const resource = join(prefix, "paved", "references", "playbook.md");
+        assert.ok(plan.files.some((file) => file.relativePath === resource));
+        applyProjection(plan);
+        for (const skill of loadCanonicalSkills(coreRoot)) {
+          for (const path of skillResources(skill)) {
+            assert.deepEqual(
+              readFileSync(join(plan.integration.root, prefix, skill.name, path)),
+              readFileSync(join(skill.directory, path)),
+            );
+          }
+        }
+        assert.equal(applyProjection(plan).changed, 0);
+        const extra = join(plan.integration.root, prefix, "paved", "references", "human.md");
+        writeFileSync(extra, "local notes\n");
+        const changed = {
+          ...plan,
+          files: plan.files.map((file) => file.relativePath === resource
+            ? { ...file, content: `${file.content}\nUpdated reference.\n` }
+            : file),
+        };
+        // A generated resource update is safe only while its previous digest matches.
+        // Plan a fresh source digest by updating its generated resource index too.
+        const index = changed.files.find((file) => file.relativePath === ".paved-resources.json")!;
+        assert.ok(index);
+        const data = JSON.parse(index.content);
+        data.resources[resource.split("\\").join("/")] = createHash("sha256")
+          .update(changed.files.find((file) => file.relativePath === resource)!.content).digest("hex");
+        const updated = { ...changed, files: changed.files.map((file) => file === index
+          ? { ...file, content: `${JSON.stringify(data, null, 2)}\n` } : file) };
+        applyProjection(updated);
+        assert.match(readFileSync(join(plan.integration.root, resource), "utf8"), /Updated reference/);
+        writeFileSync(join(plan.integration.root, resource), "human-edited reference\n");
+        assert.throws(() => applyProjection(plan), /user-owned/);
+        removeProjection(updated);
+        assert.equal(readFileSync(join(plan.integration.root, resource), "utf8"), "human-edited reference\n");
+        assert.equal(readFileSync(extra, "utf8"), "local notes\n");
+      } finally {
+        rmSync(project, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("preflights human-owned supporting files before any projection writes", () => {
+    const project = mkdtempSync(join(coreRoot, ".paved-projection-test-"));
+    try {
+      const plan = planProjection("codex", project, coreRoot);
+      const target = join(plan.integration.root, "paved", "references", "playbook.md");
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, "human reference\n");
+      assert.throws(() => applyProjection(plan), /user-owned/);
+      assert.equal(existsSync(join(plan.integration.root, "paved", "SKILL.md")), false);
+      assert.equal(readFileSync(target, "utf8"), "human reference\n");
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
   it("keeps update local when no host integration is selected", () => {
     const update = AGENT_COMMANDS.find((command) => command.name === "update")!;
     const text = renderCommand(update, {

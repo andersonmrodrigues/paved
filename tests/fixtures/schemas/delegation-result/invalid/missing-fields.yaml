@@ -1,0 +1,4 @@
+# expect-error: must have required property
+apiVersion: paved/v1
+kind: DelegationResult
+findings: []

@@ -1,0 +1,7 @@
+apiVersion: paved/v1
+kind: ModelPolicy
+roles:
+  explorer: [fast-model, session]
+  implementer: [session]
+  reviewer: [other-family-model, session]
+  mechanical: [cheap-model]

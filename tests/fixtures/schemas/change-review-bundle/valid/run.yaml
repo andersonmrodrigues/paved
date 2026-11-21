@@ -1,0 +1,17 @@
+apiVersion: paved/v1
+kind: ChangeReviewBundle
+run: intent-0123456789abcdef0123
+reviewed:
+  plan_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  source_sha256: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  evidence_sha256: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+reviews:
+  - reviewer: { agent: "Skeptic review agent", isolated: true, lens: Skeptic }
+    passes: [rules, diff, change]
+    findings: []
+  - reviewer: { agent: "Architect review agent", isolated: true, lens: Architect }
+    passes: [rules, diff, change]
+    findings: []
+  - reviewer: { agent: "Minimalist review agent", isolated: true, lens: Minimalist }
+    passes: [rules, diff, change]
+    findings: []

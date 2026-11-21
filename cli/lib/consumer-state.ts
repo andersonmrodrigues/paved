@@ -17,6 +17,7 @@ import { DecisionStoreError, listDecisions } from "./decisions/store.ts";
 import type { Decision } from "./decisions/record.ts";
 import { readActiveRuntimeSelection, readRuntimeSelection, type RuntimeLock } from "./runtime-lock.ts";
 import { planDocumentMigrations, type PlannedDocumentMigration } from "./document-migrations.ts";
+import { planV2ToV3Migration, type V2ToV3MigrationPlan } from "./core-migration.ts";
 
 export interface InspectConsumerInput {
   readonly projectRoot: string;
@@ -62,6 +63,7 @@ export interface ConsumerUpdatePlan {
   readonly plannedWrites: readonly string[];
   readonly plannedGeneratorIds: readonly string[];
   readonly plannedMigrations: readonly PlannedDocumentMigration[];
+  readonly coreMigration?: V2ToV3MigrationPlan;
   readonly currentLock?: LockDocument;
   readonly nextLock?: UpdateLockDocument;
   readonly selectedAdapters: readonly string[];
@@ -943,7 +945,22 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
 
   diagnostics.push(...inspectOverrides(input.projectRoot, input.coreRoot, manifest.adapters?.map((adapter) => adapter.id) ?? []));
 
-  if (manifest.paved?.core && !compatible(core.version, manifest.paved.core)) {
+  const compatibility = candidateCompatibility(lockResult.lock.core?.version, core.version);
+  let coreMigration: V2ToV3MigrationPlan | undefined;
+  try {
+    if (lockResult.lock.core?.version) {
+      coreMigration = planV2ToV3Migration(input.projectRoot, lockResult.lock.core.version, core.version, input.coreRoot);
+    }
+  } catch (error) {
+    diagnostics.push(diagnostic({
+      code: "PAVED_UPDATE_MIGRATION_PREFLIGHT_FAILED",
+      component: "cli.update",
+      category: "config",
+      message: error instanceof Error ? error.message : "The v2 to v3 migration cannot be planned safely.",
+      remediation: "Resolve the archive conflict or repair the project manifest before updating.",
+    }));
+  }
+  if (!coreMigration && manifest.paved?.core && !compatible(core.version, manifest.paved.core)) {
     diagnostics.push(diagnostic({
       code: "PAVED_MANIFEST_CORE_INCOMPATIBLE",
       component: "consumer.manifest",
@@ -951,8 +968,6 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
       remediation: "Use a compatible local Core. Remote Core resolution is not supported by this update command.",
     }));
   }
-
-  const compatibility = candidateCompatibility(lockResult.lock.core?.version, core.version);
   // A runtime upgrade is staged by the launcher: it verifies and activates the new
   // runtime, which then moves the lock here inside the same update transaction.
   let activeRuntime: RuntimeLock | undefined;
@@ -963,7 +978,7 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
     message: `The lock pins runtime ${nextRuntime.version}; Core ${core.version} cannot be activated through a local content update.`,
     remediation: "Run update through the Paved launcher so it verifies and activates a matching runtime before the lock changes.",
   }));
-  if (compatibility === "unknown") diagnostics.push(diagnostic({ code: "PAVED_UPDATE_COMPATIBILITY_UNKNOWN",
+  if (compatibility === "unknown" && !coreMigration) diagnostics.push(diagnostic({ code: "PAVED_UPDATE_COMPATIBILITY_UNKNOWN",
     component: "cli.update", category: "resolution",
     message: `No local migration evidence proves Core ${lockResult.lock.core?.version} can update to ${core.version}.`,
     remediation: "Use a compatible Core patch or provide an explicit migration before updating." }));
@@ -982,7 +997,11 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
   try {
     const sources = discoverSources(input.sourceRoot ?? input.projectRoot);
     const detectedAdapters = detectAdapters(input.sourceRoot ?? input.projectRoot, loadAdapters(input.coreRoot), sources);
-    const selectedAdapters = (manifest.adapters ?? []).map((adapter) => ({ id: adapter.id, version: adapter.version }));
+    const adapterRangeUpdates = new Map((coreMigration?.adapterRangeUpdates ?? []).map((update) => [update.id, update.nextRange]));
+    const selectedAdapters = (manifest.adapters ?? []).map((adapter) => ({
+      id: adapter.id,
+      version: adapterRangeUpdates.get(adapter.id) ?? adapter.version,
+    }));
     const resolved = resolveAdapters(detectedAdapters, selectedAdapters, core.version);
     resolvedAdapters = resolved.adapters;
     for (const item of resolved.diagnostics) {
@@ -1014,10 +1033,11 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
       changed: false,
       compatibility: diagnostics.some((item) => item.code === "PAVED_UPDATE_MIGRATION_REQUIRED") ? "migration-required"
         : diagnostics.some((item) => item.code === "PAVED_MANIFEST_CORE_INCOMPATIBLE" || item.code === "PAVED_ADAPTER_INCOMPATIBLE") ? "incompatible"
-        : compatibility,
+        : coreMigration === undefined ? compatibility : "compatible",
       plannedWrites: [],
       plannedGeneratorIds: [],
       plannedMigrations: documentCheck.migrations,
+      ...(coreMigration === undefined ? {} : { coreMigration }),
       currentLock: lockResult.lock,
       selectedAdapters: manifest.adapters?.map((adapter) => adapter.id).sort() ?? [],
       resolvedAdapters: resolvedAdapters.map((detection) => detection.adapter.id).sort(),
@@ -1069,7 +1089,8 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
   const changedAdapterIds = [...new Set([...priorAdapters.keys(), ...nextAdapters.keys()])]
     .filter((id) => entryChanged(priorAdapters.get(id), nextAdapters.get(id))).sort();
   const plannedGeneratorIds = impactedGenerators(generators, [...generatorPlan.changedIds, ...staleIds], changedAdapterIds, input.projectRoot);
-  const changed = lockChanged || plannedGeneratorIds.length > 0 || documentCheck.migrations.length > 0;
+  const modelsConfigMissing = !existsSync(join(input.projectRoot, ".paved/models.yaml"));
+  const changed = lockChanged || plannedGeneratorIds.length > 0 || documentCheck.migrations.length > 0 || coreMigration !== undefined || modelsConfigMissing;
 
   return {
     projectRoot: input.projectRoot,
@@ -1078,13 +1099,21 @@ export function planConsumerUpdate(input: PlanConsumerUpdateInput): ConsumerUpda
     changed,
     compatibility: diagnostics.some((item) => item.code === "PAVED_UPDATE_MIGRATION_REQUIRED") ? "migration-required"
       : diagnostics.some((item) => item.code === "PAVED_MANIFEST_CORE_INCOMPATIBLE" || item.code === "PAVED_ADAPTER_INCOMPATIBLE") ? "incompatible"
-      : compatibility,
+      : coreMigration === undefined ? compatibility : "compatible",
     plannedWrites: [
       ...(lockChanged ? [".paved/paved.lock"] : []),
       ...documentCheck.migrations.map((item) => item.path),
+      ...(coreMigration === undefined ? [] : [
+        ".paved/manifest.yaml",
+        ...(coreMigration.archivedRunFiles.length > 0
+          ? [".paved/generated/runs", ".paved/archive/v2/generated/runs", ...coreMigration.archivedRunFiles]
+          : []),
+      ]),
+      ...(modelsConfigMissing ? [".paved/models.yaml"] : []),
     ],
     plannedGeneratorIds,
     plannedMigrations: documentCheck.migrations,
+    ...(coreMigration === undefined ? {} : { coreMigration }),
     currentLock: lockResult.lock,
     nextLock,
     selectedAdapters: manifest.adapters?.map((adapter) => adapter.id).sort() ?? [],

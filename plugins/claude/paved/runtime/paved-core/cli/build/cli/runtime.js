@@ -17,11 +17,14 @@ import { previewHandler } from "./commands/preview.js";
 import { workbenchHandler } from "./commands/workbench.js";
 import { toolHandler } from "./commands/tool.js";
 import { delegationHandler } from "./commands/delegation.js";
+import { contextHandler } from "./commands/context.js";
+import { taskHandler } from "./commands/task.js";
+import { deliveryHandler } from "./commands/delivery.js";
 import { createDiagnostic, createResult } from "./result.js";
 import { CliPathError, resolveCoreRoot, resolveProjectRoot } from "./paths.js";
 import { assertAnswerIdentity, parseAnswerFlags, recordedIdentity } from "./lib/decisions/answers.js";
 import { reclaimedLockDiagnostics } from "./lib/operation-lock.js";
-export const COMMAND_NAMES = ["init", "status", "intent", "plan", "execute", "delegation", "test", "verify", "update", "doctor", "gardener", "review", "generate", "agent", "decision", "preview", "workbench", "tool"];
+export const COMMAND_NAMES = ["init", "status", "intent", "plan", "execute", "delegation", "test", "verify", "update", "doctor", "gardener", "review", "generate", "agent", "decision", "preview", "workbench", "tool", "context", "task", "delivery"];
 const STEP_COMMANDS = ["intent", "plan", "execute"];
 const COMMANDS = new Set(COMMAND_NAMES);
 const COMMON_VALUE_FLAGS = new Set(["--project"]);
@@ -34,7 +37,7 @@ const COMMAND_RULES = {
     status: { adapters: true, dryRun: false, noGenerate: false, selectors: false },
     doctor: { adapters: true, dryRun: false, noGenerate: false, selectors: false },
     gardener: { adapters: false, dryRun: true, noGenerate: false, selectors: true },
-    review: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
+    review: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
     test: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
     agent: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
     decision: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
@@ -42,6 +45,9 @@ const COMMAND_RULES = {
     workbench: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
     tool: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
     delegation: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
+    context: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
+    task: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
+    delivery: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
     intent: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
     plan: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
     execute: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
@@ -103,7 +109,7 @@ function commandUsage(command) {
     if (command !== undefined) {
         const selectors = command === "generate" ? " [generator-id...]" : command === "agent"
             ? " <operation> [integration|command-name]" : command === "preview" ? " <start|serve|status|wait|working|resolve|stop> <file.md|folder> [cursor|comment-id]" : command === "workbench" ? " <start|serve|status|stop>"
-            : command === "tool" ? " add <check-type> [label] [--scope <dir>] -- <executable> [args...]" : command === "delegation" ? " <plan|approve|ready|start|finish|recover|capabilities>" : command === "execute" ? " [request]" : "";
+            : command === "tool" ? " add <check-type> [label] [--scope <dir>] -- <executable> [args...]" : command === "delegation" ? " <plan|approve|ready|start|finish|recover|capabilities>" : command === "delivery" ? " <approve|merge>" : command === "execute" ? " [request]" : "";
         const commandOptions = [];
         const rule = COMMAND_RULES[command];
         if (rule.adapters)
@@ -114,6 +120,14 @@ function commandUsage(command) {
             commandOptions.push("  --no-generate    Initialize without running generators.");
         if (command === "test")
             commandOptions.push("  --inputs <json>  Supply declared Tool inputs as a JSON object.");
+        if (command === "verify")
+            commandOptions.push("  --changed [--base <ref>]  Scope checks to changed files, optionally including commits since the merge base.", "  --task <slug>  Attach verification evidence to an open task.");
+        if (command === "context")
+            commandOptions.push("  <topic-or-path> [--budget <bytes>]  Retrieve matching project context and rules.", "  refresh [--areas <area,...>]        Refresh stale context areas, or the named areas.");
+        if (command === "task")
+            commandOptions.push("  start|note|done <slug> <text>; resume <slug>  Manage a task handoff.");
+        if (command === "doctor")
+            commandOptions.push("  --quick         Return a read-only maintenance diagnosis.");
         if (command === "decision")
             commandOptions.push("  --decision <json>  Raise an agent-authored question.", "  --reason <text>   Explain a revision.");
         if (command === "preview")
@@ -132,14 +146,16 @@ function commandUsage(command) {
             commandOptions.push("  \"<request>\"      Start new work: initialize Paved if needed and record the request.", "  --approve        Record the user's approval of the current plan, given in the conversation.", "  --auto           Advance through every phase that needs no human input.", "  --run <id> --checkpoint --note <progress>  Record a finished part of the plan without leaving implementation.");
         if (command === "status")
             commandOptions.push("  --base <ref>     Report whether the latest completed run's evidence still matches the patch HEAD proposes against this target.", "  --stale-after <hours>  Warn about open runs without an event for this many hours (default 24).");
+        if (command === "delivery")
+            commandOptions.push("  --base <target> --change <id> --head <revision>  Bind the action to the exact target, change request and full head.", "  approve          Record the user's explicit approval after freshness and repository-host identity checks.", "  merge            Merge only with a matching patch-bound approval; the host must still accept the exact head.");
         if (command === "gardener")
             commandOptions.push("  debt             List tracked shortcut: comments.", "  correction --text <words> --evidence <path[:line]|commit|url>  Propose a person's correction, verbatim, as a project rule; --evidence is repeatable.");
         if (command === "review")
-            commandOptions.push("  --base <ref>     Review everything changed since the merge base with <ref>, including uncommitted and untracked files.", "  --range <a..b>   Review the commits in a range; a...b starts at their merge base.", "  --evidence <path>  Check the reviewer's ChangeReview against the change as it is now.");
+            commandOptions.push("  plan [--base <ref>]  Recommend review scope from the change; without a base, consider the working tree against HEAD.", "  --base <ref>     Review everything changed since the merge base with <ref>, including uncommitted and untracked files.", "  --range <a..b>   Review the commits in a range; a...b starts at their merge base.", "  --evidence <path>  Check the reviewer's ChangeReview against the change as it is now.");
         if (command === "tool")
             commandOptions.push("  --scope <dir>    Run the command from this project directory.", "  -- <executable> [args...]  The exact command; everything after -- is passed as argv.");
         if (command === "delegation")
-            commandOptions.push("  plan --run <id> --file <path>; approve --run <id> --approve after showing the exact graph to the user.", "  start --run <id> --task <id> --host <codex|claude-code> --model <name> --effort <value> --isolation <shared-workspace|isolated-worktree>.", "  finish --run <id> --task <id> --outcome <completed|blocked|failed> [--result <path>] [--usage <json>] [--changed-path <path> ...].", "  recover --run <id> --task <id> --confirmed-stopped --note <reason>; capabilities --host <codex|claude-code>.", "  Session ids are hashed; usage and isolated-worktree changed paths are host-reported.");
+            commandOptions.push("  check --file <path>  Validate a subagent result's format without a run.", "  plan --run <id> --file <path>; approve --run <id> --approve after showing the exact graph to the user.", "  start --run <id> --task <id> --host <codex|claude-code> --model <name> --effort <value> --isolation <shared-workspace|isolated-worktree>.", "  finish --run <id> --task <id> --outcome <completed|blocked|failed> [--result <path>] [--usage <json>] [--changed-path <path> ...].", "  recover --run <id> --task <id> --confirmed-stopped --note <reason>; capabilities --host <codex|claude-code>.", "  Session ids are hashed; usage and isolated-worktree changed paths are host-reported.");
         return [
             `Usage: paved ${command}${selectors} [options]`,
             "",
@@ -203,6 +219,9 @@ function parse(argv) {
     let json = false;
     let dryRun = false;
     let noGenerate = false;
+    let changed = false;
+    let quick = false;
+    let budget;
     let inputs;
     let run;
     let advance = false;
@@ -215,6 +234,7 @@ function parse(argv) {
     let note;
     let evidence;
     const adapters = [];
+    const areas = [];
     const selectors = [];
     const answers = [];
     let answeredBy;
@@ -228,6 +248,8 @@ function parse(argv) {
     const intentInputs = [];
     let scope;
     let base;
+    let change;
+    let head;
     let range;
     let text;
     const correctionEvidence = [];
@@ -257,6 +279,43 @@ function parse(argv) {
         if (token === "--version") {
             return { kind: "version", json };
         }
+        if (token === "--changed") {
+            if (command !== "verify")
+                return { kind: "error", result: usage(command ?? "cli", "--changed is supported only by verify.") };
+            changed = true;
+            continue;
+        }
+        if (token === "--quick") {
+            if (command !== "doctor")
+                return { kind: "error", result: usage(command ?? "cli", "--quick is supported only by doctor.") };
+            quick = true;
+            continue;
+        }
+        if (token === "--budget") {
+            if (command !== "context")
+                return { kind: "error", result: usage(command ?? "cli", "--budget is supported only by context.") };
+            const value = takeValue(argv, index, token, command);
+            if (typeof value !== "string")
+                return { kind: "error", result: value };
+            if (!/^[1-9]\d*$/.test(value) || Number(value) > 100000)
+                return { kind: "error", result: usage(command, "--budget must be between 1 and 100000 bytes.") };
+            budget = Number(value);
+            index += 1;
+            continue;
+        }
+        if (token === "--areas") {
+            if (command !== "context")
+                return { kind: "error", result: usage(command ?? "cli", "--areas is supported only by context refresh.") };
+            const value = takeValue(argv, index, token, command);
+            if (typeof value !== "string")
+                return { kind: "error", result: value };
+            const parsed = value.split(",").map((area) => area.trim());
+            if (parsed.some((area) => area.length === 0))
+                return { kind: "error", result: usage(command, "--areas must contain nonempty comma-separated area names.") };
+            areas.push(...parsed);
+            index += 1;
+            continue;
+        }
         if (COMMON_BOOLEAN_FLAGS.has(token)) {
             json = true;
             continue;
@@ -276,12 +335,25 @@ function parse(argv) {
             continue;
         }
         if (token === "--base") {
-            if (command !== "status" && command !== "review")
-                return { kind: "error", result: usage(command ?? "cli", "--base is supported only by status and review.") };
+            if (command !== "status" && command !== "review" && command !== "verify" && command !== "delivery")
+                return { kind: "error", result: usage(command ?? "cli", "--base is supported only by status, review, verify and delivery.") };
             const value = takeValue(argv, index, token, command);
             if (typeof value !== "string")
                 return { kind: "error", result: value };
             base = value;
+            index += 1;
+            continue;
+        }
+        if (token === "--change" || token === "--head") {
+            if (command !== "delivery")
+                return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by delivery.`) };
+            const value = takeValue(argv, index, token, command);
+            if (typeof value !== "string")
+                return { kind: "error", result: value };
+            if (token === "--change")
+                change = value;
+            else
+                head = value;
             index += 1;
             continue;
         }
@@ -386,8 +458,8 @@ function parse(argv) {
             continue;
         }
         if (["--task", "--file", "--host", "--model", "--effort", "--session", "--result", "--outcome", "--usage", "--selected-by", "--isolation", "--changed-path"].includes(token)) {
-            if (command !== "delegation")
-                return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by delegation.`) };
+            if (command !== "delegation" && !(command === "verify" && token === "--task"))
+                return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by delegation${token === "--task" ? " or verify" : ""}.`) };
             const value = takeValue(argv, index, token, command);
             if (typeof value !== "string")
                 return { kind: "error", result: value };
@@ -560,6 +632,9 @@ function parse(argv) {
         return { kind: "help", json };
     }
     const rule = COMMAND_RULES[command];
+    if (command === "verify" && base !== undefined && !changed) {
+        return { kind: "error", result: usage(command, "--base requires --changed.") };
+    }
     if (adapters.length > 0 && !rule.adapters) {
         return { kind: "error", result: usage(command, `Unknown flag for ${command}: --adapter.`) };
     }
@@ -583,6 +658,10 @@ function parse(argv) {
         dryRun,
         json,
         noGenerate,
+        ...(changed ? { changed } : {}),
+        ...(quick ? { quick } : {}),
+        ...(budget === undefined ? {} : { budget }),
+        areas,
         advance,
         approve,
         amend,
@@ -607,6 +686,8 @@ function parse(argv) {
         ...(decision === undefined ? {} : { decision }),
         ...(scope === undefined ? {} : { scope }),
         ...(base === undefined ? {} : { base }),
+        ...(change === undefined ? {} : { change }),
+        ...(head === undefined ? {} : { head }),
         ...(range === undefined ? {} : { range }),
         ...(text === undefined ? {} : { text }),
         correctionEvidence,
@@ -659,6 +740,9 @@ const DEFAULT_HANDLERS = {
     workbench: workbenchHandler,
     tool: toolHandler,
     delegation: delegationHandler,
+    context: contextHandler,
+    task: taskHandler,
+    delivery: deliveryHandler,
     doctor: doctorHandler,
     generate: generateHandler,
     gardener: gardenerHandler,

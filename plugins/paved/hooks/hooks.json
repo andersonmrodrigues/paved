@@ -1,25 +1,14 @@
 {
-  "description": "Adds advisory Paved routing context for initialized repositories at session start and after compaction, and a one-line reminder on every prompt.",
+  "description": "Adds a lean session index and verifies changed files at turn end.",
   "hooks": {
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/paved-prompt-submit.mjs\" --host codex",
-            "timeout": 450
-          }
-        ]
-      }
-    ],
     "SessionStart": [
       {
-        "matcher": "startup|resume|compact|clear",
+        "matcher": "startup|resume|compact|clear|fork",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/paved-prompt-submit.mjs\" --host codex",
-            "timeout": 450
+            "command": "node \"${PLUGIN_ROOT}/hooks/paved-prompt-submit.mjs\" --host codex",
+            "timeout": 330
           }
         ]
       },
@@ -27,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/paved-workbench.mjs\"",
+            "command": "node \"${PLUGIN_ROOT}/hooks/paved-workbench.mjs\"",
             "timeout": 1,
             "async": true
           }
@@ -39,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/paved-workbench.mjs\"",
+            "command": "node \"${PLUGIN_ROOT}/hooks/paved-workbench.mjs\"",
             "timeout": 1,
             "async": true
           }
@@ -51,7 +40,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/paved-workbench.mjs\"",
+            "command": "node \"${PLUGIN_ROOT}/hooks/paved-prompt-submit.mjs\" --host codex",
+            "timeout": 120
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/hooks/paved-workbench.mjs\"",
             "timeout": 1,
             "async": true
           }
@@ -63,7 +61,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/paved-workbench.mjs\"",
+            "command": "node \"${PLUGIN_ROOT}/hooks/paved-workbench.mjs\"",
             "timeout": 1,
             "async": true
           }

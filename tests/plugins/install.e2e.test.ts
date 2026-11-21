@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { parse, stringify } from "yaml";
 import { CLAUDE_PLUGIN_DIRECTORY, LAUNCHER_DIRECTORY, PLUGIN_DIRECTORY, RUNTIME_DIRECTORY } from "../../plugins/build.ts";
-import { NEXT_MAJOR_VERSION, NEXT_PATCH_VERSION, ROOT, treeIntegrity, writeIsolatedReview } from "../helpers.ts";
+import { NEXT_PATCH_VERSION, ROOT, treeIntegrity, UNSUPPORTED_MAJOR_VERSION, writeIsolatedReview } from "../helpers.ts";
 import {
   applicationDigest, claudeDetails, codeOf, consumer, hostAvailable, installWithClaude, installWithCodex,
   launcher, lockedPackages, pluginVariant, remoteCacheEntries, repackRuntime, repositorySnapshot, workspace, type Invocation,
@@ -54,7 +54,7 @@ describe("clean-room plugin installation", { skip }, () => {
     mkdirSync(join(project, ".paved"), { recursive: true });
     writeFileSync(join(project, ".paved", "manifest.yaml"), "version: test\n");
     writeFileSync(join(project, ".paved", "paved.lock"), "version: test\n");
-    const event = JSON.stringify({ cwd: project, prompt: "private prompt" });
+    const event = JSON.stringify({ cwd: project, hook_event_name: "SessionStart", prompt: "private prompt" });
 
     for (const [installed, source] of [[codexPlugin, PLUGIN_DIRECTORY], [claudePlugin, CLAUDE_PLUGIN_DIRECTORY]] as const) {
       assert.ok(!realpathSync(installed).startsWith(realpathSync(ROOT)), `${installed} must not be the development checkout`);
@@ -64,7 +64,7 @@ describe("clean-room plugin installation", { skip }, () => {
       assert.equal(treeIntegrity(join(installed, RUNTIME_DIRECTORY)), treeIntegrity(join(ROOT, source, RUNTIME_DIRECTORY)), `${installed}: the host installs the whole unpacked runtime`);
       const hook = spawnSync(process.execPath, [join(installed, "hooks", "paved-prompt-submit.mjs")], { input: event, encoding: "utf8" });
       assert.equal(hook.status, 0, hook.stderr);
-      assert.equal(JSON.parse(hook.stdout).hookSpecificOutput.hookEventName, "UserPromptSubmit");
+      assert.equal(JSON.parse(hook.stdout).hookSpecificOutput.hookEventName, "SessionStart");
       assert.doesNotMatch(hook.stdout, /private prompt/);
     }
     for (const path of lockedPackages(claudePlugin)) {
@@ -140,7 +140,7 @@ describe("clean-room plugin installation", { skip }, () => {
     assert.equal(data<{ currentPhase: string }>(verified).currentPhase, "evidence");
     const recorded = advance("--evidence", workflowEvidence(project, run));
     assert.equal(recorded.status, 0, recorded.stdout + recorded.stderr);
-    const reviewed = advance("--evidence", writeIsolatedReview(project, recorded.stdout));
+    const reviewed = advance(...writeIsolatedReview(project, recorded.stdout));
     assert.equal(reviewed.status, 0, reviewed.stdout + reviewed.stderr);
     const completed = advance();
     assert.equal(data<{ status: string }>(completed).status, "completed", completed.stdout);
@@ -210,8 +210,8 @@ describe("clean-room plugin installation", { skip }, () => {
     assert.equal(data<{ coreRoot: string }>(ok(current(project, "status", "--json"), "status after rollback")).coreRoot, oldCore);
     assert.equal(codeOf(newer(project, "runtime", "rollback", "--json")), "PAVED_RUNTIME_ROLLBACK_UNAVAILABLE");
 
-    const major = repackRuntime(runtime, NEXT_MAJOR_VERSION, root);
-    const incompatible = launcher(pluginVariant(codexPlugin, root, `plugin-${NEXT_MAJOR_VERSION}`, { ...major, version: NEXT_MAJOR_VERSION }), npmCache);
+    const major = repackRuntime(runtime, UNSUPPORTED_MAJOR_VERSION, root);
+    const incompatible = launcher(pluginVariant(codexPlugin, root, `plugin-${UNSUPPORTED_MAJOR_VERSION}`, { ...major, version: UNSUPPORTED_MAJOR_VERSION }), npmCache);
     const refused = incompatible(project, "runtime", "upgrade", "--json");
     assert.equal(refused.status, 5, refused.stdout + refused.stderr);
     assert.ok(refused.json.diagnostics?.some((entry) => entry.code === "PAVED_RUNTIME_UPGRADE_FAILED"), refused.stdout);

@@ -35,16 +35,39 @@ the actual host-reported model, effort and optional usage. If a host does not ex
 per-task model selection, the agent follows that host's available routing behavior and
 records what actually ran.
 
-Claude Code and Codex also load plugin-bundled lifecycle hooks from
-`shared/hooks.json`. Host hooks stay advisory and fail open. The prompt hook adds
-session-scoped routing guidance; the Workbench hook sends minimal lifecycle activity
-only to a running loopback dashboard. The dashboard and run inspection live in the
-packaged CLI, not in either host projection.
+Claude Code and Codex load plugin-bundled lifecycle hooks from `shared/hooks.json`.
+SessionStart supplies a short index and checks for plugin updates only when a pinned
+runtime selection already exists. The update command is inert unless the user has
+explicitly configured automatic updates; Paved never initializes a project from a
+hook. Stop runs `verify --changed` synchronously and requests
+continuation on failure. If Stop already continued the turn, it reports NOT VERIFIED
+instead of blocking again, avoiding an infinite loop. Hook trust, host settings,
+timeouts and interruptions can prevent execution; this is not a security boundary.
 
-Explicit project authorization can enable `shared/auto-update.mjs` through the
-plugin launcher `auto-update configure|status|check`. Trusted session/prompt hooks
-then run due checks deterministically, preserving routing reminders. Host commands
-are hardcoded and host/scope-specific; project adoption delegates to the existing
-transactional local runtime. Defaults are off, Cursor is manual, and CI/dry-run
-never refresh hosts. Authorization and throttle contracts have schemas; templates
-are `shared/auto-update-config.template.yaml` and `shared/auto-update-state.template.yaml`.
+Cursor's plugin disables these hooks; other hosts have no claimed hook enforcement.
+Use `paved verify --changed` explicitly there. Open tasks are listed, not selected:
+pass `--task <slug>` explicitly when recording evidence for a particular task. The
+Workbench hook only sends minimal activity to a running loopback dashboard. It does
+not attach verification evidence. Git hooks, governed approvals and review gates are
+not provided by these lifecycle hooks.
+
+### Codex protocol evidence
+
+The [official Codex hooks reference](https://developers.openai.com/codex/hooks)
+(checked 2026-11-21) documents:
+
+- [Plugin-bundled hooks](https://developers.openai.com/codex/hooks#plugin-bundled-hooks):
+  default discovery at `hooks/hooks.json`, and `PLUGIN_ROOT` pointing to the installed
+  plugin root. Plugin hooks require review and trust.
+- [Common input fields](https://developers.openai.com/codex/hooks#common-input-fields):
+  one JSON object on stdin, with string `cwd` and `hook_event_name`.
+- [SessionStart](https://developers.openai.com/codex/hooks#sessionstart):
+  `source` matching and `hookSpecificOutput.additionalContext`.
+- [Stop](https://developers.openai.com/codex/hooks#stop):
+  JSON stdout with `decision: "block"` and `reason` requests a continuation prompt;
+  it does **not** reject the turn or guarantee completion prevention.
+
+This confirms the documented protocol, not an end-to-end execution of the packaged
+Paved plugin in a real Codex session. Local hook and projection tests simulate that
+protocol. Older clients, disabled or untrusted hooks, managed-only settings and cloud
+orchestration can omit these plugin command hooks. No enforcement is claimed there.

@@ -43,6 +43,7 @@ function project(versioned = true): string {
   write(root, "feature.js", "export const enabled = false;\n");
   write(root, "check.mjs", 'import { readFileSync } from "node:fs";\nprocess.exit(readFileSync("feature.js", "utf8").includes("true") ? 0 : 1);\n');
   initializeConsumer(core, root, "consumer");
+  write(root, ".paved/review.yaml", stringify({ apiVersion: "paved/v1", kind: "ReviewPolicy", sensitive_paths: ["feature.js"] }));
   write(root, ".paved/tools/testing/run.yaml", stringify(TOOL));
   write(root, ".paved/tool-implementations/testing/run.yaml", stringify({
     apiVersion: "paved/v1", kind: "ToolImplementation", id: "project.testing.run", tool: "project.testing.run",
@@ -103,16 +104,23 @@ interface Finding { severity: "blocking" | "note"; file: string; line?: number; 
 
 /** Writes what an isolated reviewer would for the run's current state, from the review block Paved returned. */
 function writeFindings(root: string, id: string, stopped: CommandResult, findings: Finding[] = [], isolated = true): string {
-  const independent = (stopped.data as { review?: { independent?: { record: string; reviewed: Record<string, string> } } }).review?.independent;
+  const independent = (stopped.data as {
+    review?: { independent?: { record: string; reviewed: Record<string, string>; requiredLenses: string[] } };
+  }).review?.independent;
   assert.ok(independent, JSON.stringify(stopped));
   write(root, independent.record, stringify({
-    apiVersion: "paved/v1", kind: "ChangeReview", run: id, reviewer: { agent: "test reviewer", isolated },
-    reviewed: independent.reviewed, passes: ["rules", "diff", "change"], findings,
+    apiVersion: "paved/v1", kind: "ChangeReviewBundle", run: id, reviewed: independent.reviewed,
+    reviews: independent.requiredLenses.map((lens, index) => ({
+      reviewer: { agent: `test reviewer ${index + 1}`, isolated, lens },
+      passes: ["rules", "diff", "change"], findings: index === 0 ? findings : [],
+    })),
   }));
   return independent.record;
 }
 
 async function reviewClean(root: string, id: string, invoke: (...argv: string[]) => Promise<CommandResult>, stopped: CommandResult): Promise<CommandResult> {
+  const independent = (stopped.data as { review?: { independent?: unknown } }).review?.independent;
+  if (!independent) return invoke("execute", "--run", id, "--auto");
   return invoke("execute", "--run", id, "--auto", "--evidence", writeFindings(root, id, stopped));
 }
 

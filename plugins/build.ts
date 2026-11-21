@@ -149,6 +149,9 @@ export function packRuntime(root: string, options: { build: boolean }): RuntimeA
     // generated plugin output and provenance digests.
     for (const path of files.keys()) {
       if (path.startsWith("node_modules/") && /\/CHANGELOG\.md$/i.test(path)) files.delete(path);
+      // Skill prose and supporting examples are projected into host-visible skill
+      // directories; the runtime needs only contracts for CLI policy validation.
+      if (path.startsWith("core/skills/") && !path.endsWith(".yaml")) files.delete(path);
       // Claude has a 512-file ceiling. The launcher runs cli/build/cli/index.js, so CLI and
       // integration execution uses compiled twins; keep the standalone launchers and
       // assets, not the TypeScript sources the twins were built from. The generator runtime
@@ -236,8 +239,8 @@ function readme(source: PluginSource, runtime: RuntimeArtifact, hosts: string, d
     `- Runtime: \`paved-core@${runtime.version}\` unpacked at \`${RUNTIME_DIRECTORY}/\`; ${dependencies}`,
     `- Runtime integrity: \`${runtime.integrity}\`, checked over the runtime and its dependencies before activation`,
     `- Launcher: \`${LAUNCHER_DIRECTORY}/paved.mjs\``,
-    "- Prompt routing: `hooks/hooks.json` adds advisory Paved context on every prompt in repositories initialized with Paved, and again after compaction.",
-    `- Optional automatic update: from an initialized project, explicitly run \`node "<plugin>/scripts/paved.mjs" auto-update configure --host ${hosts === "Claude Code" ? "claude-code" : "codex"} --mode auto --interval-hours 24 --json\`; use \`auto-update status --json\`, \`auto-update check --host <host> --json\`, or configure \`--mode off\` / \`--mode notify\`. Defaults are off; trusted session/prompt hooks check due updates. Cursor remains manual.`,
+    "- Lifecycle hooks: `hooks/hooks.json` adds a short session index and requests continuation when changed-file verification fails on supported, trusted hosts.",
+    `- Optional update helper: from an initialized project, explicitly run \`node "<plugin>/scripts/paved.mjs" auto-update configure --host ${hosts === "Claude Code" ? "claude-code" : "codex"} --mode auto --interval-hours 24 --json\`; use \`auto-update status --json\`, \`auto-update check --host <host> --json\`, or configure \`--mode off\` / \`--mode notify\`. Defaults are off. SessionStart checks due updates only after explicit authorization; UserPromptSubmit is not used. Cursor remains manual.`,
     "- Workbench: `paved workbench start` opens the local run dashboard; optional lifecycle hooks show recent agent activity only while it is running.",
     `- Skills: ${skills}`,
     "",
@@ -329,8 +332,8 @@ function commonFiles(root: string, source: PluginSource, launcher: LauncherRefer
     for (const entry of entries) for (const hook of entry.hooks) {
       if (hook.command.includes("paved-prompt-submit.mjs")) {
         hook.command += ` --host ${host === "claude-code" ? "claude-code" : "codex"}`;
-        hook.timeout = 450;
       }
+      if (host !== "claude-code") hook.command = hook.command.replaceAll("CLAUDE_PLUGIN_ROOT", "PLUGIN_ROOT");
     }
   }
   files.set("hooks/hooks.json", json(hooks));

@@ -666,3 +666,22 @@ describe("CLI autonomy selection", () => {
     }
   });
 });
+
+describe("CLI delivery selection", () => {
+  it("parses the exact delivery action fields and rejects them on other commands", async () => {
+    const invocations: CommandInvocation[] = [];
+    const result = await dispatchCli({
+      argv: ["delivery", "approve", "--base", "main", "--change", "42", "--head", "4f2c9e1b7a3d8c21e5f60a9b2d4c6e8f01a3b5c7", "--json"],
+      cwd: ROOT,
+      handlers: { delivery: captureHandler(invocations) },
+    });
+    assert.equal(result.status, "success", JSON.stringify(result));
+    assert.deepEqual(invocations[0]?.selectors, ["approve"]);
+    assert.equal(invocations[0]?.flags.base, "main");
+    assert.equal(invocations[0]?.flags.change, "42");
+    assert.equal(invocations[0]?.flags.head, "4f2c9e1b7a3d8c21e5f60a9b2d4c6e8f01a3b5c7");
+
+    const rejected = await dispatchCli({ argv: ["status", "--head", "4f2c9e1b7a3d8c21e5f60a9b2d4c6e8f01a3b5c7"], cwd: ROOT });
+    assert.equal(primaryCategory(rejected), "usage");
+  });
+});

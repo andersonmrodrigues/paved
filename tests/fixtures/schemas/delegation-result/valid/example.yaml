@@ -1,0 +1,7 @@
+apiVersion: paved/v1
+kind: DelegationResult
+findings: ["An issue"]
+files_read: ["src/index.ts"]
+boundaries: ["Read-only"]
+non_obvious: []
+questions: []

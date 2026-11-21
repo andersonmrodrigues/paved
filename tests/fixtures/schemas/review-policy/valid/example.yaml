@@ -1,0 +1,4 @@
+apiVersion: paved/v1
+kind: ReviewPolicy
+sensitive_paths:
+  - src/secrets/**

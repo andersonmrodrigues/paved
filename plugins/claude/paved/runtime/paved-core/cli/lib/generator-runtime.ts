@@ -14,9 +14,10 @@ import { atomicWriteFileSync } from './atomic-write.ts';
 import { acquireConsumerOperationLock } from './operation-lock.ts';
 import { resolveSafePath } from './safe-path.ts';
 import { readRuntimeSelection } from './runtime-lock.ts';
+import { ensureModelsConfig, validateModelsConfig } from './models-config.ts';
 
 export interface Source { path: string; kind: string; sha256: string; adapter?: string; adapterVersion?: string; capability?: string; detectionConfidence?: Detection['confidence']; detectionEvidence?: string[]; classification?: 'observed'; adapterEvidence?: { adapter: string; adapter_version: string; capability: string; detection_confidence: Detection['confidence']; classification: 'observed' }[] }
-export interface Execution { generator: string; version: string; contractSha256?: string; engineSha256?: string; manifestSha256?: string; sourceWorktree?: string; status: 'written' | 'unchanged' | 'conflict' | 'proposed' | 'failed'; sources: Source[]; outputs: string[]; outputHashes: Record<string, string>; proposals: string[]; unknowns: string[]; warnings: string[]; errors: string[] }
+export interface Execution { generator: string; version: string; contractSha256?: string; engineSha256?: string; manifestSha256?: string; sourceWorktree?: string; status: 'written' | 'unchanged' | 'conflict' | 'proposed' | 'failed'; sources: Source[]; outputs: string[]; changedOutputs: string[]; outputHashes: Record<string, string>; proposals: string[]; unknowns: string[]; warnings: string[]; errors: string[] }
 export interface RunResult { executionId: string; timestamp: string; coreVersion: string; consumer: string; sourceRevision?: string; unmatchedTechnologies: string[]; unmodeledTechnologies: string[]; adapterWarnings: string[]; adapterDiagnostics: Diagnostic[]; detectedAdapters: { id: string; confidence: string; evidence: string[] }[]; selectedAdapters: string[]; capabilityResolutions: Record<string, string>; capabilityProviders: CapabilityProviderEntry[]; adapterEvidence: AdapterEvidence[]; executions: Execution[]; errors: string[] }
 export interface LockEntry { id?: string; version: string; source: string; sha256: string }
 export interface GenerationLock { core: LockEntry; adapters?: readonly LockEntry[]; generators?: readonly LockEntry[] }
@@ -79,10 +80,12 @@ export function planConsumerInitialization(core: string, consumer: string, name:
   const lock = { apiVersion: 'paved/v1', kind: 'Lock', resolved_at: new Date().toISOString(), core: { version, source: 'local-core', sha256: hashLocalCore(core) }, adapters: selected.adapters.map(d => ({ id: d.adapter.id, version: d.adapter.version, source: 'local-core', sha256: hashLocalTree(core, [`adapters/${d.adapter.id}`]) })), generators, ...(capabilities.length ? { capabilities } : {}), ...(runtime ? { runtime } : {}) };
   validate(registry, lock);
   const capabilityDiagnostics = Object.values(resolutions).flatMap(r => r.diagnostics).filter(d => d.code !== 'missing-provider');
-  return { manifest, lock, selectedAdapters: manifest.adapters.map(a => a.id).sort(), resolvedAdapters: selected.adapters.map(d => d.adapter.id).sort(), capabilityProviders: capabilityProviders(resolutions), adapterDiagnostics: selected.diagnostics, capabilityDiagnostics, plannedWrites: ['.paved/manifest.yaml', '.paved/paved.lock', '.paved/.gitignore', '.paved/documents/README.md'] };
+  return { manifest, lock, selectedAdapters: manifest.adapters.map(a => a.id).sort(), resolvedAdapters: selected.adapters.map(d => d.adapter.id).sort(), capabilityProviders: capabilityProviders(resolutions), adapterDiagnostics: selected.diagnostics, capabilityDiagnostics, plannedWrites: ['.paved/manifest.yaml', '.paved/paved.lock', '.paved/.gitignore', '.paved/documents/README.md', '.paved/models.yaml'] };
 }
 export function initializeConsumer(core: string, consumer: string, name: string, source: string = consumer) {
   const registry = createRegistry(join(core, 'schemas'), ['paved/v1']); const version = coreManifest(core).version;
+  const modelsConfigProblem = validateModelsConfig(consumer, registry);
+  if (modelsConfigProblem !== undefined) throw new Error(modelsConfigProblem);
   const runtime = readRuntimeSelection(consumer);
   if (runtime && runtime.version !== version) throw new Error(`Runtime ${runtime.version} is incompatible with Core ${version}.`);
   const detected = detectAdapters(source, loadAdapters(core), discoverSources(source));
@@ -105,6 +108,7 @@ export function initializeConsumer(core: string, consumer: string, name: string,
   const documentsDir = safe(consumer, '.paved/documents'); mkdirSync(documentsDir, { recursive: true });
   const documentsReadme = safe(consumer, '.paved/documents/README.md');
   if (!existsSync(documentsReadme)) atomicWriteFileSync(documentsReadme, `# Work documents\n\nKeep durable Paved work documents here and commit them with the project change. Use the workflow run id in each filename so related documents stay linked. Create a category directory only when you use it.\n\n- \`intents/<run-id>.md\` — captured intent and scope\n- \`plans/<run-id>.md\` — implementation plan; open this exact file with \`paved preview\` for review and approval\n- \`specs/<run-id>.md\` — behavior and acceptance criteria\n- \`tasks/<run-id>.md\` — task breakdown\n- \`research/<run-id>.md\` — supporting research\n\nWorkflow state and local evidence are separate disposable files under \`.paved/generated/\`.\n`);
+  ensureModelsConfig(consumer, registry);
   return manifest;
 }
 function loadContracts(core: string, registry: Registry): Contract[] {
@@ -284,7 +288,17 @@ function writeOutput(root: string, output: Output, registry: Registry, info: Ret
     if (owner === 'generated-reviewed') {
       if (output.schema === 'Feature') {
         const old = parse(readFileSync(target, 'utf8')) as Record<string, unknown>;
-        const p = old.provenance as { generator?: string; output_sha256?: string } | undefined;
+        const p = old.provenance as { generator?: string; output_sha256?: string; review?: unknown } | undefined;
+        const nextProvenance = newMeta.provenance as { review?: unknown };
+        if (p && stringify(p.review) !== stringify(nextProvenance.review)) {
+          const withoutReview = (value: Record<string, unknown>) => {
+            const copy = structuredClone(value);
+            delete (copy.provenance as Record<string, unknown>).review;
+            return withoutTime(copy);
+          };
+          if (withoutReview(oldMeta) === withoutReview(newMeta)) return result('unchanged', current);
+          return result('conflict', finalContent);
+        }
         const semantic = { ...old }; delete semantic.provenance;
         if (!p || p.generator !== generator || p.output_sha256 !== sha(stringify(semantic))) return result('conflict', finalContent);
         if (dryRun) return result('written', finalContent);
@@ -401,7 +415,7 @@ function runGeneratorsUnlocked(core: string, consumer: string, options: RunGener
       contractSha256: hashLocalTree(core, [`generators/${contract.id}`]),
       engineSha256: hashLocalTree(core, ['manifest.yaml', 'cli/lib/generator-runtime.ts', 'schemas/project-context.schema.yaml', 'schemas/feature.schema.yaml', 'schemas/provenance.schema.yaml']),
       manifestSha256: hashSource(consumer, '.paved/manifest.yaml'), ...(sourceWorktree === undefined ? {} : { sourceWorktree }),
-      status: 'unchanged', sources: [], outputs: [], outputHashes: {}, proposals: [], unknowns: [], warnings: [], errors: [] }; result.executions.push(entry);
+      status: 'unchanged', sources: [], outputs: [], changedOutputs: [], outputHashes: {}, proposals: [], unknowns: [], warnings: [], errors: [] }; result.executions.push(entry);
     try {
       if ((contract.depends_on ?? []).some(d => !completed.has(d))) throw new Error('Required generator dependency failed');
       const relevant = relevantEvidenceFor(contract.id, capabilities.evidence);
@@ -437,11 +451,13 @@ function runGeneratorsUnlocked(core: string, consumer: string, options: RunGener
           const proposal = options.dryRun === true ? writeResult : writeOutput(consumer, { ...output, path }, registry, info, contract.id);
           entry.proposals.push(path);
           entry.outputHashes[path] = proposal.sha256;
+          if (proposal.status === 'written' || proposal.status === 'proposed') entry.changedOutputs.push(path);
           entry.status = 'conflict';
         }
         else {
           entry.outputs.push(output.path);
           entry.outputHashes[output.path] = writeResult.sha256;
+          if (status !== 'unchanged') entry.changedOutputs.push(output.path);
           if (status === 'proposed') entry.proposals.push(output.path);
           if (entry.status !== 'conflict' && status !== 'unchanged') entry.status = status;
         }

@@ -27,6 +27,8 @@ Each public generator contract is defined by its `generator.yaml` and
   are proposed for human review rather than installed as policy.
 - Regeneration preserves human-owned content. Conflicts produce proposals instead
   of silently replacing edits.
+- Feature review annotations remain intact when evidence is unchanged; changed
+  evidence produces a proposal for review rather than replacing those annotations.
 - Adapter evidence contributes only when its provider is resolved. Ambiguous
   providers require an explicit selection in the consumer manifest.
 - Static analysis does not execute project scripts or call external AI services.

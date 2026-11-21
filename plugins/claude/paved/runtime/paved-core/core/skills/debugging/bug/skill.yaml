@@ -1,0 +1,13 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.debugging.bug
+version: 0.1.0
+status: experimental
+category: debugging
+context:
+  required: []
+verification:
+  required: [unit]
+evidence:
+  required: [check-result]
+references: [references/playbook.md]

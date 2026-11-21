@@ -5,8 +5,9 @@ import { loadYaml } from "./documents.ts";
 import { intentDocumentPath } from "./intent.ts";
 import { resolveSafePath } from "./safe-path.ts";
 import {
-  findingLocation, planRef, reviewBriefPath, reviewedState, reviewRecordCommand, reviewRecordPath, type ChangeReview, type ReviewedState, type ReviewFinding,
+  findingLocation, planRef, requiredReviewLenses, reviewBriefPath, reviewedState, reviewRecordCommand, reviewRecordPath, type ChangeReview, type ReviewedState, type ReviewFinding,
 } from "./workflow-gates/review.ts";
+import type { ChangeReviewBundle, ReviewLens } from "./review-bundle.ts";
 import { loadContract, type Run } from "./workflow-runs.ts";
 import { phaseContext, type PhaseRouting, type ResolvedWorkflowPhase } from "./workflows.ts";
 
@@ -18,6 +19,7 @@ export interface IndependentReview {
   readonly brief: string;
   readonly record: string;
   readonly reviewed: ReviewedState;
+  readonly requiredLenses: readonly ReviewLens[];
   readonly command: string;
   readonly routing?: PhaseRouting;
 }
@@ -58,15 +60,18 @@ function write(projectRoot: string, relative: string, lines: readonly string[]):
 }
 
 /** The reviewer's findings, when they were written for the run as it is now; older rounds do not count. */
-function recordedFindings(projectRoot: string, run: Run): ChangeReview | undefined {
+function recordedFindings(projectRoot: string, run: Run): ChangeReview | ChangeReviewBundle | undefined {
   const path = resolveSafePath(projectRoot, reviewRecordPath(run.id));
   const current = reviewedState(projectRoot, run);
   if (!current || !existsSync(path)) return undefined;
-  let record: Partial<ChangeReview>;
+  let record: Partial<ChangeReview> | Partial<ChangeReviewBundle>;
   // A malformed record is refused by the review gate with its own diagnostic; here it is simply not shown.
-  try { record = loadYaml(path) as Partial<ChangeReview>; } catch { return undefined; }
-  const matches = (Object.keys(current) as (keyof ReviewedState)[]).every((key) => record.reviewed?.[key] === current[key]);
-  return matches && Array.isArray(record.findings) ? record as ChangeReview : undefined;
+  try { record = loadYaml(path) as Partial<ChangeReview> | Partial<ChangeReviewBundle>; } catch { return undefined; }
+  const reviewed = record.reviewed as Partial<ReviewedState> | undefined;
+  const matches = (Object.keys(current) as (keyof ReviewedState)[]).every((key) => reviewed?.[key] === current[key]);
+  return matches && (record.kind === "ChangeReviewBundle" ? Array.isArray(record.reviews)
+    : record.kind === "ChangeReview" && Array.isArray(record.findings))
+    ? record as ChangeReview | ChangeReviewBundle : undefined;
 }
 
 function findingLine(finding: ReviewFinding): string {
@@ -91,10 +96,19 @@ export function writeReviewDocument(projectRoot: string, run: Run): string {
     "## Artifacts", "", ...(evidence.artifacts?.length ? evidence.artifacts.map((artifact) => `- ${artifact.kind ?? "artifact"} \`${artifact.id ?? ""}\`${artifact.description ? ` ${artifact.description}` : ""}${artifact.source?.location ? ` (\`${artifact.source.location}\`)` : ""}`) : ["No artifacts recorded."]), "",
     "## Gaps", "", ...(evidence.gaps?.length ? evidence.gaps.map((gap) => `- ${gap.check_type ?? "check"}: ${gap.description ?? ""} Reason: ${gap.reason ?? "not stated"}${gap.risk ? ` (risk ${gap.risk})` : ""}${gap.accepted_by ? ` (accepted by ${gap.accepted_by})` : ""}`) : ["None."]), "",
     "## Rules", "", ...(evidence.rules?.length ? evidence.rules.map((rule) => `- \`${rule.id}\` (${rule.severity}): ${rule.status}`) : ["No rule results recorded."]), "",
-    "## Independent review", "", ...(findings
-      ? [`Reviewer: ${findings.reviewer?.agent ?? "unknown"}. Passes: ${(findings.passes ?? []).join(", ") || "none"}.`, "",
-        ...(findings.findings.length ? findings.findings.map(findingLine) : ["No findings."])]
-      : [`Not recorded yet. A separate reviewer reads \`${reviewBriefPath(run.id)}\` and writes \`${reviewRecordPath(run.id)}\`.`]), "",
+    "## Independent review", "",     ...(findings
+      ? (() => {
+        const entries = findings.kind === "ChangeReviewBundle"
+          ? findings.reviews
+          : [{ reviewer: findings.reviewer, passes: findings.passes, findings: findings.findings }];
+        const allFindings = entries.flatMap((entry) => entry.findings);
+        return [
+          `Reviewers: ${entries.map((entry) => `${entry.reviewer.agent} (${("lens" in entry.reviewer && entry.reviewer.lens) || "Skeptic"})`).join(", ")}.`,
+          `Passes: ${[...new Set(entries.flatMap((entry) => entry.passes))].join(", ") || "none"}.`, "",
+          ...(allFindings.length ? allFindings.map(findingLine) : ["No findings."]),
+        ];
+      })()
+      : [`Not recorded yet. Independent reviewers read \`${reviewBriefPath(run.id)}\` and their evidence is combined in \`${reviewRecordPath(run.id)}\`.`]), "",
   ];
   return write(projectRoot, relative, lines);
 }
@@ -113,15 +127,17 @@ export function writeReviewBrief(projectRoot: string, run: Run, reviewed: Review
   const intent = intentDocumentPath(run.id);
   const { workflow, phase } = resolved;
   const diff = evidence.artifacts?.find((artifact) => artifact.kind === "diff")?.source?.location;
+  const lenses = requiredReviewLenses(projectRoot, coreRoot, run);
   const lines = [
     `# Review brief for ${run.id}`, "",
     "You are reviewing a change you did not write. Work only from the files below, not from the",
-    "conversation that produced the change, and do not edit anything except your findings file.", "",
+    "conversation that produced the change. Review only the lens assigned to you.", "",
     ...(existsSync(resolveSafePath(projectRoot, intent)) ? [`- Request: \`${intent}\``] : []),
     `- Approved plan: ${plan ? `\`${plan}\`` : "none recorded"}`,
     `- Evidence record: ${run.evidence ? `\`${run.evidence}\`` : "none recorded"}`,
     `- Diff: ${diff ? `\`${diff}\`` : "see the evidence record"}`,
     `- Rules in scope: ${evidence.rules?.length ? evidence.rules.map((rule) => `\`${rule.id}\``).join(", ") : "none recorded"}`, "",
+    `- Required independent lenses: ${lenses.join(", ") || "none; proof and verification are sufficient"}`, "",
     ...(workflow && phase ? ["## Active review phase context", "", "Apply these composed skills, Tool requirements, fragment instructions and phase policies.",
       "Tool policies never grant host permission; the host enforces its own permissions independently.", "", "```json", JSON.stringify(phaseContext(workflow, phase), null, 2), "```", ""] : []),
     "Follow the change-review skill: run the rules, diff and change passes, then keep only",
@@ -132,34 +148,22 @@ export function writeReviewBrief(projectRoot: string, run: Run, reviewed: Review
     "of its captured output; Paved refuses a blocking finding with weaker proof. Record the rest as",
     "notes. Merge findings that share a root cause. Use `findings: []` when nothing survives.",
     "When a blocking finding breaks an in-scope rule, name it in `rule`.", "",
-    `Write your findings to \`${reviewRecordPath(run.id)}\`:`, "",
+    "Run one isolated reviewer per required lens; each sees only this brief and records only its own findings.",
+    `Combine their results in \`${reviewRecordPath(run.id)}\` using this bundle:`, "",
     "```yaml",
     "apiVersion: paved/v1",
-    "kind: ChangeReview",
+    "kind: ChangeReviewBundle",
     `run: ${run.id}`,
-    "reviewer:",
-    "  agent: <your agent and model>",
-    "  isolated: true",
     "reviewed:",
     `  plan_sha256: ${reviewed.plan_sha256}`,
     `  source_sha256: ${reviewed.source_sha256}`,
     `  evidence_sha256: ${reviewed.evidence_sha256}`,
-    "passes: [rules, diff, change]",
-    "findings:",
-    "  - severity: blocking",
-    "    file: path/to/file",
-    "    line: 42",
-    "    summary: What is wrong, and the input or state that shows it.",
-    "    # rule: <rule id>   only when the finding breaks an in-scope rule; remove otherwise",
-    "    proof:",
-    "      level: executed",
-    "      command: <the command that shows the defect>",
-    "      output_sha256: <sha256 of its captured output>",
-    "      expected: <what the intent requires instead>",
-    "  - severity: note",
-    "    file: path/to/file",
-    "    summary: A concern you could not prove by running the code.",
-    "    proof: { level: reasoned }",
+    "reviews:",
+    ...lenses.flatMap((lens) => [
+      `  - reviewer: { agent: <distinct agent and model>, isolated: true, lens: ${lens} }`,
+      "    passes: [rules, diff, change]",
+      "    findings: []",
+    ]),
     "```", "",
   ];
   return write(projectRoot, reviewBriefPath(run.id), lines);
@@ -173,12 +177,14 @@ export function reviewFor(projectRoot: string, run: Run, coreRoot: string): Revi
   if (awaitingPlan && plan) return reviewBlock(plan, companionDocuments(projectRoot, run.id, plan));
   if (run.phases.some((phase) => phase.phase === "review" && phase.status === "running")) {
     const reviewed = reviewedState(projectRoot, run);
+    const requiredLenses = requiredReviewLenses(projectRoot, coreRoot, run);
     const resolved = activeReviewPhase(coreRoot, run);
     const routing = resolved.phase?.routing;
-    const independent = reviewed && {
+    const independent = reviewed && requiredLenses.length > 0 ? {
       brief: writeReviewBrief(projectRoot, run, reviewed, coreRoot, resolved), record: reviewRecordPath(run.id), reviewed,
+      requiredLenses,
       command: reviewRecordCommand(run.id), ...(routing === undefined ? {} : { routing }),
-    };
+    } : undefined;
     return reviewBlock(writeReviewDocument(projectRoot, run), [], independent);
   }
   return undefined;

@@ -4,7 +4,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symli
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 import { parse, stringify } from "yaml";
-import { ROOT, schemas } from "../helpers.ts";
+import { ROOT, schemas, UNSUPPORTED_MAJOR_VERSION } from "../helpers.ts";
 import { consumer, pluginVariant, repackRuntime } from "./support.ts";
 
 const workspace = join(ROOT, "node_modules/.auto-update-tests");
@@ -48,7 +48,14 @@ const items=JSON.parse(readFileSync(${JSON.stringify(inventory)},'utf8')); items
   };
   const commands = () => existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(line => JSON.parse(line) as string[]) : [];
   const configure = (mode = "auto", host = "claude-code") => run(["configure", "--mode", mode, "--host", host]);
-  return { root, project, plugin, home, inventory, refreshed, run, commands, configure, env };
+  const initializeRuntime = () => {
+    mkdirSync(join(project, ".paved/runtime"), { recursive: true });
+    writeFileSync(join(project, ".paved/runtime/selection.json"), JSON.stringify({
+      package: "paved-core", version: runtimeVersion, integrity: `sha512-${Buffer.alloc(64).toString("base64")}`,
+      content_sha256: "0".repeat(64),
+    }));
+  };
+  return { root, project, plugin, home, inventory, refreshed, run, commands, configure, initializeRuntime, env };
 }
 
 describe("authorized plugin automatic updates", () => {
@@ -160,55 +167,56 @@ describe("authorized plugin automatic updates", () => {
     assert.equal(f.run(["check", "--host", "claude-code"]).json.data.reason, "updated");
     assert.equal(f.commands().filter(args => args.includes("marketplace")).length, 1);
   });
-  it("runs due checks deterministically from both hook events without losing reminders", () => {
-    for (const event of ["SessionStart", "UserPromptSubmit"]) {
-      const f = fixture();
-      mkdirSync(join(f.plugin, "hooks"));
-      cpSync(join(ROOT, "integrations/shared/prompt-submit-hook.mjs"), join(f.plugin, "hooks/paved-prompt-submit.mjs"));
-      f.configure();
-      const result = spawnSync(process.execPath, [join(f.plugin, "hooks/paved-prompt-submit.mjs"), "--host", "claude-code"], {
-        cwd: f.project, encoding: "utf8", timeout: 30000,
-        input: JSON.stringify({ cwd: f.project, hook_event_name: event, source: "startup" }),
-        env: { ...process.env, HOME: f.home, CLAUDE_CONFIG_DIR: join(f.home, "claude"), PATH: `${join(f.root, "bin")}:${process.env.PATH}`, CI: "", GITHUB_ACTIONS: "" },
-      });
-      assert.equal(result.status, 0, result.stderr);
-      assert.equal(JSON.parse(result.stdout).hookSpecificOutput.hookEventName, event);
-      assert.equal(existsSync(join(f.project, ".paved/adopted")), true, "the hook, not a model, must initiate the update");
-    }
+  it("runs authorized update checks at session start without routing every prompt", () => {
+    const f = fixture();
+    mkdirSync(join(f.plugin, "hooks"));
+    cpSync(join(ROOT, "integrations/shared/prompt-submit-hook.mjs"), join(f.plugin, "hooks/paved-prompt-submit.mjs"));
+    f.configure();
+    f.initializeRuntime();
+    const result = spawnSync(process.execPath, [join(f.plugin, "hooks/paved-prompt-submit.mjs"), "--host", "claude-code"], {
+      cwd: f.project, encoding: "utf8", timeout: 30000,
+      input: JSON.stringify({ cwd: f.project, hook_event_name: "SessionStart", source: "startup" }),
+      env: { ...process.env, HOME: f.home, CLAUDE_CONFIG_DIR: join(f.home, "claude"), PATH: `${join(f.root, "bin")}:${process.env.PATH}`, CI: "", GITHUB_ACTIONS: "" },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).hookSpecificOutput.hookEventName, "SessionStart");
+    assert.equal(existsSync(join(f.project, ".paved/adopted")), true, "the hook, not a model, must initiate the update");
+    const hooks = JSON.parse(readFileSync(join(ROOT, "integrations/shared/hooks.json"), "utf8")) as { hooks: Record<string, unknown> };
+    assert.equal(hooks.hooks.UserPromptSubmit, undefined);
   });
-  it("portable hooks fail closed without Codex-managed plugin context even with CODEX_HOME", () => {
+  it("ignores per-prompt events even when CODEX_HOME is present", () => {
     const f = fixture();
     mkdirSync(join(f.plugin, "hooks"));
     cpSync(join(ROOT, "integrations/shared/prompt-submit-hook.mjs"), join(f.plugin, "hooks/paved-prompt-submit.mjs"));
     f.configure("auto", "codex");
     const result = spawnSync(process.execPath, [join(f.plugin, "hooks/paved-prompt-submit.mjs"), "--host", "codex"], {
-      cwd: f.project, encoding: "utf8", timeout: 30000, input: JSON.stringify({ cwd: f.project }),
+      cwd: f.project, encoding: "utf8", timeout: 30000,
+      input: JSON.stringify({ cwd: f.project, hook_event_name: "UserPromptSubmit" }),
       env: { ...process.env, HOME: f.home, CODEX_HOME: join(f.home, "codex"), PLUGIN_ROOT: f.plugin, PATH: `${join(f.root, "bin")}:${process.env.PATH}`, CI: "" },
     });
     assert.equal(result.status, 0);
-    assert.equal(JSON.parse(result.stdout).hookSpecificOutput.hookEventName, "UserPromptSubmit");
+    assert.equal(result.stdout, "");
     assert.deepEqual(f.commands(), []);
   });
-  it("Codex-managed portable hooks identify Codex positively at session start and prompts", () => {
-    for (const event of ["SessionStart", "UserPromptSubmit"]) {
-      const f = fixture();
-      f.configure("auto", "codex");
-      const codexHome = join(f.home, "codex");
-      const installed = join(codexHome, "plugins/cache/paved/paved/2.20.0");
-      mkdirSync(installed, { recursive: true });
-      cpSync(join(f.plugin, "scripts"), join(installed, "scripts"), { recursive: true });
-      mkdirSync(join(installed, "hooks"));
-      cpSync(join(ROOT, "integrations/shared/prompt-submit-hook.mjs"), join(installed, "hooks/paved-prompt-submit.mjs"));
-      const result = spawnSync(process.execPath, [join(installed, "hooks/paved-prompt-submit.mjs"), "--host", "codex"], {
-        cwd: f.project, encoding: "utf8", timeout: 30000,
-        input: JSON.stringify({ cwd: f.project, hook_event_name: event, source: "startup" }),
-        env: { ...f.env, PLUGIN_ROOT: installed, CODEX_HOME: codexHome },
-      });
-      assert.equal(result.status, 0, result.stderr);
-      assert.equal(JSON.parse(result.stdout).hookSpecificOutput.hookEventName, event);
-      assert.equal(existsSync(join(f.project, ".paved/adopted")), true);
-      assert.equal(f.commands().every(args => args[0] === "codex"), true);
-    }
+  it("Codex-managed portable hooks identify Codex positively at session start", () => {
+    const f = fixture();
+    f.configure("auto", "codex");
+    f.initializeRuntime();
+    const codexHome = join(f.home, "codex");
+    const installed = join(codexHome, "plugins/cache/paved/paved/2.20.0");
+    mkdirSync(installed, { recursive: true });
+    cpSync(join(f.plugin, "scripts"), join(installed, "scripts"), { recursive: true });
+    mkdirSync(join(installed, "hooks"));
+    cpSync(join(ROOT, "integrations/shared/prompt-submit-hook.mjs"), join(installed, "hooks/paved-prompt-submit.mjs"));
+    const result = spawnSync(process.execPath, [join(installed, "hooks/paved-prompt-submit.mjs"), "--host", "codex"], {
+      cwd: f.project, encoding: "utf8", timeout: 30000,
+      input: JSON.stringify({ cwd: f.project, hook_event_name: "SessionStart", source: "startup" }),
+      env: { ...f.env, PLUGIN_ROOT: installed, CODEX_HOME: codexHome },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).hookSpecificOutput.hookEventName, "SessionStart");
+    assert.equal(existsSync(join(f.project, ".paved/adopted")), true);
+    assert.equal(f.commands().every(args => args[0] === "codex"), true);
   });
   it("linked worktree hooks use shared authorization but manage the initiating checkout scope", () => {
     const f = fixture();
@@ -226,8 +234,10 @@ describe("authorized plugin automatic updates", () => {
     writeFileSync(stub, readFileSync(stub, "utf8").replace("\nconst args=", `\nwriteFileSync(${JSON.stringify(hostCwd)},process.cwd());\nconst args=`), { mode: 0o755 });
     writeFileSync(join(f.refreshed, "scripts/paved.mjs"), `import {writeFileSync} from 'node:fs';writeFileSync(${JSON.stringify(join(f.project, ".paved/adopted"))},'shared');console.log(JSON.stringify({command:'update',status:'success',data:{changed:true}}));`);
     f.configure();
+    f.initializeRuntime();
     const result = spawnSync(process.execPath, [join(f.plugin, "hooks/paved-prompt-submit.mjs"), "--host", "claude-code"], {
-      cwd: checkout, encoding: "utf8", timeout: 30000, input: JSON.stringify({ cwd: checkout }), env: f.env,
+      cwd: checkout, encoding: "utf8", timeout: 30000,
+      input: JSON.stringify({ cwd: checkout, hook_event_name: "SessionStart" }), env: f.env,
     });
     assert.equal(result.status, 0, result.stderr);
     assert.match(JSON.parse(result.stdout).hookSpecificOutput.additionalContext, /Restart this agent session/);
@@ -322,7 +332,7 @@ describe("authorized plugin automatic updates", () => {
   it("the real refreshed launcher upgrades transactionally and rejects corrupt/incompatible runtimes", () => {
     const [major, minor, patch] = runtimeVersion.split(".").map(Number) as [number, number, number];
     const compatibleVersion = `${major}.${minor}.${patch + 1}`;
-    const incompatibleVersion = `${major + 1}.0.0`;
+    const incompatibleVersion = UNSUPPORTED_MAJOR_VERSION;
     for (const candidate of ["compatible", "incompatible", "corrupt"]) {
       const f = fixture();
       rmSync(join(f.project, ".paved"), { recursive: true });

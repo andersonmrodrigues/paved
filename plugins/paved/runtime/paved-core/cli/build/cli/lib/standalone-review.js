@@ -8,6 +8,9 @@ import { resolveSafePath } from "./safe-path.js";
 import { createRegistry } from "./schemas.js";
 import { collectChange, commitRangeChange, mergeBase, resolveCommit } from "./workflow-evidence.js";
 import { findingLocation, provesBlocking } from "./workflow-gates/review.js";
+import { reviewBundleProblem } from "./review-bundle.js";
+import { planReview } from "./review-plan.js";
+import { reviewChange, reviewCommitRange } from "./review-change.js";
 export class ReviewTargetError extends Error {
 }
 const sha = (value) => createHash("sha256").update(value).digest("hex");
@@ -79,34 +82,21 @@ function brief(review, rules) {
         `Write your findings to \`${review.record}\`:`, "",
         "```yaml",
         "apiVersion: paved/v1",
-        "kind: ChangeReview",
+        "kind: ChangeReviewBundle",
         "target:",
         `  kind: ${target.kind}`,
         `  ref: ${JSON.stringify(target.ref)}`,
         `  base: ${target.base}`,
         `  head: ${target.head}`,
         `  working_tree: ${target.working_tree}`,
-        "reviewer:",
-        "  agent: <your agent and model>",
-        "  isolated: true",
         "reviewed:",
         `  diff_sha256: ${review.diff_sha256}`,
-        "passes: [rules, diff, change]",
-        "findings:",
-        "  - severity: blocking",
-        "    file: path/to/file",
-        "    line: 42",
-        "    summary: What is wrong, and the input or state that shows it.",
-        "    # rule: <rule id>   only when the finding breaks an in-scope rule; remove otherwise",
-        "    proof:",
-        "      level: executed",
-        "      command: <the command that shows the defect>",
-        "      output_sha256: <sha256 of its captured output>",
-        "      expected: <what the intent requires instead>",
-        "  - severity: note",
-        "    file: path/to/file",
-        "    summary: A concern you could not prove by running the code.",
-        "    proof: { level: reasoned }",
+        "reviews:",
+        ...review.requiredLenses.flatMap((lens) => [
+            `  - reviewer: { agent: <distinct agent and model>, isolated: true, lens: ${lens} }`,
+            "    passes: [rules, diff, change]",
+            "    findings: []",
+        ]),
         "```", "",
     ].join("\n");
 }
@@ -122,10 +112,17 @@ export function prepareStandaloneReview(input) {
         throw new ReviewTargetError(`${target.kind === "base" ? `Nothing changed since the merge base with ${target.ref}` : `The range ${target.ref} changes nothing`} outside Paved state.`);
     const id = reviewId(target);
     const rules = loadRuleCatalog({ projectRoot: input.projectRoot, coreRoot: input.coreRoot }).filter((rule) => ruleCovers(rule, diff.files));
+    const reviewFiles = target.kind === "base"
+        ? reviewChange(input.sourceRoot, target.base)
+        : reviewCommitRange(input.sourceRoot, target.base, target.head);
+    const planned = planReview(reviewFiles, input.sensitivePatterns === undefined ? {} : { sensitivePatterns: input.sensitivePatterns });
+    const requiredLenses = planned.reviewers.length > 0
+        ? planned.reviewers.map((reviewer) => reviewer.lens)
+        : ["Skeptic"];
     const diffPath = write(input.projectRoot, `${DIR}/${id}.diff`, diff.patch);
     const prepared = {
         id, target, files: diff.files, diff: diffPath, diff_sha256: sha(diff.patch), record: standaloneRecordPath(id),
-        rules: rules.map((rule) => ({ id: rule.id, path: rule.path })),
+        rules: rules.map((rule) => ({ id: rule.id, path: rule.path })), requiredLenses,
     };
     return { ...prepared, brief: write(input.projectRoot, `${DIR}/${id}-brief.md`, brief(prepared, rules)) };
 }
@@ -164,15 +161,28 @@ export function checkStandaloneReview(input) {
     if (record.reviewed.diff_sha256 !== input.prepared.diff_sha256) {
         return fail("PAVED_REVIEW_STALE", "The review read a different diff than the change has now.", `Paved rewrote ${input.prepared.brief} with the current digest. Review the current change again from it, then run ${resume}.`);
     }
-    if (!record.reviewer.isolated) {
+    const reviewEntries = record.kind === "ChangeReviewBundle"
+        ? record.reviews
+        : [{ reviewer: { ...record.reviewer, lens: "Skeptic" }, passes: record.passes, findings: record.findings }];
+    const requiredLenses = input.prepared.requiredLenses;
+    if (record.kind === "ChangeReviewBundle") {
+        const problem = reviewBundleProblem(record.reviews, requiredLenses);
+        if (problem)
+            return fail(problem.code, problem.message, `Collect one isolated review per required lens from ${input.prepared.brief}, then run ${resume}.`);
+    }
+    else if (requiredLenses.length !== 1 || requiredLenses[0] !== "Skeptic") {
+        return fail("PAVED_REVIEW_LENSES_INCOMPLETE", `This change requires independent review lenses: ${requiredLenses.join(", ")}.`, `Collect one isolated review per required lens in a ChangeReviewBundle from ${input.prepared.brief}, then run ${resume}.`);
+    }
+    if (reviewEntries.some((entry) => !entry.reviewer.isolated)) {
         return fail("PAVED_REVIEW_NOT_INDEPENDENT", "The review was not made by an isolated reviewer, so it checks the change against the reasoning that produced it.", `Run the review in a subagent with its own context that sees only ${input.prepared.brief}, then run ${resume}.`);
     }
-    const blocking = record.findings.filter((finding) => finding.severity === "blocking");
+    const findings = reviewEntries.flatMap((entry) => entry.findings);
+    const blocking = findings.filter((finding) => finding.severity === "blocking");
     const unproven = blocking.filter((finding) => !provesBlocking(finding.proof));
     if (unproven.length) {
         return fail("PAVED_REVIEW_FINDING_UNPROVEN", `A blocking finding needs proof at level executed or reproduced: ${unproven.map((finding) => `${findingLocation(finding)} (${finding.proof?.level ?? "no proof"})`).join(", ")}.`.slice(0, 2000), `Prove each one with a command that runs the real code and record proof.level, proof.command and proof.output_sha256, or record it as severity note; then run ${resume}.`);
     }
-    const notes = record.findings.filter((finding) => finding.severity !== "blocking");
+    const notes = findings.filter((finding) => finding.severity !== "blocking");
     const { target } = input.prepared;
     const document = write(input.projectRoot, `${DIR}/${input.prepared.id}.md`, [
         `# Review of ${target.ref}`, "",
@@ -180,9 +190,10 @@ export function checkStandaloneReview(input) {
         `- Target: ${target.kind} \`${target.ref}\`, \`${target.base.slice(0, 12)}\`..\`${target.head.slice(0, 12)}\`${target.working_tree ? " plus uncommitted and untracked files" : ""}`,
         `- Diff: \`${input.prepared.diff}\` (sha256 \`${input.prepared.diff_sha256}\`)`,
         `- Record: \`${input.record}\``,
-        `- Reviewer: ${record.reviewer.agent}. Passes: ${record.passes.join(", ")}.`,
+        `- Reviewers: ${reviewEntries.map((entry) => `${entry.reviewer.agent}${"lens" in entry.reviewer ? ` (${entry.reviewer.lens})` : ""}`).join(", ")}.`,
+        `- Passes: ${[...new Set(reviewEntries.flatMap((entry) => entry.passes))].join(", ")}.`,
         `- Rules in scope: ${input.prepared.rules.length ? input.prepared.rules.map((rule) => `\`${rule.id}\``).join(", ") : "none"}`, "",
-        "## Findings", "", ...(record.findings.length ? [...blocking, ...notes].map(findingLine) : ["No findings."]), "",
+        "## Findings", "", ...(findings.length ? [...blocking, ...notes].map(findingLine) : ["No findings."]), "",
     ].join("\n"));
     return { problems: [], blocking, notes, document };
 }

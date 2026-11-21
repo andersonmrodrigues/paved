@@ -2,10 +2,10 @@ apiVersion: paved/v1
 kind: Adapter
 id: infrastructure/git
 title: Git source control
-version: 0.1.0
+version: 0.2.0
 summary: Git bindings for Core repository inspection capabilities.
 requires:
-  core: ^1.0.0 || ^2.0.0
+  core: ^1.0.0 || ^2.0.0 || ^3.0.0
 detect:
   any_files:
     - .git
@@ -24,4 +24,4 @@ sources:
   - title: Git log documentation
     url: https://git-scm.com/docs/git-log
     retrieved_at: 2026-09-27
-reviewed_at: 2026-09-27
+reviewed_at: 2026-11-21

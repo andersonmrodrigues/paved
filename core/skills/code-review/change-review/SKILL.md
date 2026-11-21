@@ -27,21 +27,19 @@ Read the stated intent first (the task, its claims and plan), then read the diff
 nothing is left out. Review against that intent: a hunk the intent does not explain is a
 scope finding; code that does something other than the intent is a correctness finding.
 
-In the `review` phase of a Paved workflow, the reviewer is a subagent with its own context
-that did not write the change: the agent that implemented it starts one, gives it only the
-brief Paved wrote (`.paved/generated/reviews/<run-id>-brief.md`), and does not review the
-change itself. The brief names the intent, plan, evidence, diff and rules in scope, and the
-digests the findings must carry. Paved refuses a review that was not isolated or that read
-an older plan, source or evidence.
+In the `review` phase of a Paved workflow, the implementing agent starts one isolated
+reviewer per lens in the brief, gives each only that brief, and does not review the change
+itself. Each reviewer records only its assigned lens with a distinct identity; combine results in
+the brief's bundle format. It names intent, plan, evidence, diff, rules and digests. Paved
+rejects missing, extra or duplicate lenses, repeated identities, non-isolated reviews and stale evidence.
 
 Outside a workflow, `paved review --base <ref> --json` (all changes since the merge base,
 uncommitted files included) or `--range <a>..<b>` writes the same kind of brief with no
-run or gate; review against its commit messages, then check the record with the same
+run or gate; review against its commit messages, then check the bundle with the same
 target and `--evidence <record>`.
 
-Run three passes, each reading the diff afresh. When the reviewer can start reviewers of its
-own, run each pass as one, given only the intent and the diff, on a different model
-when the host offers one:
+Run three passes, each reading the diff afresh. When possible, run each pass as an isolated
+reviewer with only the intent and diff, using a different model when the host offers one:
 
 - **Rules pass**: the rules in scope. A rule applies to a file only when its scope
   covers that file's path; a violation quotes the exact rule text it breaks.
@@ -122,12 +120,14 @@ Any fix made during review is verified like any other change.
 
 ## Evidence
 
-In a Paved workflow, a review record at `.paved/generated/reviews/<run-id>-findings.yaml`
-in the brief's format: the reviewer, the digests it read, the passes it ran and each finding,
-`blocking` or `note`, with its `proof` and the in-scope `rule` it breaks, if any.
-Blocking findings go to the user, who decides to fix them (implementation reopens, and the
-fix is tested, verified and reviewed again) or to accept them on record. Outside a workflow
-the record names its `target` instead of a run. The review supports no claim.
+In a Paved workflow, the findings bundle at
+`.paved/generated/reviews/<run-id>-findings.yaml` contains the run and state digests, plus
+one isolated entry per required lens with a distinct reviewer identity, the passes it ran
+and each finding (`blocking` or `note`) with its `proof` and the in-scope `rule` it breaks,
+if any. Blocking findings go to the user, who decides to fix them (implementation reopens,
+and the fix is tested, verified and reviewed again) or to accept them on record. Outside a
+workflow the bundle names its `target` and diff digest instead of a run. The review supports
+no claim.
 
 ## Completion criteria
 

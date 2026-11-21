@@ -53,8 +53,16 @@ automated checks the project treats as required; the rules context says who may 
    - step 1 reports `ready: true` for the change request's target;
    - required automated checks passed on the head revision `core.change-request.status`
      reports;
-   - the user confirmed the merge naming the change request, its head revision and its
-     target. Pass that head revision, so the merge is refused if the head moved since.
+   - the user confirmed the merge naming the change request, its full head revision and
+     its target. Record that confirmation with
+     `paved delivery approve --base <target> --change <id> --head <revision> --json`.
+     This writes approval for the exact target, change request, head and current verified
+     patch. Do not run it before the user confirms those values;
+   - call `core.change-request.merge` with the same `target`, `change` and `head`. The
+     service adapter routes through `paved delivery merge`, which rechecks local evidence,
+     the stored approval and the remote target/head before asking the service adapter to merge. The
+     Tool's host confirmation remains separately required; the stored approval does not
+     grant host or repository permissions.
 6. **Stacked change requests land bottom-up.** Merge the one targeting the main line
    first. Then retarget the next to the main line, rebase it, and repeat from step 1:
    when its patch is unchanged it stays fresh; when the rebase changed it, re-verify.
@@ -65,7 +73,8 @@ automated checks the project treats as required; the rules context says who may 
 come from an adapter for the shared repository's service. When one is unavailable,
 tell the user which step they need to do themselves and keep the freshness check. Open
 needs confirmation for each invocation; merge is destructive and needs an explicit
-human confirmation every time, with no automatic retry.
+human confirmation every time, with no automatic retry. Never bypass the Paved delivery
+boundary by invoking the host's merge command directly.
 
 ## Rules
 

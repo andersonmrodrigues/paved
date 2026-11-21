@@ -56,6 +56,7 @@ writing a new record that supersedes it, not by editing the old one.
 | [0049](0049-corrections-feed-the-gardener.md) | Human corrections feed the Gardener; guide drift is a doctor finding | Accepted |
 | [0050](0050-governed-change-delivery.md) | Governed change delivery and patch-identity evidence | Accepted |
 | [0051](0051-stated-corrections-and-run-less-review.md) | Stated corrections become rule proposals; review works without a run | Accepted |
+| [0052](0052-patch-bound-delivery-approval.md) | Patch-bound approval at the delivery boundary | Accepted |
 
 ## Format
 

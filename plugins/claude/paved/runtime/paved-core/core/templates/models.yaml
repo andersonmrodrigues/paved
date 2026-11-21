@@ -1,0 +1,7 @@
+apiVersion: paved/v1
+kind: ModelPolicy
+roles:
+  explorer: [session]
+  implementer: [session]
+  reviewer: [session]
+  mechanical: [session]

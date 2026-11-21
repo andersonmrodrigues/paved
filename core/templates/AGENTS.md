@@ -9,22 +9,17 @@ This repository uses Paved for agent context, rules and verification.
 - Verification profile: `.paved/verification/profile.yaml`
 - Overrides: `.paved/overrides/overrides.yaml`
 
-Change code through Paved: `/paved:intent` with the request, then `/paved:plan` and
-`/paved:execute`, so project rules and verification apply. `/paved:status` shows the
-project state and what is available.
+Default to direct, outcome-focused work with Paved: load `paved context "<topic or path>"` when project
+context helps, keep small changes direct, use `paved task` only for durable handoffs,
+and run `paved verify --changed` to validate changed files. For multi-step work, keep
+the plan in the task handoff rather than creating extra planning documents.
 
-Use this flow by default for natural-language development, planning, correction,
-debugging and refactoring requests, even when the user does not name Paved. Check
-status first and resume the matching run for the same request rather than creating
-a duplicate; never reuse an unrelated run. For planning-only requests, stop at the
-plan; for investigation-only requests, use the read-only `investigation` workflow and
-answer with cited sources without implementing a fix.
-Implementation requires explicit human approval of the current plan. Answer
-repository questions using relevant context without starting a workflow; handle
-unrelated conversation normally. Respect explicit user direction.
-Each Paved step result names the phase's `routing`: hand `subagent` phases to a
-subagent at the given capacity and effort with a bounded brief, keep `primary`
-phases in this session, and only relay `cli` phases.
+Use `paved intent`, `paved plan` and `paved execute` only when the user explicitly
+requests a governed workflow or a project rule requires one. Planning-only and
+investigation-only requests remain read-only. Plan approval is not required for ordinary
+implementation; ask a person for product decisions, conflicting rules, irreversible
+actions, or persistent verification failures after two distinct fixes. Respect host
+permissions and never infer authorization from a plan or autonomy setting.
 
 Do not edit this block by hand; `paved init` and `paved update` maintain it. Write
 project-specific instructions for agents outside it.

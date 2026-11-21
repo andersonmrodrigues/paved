@@ -1,0 +1,13 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.bootstrap.setup
+version: 0.1.0
+status: experimental
+category: bootstrap
+context:
+  required: []
+verification:
+  required: []
+evidence:
+  required: []
+references: [references/playbook.md]

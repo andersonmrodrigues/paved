@@ -1,0 +1,4 @@
+# expect-error: must be array
+apiVersion: paved/v1
+kind: ReviewPolicy
+sensitive_paths: src/secrets/**

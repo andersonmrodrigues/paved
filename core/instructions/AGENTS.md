@@ -1,36 +1,29 @@
 # Paved: instructions for agents
 
-Paved gives you a predictable path for changing this repository: **context** tells you
-how the project works, **constraints** tell you what must hold, and **verification**
-tells you how to prove your change is correct. Follow the path; improve it when it is wrong.
+Paved gives you project context, constraints and verification. Use its lean router and
+playbooks as needed; default to direct, outcome-focused work rather than a phase-based
+workflow.
 
-When the supported project-local command projection is installed, start every repository
-change with the agent-native `/paved:intent` command and the user's request verbatim, then
-follow its next action through `/paved:plan` and `/paved:execute`. Manage Paved with
-`/paved:init`, `/paved:status` and `/paved:update`, and review documents with
-`/paved:preview`. Their shared contracts are in `paved agent commands --json`. If the local
-Paved runtime is unavailable, report that blocker; do not install an unpinned runtime or
-substitute arbitrary shell commands.
+Use `paved status` when you need to understand installation state, `paved context
+"<topic or path>"` for relevant project rules and feature summaries, and
+`paved verify --changed` to run checks for the current change. Use `paved task` only
+when a task needs a durable handoff across multiple steps or sessions. Keep small
+changes direct; for larger changes, keep the plan in that handoff instead of creating
+extra planning documents.
 
-Use this flow by default even when the request is in natural language and does not
-name Paved. Before starting a run, consult status: resume the matching run for the
-same request rather than creating a duplicate, and never reuse an unrelated run.
-If the run has a handoff checkpoint, use it to orient yourself, then compare its
-freshness and changed paths with the current checkout before acting.
-For planning-only requests, stop at the plan. For investigation-only requests,
-follow the bug investigation guidance without implementing a fix. Implementation
-requires explicit human approval of the current plan, not merely a request to
-develop or debug. Answer repository questions from relevant context without
-starting a workflow, handle unrelated conversation normally, and respect explicit
-user direction.
+Use `paved intent`, `paved plan` and `paved execute` only when the user explicitly
+requests a governed workflow or a project rule requires one. When resuming such a
+workflow, continue only the matching run. Investigation-only and planning-only requests
+stay read-only and stop at their requested outcome. Do not require plan approval for
+ordinary implementation. Ask a person for product decisions, conflicting rules,
+irreversible actions, or persistent verification failures after two distinct fixes.
+Respect explicit user direction and never treat autonomy or a plan as permission for a
+high-impact operation.
 
-The three steps share one run, and each owns a fixed range of its workflow's phases:
-`intent` classifies the request and runs `context` and `discovery`, `plan` runs `planning`,
-and `execute` runs `implementation` through `completion`. Tests and verification run inside
-the steps. Classify a request only with evidence (`--workflow <id> --because "<evidence>"`);
-when the evidence does not settle the kind of change, let the user decide. Documents a
-person must review (the Intent, the plan, the review record) open in `paved preview`, which
-never approves: approvals happen in the conversation.
+The intent/plan/execute commands remain available for explicit workflow runs. They share
+one run with phase-specific gates; `workflows.md` explains that optional path. Projected
+commands are generated from `paved agent commands --json`; do not install an unpinned
+runtime or substitute arbitrary shell commands when the Paved launcher is unavailable.
 
 Load only what the current task needs. This file is the map, not the territory:
 
@@ -47,15 +40,15 @@ Paths starting with `.paved/` are in the repository you are working on. Other pa
 
 ## 1. Discover context
 
-1. Read `.paved/manifest.yaml` to learn the project, its adapters and its Core version.
-2. Identify the workflow that matches the task (`feature`, `bug`, `refactor`,
-   `performance`, or the read-only `investigation` for a question) in `workflows/`; `intent` records it on the run. It tells you which inputs, phases, skills,
-   checks, gates and approvals apply; `workflows.md` tells you how to run it. A workflow
-   disabled in `.paved/overrides/overrides.yaml` does not apply to this repository.
-   Project workflows in `.paved/workflows/` are guidance; Paved does not execute them.
-3. Find the affected feature in `.paved/project/feature-map/` and read only the context
-   documents it links to. Use the `context-discovery` skill when the map does not help.
-4. Read the source code you will touch, and code that already solves a similar problem.
+1. Read `.paved/manifest.yaml` and the relevant feature-map entry only when they help
+   identify project rules, adapters or affected code.
+2. Use `paved context "<topic or path>"` to retrieve relevant context under its stated
+   budget. A truncated result is incomplete; narrow the query or raise the budget before
+   relying on it.
+3. Read the source code you will touch, and code that already solves a similar problem.
+4. Load a workflow and `workflows.md` only when the user explicitly requests a governed
+   workflow or a project rule requires one. Its phases, gates and approvals do not apply
+   to ordinary direct work.
 
 The code is the source of truth for what the system does; Project Context explains it.
 When they disagree, trust the code and report the discrepancy. Read every context
@@ -113,12 +106,12 @@ say so.
 
 "It compiles" is not "it is correct". Before declaring a task complete:
 
-1. Build a plan from the workflow, active skills, applicable rules and acceptance
-   criteria. Resolve each required check type to a check id in
-   `.paved/verification/profile.yaml` and run its declared tool. Never assume a check
-   exists that the profile does not declare.
-2. Record an evidence file (`evidence.yaml`, see `templates/evidence.yaml`) that states each
-   claim you make and the checks or artifacts that support it.
+1. Run the relevant project checks. In an initialized repository,
+   `paved verify --changed` selects and records checks from
+   `.paved/verification/profile.yaml`; never assume a check exists that the profile does
+   not declare. Otherwise, use the repository's documented test and build commands.
+2. Keep command output and inspect relevant side effects. Paved verification writes its
+   evidence automatically; a direct task does not need a separate workflow evidence file.
 3. Record every expected check you could not run as a gap, with the reason. A required
    gap means the task remains incomplete; it does not turn into a pass.
 

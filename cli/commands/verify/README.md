@@ -23,10 +23,18 @@ arguments.
 - `--project <dir>`: select the consumer root.
 - `--adapter <id>`: repeatable content-root selector for adapter checks/tools;
   when omitted, adapters are read from the manifest.
+- `--changed`: select checks using their `applies_to` globs against staged, unstaged
+  and untracked files. Checks without globs always run. A tracked Paved configuration
+  change runs all checks; generated state is excluded. Pass `--base <ref>` with
+  `--changed` to include commits since the merge base. Without it, committed branch
+  changes are not included. A Git working tree is required.
+- `--task <slug>`: attach the resulting evidence paths and status to an explicitly
+  selected open task. Verification fails before running checks if the task is absent
+  or completed, and fails if evidence cannot be attached.
 - `--json`: render the structured result.
 - `--help`: show command help.
 
-Selectors, `--check`, `--profile`, `--workflow`, `--changed`, `--dry-run` and raw
+Selectors, `--check`, `--profile`, `--workflow`, `--dry-run` and raw
 shell commands are not supported by the current CLI.
 
 ## Outputs and mutations

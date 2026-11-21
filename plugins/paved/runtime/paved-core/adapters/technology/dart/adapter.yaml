@@ -2,10 +2,10 @@ apiVersion: paved/v1
 kind: Adapter
 id: technology/dart
 title: Dart
-version: 0.1.0
+version: 0.2.0
 summary: Static evidence about Dart packages, SDK constraints and tests.
 requires:
-  core: ^1.0.0 || ^2.0.0
+  core: ^1.0.0 || ^2.0.0 || ^3.0.0
 detect:
   all_files: [pubspec.yaml]
   file_contains:
@@ -55,4 +55,4 @@ sources:
   - title: Dart package layout
     url: https://dart.dev/tools/pub/pubspec
     retrieved_at: 2026-09-27
-reviewed_at: 2026-09-27
+reviewed_at: 2026-11-21
