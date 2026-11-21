@@ -9,30 +9,26 @@ without saying so, and then wrote "all tests pass" without having run them. None
 is a model problem you can prompt away. It's a process problem, so I wrote the process
 down and made the agent go through it.
 
-In practice Paved is a TypeScript CLI plus a plugin for each agent. The plugin guides the
-agent through Paved's workflow; the project-local CLI validates workflow transitions and
-declared checks, and records the evidence it observes. The host agent still controls its
-own tool permissions.
+In practice Paved is a TypeScript CLI plus a plugin for each agent. Core v3 defaults to
+direct, outcome-focused work: the agent uses repository context and rules, runs applicable
+checks, and reports what it verified. The project-local CLI validates declared checks and
+records observed evidence; the host agent still controls its own tool permissions.
 
-## What it does
+## How Paved works
 
-A change goes through one run with three commands:
+### Direct work by default
 
-- `intent` takes the request as you'd say it, decides whether it's a feature, a bug fix
-  or a refactor (or asks you when it can't tell), and gathers context. For a bug it wants
-  a failing regression test first; for a refactor, a passing baseline.
-- `plan` writes the plan to `.paved/documents/plans/`. You read it, comment on it in a
-  local Markdown preview if you want, and approve it in the conversation. The agent
-  can't approve on your behalf.
-- `execute` implements the plan, runs the project's tests and verification checks,
-  records the evidence and has a separate subagent review the change before the run
-  completes.
+Ordinary requests take the direct path. Describe the outcome you want; there is no
+mandatory run, phase sequence or plan approval. Keep small tasks in the conversation.
+For work that needs a durable handoff, `paved task` can start, note, resume or complete a
+task without creating a workflow run.
 
-If you'd rather not think about the steps, `execute "<request>"` does it all from one
-command: it sets Paved up if the repository doesn't have it yet (or updates it), works through the
-request and still stops for your answers and for your approval of the plan.
+Use the phase-based `intent` → `plan` → `execute` workflow only when you request it or a
+project rule requires it. It gathers context and discovery, records a plan for your
+approval, then implements and completes its configured validation, verification, evidence
+and review phases. Investigation-only requests remain read-only.
 
-![How to use Paved commands in development](docs/assets/paved-command-flow.svg)
+![Paved v3 direct and governed task paths](docs/assets/paved-command-flow.svg)
 
 The parts I care most about:
 
@@ -42,15 +38,15 @@ The parts I care most about:
 - Evidence is checked, not trusted. Every check result records the revision, the
   working tree digest and the exit code, and a record that claims more than its own
   observations support is rejected.
-- Human decisions stay human. An approval records who made it, a run refuses to go on
-  when the run and the approval record disagree, and changing an approved plan needs a
-  new approval.
+- Human decisions stay human. Governed workflows bind approval to the plan and run;
+  delivery approvals bind to the exact target and patch. Changing an approved plan needs
+  a new approval.
 - Paved keeps its workflow documents and state under `.paved/`, so work can be resumed
   and inspected. Durable project context and plans can be reviewed and committed with
   the code; generated run records and local evidence are disposable and can be regenerated.
 
-Paved doesn't make the code correct. It makes it much harder for an agent to skip steps
-quietly, and easy to see afterwards what was actually checked and what wasn't.
+Paved doesn't make the code correct. It makes the work and its verification easier to
+inspect; governed workflows add explicit phases and approval gates when they are needed.
 
 ![How Paved Core works](docs/assets/how-paved-core-works.svg)
 
@@ -71,23 +67,23 @@ codex plugin add paved@paved
 In Cursor: **Customize → Plugins → From GitHub Repository**, import
 `https://github.com/andersonmrodrigues/paved` and install Paved.
 
-Then, inside the repository you want to work on, initialize Paved and start a change:
+Then, inside the repository you want to work on, initialize Paved once:
 
 ```text
-Claude Code: /paved:init, then /paved:execute Add a health check endpoint
-Codex:       paved:init, then paved:execute Add a health check endpoint
-Cursor:      /init, then /execute Add a health check endpoint
+Claude Code: /paved:init
+Codex:       paved:init
+Cursor:      /init
 ```
 
-`execute` initializes Paved when needed, prepares a plan and asks for your approval
-before implementation. You can also run the steps separately with `intent`, `plan` and
-`execute`; see the [command reference](docs/concepts/agent-commands.md).
+After initialization, ask the agent directly, for example: "Add a health check
+endpoint." For a governed change, explicitly use `intent`, `plan` and `execute`; the
+plan requires your approval before implementation. See the
+[command reference](docs/concepts/agent-commands.md).
 
-In initialized repositories, Claude Code and Codex also receive guidance to use this
-flow for ordinary requests, without a Paved command. Planning-only requests stop at the
-plan, investigations do not authorize fixes, and implementation still needs your plan
-approval. This is agent guidance, not a host-level tool restriction; trust and enable
-the plugin hooks for per-prompt reminders.
+In initialized repositories, Claude Code and Codex receive guidance to use the direct
+path for ordinary requests, without a Paved command. Governed workflows remain available
+when explicitly requested or required by project policy. This is agent guidance, not a
+host-level tool restriction; trust and enable the plugin hooks for per-prompt reminders.
 
 The plugin carries its own runtime and installs it under `.paved/runtime/`, so nothing is
 added to your application's dependencies. The [installation guide](docs/getting-started/installing-the-plugin.md)
@@ -95,8 +91,10 @@ covers updates and troubleshooting, and [Integrating a repository](docs/getting-
 covers project context and verification. The [component catalog](docs/catalog.md) helps
 you find the included adapters, workflows and examples.
 
-Besides the three main commands there are `status`, `update`, `preview`, and CLI-only
-subcommands (`test`, `verify`, `doctor`, `gardener`, `generate`) meant for CI. The
+Useful commands include `context` to retrieve relevant project guidance, `task` for a
+durable handoff, `status` and `update` for installation health, and `review` and
+`verify` for change assessment. Other CLI commands include `doctor`, `gardener`,
+`generate` and `test`. The
 [command reference](docs/concepts/agent-commands.md) has the details.
 
 ## How it's built
@@ -110,8 +108,8 @@ subcommands (`test`, `verify`, `doctor`, `gardener`, `generate`) meant for CI. T
 - `cli/` is the runtime, and `plugins/` is generated from the sources, with a test that
   fails if the two drift.
 
-There are a little under a thousand tests, many of them driving the real CLI against
-temporary Git repositories. Larger design choices are written down in
+The test suite exercises the CLI against temporary Git repositories, alongside adapter,
+plugin and contract checks. Larger design choices are written down in
 [docs/decisions](docs/decisions/README.md) and the [architecture notes](docs/concepts/architecture.md).
 
 For quick local feedback, `npm run check:fast` runs type checking and the fast
@@ -125,7 +123,9 @@ with it, where a few runs got stuck in ways the tests hadn't covered.
 
 ## Status
 
-It's a personal project, used by me and not much tested outside my own repositories.
+Core v3.0.0 is the current tagged release. Review the [Core v3 migration notes](CHANGELOG.md)
+when upgrading from v2. It's a personal project, used by me and not much tested outside
+my own repositories.
 You can install the plugins from this GitHub repository as a marketplace source. Paved
 isn't listed in the hosts' built-in public plugin directories, and `paved-core` isn't
 published to npm. Changes are listed in the [changelog](CHANGELOG.md).

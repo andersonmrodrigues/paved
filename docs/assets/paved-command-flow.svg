@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1360 800" role="img" aria-labelledby="title desc">
   <title id="title">How to use Paved commands in development</title>
-  <desc id="desc">Setup with init, status and update. Every change goes through intent, plan and execute over one run. The person reviews documents in the preview and approves the plan in the conversation. Completion needs evidence; the gardener only proposes.</desc>
+  <desc id="desc">Paved v3 defaults to direct task work: request, change, verify and report. The optional intent, plan and execute workflow is used only when requested or required by project policy.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#1d1d1d"/>
@@ -18,8 +18,8 @@
   </defs>
   <rect width="1360" height="800" fill="#f8f7f3"/>
 
-  <text class="title" x="40" y="44">How to use Paved commands in development</text>
-  <text class="sub" x="40" y="70">Same contract as paved.name. Claude: /paved:name. Codex: paved:name. Cursor: /name. Humans answer decisions with --answer.</text>
+  <text class="title" x="40" y="44">Paved v3: direct work by default</text>
+  <text class="sub" x="40" y="70">Give the agent the outcome. Paved supplies repository context, rules and verification; the host agent keeps its own tool permissions.</text>
 
   <text class="lane" x="40" y="110">1. Setup (once per repository)</text>
 
@@ -43,54 +43,50 @@
   <text class="small" x="1010" y="170">init never resets an existing .paved/.</text>
   <text class="small" x="1010" y="188">update is optional.</text>
 
-  <text class="lane" x="40" y="280">2. Every change: one run, three steps (.paved/generated/runs/)</text>
+  <text class="lane" x="40" y="280">2. Default path: request, change, verify, report</text>
 
-  <rect class="box" x="40" y="300" width="360" height="150" rx="12" fill="#e4ecff" stroke="#4262ff"/>
-  <text class="h" x="220" y="334" text-anchor="middle">intent "&lt;request&gt;"</text>
-  <text class="b" x="220" y="358" text-anchor="middle">classify: feature, bug or refactor</text>
-  <text class="b" x="220" y="378" text-anchor="middle">with evidence, or you decide</text>
-  <text class="b" x="220" y="398" text-anchor="middle">context and discovery</text>
-  <text class="small" x="220" y="422" text-anchor="middle">bug: failing regression test first</text>
-  <text class="small" x="220" y="440" text-anchor="middle">refactor: passing baseline first</text>
+  <rect class="box" x="40" y="300" width="360" height="145" rx="12" fill="#e4ecff" stroke="#4262ff"/>
+  <text class="h" x="220" y="336" text-anchor="middle">Request</text>
+  <text class="b" x="220" y="362" text-anchor="middle">Describe the outcome you want</text>
+  <text class="b" x="220" y="384" text-anchor="middle">Agent reads relevant context and rules</text>
+  <text class="small" x="220" y="416" text-anchor="middle">No mandatory run or plan approval</text>
 
-  <rect class="box" x="470" y="300" width="360" height="150" rx="12" fill="#fff3d4" stroke="#f8a23a"/>
-  <text class="h" x="650" y="334" text-anchor="middle">plan</text>
-  <text class="b" x="650" y="358" text-anchor="middle">.paved/documents/plans/&lt;run&gt;.md</text>
-  <text class="b" x="650" y="378" text-anchor="middle">reviewed in the preview</text>
-  <text class="b" x="650" y="398" text-anchor="middle">you approve in the conversation</text>
-  <text class="small" x="650" y="422" text-anchor="middle">a changed plan needs a new approval</text>
+  <rect class="box" x="500" y="300" width="360" height="145" rx="12" fill="#f3e8ff" stroke="#8d4bd6"/>
+  <text class="h" x="680" y="336" text-anchor="middle">Change</text>
+  <text class="b" x="680" y="362" text-anchor="middle">Make the smallest useful change</text>
+  <text class="b" x="680" y="384" text-anchor="middle">Follow applicable project constraints</text>
+  <text class="small" x="680" y="416" text-anchor="middle">Use paved task for a durable handoff</text>
 
-  <rect class="box" x="900" y="300" width="420" height="150" rx="12" fill="#f3e8ff" stroke="#8d4bd6"/>
-  <text class="h" x="1110" y="334" text-anchor="middle">execute</text>
-  <text class="b" x="1110" y="358" text-anchor="middle">implement the approved plan</text>
-  <text class="b" x="1110" y="378" text-anchor="middle">tests and verification run inside</text>
-  <text class="b" x="1110" y="398" text-anchor="middle">evidence, review in the preview, completion</text>
-  <text class="small" x="1110" y="422" text-anchor="middle">refuses a run without an approved plan</text>
+  <rect class="box" x="960" y="300" width="360" height="145" rx="12" fill="#e3f6e8" stroke="#3d9c4f"/>
+  <text class="h" x="1140" y="336" text-anchor="middle">Verify and report</text>
+  <text class="b" x="1140" y="362" text-anchor="middle">Run applicable declared checks</text>
+  <text class="b" x="1140" y="384" text-anchor="middle">Report observed results and explain gaps</text>
+  <text class="small" x="1140" y="416" text-anchor="middle">Use paved verify --changed when initialized</text>
 
-  <line x1="400" y1="375" x2="466" y2="375" stroke="#1d1d1d" stroke-width="2" marker-end="url(#arrow)"/>
-  <line x1="830" y1="375" x2="896" y2="375" stroke="#1d1d1d" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="400" y1="372" x2="496" y2="372" stroke="#1d1d1d" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="860" y1="372" x2="956" y2="372" stroke="#1d1d1d" stroke-width="2" marker-end="url(#arrow)"/>
 
-  <rect class="box" x="40" y="476" width="1280" height="76" rx="10" fill="#ffffff" stroke="#8a8a8a"/>
-  <text class="b" x="60" y="504">Each step owns its phases: intent (classification, context, discovery), plan (planning), execute (implementation to completion).</text>
-  <text class="b" x="60" y="530">A step outside its range names the step to run. With several open runs, Paved asks which one; it never picks.</text>
+  <text class="lane" x="40" y="510">3. Optional: governed workflow (only when requested or required by policy)</text>
 
-  <text class="lane" x="40" y="604">3. Reviews and after the change</text>
+  <rect class="box" x="40" y="530" width="400" height="130" rx="12" fill="#e4ecff" stroke="#4262ff"/>
+  <text class="h" x="240" y="564" text-anchor="middle">intent</text>
+  <text class="b" x="240" y="588" text-anchor="middle">Classify the request, gather context</text>
+  <text class="b" x="240" y="610" text-anchor="middle">and discover relevant implementation</text>
 
-  <rect class="box" x="40" y="624" width="400" height="130" rx="12" fill="#fff8d6" stroke="#c9a400"/>
-  <text class="h" x="240" y="658" text-anchor="middle">preview</text>
-  <text class="b" x="240" y="682" text-anchor="middle">Intent, plan and review record</text>
-  <text class="b" x="240" y="702" text-anchor="middle">comments on selected text</text>
-  <text class="small" x="240" y="726" text-anchor="middle">the preview approves nothing</text>
+  <rect class="box" x="480" y="530" width="400" height="130" rx="12" fill="#fff3d4" stroke="#f8a23a"/>
+  <text class="h" x="680" y="564" text-anchor="middle">plan</text>
+  <text class="b" x="680" y="588" text-anchor="middle">Write the plan for human review</text>
+  <text class="b" x="680" y="610" text-anchor="middle">Approval is required before execution</text>
 
-  <rect class="box" x="470" y="624" width="400" height="130" rx="12" fill="#e3f6e8" stroke="#3d9c4f"/>
-  <text class="h" x="670" y="658" text-anchor="middle">Completion</text>
-  <text class="b" x="670" y="682" text-anchor="middle">workflow evidence + matching</text>
-  <text class="b" x="670" y="702" text-anchor="middle">check results + recorded diff</text>
-  <text class="small" x="670" y="726" text-anchor="middle">gaps are reported, never a pass</text>
+  <rect class="box" x="920" y="530" width="400" height="130" rx="12" fill="#f3e8ff" stroke="#8d4bd6"/>
+  <text class="h" x="1120" y="564" text-anchor="middle">execute</text>
+  <text class="b" x="1120" y="588" text-anchor="middle">Implement, validate and verify</text>
+  <text class="b" x="1120" y="610" text-anchor="middle">Record evidence and required review</text>
 
-  <rect class="box" x="900" y="624" width="420" height="130" rx="12" fill="#fde8e8" stroke="#d64b4b"/>
-  <text class="h" x="1110" y="658" text-anchor="middle">Gardener proposals</text>
-  <text class="b" x="1110" y="682" text-anchor="middle">listed by execute when new</text>
-  <text class="b" x="1110" y="702" text-anchor="middle">advisory; never blocks completion</text>
-  <text class="small" x="1110" y="726" text-anchor="middle">adopt with paved gardener (CLI)</text>
+  <line x1="440" y1="595" x2="476" y2="595" stroke="#1d1d1d" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="880" y1="595" x2="916" y2="595" stroke="#1d1d1d" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect class="box" x="40" y="692" width="1280" height="62" rx="10" fill="#ffffff" stroke="#8a8a8a"/>
+  <text class="b" x="680" y="718" text-anchor="middle">Investigations remain read-only. Plan approval applies to governed workflows, not ordinary direct work.</text>
+  <text class="small" x="680" y="738" text-anchor="middle">Paved records evidence it observes; the host agent controls its own tool permissions.</text>
 </svg>

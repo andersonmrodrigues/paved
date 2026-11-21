@@ -4,6 +4,9 @@
 checkout or the packaged artifact. The same handlers serve Codex and Claude Code
 through their project-local launchers.
 
+Core v3 defaults to direct task work. Use `intent`, `plan` and `execute` only when a
+governed workflow is requested or required by project policy.
+
 `paved evidence` and `paved tool ...` remain **contract-only** command families:
 their contracts describe future behavior, but they are not executable commands in
 this CLI yet.
@@ -14,6 +17,9 @@ this CLI yet.
 |---|---|---|
 | [`paved init`](commands/init/README.md) | Create a new local `.paved/` state for a repository that is not initialized yet | `.paved/manifest.yaml`, `.paved/paved.lock`, `.paved/.gitignore`; generator outputs unless `--no-generate` |
 | [`paved update`](commands/update/README.md) | Plan, stage, validate and commit local Core, adapter or source-input changes | `.paved/paved.lock` when resolution changes; affected context and disposable proposals |
+| [`paved context`](commands/context/README.md) | Retrieve relevant feature-map summaries and rules, or refresh generated context | retrieval writes nothing; refresh writes selected context and any conflict proposals |
+| [`paved task`](commands/task/README.md) | Start, note, resume or complete a durable task handoff without a workflow run | `.paved/tasks/` |
+| `paved delegation check` | Validate a subagent result's structure without verifying its claims | nothing |
 | [`paved generate`](commands/generate/README.md) | Run all generators or selected generator ids and their dependencies | `.paved/project/`, `.paved/generated/`, `.paved/generated/state/last-run.json` |
 | [`paved verify`](commands/verify/README.md) | Run the explicit verification profile through approved Tool bindings and record sanitized evidence | `.paved/generated/evidence/` |
 | [`paved status`](commands/status/README.md) | Report initialized state, lock health, adapters, generator state, proposals, verification profile state, open runs, diagnostics and repair decisions | nothing, unless a repair decision is answered |
@@ -21,9 +27,10 @@ this CLI yet.
 | `paved workbench` | Start a local dashboard for runs and recent Codex/Claude Code hook activity, or inspect/stop it | disposable `.paved/generated/workbench/server.json`; activity stays in memory |
 | [`paved doctor`](commands/doctor/README.md) | The diagnostics and repair decisions of `status`, kept as a CLI subcommand for the launcher and CI | nothing, unless a repair decision is answered |
 | `paved gardener` | Analyze existing consumer evidence and report review proposals; `correction` drafts a rule from a correction a person stated | nothing; `correction` writes a draft under `.paved/generated/proposals/` and adoption writes `.paved/rules/corrections/` |
+| `paved review plan` | Recommend independent reviewer lenses for the current changes | nothing |
 | `paved review` | Prepare an independent review of `--base <ref>` or `--range <a>..<b>` outside a workflow run, and check the reviewer's record with `--evidence` | the diff, brief and rendered review under `.paved/generated/reviews/` |
 | `paved agent` | List, discover/resolve shared agent command contracts, validate, install, update or uninstall project-local agent projections | `.agents/`, `.claude/` or `.claude-plugin/` projection files |
-| `paved intent` | Classify a request into the `feature`, `bug`, `refactor`, `performance` or `investigation` workflow, write the Intent, and run `context` and `discovery` | `.paved/generated/runs/`, `.paved/documents/intents/`, evidence |
+| `paved intent` | Start an explicit `feature`, `bug`, `refactor`, `performance` or `investigation` workflow; classify the request, write the Intent, and run `context` and `discovery` | `.paved/generated/runs/`, `.paved/documents/intents/`, evidence |
 | `paved plan` | Run `planning` on the open run and record the approval the user gives in the conversation | `.paved/generated/runs/`, `.paved/approvals/` |
 | `paved execute` | Run `implementation` through `completion`; validation invokes `test`, verification invokes `verify`, and new gardener proposals are listed | `.paved/generated/runs/`, evidence, `.paved/generated/gardener/reported.json` |
 | `paved test` | Run the adopted module tests or the one declared testing Tool | `.paved/generated/evidence/` |
@@ -63,7 +70,7 @@ Command-specific options are intentionally narrow:
 | `gardener` | `--dry-run`; read-only unless `--answer` adopts a proposal; optional selector `debt` or `correction`; `correction` takes `--text <words>` and repeatable `--evidence <file[:lines] \| commit \| url>` |
 | `review` | Exactly one of `--base <ref>` or `--range <a>..<b>` (or `a...b`); `--evidence <record>` checks the reviewer's ChangeReview; no selectors or adapter selection |
 | `agent` | `list`, `commands [codex\|claude-code]`, `command <name>`, or `<install\|update\|uninstall\|status\|validate> [codex\|claude-code]` |
-| `intent` | The request, with `--workflow <feature\|bug\|refactor> --because <evidence>`, or `--recommend <id> --because <evidence>`, or one `--part <request>` per part; `--input <id>=<value>` repeatable |
+| `intent`, `execute` | The request, with `--workflow <feature\|bug\|refactor\|performance\|investigation> --because <evidence>`, or `--recommend <id> --because <evidence>`, or one `--part <request>` per part; `--input <id>=<value>` is repeatable, and `--autonomy <guided\|balanced\|autonomous>` selects a profile |
 | `intent`, `plan`, `execute` | `--run <id>` (required only when several runs are open), `--advance` with `--note` and `--evidence` as required, `--answer` |
 | `plan` | `--approve` records the user's approval of the current plan, given in the conversation |
 | `workbench` | `start`, `status` or `stop`; binds only to loopback, requires a random bearer token, reads existing run records and never makes workflow decisions |

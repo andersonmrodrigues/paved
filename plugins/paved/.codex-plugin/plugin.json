@@ -1,7 +1,7 @@
 {
   "name": "paved",
   "version": "3.0.0",
-  "description": "Paved engineering commands for AI coding agents: repository context, governed workflows, explicit Tools, verification and evidence, executed by a pinned project-local Paved runtime.",
+  "description": "Direct task work and project context for coding agents, with declared Tools, verification, evidence, optional governed workflows and a pinned project-local runtime.",
   "author": {
     "name": "Anderson Rodrigues",
     "url": "https://github.com/andersonmrodrigues"
@@ -20,8 +20,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Paved",
-    "shortDescription": "Governed workflows for agents",
-    "longDescription": "Paved gives coding agents repository context and a governed workflow for changes. Start with intent, review and approve a plan, then execute with tests, verification and evidence. The plugin activates a version-pinned runtime in the repository. Use the local Workbench to follow runs and recent Claude Code or Codex activity.",
+    "shortDescription": "Direct-first coding agent",
+    "longDescription": "Paved defaults to direct, outcome-focused work: the agent uses repository context and rules, runs applicable checks, and reports what it verified. Use governed intent, plan and execute workflows only when requested or required by project policy. A pinned project-local runtime provides CLI commands, declared Tools, verification and evidence. The local Workbench follows runs and recent Claude Code or Codex activity.",
     "developerName": "Anderson Rodrigues",
     "category": "Coding",
     "capabilities": [
