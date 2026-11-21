@@ -39,9 +39,14 @@ Claude Code and Codex load plugin-bundled lifecycle hooks from `shared/hooks.jso
 SessionStart supplies a short index and checks for plugin updates only when a pinned
 runtime selection already exists. The update command is inert unless the user has
 explicitly configured automatic updates; Paved never initializes a project from a
-hook. Stop runs `verify --changed` synchronously and requests
-continuation on failure. If Stop already continued the turn, it reports NOT VERIFIED
-instead of blocking again, avoiding an infinite loop. Hook trust, host settings,
+hook. Stop runs `verify --changed` synchronously within a 110 s budget and requests
+continuation on failure. A run that exceeds the budget is stopped with its whole
+process group, so no runtime is left holding the operation lock, and the reason says
+so; a lock already held by another Paved operation is reported as such. Because
+`verify` reuses a verified record for an unchanged tree, running `paved verify
+--changed` directly lets the next Stop pass without repeating a slow suite. If Stop
+already continued the turn, it reports NOT VERIFIED instead of blocking again,
+avoiding an infinite loop. Hook trust, host settings,
 timeouts and interruptions can prevent execution; this is not a security boundary.
 
 Cursor's plugin disables these hooks; other hosts have no claimed hook enforcement.
