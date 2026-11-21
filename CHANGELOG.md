@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-11-21
+
 ### Breaking
 
 - Core 3.0.0 defaults agent work to direct task execution instead of mandatory
