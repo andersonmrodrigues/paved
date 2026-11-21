@@ -39,6 +39,12 @@ properties:
     properties:
       profile: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
       profile_sha256: { $ref: "urn:paved:schema:common:v1#/$defs/sha256" }
+      configuration_sha256:
+        description: >
+          Digest of the resolved Checks, Tools, ToolImplementations and change scope. A
+          later run reuses a verified record only when this, the profile digest and the
+          change fingerprint all match.
+        $ref: "urn:paved:schema:common:v1#/$defs/sha256"
   supersedes:
     description: >
       Ids of earlier records for this task (usually on earlier revisions). A new

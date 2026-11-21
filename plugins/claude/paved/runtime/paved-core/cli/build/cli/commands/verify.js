@@ -166,6 +166,7 @@ export async function verifyHandler(invocation, beforeRun, scope = {}) {
         data: {
             checks: result.checks,
             evidence,
+            ...(result.reused ? { reused: true } : {}),
             completion: result.evaluation === undefined
                 ? undefined
                 : {

@@ -119,6 +119,8 @@ export interface VerificationRunResult {
     readonly status: string;
     readonly type: string;
   }[];
+  /** The result repeats an earlier verified record for the same change and configuration instead of running Checks. */
+  readonly reused?: boolean;
 }
 
 type DocumentKind = "Check" | "Tool" | "ToolImplementation";
@@ -610,6 +612,7 @@ function buildEvidence(args: {
   coreRoot: string;
   profilePath: string;
   profileSha: string;
+  configurationSha: string;
   policy?: VerificationPolicy;
   checks: readonly CheckContract[];
   evidenceChecks: EvidenceRecord["checks"];
@@ -634,6 +637,7 @@ function buildEvidence(args: {
     verification: {
       profile: ".paved/verification/profile.yaml",
       profile_sha256: args.profileSha,
+      configuration_sha256: args.configurationSha,
     },
     retention: "local",
     change: {
@@ -974,6 +978,65 @@ function writeValidatedEvidence(args: {
   return [evidenceFile];
 }
 
+// Records are named by creation time, so the newest few are enough to find the latest run for a tree.
+const REUSE_SCAN_LIMIT = 20;
+
+/**
+ * The newest record made for exactly this change and configuration, when it is verified.
+ * The newest matching record decides, so a later failure is never hidden by an earlier pass.
+ */
+function reusableVerification(args: {
+  projectRoot: string;
+  coreRoot: string;
+  change: WorktreeFingerprint;
+  profileSha: string;
+  configurationSha: string;
+  checks: readonly CheckContract[];
+  policy?: VerificationPolicy;
+  diagnostics: readonly Diagnostic[];
+}): VerificationRunResult | undefined {
+  const evidenceDir = safe(args.projectRoot, ".paved/generated/evidence");
+  let names: string[];
+  try {
+    names = readdirSync(evidenceDir).filter((name) => /^verify-[a-z0-9-]+\.yaml$/.test(name)).sort().reverse().slice(0, REUSE_SCAN_LIMIT);
+  } catch {
+    return undefined;
+  }
+  for (const name of names) {
+    const file = join(evidenceDir, name);
+    let record: EvidenceRecord & { verification?: { profile_sha256?: string; configuration_sha256?: string } };
+    try {
+      if (!lstatSync(file).isFile()) continue;
+      record = parseYaml(readFileSync(file, "utf8")) as typeof record;
+    } catch {
+      continue;
+    }
+    if (record?.verification?.configuration_sha256 !== args.configurationSha ||
+      record.verification.profile_sha256 !== args.profileSha) continue;
+    if (record.change?.revision !== args.change.revision ||
+      (record.change.uncommitted_changes === true) !== args.change.uncommitted ||
+      record.change.worktree_sha256 !== args.change.worktreeSha) continue;
+
+    if (record.completion?.status !== "complete" || record.completion.verification !== "verified") return undefined;
+    const definitions = new Map(args.checks.map((check) => [check.id, check]));
+    const registryData = loadEvidenceRegistry(join(args.coreRoot, "core/verification/registry.yaml"));
+    if (!registry(args.coreRoot).validate(record).valid ||
+      assessEvidence(record, registryData, args.policy ?? {}, definitions).length > 0) return undefined;
+    const evaluation = evaluateCompletion(record, registryData, args.policy ?? {}, definitions);
+    if (evaluation.status !== "complete" || evaluation.verification !== "verified") return undefined;
+    return {
+      status: "success",
+      diagnostics: args.diagnostics,
+      evidenceFiles: [file],
+      evidence: record,
+      evaluation,
+      checks: record.checks.map((check) => ({ id: check.check, status: check.status, type: check.type })),
+      reused: true,
+    };
+  }
+  return undefined;
+}
+
 interface ResolvedVerification {
   readonly profile: VerificationProfile;
   readonly profilePath: string;
@@ -1124,6 +1187,25 @@ async function runVerificationUnlocked(input: VerificationRunInput): Promise<Ver
     return fingerprintFailure("Cannot fingerprint the working tree before verification.");
   }
   const revision = change.revision;
+  const profileSha = sha(readFileSync(profilePath));
+  // Anything that can change which Checks run, or how, is part of the configuration a record is reused for.
+  const configurationSha = sha(JSON.stringify({
+    checks,
+    tools,
+    implementations,
+    changedFiles: input.changedFiles === undefined ? null : [...input.changedFiles].sort(),
+  }));
+  const reused = reusableVerification({
+    projectRoot: input.projectRoot,
+    coreRoot: input.coreRoot,
+    change,
+    profileSha,
+    configurationSha,
+    checks,
+    ...(profile.policy === undefined ? {} : { policy: profile.policy }),
+    diagnostics,
+  });
+  if (reused !== undefined) return reused;
   // Resolve the complete set first: an ask or deny on a later Check must not partially run verification.
   input.beforeRun?.(checks.filter((check) => irrelevance(check, input.changedFiles) === undefined).flatMap((check) => {
     const selected = resolveTool(check.tool, tools, implementations, "local");
@@ -1151,13 +1233,13 @@ async function runVerificationUnlocked(input: VerificationRunInput): Promise<Ver
     return fingerprintFailure("Cannot fingerprint the working tree after verification.");
   }
 
-  const profileSha = sha(readFileSync(profilePath));
   const built = buildEvidence({
     projectRoot: input.projectRoot,
     sourceRoot,
     coreRoot: input.coreRoot,
     profilePath,
     profileSha,
+    configurationSha,
     ...(profile.policy === undefined ? {} : { policy: profile.policy }),
     checks,
     evidenceChecks,

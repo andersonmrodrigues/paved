@@ -5,6 +5,20 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- `paved verify` reuses the newest verified evidence record when the revision, working
+  tree fingerprint, profile and resolved Check configuration (including the
+  `--changed` scope) are unchanged, and reports `data.reused: true`. Evidence records
+  carry the new optional `verification.configuration_sha256`.
+
+### Fixed
+
+- The Claude Code and Codex Stop hook stops the whole verification process group when
+  `verify --changed` exceeds its 110 s budget, instead of leaving the runtime running
+  and holding the operation lock. Its NOT VERIFIED reason now distinguishes a timeout
+  and a held lock from a failed verification.
+
 ## [3.0.0] - 2026-11-21
 
 ### Breaking

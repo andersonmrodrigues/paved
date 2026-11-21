@@ -361,6 +361,71 @@ describe("verification runner", () => {
     }
   });
 
+  it("reuses a verified record for an unchanged tree and configuration instead of rerunning", async () => {
+    const project = sandbox("reuse-unchanged");
+    try {
+      const first = await runVerification({ projectRoot: project, coreRoot: ROOT });
+      assert.equal(first.status, "success");
+      assert.equal(first.reused, undefined);
+      rmSync(markerPath(project));
+
+      const second = await runVerification({ projectRoot: project, coreRoot: ROOT });
+      assert.equal(second.status, "success");
+      assert.equal(second.reused, true);
+      assert.deepEqual(second.evidenceFiles, first.evidenceFiles);
+      assert.equal(second.evaluation?.verification, "verified");
+      assert.equal(existsSync(markerPath(project)), false, "a reused result must not run the Check again");
+      const record = readEvidence(project);
+      assert.match(String((record.verification as { configuration_sha256?: unknown }).configuration_sha256), /^[a-f0-9]{64}$/);
+
+      const cli = await runCli(project);
+      assert.equal((cli.data as { reused?: unknown }).reused, true);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("runs again when the tree, the Check configuration or the change scope differs", async () => {
+    const project = sandbox("reuse-invalidated");
+    try {
+      assert.equal((await runVerification({ projectRoot: project, coreRoot: ROOT })).status, "success");
+
+      writeFileSync(join(project, "changed.txt"), "new content\n");
+      const changedTree = await runVerification({ projectRoot: project, coreRoot: ROOT });
+      assert.equal(changedTree.reused, undefined);
+
+      writeMarkerMode(project, "json");
+      const changedCheck = await runVerification({ projectRoot: project, coreRoot: ROOT });
+      assert.equal(changedCheck.reused, undefined);
+
+      const scoped = await runVerification({ projectRoot: project, coreRoot: ROOT, changedFiles: ["changed.txt"] });
+      assert.equal(scoped.reused, undefined);
+      assert.equal(evidenceFiles(project).length, 4);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("never reuses an earlier pass when the newest record for the same change is not verified", async () => {
+    const project = sandbox("reuse-newest-decides");
+    try {
+      const first = await runVerification({ projectRoot: project, coreRoot: ROOT });
+      const file = first.evidenceFiles[0]!;
+      const record = parse(readFileSync(file, "utf8")) as { id: string; completion: { status: string; verification: string } };
+      record.id = "verify-9999-12-31t23-59-59-999z-1-1";
+      record.completion.status = "incomplete";
+      record.completion.verification = "unverified";
+      writeFileSync(join(project, ".paved/generated/evidence", `${record.id}.yaml`), stringify(record));
+      rmSync(markerPath(project));
+
+      const rerun = await runVerification({ projectRoot: project, coreRoot: ROOT });
+      assert.equal(rerun.reused, undefined);
+      assert.equal(existsSync(markerPath(project)), true);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
   it("keeps evidence ids and output logs unique when configured checks share a final id segment", async () => {
     const project = sandbox("duplicate-check-suffix");
     try {

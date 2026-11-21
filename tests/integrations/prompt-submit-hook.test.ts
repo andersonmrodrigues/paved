@@ -27,22 +27,39 @@ function fixture(initialized = true) {
   const hook = join(plugin, "hooks", "paved-prompt-submit.mjs");
   copyFileSync(handler, hook);
   writeFileSync(join(plugin, "scripts", "paved.mjs"), `
-import { appendFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
 const args = process.argv.slice(2);
 appendFileSync(process.env.TEST_LOG, JSON.stringify(args) + "\\n");
+if (process.env.TEST_HANG) {
+  // Stands in for the runtime the real launcher waits on: it must not outlive a timed-out hook.
+  const runtime = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+  writeFileSync(process.env.TEST_HANG, String(runtime.pid));
+  setInterval(() => {}, 1000);
+} else {
 process.stdout.write(args[0] === "auto-update"
   ? JSON.stringify({ command: "auto-update", status: "success", data: { reason: "disabled" } })
   : process.env.TEST_RESULT);
 process.exit(Number(process.env.TEST_EXIT || 0));
+}
 `);
   return { cwd, hook, log: join(dir, "calls") };
 }
 
-function run(f: ReturnType<typeof fixture>, event: object, result: object, host = "claude-code", exit = 0) {
+function run(f: ReturnType<typeof fixture>, event: object, result: object, host = "claude-code", exit = 0, env: NodeJS.ProcessEnv = {}) {
   return spawnSync(process.execPath, [f.hook, "--host", host], {
-    input: JSON.stringify({ cwd: f.cwd, ...event }), encoding: "utf8", timeout: 5000,
-    env: { ...process.env, TEST_LOG: f.log, TEST_RESULT: JSON.stringify(result), TEST_EXIT: String(exit) },
+    input: JSON.stringify({ cwd: f.cwd, ...event }), encoding: "utf8", timeout: 10000,
+    env: { ...process.env, TEST_LOG: f.log, TEST_RESULT: JSON.stringify(result), TEST_EXIT: String(exit), ...env },
   });
+}
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 describe("lean lifecycle hooks", () => {
@@ -129,6 +146,28 @@ describe("lean lifecycle hooks", () => {
       { command: "verify", status: "success", data: { completion: { status: "complete", verification: "verified" } } },
       "claude-code", 7);
     assert.equal(JSON.parse(result.stdout).decision, "block");
+  });
+
+  it("stops the whole launcher process group when verification exceeds the Stop budget", { skip: process.platform === "win32" }, async () => {
+    const f = fixture();
+    const pidFile = join(dirname(f.log), "runtime.pid");
+    const result = run(f, { hook_event_name: "Stop", stop_hook_active: false }, {}, "claude-code", 0,
+      { TEST_HANG: pidFile, PAVED_HOOK_VERIFY_TIMEOUT_MS: "500" });
+    assert.equal(result.status, 0, result.stderr);
+    const output = JSON.parse(result.stdout);
+    assert.equal(output.decision, "block");
+    assert.match(output.reason, /did not finish within the 1 s Stop hook budget/);
+    const runtime = Number(readFileSync(pidFile, "utf8"));
+    for (let attempt = 0; attempt < 50 && alive(runtime); attempt += 1) await new Promise((done) => setTimeout(done, 100));
+    assert.equal(alive(runtime), false, "the runtime child must not outlive the hook");
+  });
+
+  it("says when another Paved operation holds the lock", () => {
+    const f = fixture();
+    const result = run(f, { hook_event_name: "Stop", stop_hook_active: false },
+      { command: "verify", status: "failed", diagnostics: [{ code: "PAVED_OPERATION_IN_PROGRESS", message: "locked" }] }, "claude-code", 8);
+    assert.equal(JSON.parse(result.stdout).decision, "block");
+    assert.match(JSON.parse(result.stdout).reason, /another Paved operation holds the project lock/);
   });
 
   it("removes per-prompt routing and ignores malformed input", () => {

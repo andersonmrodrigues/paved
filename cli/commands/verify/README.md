@@ -37,6 +37,17 @@ arguments.
 Selectors, `--check`, `--profile`, `--workflow`, `--dry-run` and raw
 shell commands are not supported by the current CLI.
 
+## Reuse
+
+Before running anything, `verify` looks for the newest record made for the same
+change: the same revision and working tree fingerprint, the same profile digest and
+the same `configuration_sha256` (a digest of the resolved Checks, Tools,
+ToolImplementations and `--changed` scope). When that record is complete and verified,
+and still validates, it is returned with `data.reused: true` and no Check runs. Any
+other newest record, including a failed one, means the Checks run again, so an earlier
+pass never hides a later failure. A changed file, Check or Tool, or a different scope,
+always runs the Checks.
+
 ## Outputs and mutations
 
 Successful or failed configured verification writes sanitized logs and validated

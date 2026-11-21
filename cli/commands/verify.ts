@@ -161,6 +161,7 @@ export async function verifyHandler(invocation: CommandInvocation, beforeRun?: T
     data: {
       checks: result.checks,
       evidence,
+      ...(result.reused ? { reused: true } : {}),
       completion: result.evaluation === undefined
         ? undefined
         : {

@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -36,6 +36,70 @@ function invoke(repository, sourceRoot, args, timeout, allowedStatuses = [0, 1])
   });
   if (child.error || child.status === null || !allowedStatuses.includes(child.status)) return undefined;
   try { return JSON.parse(child.stdout); } catch { return undefined; }
+}
+
+const VERIFY_TIMEOUT_MS = 110000;
+
+function stopVerifyTimeout() {
+  // Lowering the budget is allowed (tests, slow hosts); raising it past the host's hook timeout is not.
+  const requested = Number(process.env.PAVED_HOOK_VERIFY_TIMEOUT_MS);
+  return Number.isInteger(requested) && requested > 0 ? Math.min(requested, VERIFY_TIMEOUT_MS) : VERIFY_TIMEOUT_MS;
+}
+
+function signalGroup(child, signal) {
+  try {
+    if (process.platform !== "win32" && child.pid !== undefined) process.kill(-child.pid, signal);
+    else child.kill(signal);
+  } catch {
+    // The group already exited.
+  }
+}
+
+// The launcher runs the runtime as a child, so a timeout must stop the whole process group:
+// killing only the launcher would leave the runtime running and holding the operation lock.
+function invokeVerify(repository, sourceRoot, timeout) {
+  if (!existsSync(join(repository, ".paved", "paved.lock")) ||
+      !existsSync(join(repository, ".paved", "runtime", "selection.json"))) return Promise.resolve({ kind: "unavailable" });
+  const launcher = join(dirname(dirname(fileURLToPath(import.meta.url))), "scripts", "paved.mjs");
+  if (!existsSync(launcher)) return Promise.resolve({ kind: "unavailable" });
+  return new Promise((resolveRun) => {
+    const chunks = [];
+    let bytes = 0;
+    let timedOut = false;
+    const child = spawn(process.execPath, [launcher, "verify", "--changed", "--json", "--project", sourceRoot], {
+      cwd: sourceRoot, shell: false, stdio: ["ignore", "pipe", "ignore"], detached: process.platform !== "win32",
+    });
+    child.stdout.on("data", (chunk) => {
+      if (bytes < 256 * 1024) chunks.push(chunk);
+      bytes += chunk.length;
+    });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      signalGroup(child, "SIGTERM");
+      setTimeout(() => signalGroup(child, "SIGKILL"), 2000).unref();
+    }, timeout);
+    child.on("error", () => { clearTimeout(timer); resolveRun({ kind: "unavailable" }); });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (timedOut) return resolveRun({ kind: "timeout" });
+      let result;
+      try { result = bytes <= 256 * 1024 ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : undefined; } catch { result = undefined; }
+      resolveRun({ kind: "completed", code, result });
+    });
+  });
+}
+
+function verificationFailure(outcome, timeout) {
+  if (outcome.kind === "timeout") {
+    return `NOT VERIFIED: paved verify --changed did not finish within the ${Math.round(timeout / 1000)} s Stop hook budget and was stopped. ` +
+      "Run `paved verify --changed` directly; a verified result for the same working tree is reused at the next Stop.";
+  }
+  const diagnostics = Array.isArray(outcome.result?.diagnostics) ? outcome.result.diagnostics : [];
+  if (outcome.result?.command === "verify" && diagnostics.some((item) => item?.code === "PAVED_OPERATION_IN_PROGRESS")) {
+    return "NOT VERIFIED: another Paved operation holds the project lock, so paved verify --changed could not start. " +
+      "Wait for it to finish, then run `paved verify --changed`.";
+  }
+  return "NOT VERIFIED: paved verify --changed failed or could not complete. Inspect its output and correct or report the failure.";
 }
 
 function openTasks(repository) {
@@ -88,11 +152,13 @@ try {
   } else if (initialized) {
     const host = process.argv[2] === "--host" ? process.argv[3] : undefined;
     if (!["claude-code", "codex"].includes(host)) process.exit(0);
-    const result = invoke(repository, sourceRoot, ["verify", "--changed"], 110000);
+    const timeout = stopVerifyTimeout();
+    const outcome = await invokeVerify(repository, sourceRoot, timeout);
+    const result = outcome.kind === "completed" && [0, 1].includes(outcome.code) ? outcome.result : undefined;
     const verified = result?.command === "verify" && ["success", "warning"].includes(result.status) &&
       result.data?.completion?.status === "complete" && result.data?.completion?.verification === "verified";
     if (!verified) {
-      const reason = "NOT VERIFIED: paved verify --changed failed or could not complete. Inspect its output and correct or report the failure.";
+      const reason = verificationFailure(outcome, timeout);
       emit(event.stop_hook_active === true ? { systemMessage: reason } : { decision: "block", reason });
     }
   }
