@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
@@ -11,230 +10,133 @@ const handler = join(root, "integrations/shared/prompt-submit-hook.mjs");
 const temporary: string[] = [];
 after(() => { for (const path of temporary) rmSync(path, { recursive: true, force: true }); });
 
-function repository(name: string): string {
-  const path = mkdtempSync(join(tmpdir(), `paved-hook-${name}-`));
-  temporary.push(path);
-  return path;
-}
-
-function initialize(path: string): void {
-  mkdirSync(join(path, ".paved"), { recursive: true });
-  writeFileSync(join(path, ".paved", "manifest.yaml"), "version: test\n");
-  writeFileSync(join(path, ".paved", "paved.lock"), "version: test\n");
-}
-
-function runHook(input: string, state = repository("state"), script = handler): { status: number | null; stdout: string; stderr: string } {
-  const result = spawnSync(process.execPath, [script], { input, encoding: "utf8", timeout: 5_000, env: { ...process.env, TMPDIR: state } });
-  return {
-    status: result.status,
-    stdout: result.stdout,
-    stderr: result.stderr,
-  };
-}
-
-describe("prompt submit hook", () => {
-  it("adds the full routing guidance when a session starts", () => {
-    const cwd = repository("initialized");
-    initialize(cwd);
-
-    const result = runHook(JSON.stringify({ cwd, hook_event_name: "SessionStart", source: "startup" }));
-
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stderr, "");
-    const output = JSON.parse(result.stdout) as { hookSpecificOutput: { hookEventName: string; additionalContext: string } };
-    assert.equal(output.hookSpecificOutput.hookEventName, "SessionStart");
-    const context = output.hookSpecificOutput.additionalContext;
-    assert.match(context, /unrelated/i);
-    assert.match(context, /paved:task-specification/);
-    assert.match(context, /paved:task-review/);
-    assert.ok(context.includes("Paved `intent` command"));
-    assert.match(context, /`routing`.*subagent.*capacity and reasoning effort/);
-    assert.match(context, /without an explicit Paved command/);
-    assert.match(context, /resume the matching run.*do not create a duplicate/);
-    assert.match(context, /planning-only.*stop.*plan/);
-    assert.match(context, /investigation-only.*do not implement a fix/);
-  });
-
-  it("adds a portable active-run handoff from the installed local status runtime", () => {
-    const cwd = repository("handoff-project");
-    initialize(cwd);
+function fixture(initialized = true) {
+  const dir = mkdtempSync(join(root, ".hook-test-"));
+  temporary.push(dir);
+  const cwd = join(dir, "project");
+  const plugin = join(dir, "plugin");
+  mkdirSync(join(cwd, ".git"), { recursive: true });
+  mkdirSync(join(plugin, "hooks"), { recursive: true });
+  mkdirSync(join(plugin, "scripts"));
+  if (initialized) {
     mkdirSync(join(cwd, ".paved", "runtime"), { recursive: true });
-    writeFileSync(join(cwd, ".paved", "runtime", "selection.json"), "{}\n");
-    const plugin = repository("handoff-plugin");
-    mkdirSync(join(plugin, "hooks"), { recursive: true });
-    mkdirSync(join(plugin, "scripts"), { recursive: true });
-    const copiedHook = join(plugin, "hooks", "paved-prompt-submit.mjs");
-    copyFileSync(handler, copiedHook);
-    writeFileSync(join(plugin, "scripts", "paved.mjs"), `process.stdout.write(JSON.stringify({data:{openRuns:[{run:"feature-0123456789abcdef0123",currentPhase:"implementation",handoff:{summary:"Parser step done; response mapping remains.",fresh:false,changed_paths:["src/parser.ts"],next_action:"Inspect parser diff and resume."}}]}}));\n`);
+    writeFileSync(join(cwd, ".paved", "manifest.yaml"), "version: test\n");
+    writeFileSync(join(cwd, ".paved", "paved.lock"), "version: test\n");
+    writeFileSync(join(cwd, ".paved", "runtime", "selection.json"), "{}");
+  }
+  const hook = join(plugin, "hooks", "paved-prompt-submit.mjs");
+  copyFileSync(handler, hook);
+  writeFileSync(join(plugin, "scripts", "paved.mjs"), `
+import { appendFileSync } from "node:fs";
+const args = process.argv.slice(2);
+appendFileSync(process.env.TEST_LOG, JSON.stringify(args) + "\\n");
+process.stdout.write(args[0] === "auto-update"
+  ? JSON.stringify({ command: "auto-update", status: "success", data: { reason: "disabled" } })
+  : process.env.TEST_RESULT);
+process.exit(Number(process.env.TEST_EXIT || 0));
+`);
+  return { cwd, hook, log: join(dir, "calls") };
+}
 
-    const result = runHook(JSON.stringify({ cwd, hook_event_name: "SessionStart", source: "resume" }), repository("handoff-state"), copiedHook);
+function run(f: ReturnType<typeof fixture>, event: object, result: object, host = "claude-code", exit = 0) {
+  return spawnSync(process.execPath, [f.hook, "--host", host], {
+    input: JSON.stringify({ cwd: f.cwd, ...event }), encoding: "utf8", timeout: 5000,
+    env: { ...process.env, TEST_LOG: f.log, TEST_RESULT: JSON.stringify(result), TEST_EXIT: String(exit) },
+  });
+}
 
+describe("lean lifecycle hooks", () => {
+  it("injects a bounded index after checking configured updates without initializing", () => {
+    const f = fixture();
+    const result = run(f, { hook_event_name: "SessionStart", source: "startup" },
+      { command: "doctor", status: "warning", data: { status: "stale-context", staleGenerators: ["api"] } });
     assert.equal(result.status, 0, result.stderr);
-    const output = JSON.parse(result.stdout) as { hookSpecificOutput: { additionalContext: string } };
-    assert.match(output.hookSpecificOutput.additionalContext, /Portable Paved handoff/);
-    assert.match(output.hookSpecificOutput.additionalContext, /feature-0123456789abcdef0123/);
-    assert.match(output.hookSpecificOutput.additionalContext, /STALE/);
-    assert.match(output.hookSpecificOutput.additionalContext, /response mapping remains/);
-    assert.match(output.hookSpecificOutput.additionalContext, /src\/parser.ts/);
+    const text = JSON.parse(result.stdout).hookSpecificOutput.additionalContext as string;
+    assert.match(text, /stale-context/);
+    assert.match(text, /paved context/);
+    assert.ok(text.length <= 1200);
+    const calls = readFileSync(f.log, "utf8").trim().split("\n").map(line => JSON.parse(line) as string[]);
+    assert.deepEqual(calls, [
+      ["auto-update", "check", "--host", "claude-code", "--json", "--project", f.cwd],
+      ["doctor", "--quick", "--json", "--project", f.cwd],
+    ]);
   });
 
-  it("keeps the per-prompt reminder to one short line without echoing the prompt", () => {
-    const cwd = repository("reminder");
-    initialize(cwd);
-    const result = runHook(JSON.stringify({ cwd, prompt: "private user prompt" }));
-    const output = JSON.parse(result.stdout) as { hookSpecificOutput: { hookEventName: string; additionalContext: string } };
-    assert.equal(output.hookSpecificOutput.hookEventName, "UserPromptSubmit");
-    const reminder = output.hookSpecificOutput.additionalContext;
-    assert.ok(!reminder.includes("\n") && reminder.length < 400, reminder);
-    assert.match(reminder, /intent, plan and execute/);
-    assert.match(reminder, /explicit human approval/);
-    assert.match(reminder, /`routing`/);
-    assert.doesNotMatch(result.stdout, /private user prompt/);
+  it("does not run a launcher for an uninitialized repository", () => {
+    const f = fixture(false);
+    const result = run(f, { hook_event_name: "SessionStart", source: "startup" }, {});
+    assert.equal(result.status, 0);
+    assert.match(result.stdout, /uninitialized/);
+    assert.throws(() => readFileSync(f.log, "utf8"));
   });
 
-  it("finds the nearest initialized repository from a nested directory", () => {
-    const cwd = repository("nested");
-    initialize(cwd);
-    const nested = join(cwd, "packages", "app", "src");
-    mkdirSync(nested, { recursive: true });
-
-    const result = runHook(JSON.stringify({ cwd: nested }));
-
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /hookSpecificOutput/);
+  it("reports incomplete state as broken without bootstrapping", () => {
+    const f = fixture(false);
+    mkdirSync(join(f.cwd, ".paved"));
+    const result = run(f, { hook_event_name: "SessionStart", source: "resume" }, {});
+    assert.match(result.stdout, /broken/);
+    assert.throws(() => readFileSync(f.log, "utf8"));
   });
 
-  it("stops at the nearest nested Git boundary before finding a parent Paved state", () => {
-    const parent = repository("boundary");
-    initialize(parent);
-    const nested = join(parent, "nested");
-    mkdirSync(join(nested, ".git"), { recursive: true });
-
-    const result = runHook(JSON.stringify({ cwd: nested }));
-
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout, "");
+  it("lists open tasks without selecting one for verification", () => {
+    const f = fixture();
+    mkdirSync(join(f.cwd, ".paved", "tasks"));
+    writeFileSync(join(f.cwd, ".paved", "tasks", "first.md"), "## State\nStatus: open\n");
+    writeFileSync(join(f.cwd, ".paved", "tasks", "second.md"), "## State\nStatus: open\n");
+    writeFileSync(join(f.cwd, ".paved", "tasks", "done.md"), "## State\nStatus: done\n");
+    const start = run(f, { hook_event_name: "SessionStart", source: "resume" }, { data: { status: "healthy" } });
+    assert.match(start.stdout, /first.md.*second.md/);
+    assert.doesNotMatch(start.stdout, /done.md/);
+    run(f, { hook_event_name: "Stop" }, { command: "verify", status: "failed" }, "codex", 7);
+    assert.doesNotMatch(readFileSync(f.log, "utf8"), /--task/);
   });
 
-  it("recognizes a worktree-style .git file as a repository boundary", () => {
-    const parent = repository("git-file");
-    initialize(parent);
-    const nested = join(parent, "worktree");
-    mkdirSync(nested);
-    writeFileSync(join(nested, ".git"), "gitdir: ../.git/worktrees/child\n");
-
-    const result = runHook(JSON.stringify({ cwd: nested }));
-
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout, "");
-  });
-
-  it("does not inject for unrelated repositories or incomplete Paved state", () => {
-    const unrelated = repository("unrelated");
-    const manifestOnly = repository("manifest-only");
-    mkdirSync(join(manifestOnly, ".paved"));
-    writeFileSync(join(manifestOnly, ".paved", "manifest.yaml"), "version: test\n");
-    const lockOnly = repository("lock-only");
-    mkdirSync(join(lockOnly, ".paved"));
-    writeFileSync(join(lockOnly, ".paved", "paved.lock"), "version: test\n");
-
-    for (const cwd of [unrelated, manifestOnly, lockOnly]) {
-      const result = runHook(JSON.stringify({ cwd }));
+  it("blocks Stop on failed verification for Claude and Codex", () => {
+    for (const host of ["claude-code", "codex"]) {
+      const f = fixture();
+      const result = run(f, { hook_event_name: "Stop", stop_hook_active: false },
+        { command: "verify", status: "failed", diagnostics: [{ message: "tests failed" }] }, host, 7);
       assert.equal(result.status, 0, result.stderr);
-      assert.equal(result.stdout, "", cwd);
-      assert.equal(result.stderr, "", cwd);
+      assert.equal(JSON.parse(result.stdout).decision, "block");
+      assert.match(JSON.parse(result.stdout).reason, /verify --changed/);
+      assert.match(readFileSync(f.log, "utf8"), /"verify","--changed"/);
     }
   });
 
-  it("fails open without output for malformed and incomplete input", () => {
-    for (const input of ["not json", "null", "[]", "{}", JSON.stringify({ cwd: 4 })]) {
-      const result = runHook(input);
-      assert.equal(result.status, 0, input);
-      assert.equal(result.stdout, "", input);
-      assert.equal(result.stderr, "", input);
-    }
+  it("does not block a verified Stop, or loop on a continued Stop", () => {
+    const f = fixture();
+    const green = run(f, { hook_event_name: "Stop", stop_hook_active: false },
+      { command: "verify", status: "success", data: { completion: { status: "complete", verification: "verified" } } });
+    assert.notEqual(green.stdout && JSON.parse(green.stdout).decision, "block");
+    const retried = run(f, { hook_event_name: "Stop", stop_hook_active: true },
+      { command: "verify", status: "failed" }, "claude-code", 7);
+    assert.notEqual(retried.stdout && JSON.parse(retried.stdout).decision, "block");
+    assert.match(retried.stdout, /NOT VERIFIED/);
   });
 
-  it("preserves UTF-8 paths when stdin splits a multibyte character", async () => {
-    const root = repository("utf8");
-    const cwd = join(root, "projeto-ação");
-    mkdirSync(cwd);
-    initialize(cwd);
-    const payload = Buffer.from(JSON.stringify({ cwd }));
-    const character = Buffer.from("ç");
-    const split = payload.indexOf(character) + 1;
-    assert.ok(split > 0);
-
-    const child = spawn(process.execPath, [handler], { stdio: ["pipe", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.setEncoding("utf8").on("data", (chunk: string) => { stdout += chunk; });
-    child.stderr.setEncoding("utf8").on("data", (chunk: string) => { stderr += chunk; });
-    const closed = new Promise<number | null>((resolve) => child.on("close", resolve));
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    child.stdin.write(payload.subarray(0, split));
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    child.stdin.end(payload.subarray(split));
-
-    assert.equal(await closed, 0, stderr);
-    assert.match(stdout, /hookSpecificOutput/);
-    assert.equal(stderr, "");
+  it("reports an unavailable verification and never invents support for another host", () => {
+    const f = fixture();
+    rmSync(join(f.cwd, ".paved", "runtime", "selection.json"));
+    const blocked = run(f, { hook_event_name: "Stop", stop_hook_active: false }, {}, "codex");
+    assert.equal(JSON.parse(blocked.stdout).decision, "block");
+    assert.throws(() => readFileSync(f.log, "utf8"));
+    assert.equal(run(f, { hook_event_name: "Stop" }, {}, "cursor").stdout, "");
   });
 
-  it("routes natural-language requests on every prompt without writing session state", () => {
-    const cwd = repository("every-prompt");
-    initialize(cwd);
-    const state = repository("stateless");
-    const requests = [
-      "Explique a estrutura do projeto",
-      "Implemente a nova funcionalidade",
-      "Planeje a alteração, sem implementar",
-      "Investigue o erro, sem corrigir ainda",
-      "Continue o desenvolvimento",
-    ];
-
-    for (const prompt of requests) {
-      const result = runHook(JSON.stringify({ cwd, session_id: "s-1", hook_event_name: "UserPromptSubmit", prompt }), state);
-      assert.equal(result.status, 0, result.stderr);
-      const context = JSON.parse(result.stdout).hookSpecificOutput.additionalContext as string;
-      assert.match(context, /development, planning, fixes, debugging and refactoring/);
-      assert.match(context, /resume the matching run/);
-      assert.match(context, /explicit human approval/);
-      assert.doesNotMatch(result.stdout, new RegExp(prompt));
-    }
-    assert.deepEqual(readdirSync(state), [], "routing does not persist session markers or prompts");
+  it("does not accept a successful-looking result from a failed launcher", () => {
+    const f = fixture();
+    const result = run(f, { hook_event_name: "Stop" },
+      { command: "verify", status: "success", data: { completion: { status: "complete", verification: "verified" } } },
+      "claude-code", 7);
+    assert.equal(JSON.parse(result.stdout).decision, "block");
   });
 
-  it("adds the full guidance at every session start, including after compaction or clear", () => {
-    const cwd = repository("compact");
-    initialize(cwd);
-    const state = repository("compact-state");
-    runHook(JSON.stringify({ cwd, session_id: "s-1", hook_event_name: "UserPromptSubmit" }), state);
-
-    for (const source of ["startup", "resume", "compact", "clear"]) {
-      const started = runHook(JSON.stringify({ cwd, session_id: "s-1", hook_event_name: "SessionStart", source }), state);
-      const output = JSON.parse(started.stdout) as { hookSpecificOutput: { hookEventName: string; additionalContext: string } };
-      assert.equal(output.hookSpecificOutput.hookEventName, "SessionStart");
-      assert.ok(output.hookSpecificOutput.additionalContext.includes("Paved `intent` command"));
-    }
-    assert.match(runHook(JSON.stringify({ cwd, session_id: "s-1", hook_event_name: "UserPromptSubmit" }), state).stdout, /hookSpecificOutput/);
-  });
-
-  it("ignores a session start from an unknown source", () => {
-    const cwd = repository("startup");
-    initialize(cwd);
-    for (const source of ["other", undefined]) {
-      assert.equal(runHook(JSON.stringify({ cwd, session_id: "s-1", hook_event_name: "SessionStart", source })).stdout, "", String(source));
-    }
-  });
-
-  it("does not depend on a writable temporary directory", () => {
-    const cwd = repository("unwritable");
-    initialize(cwd);
-    const blocked = join(repository("unwritable-state"), "file");
-    writeFileSync(blocked, "not a directory\n");
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      assert.match(runHook(JSON.stringify({ cwd, session_id: "s-1", hook_event_name: "UserPromptSubmit" }), blocked).stdout, /hookSpecificOutput/);
-    }
+  it("removes per-prompt routing and ignores malformed input", () => {
+    const f = fixture();
+    const result = run(f, { hook_event_name: "UserPromptSubmit", prompt: "private" }, {});
+    assert.equal(result.stdout, "");
+    const malformed = spawnSync(process.execPath, [f.hook], { input: "bad", encoding: "utf8" });
+    assert.equal(malformed.status, 0);
+    assert.equal(malformed.stdout, "");
   });
 });

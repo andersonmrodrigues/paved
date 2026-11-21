@@ -1,0 +1,16 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:delivery-approval:v1
+title: Paved patch-bound delivery approval
+description: Human approval to merge one change request at one target, head and verified patch.
+type: object
+additionalProperties: false
+required: [apiVersion, kind, target, change, head, patch_id, approved_by, approved_at]
+properties:
+  apiVersion: { const: paved/v1 }
+  kind: { const: DeliveryApproval }
+  target: { type: string, minLength: 1, maxLength: 500 }
+  change: { type: string, minLength: 1, maxLength: 500 }
+  head: { type: string, pattern: '^[a-f0-9]{40}([a-f0-9]{24})?$' }
+  patch_id: { type: string, pattern: '^[a-f0-9]{40}$' }
+  approved_by: { type: string, minLength: 1, maxLength: 200 }
+  approved_at: { $ref: "urn:paved:schema:common:v1#/$defs/dateTime" }

@@ -2,13 +2,13 @@ apiVersion: paved/v1
 kind: Adapter
 id: technology/flutter
 title: Flutter
-version: 0.2.0
+version: 0.3.0
 summary: Static evidence and cross-platform implementation guidance for Flutter applications.
 requires:
-  core: ^1.0.0 || ^2.0.0
+  core: ^1.0.0 || ^2.0.0 || ^3.0.0
   adapters:
     - id: technology/dart
-      version: ^0.1.0
+      version: ^0.2.0
 detect:
   file_contains:
     - glob: pubspec.yaml
@@ -74,4 +74,4 @@ sources:
   - title: Flutter project configuration
     url: https://docs.flutter.dev/tools/pubspec
     retrieved_at: 2026-10-12
-reviewed_at: 2026-10-12
+reviewed_at: 2026-11-21

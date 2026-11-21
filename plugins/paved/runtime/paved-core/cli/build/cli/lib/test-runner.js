@@ -1,6 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync } from "node:fs";
-import { spawnSync } from "node:child_process";
 import { join, relative, sep } from "node:path";
 import { parse, stringify } from "yaml";
 import { planMavenDependencies } from "../../adapters/technology/java/maven-dependencies.js";
@@ -12,7 +11,7 @@ import { inspectOverrides } from "./override-safety.js";
 import { createRegistry } from "./schemas.js";
 import { resolveSafePath } from "./safe-path.js";
 import { authorizeTool, buildArgv, captureToolExecution, resolveTool, sanitizeToolOutput, validateImplementation, validateTool, validateToolInputs, validateToolResult, } from "./tools.js";
-import { spawnApproved } from "./verification-runner.js";
+import { fingerprintWorktree, spawnApproved } from "./verification-runner.js";
 import { listDecisions } from "./decisions/store.js";
 const TEST_RUNTIME_VERSION = "paved-test-runner/0.1.0";
 /** The tests failed because a service, container engine or program was unavailable. */
@@ -319,21 +318,6 @@ function resolveTestingToolCandidate(projectRoot, coreRoot, sourceRoot, selected
         ...(override === undefined ? {} : { override }),
     };
 }
-function currentRevision(projectRoot) {
-    const git = (args) => spawnSync("git", args, { cwd: projectRoot, shell: false, encoding: "utf8" });
-    const head = git(["rev-parse", "HEAD"]);
-    if (head.status !== 0 || !head.stdout.trim())
-        return { revision: "unversioned", uncommitted: false };
-    const status = git(["status", "--porcelain=v1"]);
-    if (status.status !== 0 || !status.stdout.trim())
-        return { revision: head.stdout.trim(), uncommitted: false };
-    const diff = git(["diff", "HEAD", "--binary"]);
-    return {
-        revision: head.stdout.trim(),
-        uncommitted: true,
-        worktreeSha: sha(`${status.stdout}\n${diff.stdout}`),
-    };
-}
 const TESTING_SUMMARY = "Executed testing Tool ";
 /**
  * A record the test runner wrote for one Tool run. It is a log, not a verification result:
@@ -424,7 +408,7 @@ async function runOneTestingTool(input, selected) {
     catch (error) {
         return { status: "failed", diagnostics: [diagnostic("PAVED_TEST_WORKING_DIRECTORY_INVALID", "config", error instanceof Error ? error.message : "Tool working directory is unsafe.")] };
     }
-    const revision = currentRevision(input.sourceRoot ?? input.projectRoot);
+    const revision = fingerprintWorktree(input.sourceRoot ?? input.projectRoot);
     const startedAt = new Date().toISOString();
     const processResult = await spawnApproved({
         executable: command.executable,

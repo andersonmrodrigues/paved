@@ -8,7 +8,10 @@ import { inspectAgentsBlock, refreshAgentsBlock } from "../../cli/lib/agents-blo
 
 const core = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const template = readFileSync(join(core, "core/templates/AGENTS.md"), "utf8").trimEnd();
-const legacy = template.replace("`/paved:intent`", "`/paved:feature`");
+const legacy = template.replace(
+  "Default to direct, outcome-focused work with Paved:",
+  "Use the mandatory intent, plan, and execute workflow for all changes:",
+);
 let project = "";
 beforeEach(() => { project = mkdtempSync(join(tmpdir(), "paved-agents-")); });
 afterEach(() => rmSync(project, { recursive: true, force: true }));

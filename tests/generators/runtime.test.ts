@@ -252,7 +252,7 @@ test('integration context never emits configuration values', () => {
   const dir = fixture();
   writeFileSync(join(dir, 'web/application.properties'), 'service.url=https://example.invalid\napi.key=TOP_SECRET_VALUE\n');
   initializeConsumer(core, dir, 'example');
-  assert.equal(runGenerators(core, dir).errors.length, 0);
+  assert.deepEqual(runGenerators(core, dir).errors, []);
   const content = readFileSync(join(dir, '.paved/project/integrations/overview.md'), 'utf8');
   assert.doesNotMatch(content, /TOP_SECRET_VALUE|https:\/\/example\.invalid/);
 });
@@ -286,6 +286,29 @@ test('human edits to a Feature produce a proposal and preserve the edit', () => 
   assert.match(readFileSync(path, 'utf8'), /Human confirmed purpose/);
   assert.equal(result.executions.find(e => e.generator === 'project-context/feature-map')?.status, 'conflict');
 });
+
+for (const status of ['reviewed', 'rejected'] as const) {
+  test(`Feature ${status} review is preserved when source evidence changes`, () => {
+    const dir = fixture();
+    initializeConsumer(core, dir, 'example');
+    assert.equal(runGenerators(core, dir).errors.length, 0);
+    const path = join(dir, '.paved/project/feature-map/web-courses.yaml');
+    const feature = parse(readFileSync(path, 'utf8'));
+    feature.provenance.review = { status, by: 'Project owner', at: '2026-11-21' };
+    const reviewed = stringify(feature);
+    writeFileSync(path, reviewed);
+    const unchanged = runGenerators(core, dir, { generators: ['project-context/feature-map'] });
+    assert.equal(readFileSync(path, 'utf8'), reviewed);
+    assert.equal(unchanged.executions.find(e => e.generator === 'project-context/feature-map')?.status, 'unchanged');
+    writeFileSync(join(dir, 'web/src/app-routing.module.ts'), "const routes = [{ path: 'courses', component: CoursesPage }];\n// changed evidence\n");
+
+    const result = runGenerators(core, dir, { generators: ['project-context/feature-map'] });
+    const execution = result.executions.find(e => e.generator === 'project-context/feature-map');
+    assert.equal(readFileSync(path, 'utf8'), reviewed);
+    assert.equal(execution?.status, 'conflict');
+    assert.ok(execution?.proposals.includes('.paved/generated/proposals/project/feature-map/web-courses.yaml'));
+  });
+}
 
 test('mechanically configured Checkstyle can produce a cited Rule proposal', () => {
   const dir = fixture();

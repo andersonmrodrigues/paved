@@ -47,6 +47,9 @@ describe("generated plugins", () => {
     for (const path of ["core/verification/README.md", "core/templates/workflow-run.yaml", "core/templates/evidence.yaml", "core/templates/AGENTS.md"]) {
       assert.deepEqual(runtime.files.get(path), readFileSync(join(ROOT, path)), `${path} is referenced by consumer guidance`);
     }
+    assert.ok(runtime.files.has("core/skills/bootstrap/paved/skill.yaml"), "CLI policy checks retain skill contracts");
+    assert.equal([...runtime.files.keys()].some((path) => path.startsWith("core/skills/") && !path.endsWith(".yaml")), false,
+      "host-visible skills supply their own prose and references");
     // The launcher runs the compiled CLI; its TypeScript sources are not packed twice.
     assert.ok(runtime.files.has("cli/build/cli/index.js"));
     // The engine digest in generated-context provenance hashes this source file.
@@ -160,30 +163,40 @@ describe("generated plugins", () => {
     assert.match(String(codex.websiteURL), /^https:\/\//);
   });
 
-  it("bundle prompt routing and optional workbench lifecycle hooks for Codex and Claude Code", () => {
-    const codex = readJson<Record<string, unknown>>(join(portable, ".codex-plugin", "plugin.json"));
-    const claudeManifest = readJson<Record<string, unknown>>(join(claude, ".claude-plugin", "plugin.json"));
+  it("bundles lean lifecycle and optional workbench hooks for Codex and Claude Code", () => {
+    const plans = planPlugins(ROOT, { version: "0.0.0", integrity: "test", files: new Map([["package.json", Buffer.from("{}")]]) });
+    const portablePlan = plans.find((plan) => plan.target === PLUGIN_TARGETS.portable)!;
+    const claudePlan = plans.find((plan) => plan.target === PLUGIN_TARGETS.claude)!;
+    const codex = JSON.parse(portablePlan.files.get(".codex-plugin/plugin.json")!.toString()) as Record<string, unknown>;
+    const claudeManifest = JSON.parse(claudePlan.files.get(".claude-plugin/plugin.json")!.toString()) as Record<string, unknown>;
     assert.equal(codex.hooks, undefined, "Codex discovers the default hooks/hooks.json path");
     assert.equal(claudeManifest.hooks, undefined, "Claude Code discovers the default hooks/hooks.json path");
-    for (const [plugin, target] of targets) {
-      const hooks = readJson<{ hooks: { UserPromptSubmit: { hooks: { type: string; command: string; timeout: number }[] }[] } }>(join(plugin, "hooks", "hooks.json"));
-      const [entry] = hooks.hooks.UserPromptSubmit;
-      const [command] = entry!.hooks;
-      assert.equal(command!.type, "command");
-      assert.equal(command!.command, `node "\${CLAUDE_PLUGIN_ROOT}/hooks/paved-prompt-submit.mjs" --host ${target === PLUGIN_TARGETS.claude ? "claude-code" : "codex"}`);
-      assert.equal(command!.timeout, 450);
-      const restored = (hooks.hooks as unknown as { SessionStart: { matcher: string; hooks: { command: string }[] }[] }).SessionStart;
-      assert.deepEqual(restored.filter((item) => item.matcher).map((item) => [item.matcher, item.hooks[0]!.command]), [["startup|resume|compact|clear", command!.command]], "guidance is added at session start and after compaction or clear");
-      assert.deepEqual(readFileSync(join(plugin, "hooks", "paved-prompt-submit.mjs")), readFileSync(join(ROOT, "integrations", "shared", "prompt-submit-hook.mjs")));
+    for (const { target, files, provenance } of plans) {
+      const readme = files.get("README.md")!.toString();
+      assert.doesNotMatch(readme, /session\/prompt hooks check due updates/);
+      assert.match(readme, /SessionStart checks due updates only after explicit authorization/);
+      const hooks = JSON.parse(files.get("hooks/hooks.json")!.toString()) as { hooks: Record<string, { matcher?: string; hooks: { type: string; command: string; timeout: number; async?: boolean }[] }[]> };
+      assert.equal(hooks.hooks.UserPromptSubmit, undefined);
+      const host = target === PLUGIN_TARGETS.claude ? "claude-code" : "codex";
+      const variable = host === "claude-code" ? "CLAUDE_PLUGIN_ROOT" : "PLUGIN_ROOT";
+      const command = `node "\${${variable}}/hooks/paved-prompt-submit.mjs" --host ${host}`;
+      const restored = hooks.hooks.SessionStart!;
+      assert.deepEqual(restored.filter((item) => item.matcher).map((item) => [item.matcher, item.hooks[0]!.command]), [["startup|resume|compact|clear|fork", command]]);
+      const stop = hooks.hooks.Stop![0]!.hooks[0]!;
+      assert.equal(stop.command, command);
+      assert.equal(stop.timeout, 120);
+      assert.notEqual(stop.async, true);
+      assert.deepEqual(files.get("hooks/paved-prompt-submit.mjs"), readFileSync(join(ROOT, "integrations", "shared", "prompt-submit-hook.mjs")));
       const activity = hooks.hooks as unknown as Record<string, { hooks: { command: string; async?: boolean; timeout: number }[] }[]>;
       for (const event of ["PostToolUse", "Stop", "SessionEnd"]) {
-        assert.equal(activity[event]?.[0]?.hooks[0]?.command, 'node "${CLAUDE_PLUGIN_ROOT}/hooks/paved-workbench.mjs"');
-        assert.equal(activity[event]?.[0]?.hooks[0]?.async, true);
-        assert.equal(activity[event]?.[0]?.hooks[0]?.timeout, 1);
+        const index = event === "Stop" ? 1 : 0;
+        assert.equal(activity[event]?.[index]?.hooks[0]?.command, `node "\${${variable}}/hooks/paved-workbench.mjs"`);
+        assert.equal(activity[event]?.[index]?.hooks[0]?.async, true);
+        assert.equal(activity[event]?.[index]?.hooks[0]?.timeout, 1);
       }
-      assert.equal(activity.SessionStart?.[1]?.hooks[0]?.command, 'node "${CLAUDE_PLUGIN_ROOT}/hooks/paved-workbench.mjs"');
-      assert.deepEqual(readFileSync(join(plugin, "hooks", "paved-workbench.mjs")), readFileSync(join(ROOT, "integrations", "shared", "workbench-hook.mjs")));
-      for (const path of ["hooks/hooks.json", "hooks/paved-prompt-submit.mjs", "hooks/paved-workbench.mjs"]) assert.ok(provenanceOf(target).files[path] !== undefined, `${path} must be covered by generated provenance`);
+      assert.equal(activity.SessionStart?.[1]?.hooks[0]?.command, `node "\${${variable}}/hooks/paved-workbench.mjs"`);
+      assert.deepEqual(files.get("hooks/paved-workbench.mjs"), readFileSync(join(ROOT, "integrations", "shared", "workbench-hook.mjs")));
+      for (const path of ["hooks/hooks.json", "hooks/paved-prompt-submit.mjs", "hooks/paved-workbench.mjs"]) assert.ok(provenance.files[path] !== undefined, `${path} must be covered by generated provenance`);
     }
   });
 

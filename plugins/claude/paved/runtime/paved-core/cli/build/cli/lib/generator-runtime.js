@@ -14,6 +14,7 @@ import { atomicWriteFileSync } from './atomic-write.js';
 import { acquireConsumerOperationLock } from './operation-lock.js';
 import { resolveSafePath } from './safe-path.js';
 import { readRuntimeSelection } from './runtime-lock.js';
+import { ensureModelsConfig, validateModelsConfig } from './models-config.js';
 export const IGNORED_SOURCE_ENTRY_NAMES = ['.git', '.paved', '.paved-operation-lock', '.claude', '.agents', '.superpowers', '.idea', '.vscode', '.fleet', '.vs', 'node_modules', 'target', 'dist', 'build', '.angular', '.next', '.venv', 'venv', '.worktrees', 'coverage', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache', '.tox', '.gradle', 'cdk.out', '.aws-sam'];
 const ignoredSourceEntryNames = new Set(IGNORED_SOURCE_ENTRY_NAMES);
 export function isIgnoredSourceEntry(name) { return name.startsWith('.env') || ignoredSourceEntryNames.has(name); }
@@ -83,11 +84,14 @@ export function planConsumerInitialization(core, consumer, name, source = consum
     const lock = { apiVersion: 'paved/v1', kind: 'Lock', resolved_at: new Date().toISOString(), core: { version, source: 'local-core', sha256: hashLocalCore(core) }, adapters: selected.adapters.map(d => ({ id: d.adapter.id, version: d.adapter.version, source: 'local-core', sha256: hashLocalTree(core, [`adapters/${d.adapter.id}`]) })), generators, ...(capabilities.length ? { capabilities } : {}), ...(runtime ? { runtime } : {}) };
     validate(registry, lock);
     const capabilityDiagnostics = Object.values(resolutions).flatMap(r => r.diagnostics).filter(d => d.code !== 'missing-provider');
-    return { manifest, lock, selectedAdapters: manifest.adapters.map(a => a.id).sort(), resolvedAdapters: selected.adapters.map(d => d.adapter.id).sort(), capabilityProviders: capabilityProviders(resolutions), adapterDiagnostics: selected.diagnostics, capabilityDiagnostics, plannedWrites: ['.paved/manifest.yaml', '.paved/paved.lock', '.paved/.gitignore', '.paved/documents/README.md'] };
+    return { manifest, lock, selectedAdapters: manifest.adapters.map(a => a.id).sort(), resolvedAdapters: selected.adapters.map(d => d.adapter.id).sort(), capabilityProviders: capabilityProviders(resolutions), adapterDiagnostics: selected.diagnostics, capabilityDiagnostics, plannedWrites: ['.paved/manifest.yaml', '.paved/paved.lock', '.paved/.gitignore', '.paved/documents/README.md', '.paved/models.yaml'] };
 }
 export function initializeConsumer(core, consumer, name, source = consumer) {
     const registry = createRegistry(join(core, 'schemas'), ['paved/v1']);
     const version = coreManifest(core).version;
+    const modelsConfigProblem = validateModelsConfig(consumer, registry);
+    if (modelsConfigProblem !== undefined)
+        throw new Error(modelsConfigProblem);
     const runtime = readRuntimeSelection(consumer);
     if (runtime && runtime.version !== version)
         throw new Error(`Runtime ${runtime.version} is incompatible with Core ${version}.`);
@@ -132,6 +136,7 @@ export function initializeConsumer(core, consumer, name, source = consumer) {
     const documentsReadme = safe(consumer, '.paved/documents/README.md');
     if (!existsSync(documentsReadme))
         atomicWriteFileSync(documentsReadme, `# Work documents\n\nKeep durable Paved work documents here and commit them with the project change. Use the workflow run id in each filename so related documents stay linked. Create a category directory only when you use it.\n\n- \`intents/<run-id>.md\` — captured intent and scope\n- \`plans/<run-id>.md\` — implementation plan; open this exact file with \`paved preview\` for review and approval\n- \`specs/<run-id>.md\` — behavior and acceptance criteria\n- \`tasks/<run-id>.md\` — task breakdown\n- \`research/<run-id>.md\` — supporting research\n\nWorkflow state and local evidence are separate disposable files under \`.paved/generated/\`.\n`);
+    ensureModelsConfig(consumer, registry);
     return manifest;
 }
 function loadContracts(core, registry) {
@@ -391,6 +396,17 @@ function writeOutput(root, output, registry, info, generator, dryRun = false) {
             if (output.schema === 'Feature') {
                 const old = parse(readFileSync(target, 'utf8'));
                 const p = old.provenance;
+                const nextProvenance = newMeta.provenance;
+                if (p && stringify(p.review) !== stringify(nextProvenance.review)) {
+                    const withoutReview = (value) => {
+                        const copy = structuredClone(value);
+                        delete copy.provenance.review;
+                        return withoutTime(copy);
+                    };
+                    if (withoutReview(oldMeta) === withoutReview(newMeta))
+                        return result('unchanged', current);
+                    return result('conflict', finalContent);
+                }
                 const semantic = { ...old };
                 delete semantic.provenance;
                 if (!p || p.generator !== generator || p.output_sha256 !== sha(stringify(semantic)))
@@ -549,7 +565,7 @@ function runGeneratorsUnlocked(core, consumer, options = {}) {
             contractSha256: hashLocalTree(core, [`generators/${contract.id}`]),
             engineSha256: hashLocalTree(core, ['manifest.yaml', 'cli/lib/generator-runtime.ts', 'schemas/project-context.schema.yaml', 'schemas/feature.schema.yaml', 'schemas/provenance.schema.yaml']),
             manifestSha256: hashSource(consumer, '.paved/manifest.yaml'), ...(sourceWorktree === undefined ? {} : { sourceWorktree }),
-            status: 'unchanged', sources: [], outputs: [], outputHashes: {}, proposals: [], unknowns: [], warnings: [], errors: [] };
+            status: 'unchanged', sources: [], outputs: [], changedOutputs: [], outputHashes: {}, proposals: [], unknowns: [], warnings: [], errors: [] };
         result.executions.push(entry);
         try {
             if ((contract.depends_on ?? []).some(d => !completed.has(d)))
@@ -603,11 +619,15 @@ function runGeneratorsUnlocked(core, consumer, options = {}) {
                     const proposal = options.dryRun === true ? writeResult : writeOutput(consumer, { ...output, path }, registry, info, contract.id);
                     entry.proposals.push(path);
                     entry.outputHashes[path] = proposal.sha256;
+                    if (proposal.status === 'written' || proposal.status === 'proposed')
+                        entry.changedOutputs.push(path);
                     entry.status = 'conflict';
                 }
                 else {
                     entry.outputs.push(output.path);
                     entry.outputHashes[output.path] = writeResult.sha256;
+                    if (status !== 'unchanged')
+                        entry.changedOutputs.push(output.path);
                     if (status === 'proposed')
                         entry.proposals.push(output.path);
                     if (entry.status !== 'conflict' && status !== 'unchanged')

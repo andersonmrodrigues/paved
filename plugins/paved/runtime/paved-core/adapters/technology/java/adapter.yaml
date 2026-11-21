@@ -2,10 +2,10 @@ apiVersion: paved/v1
 kind: Adapter
 id: technology/java
 title: Java
-version: 0.1.0
+version: 0.2.0
 summary: Static evidence about Java sources, dependencies and builds.
 requires:
-  core: ^1.0.0 || ^2.0.0
+  core: ^1.0.0 || ^2.0.0 || ^3.0.0
 detect:
   any_files: [pom.xml, build.gradle, build.gradle.kts]
   file_contains:
@@ -51,4 +51,4 @@ sources:
   - title: Maven POM reference
     url: https://maven.apache.org/pom.html
     retrieved_at: 2026-09-27
-reviewed_at: 2026-09-27
+reviewed_at: 2026-11-21

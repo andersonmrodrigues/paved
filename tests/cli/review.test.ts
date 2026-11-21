@@ -64,6 +64,72 @@ function record(dir: string, review: PreparedReview, overrides: Record<string, u
 }
 
 describe("paved review without a workflow run", () => {
+  it("plans a scaled review for branch and untracked sensitive changes without writing artifacts", async () => {
+    const dir = repository();
+    write(dir, "src/auth/login.ts", "export const login = true;\n");
+
+    const result = await cli(dir, "review", "plan", "--base", "main");
+
+    assert.equal(result.status, "success", JSON.stringify(result));
+    const plan = (result.data as { plan: { reviewers: unknown[]; evidence: { sensitiveMatches: { path: string }[] } } }).plan;
+    assert.equal(plan.reviewers.length, 3);
+    assert.ok(plan.evidence.sensitiveMatches.some((match) => match.path === "src/auth/login.ts"));
+    assert.equal(existsSync(join(dir, ".paved/generated/reviews")), false);
+  });
+
+  it("counts staged and untracked lines and treats binary files conservatively", async () => {
+    const dir = repository();
+    write(dir, "src/medium.ts", Array.from({ length: 60 }, (_, i) => `line ${i}`).join("\n") + "\n");
+    git(dir, "add", "src/medium.ts");
+
+    const medium = await cli(dir, "review", "plan");
+    assert.equal(medium.status, "success", JSON.stringify(medium));
+    const plan = (medium.data as { plan: { reviewers: unknown[]; evidence: { changedLines: number } } }).plan;
+    assert.equal(plan.reviewers.length, 1);
+    assert.equal(plan.evidence.changedLines, 61);
+
+    mkdirSync(join(dir, "assets"), { recursive: true });
+    writeFileSync(join(dir, "assets/image.bin"), Buffer.from([0, 1, 2]));
+    const binary = await cli(dir, "review", "plan");
+    const binaryPlan = (binary.data as { plan: { reviewers: unknown[]; evidence: { unknownCountPaths: string[] } } }).plan;
+    assert.equal(binaryPlan.reviewers.length, 3);
+    assert.deepEqual(binaryPlan.evidence.unknownCountPaths, ["assets/image.bin"]);
+  });
+
+  it("uses configured sensitive path patterns and rejects an invalid policy", async () => {
+    const dir = repository();
+    write(dir, ".paved/review.yaml", stringify({
+      apiVersion: "paved/v1", kind: "ReviewPolicy", sensitive_paths: ["src/b.ts"],
+    }));
+
+    const result = await cli(dir, "review", "plan");
+    const plan = (result.data as { plan: { reviewers: unknown[] } }).plan;
+    assert.equal(result.status, "success", JSON.stringify(result));
+    assert.equal(plan.reviewers.length, 3);
+
+    write(dir, ".paved/review.yaml", stringify({
+      apiVersion: "paved/v1", kind: "ReviewPolicy", sensitive_paths: "src/b.ts",
+    }));
+    const invalid = await cli(dir, "review", "plan");
+    assert.equal(invalid.status, "failed");
+    assert.equal(invalid.diagnostics[0]?.code, "PAVED_REVIEW_POLICY_INVALID");
+  });
+
+  it("uses project-relative paths when the project is inside a Git repository", async () => {
+    const dir = repository();
+    write(dir, "nested/.paved/manifest.yaml", stringify({ apiVersion: "paved/v1", kind: "Project" }));
+    write(dir, "nested/src/widget.ts", "old\n");
+    git(dir, "add", "nested");
+    git(dir, "commit", "-q", "-m", "nested project");
+    write(dir, "nested/src/widget.ts", Array.from({ length: 60 }, (_, i) => `line ${i}`).join("\n") + "\n");
+
+    const result = await cli(join(dir, "nested"), "review", "plan");
+
+    assert.equal(result.status, "success", JSON.stringify(result));
+    const files = (result.data as { files: { path: string }[] }).files;
+    assert.deepEqual(files.map((file) => file.path), ["src/widget.ts"]);
+  });
+
   it("prepares a brief over everything changed since the base, including uncommitted and untracked files", async () => {
     const dir = repository();
     const result = await cli(dir, "review", "--base", "main");
@@ -79,7 +145,8 @@ describe("paved review without a workflow run", () => {
     assert.doesNotMatch(diff.toString(), /\.paved\//);
     assert.deepEqual(review.rules.filter((rule) => rule.id.startsWith("project.")).map((rule) => rule.id), ["project.style.source"]);
     const brief = readFileSync(join(dir, review.brief), "utf8");
-    assert.match(brief, /kind: ChangeReview\ntarget:\n {2}kind: base/);
+    assert.match(brief, /kind: ChangeReviewBundle\ntarget:\n {2}kind: base/);
+    assert.match(brief, /lens: Skeptic/);
     assert.match(brief, new RegExp(`diff_sha256: ${review.diff_sha256}`));
     assert.match(brief, /`project\.style\.source`/);
     assert.match(brief, new RegExp(`git log --format=%B ${review.target.base}\\.\\.${review.target.head}`), "commits stay listed when uncommitted files ride along");
@@ -108,6 +175,41 @@ describe("paved review without a workflow run", () => {
     assert.equal(data.recorded, true);
     assert.equal(data.notes.length, 1);
     assert.match(readFileSync(join(dir, data.document), "utf8"), /\*\*note\*\* `src\/b\.ts` \(reasoned\): Unused export\./);
+  });
+
+  it("requires the configured independent lenses in a standalone review bundle", async () => {
+    const dir = repository();
+    write(dir, ".paved/review.yaml", stringify({
+      apiVersion: "paved/v1", kind: "ReviewPolicy", sensitive_paths: ["src/b.ts"],
+    }));
+    const review = prepared(await cli(dir, "review", "--base", "main"));
+    const requiredLenses = (review as PreparedReview & { requiredLenses: string[] }).requiredLenses;
+    assert.deepEqual(requiredLenses, ["Skeptic", "Architect", "Minimalist"]);
+
+    const bundle = {
+      apiVersion: "paved/v1",
+      kind: "ChangeReviewBundle",
+      target: review.target,
+      reviewed: { diff_sha256: review.diff_sha256 },
+      reviews: requiredLenses.map((lens, index) => ({
+        reviewer: { agent: `reviewer ${index + 1}`, isolated: true, lens },
+        passes: ["rules", "diff", "change"],
+        findings: [],
+      })),
+    };
+    write(dir, review.record, stringify(bundle));
+    const accepted = await cli(dir, "review", "--base", "main", "--evidence", review.record);
+    assert.equal(accepted.status, "success", JSON.stringify(accepted));
+
+    write(dir, review.record, stringify({ ...bundle, reviews: bundle.reviews.slice(1) }));
+    const missing = await cli(dir, "review", "--base", "main", "--evidence", review.record);
+    assert.equal(missing.diagnostics[0]?.code, "PAVED_REVIEW_LENSES_INCOMPLETE");
+
+    write(dir, review.record, stringify({ ...bundle, reviews: bundle.reviews.map((entry) => ({
+      ...entry, reviewer: { ...entry.reviewer, agent: "same reviewer" },
+    })) }));
+    const duplicate = await cli(dir, "review", "--base", "main", "--evidence", review.record);
+    assert.equal(duplicate.diagnostics[0]?.code, "PAVED_REVIEW_DUPLICATE_REVIEWER");
   });
 
   it("reports proven blocking findings as findings for the user to decide on", async () => {

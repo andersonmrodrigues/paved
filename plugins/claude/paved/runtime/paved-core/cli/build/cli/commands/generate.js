@@ -82,6 +82,7 @@ function summarizeExecution(execution) {
         version: execution.version,
         status: execution.status,
         outputs: execution.outputs,
+        changedOutputs: execution.changedOutputs,
         proposals: execution.proposals,
         warnings: execution.warnings,
         errors: execution.errors,

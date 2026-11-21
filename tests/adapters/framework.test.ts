@@ -21,7 +21,15 @@ test('adapter contracts validate and maintain independent versions and compatibi
   for (const adapter of adapters) assert.equal(registry.validate(adapter).valid, true, adapter.id);
   const bad = { ...adapters[0], version: 'latest' };
   assert.equal(registry.validate(bad).valid, false);
-  assert.equal(resolveAdapters([detected('java-project', 'technology/java')], [{ id: 'technology/java', version: '^0.1.0' }], '9.0.0').diagnostics[0]?.code, 'incompatible');
+  assert.equal(resolveAdapters([detected('java-project', 'technology/java')], [{ id: 'technology/java', version: '^0.2.0' }], '9.0.0').diagnostics[0]?.code, 'incompatible');
+});
+
+test('all bundled adapters resolve against the Core 3 release candidate', () => {
+  const detections = adapters.map(adapter => ({ adapter, confidence: 'strong' as const, evidence: [], roots: ['.'] }));
+  const selected = adapters.map(adapter => ({ id: adapter.id, version: `^${adapter.version}` }));
+  const resolution = resolveAdapters(detections, selected, '3.0.0');
+  assert.deepEqual(resolution.diagnostics, []);
+  assert.equal(resolution.adapters.length, adapters.length);
 });
 
 test('detection uses content evidence and preserves weak and unknown states', () => {
@@ -55,8 +63,8 @@ test('language adapters distinguish TypeScript, Dart and Flutter evidence', () =
   assert.equal(detection.find(d => d.adapter.id === 'technology/dart')?.confidence, 'strong');
   assert.equal(detection.find(d => d.adapter.id === 'technology/flutter')?.confidence, 'strong');
   const resolved = resolveAdapters(detection, [
-    { id: 'technology/typescript', version: '^0.1.0' },
-    { id: 'technology/flutter', version: '^0.2.0' },
+    { id: 'technology/typescript', version: '^0.2.0' },
+    { id: 'technology/flutter', version: '^0.3.0' },
   ], '1.0.0');
   assert.deepEqual(resolved.diagnostics, []);
   assert.deepEqual(resolved.adapters.map(item => item.adapter.id), ['technology/dart', 'technology/flutter', 'technology/typescript']);
@@ -77,7 +85,7 @@ test('negative detection does not resolve Flutter for a Dart-only project', () =
   const detection = detectAdapters(root, adapters, sources);
   assert.equal(detection.find(d => d.adapter.id === 'technology/dart')?.confidence, 'strong');
   assert.equal(detection.find(d => d.adapter.id === 'technology/flutter')?.confidence, 'unknown');
-  const resolved = resolveAdapters(detection, [{ id: 'technology/dart', version: '^0.1.0' }], '1.0.0');
+  const resolved = resolveAdapters(detection, [{ id: 'technology/dart', version: '^0.2.0' }], '1.0.0');
   assert.deepEqual(resolved.diagnostics, []);
   assert.deepEqual(resolved.adapters.map(item => item.adapter.id), ['technology/dart']);
 });
@@ -88,7 +96,7 @@ test('Flutter adapter publishes cross-platform implementation knowledge from off
     provides?: { knowledge?: string[] };
     sources: { url: string }[];
   };
-  assert.equal(adapter.version, '0.2.0');
+  assert.equal(adapter.version, '0.3.0');
   assert.ok(adapter.provides?.knowledge?.includes('knowledge/development.md'));
   const knowledge = readFileSync(join(core, 'adapters/technology/flutter/knowledge/development.md'), 'utf8');
   assert.match(knowledge, /\biOS\b/);
@@ -285,10 +293,10 @@ test('resolution diagnoses missing, incompatible, cyclic and ambiguous providers
   assert.equal(resolveCapability('source.build', providers, base.adapter.id).status, 'explicitly-selected');
   assert.equal(resolveCapability('source.build', providers, 'technology/missing').status, 'unavailable');
   assert.equal(resolveCapability('missing.capability', providers).status, 'unavailable');
-  const cyclic: AdapterContract = { ...base.adapter, requires: { core: '^0.2.0', adapters: [{ id: base.adapter.id, version: '^0.1.0' }] } };
-  assert.equal(resolveAdapters([{ ...base, adapter: cyclic }], [{ id: cyclic.id, version: '^0.1.0' }], '1.0.0').diagnostics[0]?.code, 'cycle');
+  const cyclic: AdapterContract = { ...base.adapter, requires: { core: '^0.2.0', adapters: [{ id: base.adapter.id, version: '^0.2.0' }] } };
+  assert.equal(resolveAdapters([{ ...base, adapter: cyclic }], [{ id: cyclic.id, version: '^0.2.0' }], '1.0.0').diagnostics[0]?.code, 'cycle');
   const broken: AdapterContract = { ...base.adapter, requires: { core: '^1.0.0', adapters: [{ id: 'technology/missing', version: '^0.1.0' }] } };
-  assert.ok(resolveAdapters([{ ...base, adapter: broken }], [{ id: broken.id, version: '^0.1.0' }], '1.0.0').diagnostics.some(d => d.code === 'dependency'));
+  assert.ok(resolveAdapters([{ ...base, adapter: broken }], [{ id: broken.id, version: '^0.2.0' }], '1.0.0').diagnostics.some(d => d.code === 'dependency'));
 });
 
 test('adapter evidence omits sensitive values and generators consume resolved evidence', () => {
@@ -301,7 +309,7 @@ test('adapter evidence omits sensitive values and generators consume resolved ev
   writeFileSync(join(root, 'frontend/src/app/app-routing.module.ts'), "const routes = [{path: 'items', component: Page}];");
   writeFileSync(join(root, 'frontend/application.properties'), 'password=TOP_SECRET_VALUE\nquarkus.datasource.jdbc.url=jdbc:postgresql://secret-host/database\n');
   const sources = discoverSources(root), detection = detectAdapters(root, adapters, sources);
-  const selected = resolveAdapters(detection, [{ id: 'technology/angular', version: '^0.2.0' }, { id: 'technology/postgresql', version: '^0.1.0' }], '1.0.0');
+  const selected = resolveAdapters(detection, [{ id: 'technology/angular', version: '^0.3.0' }, { id: 'technology/postgresql', version: '^0.2.0' }], '1.0.0');
   const evidence = capabilityEvidence(root, sources, selected.adapters).evidence;
   assert.doesNotMatch(JSON.stringify(evidence), /TOP_SECRET_VALUE|secret-host/);
   assert.ok(evidence.some(e => e.capability === 'application.modules' && e.value === '^19.2.15'));
@@ -312,7 +320,7 @@ test('adapter evidence omits sensitive values and generators consume resolved ev
   assert.ok(result.executions.find(e => e.generator === 'project-context/feature-map')?.outputs.some(p => p.endsWith('items.yaml')));
   const architecture = readFileSync(join(root, '.paved/project/architecture/overview.md'), 'utf8');
   assert.match(architecture, /Angular core dependency version/);
-  assert.match(architecture, /adapter_version: 0.1.0/);
+  assert.match(architecture, /adapter_version: 0.3.0/);
   assert.doesNotMatch(architecture, /TOP_SECRET_VALUE|secret-host/);
   const manifest = parse(readFileSync(join(root, '.paved/manifest.yaml'), 'utf8')) as {adapters: {id:string}[]};
   assert.deepEqual(manifest.adapters.map(a=>a.id), ['technology/angular','technology/postgresql','technology/typescript']);
@@ -346,7 +354,7 @@ test('repeated adapter provenance serializes without YAML alias exhaustion', () 
   const result = runGenerators(core, root);
   assert.equal(result.executions.find(e => e.generator === 'project-context/domain')?.status, 'written');
   const document = readFileSync(join(root, '.paved/project/domain/overview.md'), 'utf8');
-  assert.match(document, /adapter_version: 0.1.0/);
+  assert.match(document, /adapter_version: 0.2.0/);
 });
 
 test('generator code does not select a concrete adapter by technology name', () => {
@@ -359,7 +367,7 @@ test('incompatible adapter dependency is diagnosed without selecting dependent a
   const base = detected('quarkus-project', 'technology/quarkus');
   const java = detected('quarkus-project', 'technology/java');
   const incompatible: AdapterContract = { ...base.adapter, requires: { core: '^1.0.0', adapters: [{ id: 'technology/java', version: '^9.0.0' }] } };
-  const result = resolveAdapters([{...base, adapter: incompatible}, java], [{id: incompatible.id, version: '^0.1.0'}], '1.0.0');
+  const result = resolveAdapters([{...base, adapter: incompatible}, java], [{id: incompatible.id, version: '^0.2.0'}], '1.0.0');
   assert.ok(result.diagnostics.some(d => d.code === 'incompatible'));
   assert.ok(result.diagnostics.some(d => d.code === 'dependency'));
   assert.ok(!result.adapters.some(d => d.adapter.id === incompatible.id));

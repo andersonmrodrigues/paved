@@ -40,6 +40,7 @@ function project(): { root: string; invoke: (...argv: string[]) => Promise<Comma
   write(root, "feature.js", "export const enabled = false;\n");
   write(root, "check.mjs", 'import { readFileSync } from "node:fs";\nprocess.exit(readFileSync("feature.js", "utf8").includes("true") ? 0 : 1);\n');
   initializeConsumer(core, root, "consumer");
+  write(root, ".paved/review.yaml", stringify({ apiVersion: "paved/v1", kind: "ReviewPolicy", sensitive_paths: ["feature.js"] }));
   write(root, ".paved/tools/testing/run.yaml", stringify(TOOL));
   write(root, ".paved/tool-implementations/testing/run.yaml", stringify({
     apiVersion: "paved/v1", kind: "ToolImplementation", id: "project.testing.run", tool: "project.testing.run",
@@ -84,10 +85,15 @@ describe("bug workflow", () => {
     const evidence = parse(readFileSync(join(root, run.evidence), "utf8")) as { artifacts: { kind: string; source: { location: string } }[] };
     assert.equal(evidence.artifacts.find((artifact) => artifact.kind === "reproduction")?.source.location, discovery);
 
-    const independent = (delivered.data as { review: { independent: { record: string; reviewed: Record<string, string> } } }).review.independent;
+    const independent = (delivered.data as {
+      review: { independent: { record: string; reviewed: Record<string, string>; requiredLenses: string[] } };
+    }).review.independent;
     write(root, independent.record, stringify({
-      apiVersion: "paved/v1", kind: "ChangeReview", run: id, reviewer: { agent: "test reviewer", isolated: true },
-      reviewed: independent.reviewed, passes: ["rules", "diff", "change"], findings: [],
+      apiVersion: "paved/v1", kind: "ChangeReviewBundle", run: id, reviewed: independent.reviewed,
+      reviews: independent.requiredLenses.map((lens, index) => ({
+        reviewer: { agent: `test reviewer ${index + 1}`, isolated: true, lens },
+        passes: ["rules", "diff", "change"], findings: [],
+      })),
     }));
     const completed = await invoke("execute", "--run", id, "--auto", "--evidence", independent.record);
     assert.equal(completed.status, "success", JSON.stringify(completed));

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, readdirSync, lstatSync, realpathSync, unlinkSync, renameSync, rmdirSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { loadCanonicalSkills, type CanonicalSkill } from "./catalog.ts";
+import { loadCanonicalSkills, skillResources, type CanonicalSkill } from "./catalog.ts";
 import { AGENT_COMMANDS, type AgentCommandContract } from "./commands.ts";
 import type { AgentId, IntegrationMetadata, ProjectionFile, ProjectionPlan } from "./types.ts";
 
@@ -188,6 +188,21 @@ export function planProjection(agent: AgentId, projectRoot: string, coreRoot: st
       : join("skills", skill.name, "SKILL.md"),
     content: skillContent(integration, skill),
   }));
+  const resources: Record<string, string> = {};
+  for (const skill of skills) {
+    for (const resource of skillResources(skill)) {
+      const bytes = readFileSync(join(skill.directory, resource));
+      const content = bytes.toString("utf8");
+      if (!Buffer.from(content, "utf8").equals(bytes)) {
+        throw new Error(`Project-local projection cannot represent non-UTF-8 resource: ${skill.name}/${resource}`);
+      }
+      const relativePath = agent === "codex"
+        ? join(skill.name, resource)
+        : join("skills", skill.name, resource);
+      files.push({ relativePath, content });
+      resources[relativePath.split(sep).join("/")] = digest(content);
+    }
+  }
   const bootstrapRoot = agent === "codex" ? "paved-runtime" : join(".claude", "paved");
   files.push({ relativePath: join(bootstrapRoot, "bootstrap.mjs"), content: readFileSync(join(coreRoot, "integrations", "shared", "bootstrap.mjs"), "utf8") });
   files.push({ relativePath: join(bootstrapRoot, "auto-update.mjs"), content: readFileSync(join(coreRoot, "integrations", "shared", "auto-update.mjs"), "utf8") });
@@ -217,7 +232,58 @@ export function planProjection(agent: AgentId, projectRoot: string, coreRoot: st
       }, null, 2)}\n`,
     });
   }
+  files.push({
+    relativePath: RESOURCE_INDEX,
+    content: `${JSON.stringify({
+      _paved: { generated: true, integration: integration.id },
+      resources,
+    }, null, 2)}\n`,
+  });
   return { integration, files, diagnostics: [] };
+}
+
+const RESOURCE_INDEX = ".paved-resources.json";
+
+function resourceIndex(content: string, integration: IntegrationMetadata): Record<string, string> {
+  const value = JSON.parse(content) as {
+    _paved?: { generated?: unknown; integration?: unknown };
+    resources?: Record<string, unknown>;
+  };
+  if (value._paved?.generated !== true || value._paved.integration !== integration.id
+    || value.resources === undefined || typeof value.resources !== "object" || value.resources === null
+    || Array.isArray(value.resources)
+    || Object.values(value.resources).some((hash) => typeof hash !== "string" || !/^[a-f0-9]{64}$/.test(hash))) {
+    throw new Error("Invalid Paved resource ownership index.");
+  }
+  return value.resources as Record<string, string>;
+}
+
+function resourceOwnership(plan: ProjectionPlan): {
+  managed: Set<string>;
+  previous: Record<string, string>;
+} {
+  const index = plan.files.find((file) => file.relativePath === RESOURCE_INDEX);
+  const planned = index === undefined ? {} : resourceIndex(index.content, plan.integration);
+  let previous: Record<string, string> = {};
+  try {
+    previous = resourceIndex(readFileSync(safePath(plan.integration, RESOURCE_INDEX), "utf8"), plan.integration);
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
+      throw new Error(`Refusing to overwrite user-owned integration resource index: ${String(error)}`, { cause: error });
+    }
+  }
+  return { managed: new Set([...Object.keys(previous), ...Object.keys(planned)]), previous };
+}
+
+function ownedProjectionFile(
+  path: string, relativePath: string, ownership: ReturnType<typeof resourceOwnership>,
+): boolean {
+  const portablePath = relativePath.split(sep).join("/");
+  if (ownership.managed.has(portablePath)) {
+    return ownership.previous[portablePath] === digest(readFileSync(path, "utf8"));
+  }
+  if (relativePath === RESOURCE_INDEX) return true; // Already validated by resourceOwnership.
+  return generatedByPaved(path);
 }
 
 function atomicWrite(path: string, content: string): void {
@@ -293,7 +359,9 @@ function prunable(plan: ProjectionPlan): string[] {
       throw error;
     }
   };
-  const skillFiles = (dir: string) => entries(dir).map((name) => (dir ? `${dir}/${name}/SKILL.md` : `${name}/SKILL.md`));
+  const skillFiles = (dir: string) => entries(dir)
+    .filter((name) => lstatSync(safePath(plan.integration, join(dir, name))).isDirectory())
+    .map((name) => (dir ? `${dir}/${name}/SKILL.md` : `${name}/SKILL.md`));
   const candidates = plan.integration.target === "codex"
     ? skillFiles("")
     : [...skillFiles("skills"), ...entries(".claude/commands/paved").filter((name) => name.endsWith(".md")).map((name) => `.claude/commands/paved/${name}`)];
@@ -314,14 +382,19 @@ function prune(plan: ProjectionPlan): number {
 
 export function applyProjection(plan: ProjectionPlan): { changed: number; unchanged: number; removed: number } {
   const pending: { file: ProjectionFile; path: string }[] = [];
+  const ownership = resourceOwnership(plan);
   let changed = 0;
   let unchanged = 0;
   for (const file of plan.files) {
     const path = safePath(plan.integration, file.relativePath);
     try {
       if (lstatSync(path).isSymbolicLink()) throw new Error(`Refusing to write through symlink: ${path}`);
+      if (ownership.managed.has(file.relativePath.split(sep).join("/"))
+        && !ownedProjectionFile(path, file.relativePath, ownership)) {
+        throw new Error(`Refusing to overwrite user-owned integration file: ${path}`);
+      }
       if (readFileSync(path, "utf8") === file.content) { unchanged += 1; continue; }
-      if (!generatedByPaved(path)) throw new Error(`Refusing to overwrite user-owned integration file: ${path}`);
+      if (!ownedProjectionFile(path, file.relativePath, ownership)) throw new Error(`Refusing to overwrite user-owned integration file: ${path}`);
     } catch (error) {
       if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
@@ -334,7 +407,7 @@ export function applyProjection(plan: ProjectionPlan): { changed: number; unchan
     try {
       if (lstatSync(path).isSymbolicLink()) throw new Error(`Refusing to write through symlink: ${path}`);
       if (readFileSync(path, "utf8") === file.content) { unchanged += 1; continue; }
-      if (!generatedByPaved(path)) throw new Error(`Refusing to overwrite user-owned integration file: ${path}`);
+      if (!ownedProjectionFile(path, file.relativePath, ownership)) throw new Error(`Refusing to overwrite user-owned integration file: ${path}`);
     } catch (error) {
       if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
@@ -346,9 +419,10 @@ export function applyProjection(plan: ProjectionPlan): { changed: number; unchan
 
 export function removeProjection(plan: ProjectionPlan): number {
   let removed = 0;
+  const ownership = resourceOwnership(plan);
   for (const file of plan.files) {
     const path = safePath(plan.integration, file.relativePath);
-    if (generatedByPaved(path)) {
+    if (existsSync(path) && ownedProjectionFile(path, file.relativePath, ownership)) {
       safePath(plan.integration, file.relativePath);
       unlinkSync(path);
       removed += 1;

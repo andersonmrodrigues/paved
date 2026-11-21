@@ -1,6 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync } from "node:fs";
-import { spawnSync } from "node:child_process";
 import { join, relative, sep } from "node:path";
 import { parse, stringify } from "yaml";
 import { planMavenDependencies } from "../../adapters/technology/java/maven-dependencies.ts";
@@ -26,7 +25,7 @@ import {
   type ToolImplementation,
   type ToolOverride,
 } from "./tools.ts";
-import { spawnApproved } from "./verification-runner.ts";
+import { fingerprintWorktree, spawnApproved, type WorktreeFingerprint } from "./verification-runner.ts";
 import { listDecisions } from "./decisions/store.ts";
 
 const TEST_RUNTIME_VERSION = "paved-test-runner/0.1.0";
@@ -50,12 +49,6 @@ interface TestRunInput {
 interface ToolRoots {
   readonly tools: readonly string[];
   readonly implementations: readonly string[];
-}
-
-interface Revision {
-  readonly revision: string;
-  readonly uncommitted: boolean;
-  readonly worktreeSha?: string;
 }
 
 // Signals that a test run failed because something outside the change was missing:
@@ -383,20 +376,6 @@ function resolveTestingToolCandidate(projectRoot: string, coreRoot: string, sour
   };
 }
 
-function currentRevision(projectRoot: string): Revision {
-  const git = (args: string[]) => spawnSync("git", args, { cwd: projectRoot, shell: false, encoding: "utf8" });
-  const head = git(["rev-parse", "HEAD"]);
-  if (head.status !== 0 || !head.stdout.trim()) return { revision: "unversioned", uncommitted: false };
-  const status = git(["status", "--porcelain=v1"]);
-  if (status.status !== 0 || !status.stdout.trim()) return { revision: head.stdout.trim(), uncommitted: false };
-  const diff = git(["diff", "HEAD", "--binary"]);
-  return {
-    revision: head.stdout.trim(),
-    uncommitted: true,
-    worktreeSha: sha(`${status.stdout}\n${diff.stdout}`),
-  };
-}
-
 const TESTING_SUMMARY = "Executed testing Tool ";
 
 /**
@@ -411,7 +390,7 @@ export function isTestingToolEvidence(record: object): boolean {
 function resultEvidence(args: {
   tool: ToolContract;
   implementation: ToolImplementation;
-  revision: Revision;
+  revision: WorktreeFingerprint;
   execution: ReturnType<typeof captureToolExecution>;
   log: string;
 }): { record: EvidenceRecord; path: string } {
@@ -521,7 +500,7 @@ async function runOneTestingTool(input: TestRunInput, selected: ResolvedTestingT
     return { status: "failed", diagnostics: [diagnostic("PAVED_TEST_WORKING_DIRECTORY_INVALID", "config", error instanceof Error ? error.message : "Tool working directory is unsafe.")] };
   }
 
-  const revision = currentRevision(input.sourceRoot ?? input.projectRoot);
+  const revision = fingerprintWorktree(input.sourceRoot ?? input.projectRoot);
   const startedAt = new Date().toISOString();
   const processResult = await spawnApproved({
     executable: command.executable,

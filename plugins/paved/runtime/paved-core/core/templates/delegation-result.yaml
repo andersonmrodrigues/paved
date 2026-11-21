@@ -1,0 +1,7 @@
+apiVersion: paved/v1
+kind: DelegationResult
+findings: []
+files_read: []
+boundaries: []
+non_obvious: []
+questions: []

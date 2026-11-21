@@ -17,6 +17,7 @@ this CLI yet.
 | [`paved generate`](commands/generate/README.md) | Run all generators or selected generator ids and their dependencies | `.paved/project/`, `.paved/generated/`, `.paved/generated/state/last-run.json` |
 | [`paved verify`](commands/verify/README.md) | Run the explicit verification profile through approved Tool bindings and record sanitized evidence | `.paved/generated/evidence/` |
 | [`paved status`](commands/status/README.md) | Report initialized state, lock health, adapters, generator state, proposals, verification profile state, open runs, diagnostics and repair decisions | nothing, unless a repair decision is answered |
+| `paved delivery approve|merge` | Record human approval for, or merge, the exact fresh target/change/head/patch tuple | `.paved/approvals/delivery/` on approval; a merge changes remote repository history |
 | `paved workbench` | Start a local dashboard for runs and recent Codex/Claude Code hook activity, or inspect/stop it | disposable `.paved/generated/workbench/server.json`; activity stays in memory |
 | [`paved doctor`](commands/doctor/README.md) | The diagnostics and repair decisions of `status`, kept as a CLI subcommand for the launcher and CI | nothing, unless a repair decision is answered |
 | `paved gardener` | Analyze existing consumer evidence and report review proposals; `correction` drafts a rule from a correction a person stated | nothing; `correction` writes a draft under `.paved/generated/proposals/` and adoption writes `.paved/rules/corrections/` |

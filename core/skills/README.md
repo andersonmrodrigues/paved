@@ -4,6 +4,13 @@ A skill is a reusable procedure an agent activates when a task matches it. Each 
 a directory following the [Agent Skills specification](https://agentskills.io/specification),
 plus a Paved contract file:
 
+The `paved` router and eleven lean playbooks below are canonical skills: the existing
+registry discovers them and plugin generation projects their instructions and references
+for both hosts. Specialized skills remain available under their original names and ids;
+load them only when their detailed procedure is needed. This is additive routing, not
+a replacement for installed workflows, approval gates or specialized contracts.
+The [plain Markdown index](lean/paved.md) is a source-reading convenience.
+
 ```text
 <category>/<name>/
 ├── SKILL.md       # Agent Skills frontmatter (name, description) + the procedure
@@ -28,6 +35,18 @@ All Core skills are `experimental`.
 
 | Category | Skill | Version | Purpose |
 |---|---|---|---|
+| `bootstrap` | `paved` | 0.1.0 | Lean task router |
+| `bootstrap` | `setup` | 0.1.0 | Initialize and maintain Paved |
+| `development` | `feature` | 0.1.0 | Short behavior-change playbook |
+| `development` | `refactor` | 0.1.0 | Short behavior-preserving playbook |
+| `development` | `design` | 0.1.0 | Design and experiment routing |
+| `debugging` | `bug` | 0.1.0 | Short defect-repair playbook |
+| `discovery` | `investigate` | 0.1.0 | Read-only investigation routing |
+| `testing` | `verify` | 0.1.0 | Proof and verification gaps |
+| `code-review` | `review` | 0.1.0 | Review and specialist lens routing |
+| `code-review` | `ship` | 0.1.0 | Authorized delivery routing |
+| `gardener` | `reflect` | 0.1.0 | Durable lesson capture |
+| `product` | `task` | 0.1.0 | Handoff and mid-flow scope |
 | `bootstrap` | `repository-onboarding` | 0.4.0 | Set up Paved and offer project-local app verification |
 | `discovery` | `context-discovery` | 0.3.2 | Understand a repository or the part a task touches |
 | `development` | `feature-development` | 0.8.0 | Add or change behavior |

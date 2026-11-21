@@ -68,6 +68,7 @@ describe("GitHub adapter", () => {
     const valid = schemas().validate(adapter);
     assert.ok(valid.valid, formatErrors("adapter.yaml", valid.errors));
     assert.ok(compatible(coreManifest().version, adapter.requires.core));
+    assert.ok(compatible("3.0.0", adapter.requires.core));
     assert.equal(adapter.provides.tools, undefined, "adapter bindings must not duplicate Core Tool contracts");
     assert.ok(adapter.sources.every((source) => source.url.startsWith("https://") && source.retrieved_at));
     const implementations = adapter.provides.tool_implementations.map((path) => {
@@ -76,7 +77,7 @@ describe("GitHub adapter", () => {
       assert.ok(result.valid, formatErrors(path, result.errors));
       assert.equal(binding.source, "adapter");
       assert.match(binding.id, /^adapter-github\.change-request\./);
-      assert.equal(binding.invocation.executable, "gh");
+      assert.equal(binding.invocation.executable, binding.tool === "core.change-request.merge" ? "node" : "gh");
       return binding;
     });
     assert.equal(implementations.length, 3);
@@ -93,11 +94,11 @@ describe("GitHub adapter", () => {
   it("merges only the head revision that was checked, as one squashed patch", () => {
     const merge = tool("merge");
     const binding = loadYaml(join(root, "tool-implementations/change-request/merge.yaml")) as ToolImplementation;
-    assert.deepEqual(buildArgv(merge, binding, { change: "42", head: HEAD }), {
-      executable: "gh", argv: ["pr", "merge", "--squash", "42", "--match-head-commit", HEAD],
+    assert.deepEqual(buildArgv(merge, binding, { change: "42", target: "main", head: HEAD }), {
+      executable: "node", argv: [".paved/runtime/bin/paved.mjs", "delivery", "merge", "--base", "main", "--change", "42", "--head", HEAD],
     });
     assert.throws(() => buildArgv(merge, binding, { change: "42" }), /required input head is missing/);
-    assert.throws(() => buildArgv(merge, binding, { change: "--admin", head: HEAD }), /does not match its pattern/);
+    assert.throws(() => buildArgv(merge, binding, { change: "--admin", target: "main", head: HEAD }), /does not match its pattern/);
     const open = loadYaml(join(root, "tool-implementations/change-request/open.yaml")) as ToolImplementation;
     assert.deepEqual(buildArgv(tool("open"), open, { title: "Export archived items", body: "Verified.", base: "main", draft: true }).argv,
       ["pr", "create", "--title", "Export archived items", "--body", "Verified.", "--base", "main", "--draft"]);

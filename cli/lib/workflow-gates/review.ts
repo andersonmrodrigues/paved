@@ -3,6 +3,10 @@ import { join } from "node:path";
 import { loadYaml } from "../documents.ts";
 import { resolveSafePath } from "../safe-path.ts";
 import { createRegistry } from "../schemas.ts";
+import { reviewChange } from "../review-change.ts";
+import { planReview } from "../review-plan.ts";
+import { loadReviewSensitivePatterns } from "../review-policy.ts";
+import { reviewBundleProblem, type ChangeReviewBundle, type ReviewLens } from "../review-bundle.ts";
 import { REVIEW_FIX, REVIEW_HANDLER, SOURCE_CHANGED_AFTER_VERIFICATION } from "../workflows.ts";
 import { runSourceRoot, type Run } from "../workflow-runs.ts";
 import type { PhaseHook } from "./index.ts";
@@ -13,6 +17,7 @@ export type ProofLevel = "asserted" | "cited" | "reasoned" | "executed" | "repro
 export interface FindingProof { readonly level: ProofLevel; readonly command?: string; readonly output_sha256?: string; readonly expected?: string }
 export interface ReviewFinding { readonly severity: "blocking" | "note"; readonly file: string; readonly line?: number; readonly summary: string; readonly proof?: FindingProof; readonly rule?: string }
 export interface ChangeReview {
+  readonly kind: "ChangeReview";
   /** Absent on a review of a target outside a run (`paved review`). */
   readonly run?: string;
   readonly reviewer: { readonly agent: string; readonly isolated: boolean };
@@ -32,7 +37,8 @@ export const reviewRecordCommand = (runId: string): string => `paved execute --r
  */
 export const REVIEW_RECORD_CODES: ReadonlySet<string> = new Set([
   "PAVED_REVIEW_RECORD_REQUIRED", "PAVED_REVIEW_RECORD_INVALID", "PAVED_REVIEW_NOT_INDEPENDENT",
-  "PAVED_REVIEW_STALE", "PAVED_REVIEW_FINDING_UNPROVEN",
+  "PAVED_REVIEW_STALE", "PAVED_REVIEW_FINDING_UNPROVEN", "PAVED_REVIEW_DUPLICATE_REVIEWER",
+  "PAVED_REVIEW_LENSES_INCOMPLETE",
 ]);
 export const planRef = (run: Run): string | undefined => run.events.findLast((event) => event.type === "approval-requested" && event.phase === "planning")?.ref;
 
@@ -56,6 +62,22 @@ export function findingLocation(finding: ReviewFinding): string {
 
 const STATE_NAMES: Readonly<Record<keyof ReviewedState, string>> = { plan_sha256: "plan", source_sha256: "source", evidence_sha256: "evidence" };
 
+export function requiredReviewLenses(projectRoot: string, coreRoot: string, run: Run): ReviewLens[] {
+  let sensitivePatterns: string[];
+  try {
+    sensitivePatterns = loadReviewSensitivePatterns(projectRoot, coreRoot);
+  } catch {
+    return ["Skeptic", "Architect", "Minimalist"];
+  }
+  try {
+    const revision = run.revision === "unversioned" ? undefined : run.revision;
+    return planReview(reviewChange(runSourceRoot(projectRoot, run), revision), { sensitivePatterns })
+      .reviewers.map((reviewer) => reviewer.lens);
+  } catch {
+    return ["Skeptic", "Architect", "Minimalist"];
+  }
+}
+
 /**
  * The review counts only when a reviewer that did not write the change read the run's
  * current plan, source and evidence. A blocking finding must have been executed or
@@ -73,23 +95,39 @@ export const review: PhaseHook = (context) => {
   if (!expected) return blocked("PAVED_REVIEW_STATE_MISSING", "The review needs the approved plan and the run's recorded evidence.", "Complete the evidence phase before the review.");
   const brief = reviewBriefPath(run.id);
   const resume = reviewRecordCommand(run.id);
+  const requiredLenses = requiredReviewLenses(projectRoot, context.coreRoot, run);
+  if (requiredLenses.length === 0) return { kind: "pass" };
   if (!context.evidence) {
-    return blocked("PAVED_REVIEW_RECORD_REQUIRED", "The review phase needs findings from a reviewer that did not write the change.",
+    return blocked("PAVED_REVIEW_RECORD_REQUIRED", `The review phase needs isolated evidence for these lenses: ${requiredLenses.join(", ")}.`,
       `Start a subagent with its own context, at the capacity and effort in review.independent.routing, and give it only ${brief}. `
-      + `It writes its findings to ${reviewRecordPath(run.id)}; you do not review the change yourself. Then record the findings with ${resume}.`);
+      + `Each reviewer records its assigned lens in ${reviewRecordPath(run.id)}; use a ChangeReviewBundle with distinct reviewer identities. `
+      + `You do not review the change yourself. Then record the findings with ${resume}.`);
   }
-  const record = loadYaml(context.evidence) as ChangeReview;
-  const schema = createRegistry(join(context.coreRoot, "schemas"), ["paved/v1"]).validate(record);
+  const raw = loadYaml(context.evidence) as ChangeReview | ChangeReviewBundle;
+  const schema = createRegistry(join(context.coreRoot, "schemas"), ["paved/v1"]).validate(raw);
   if (!schema.valid) return blocked("PAVED_REVIEW_RECORD_INVALID", schema.errors.join("; "), `Write the findings in the format ${brief} shows, then run ${resume}.`);
-  if (record.run !== run.id) {
-    return blocked("PAVED_REVIEW_RECORD_INVALID", record.run === undefined ? `The review is of a change outside a run (paved review), not of run ${run.id}.` : `The review is for run ${record.run}, not ${run.id}.`,
+  if (raw.run !== run.id) {
+    return blocked("PAVED_REVIEW_RECORD_INVALID", raw.run === undefined ? `The review is of a change outside a run (paved review), not of run ${run.id}.` : `The review is for run ${raw.run}, not ${run.id}.`,
       `Have the reviewer review run ${run.id} from ${brief}, then run ${resume}.`);
   }
-  if (!record.reviewer.isolated) {
-    return blocked("PAVED_REVIEW_NOT_INDEPENDENT", "The review was not made by an isolated reviewer, so it checks the change against the reasoning that produced it.",
-      `Run the review in a subagent with its own context that sees only ${brief}, then run ${resume}.`);
+  let reviewEntries: readonly { reviewer: { agent: string; isolated: boolean }; findings: readonly ReviewFinding[] }[];
+  if (raw.kind === "ChangeReviewBundle") {
+    const problem = reviewBundleProblem(raw.reviews, requiredLenses);
+    if (problem) return blocked(problem.code, problem.message, `Collect one isolated review per required lens from ${brief}, using a distinct reviewer identity for each, then run ${resume}.`);
+    reviewEntries = raw.reviews;
+  } else {
+    if (requiredLenses.length !== 1 || requiredLenses[0] !== "Skeptic") {
+      return blocked("PAVED_REVIEW_LENSES_INCOMPLETE", `This change requires independent review lenses: ${requiredLenses.join(", ")}.`,
+        `Collect one isolated review per required lens in a ChangeReviewBundle from ${brief}, then run ${resume}.`);
+    }
+    if (!raw.reviewer.isolated) {
+      return blocked("PAVED_REVIEW_NOT_INDEPENDENT", "The review was not made by an isolated reviewer, so it checks the change against the reasoning that produced it.",
+        `Run the review in a subagent with its own context that sees only ${brief}, then run ${resume}.`);
+    }
+    reviewEntries = [raw];
   }
-  const stale = (Object.keys(STATE_NAMES) as (keyof ReviewedState)[]).filter((key) => record.reviewed[key] !== expected[key]);
+  const reviewed = raw.reviewed as ReviewedState;
+  const stale = (Object.keys(STATE_NAMES) as (keyof ReviewedState)[]).filter((key) => reviewed[key] !== expected[key]);
   if (stale.length) {
     return blocked("PAVED_REVIEW_STALE", `The review read a different ${stale.map((key) => STATE_NAMES[key]).join(", ")} than the run has now. When a verification fingerprint is available, the source still matches it.`,
       `Paved rewrote ${brief} with the current digests. Review the current change again from it, then run ${resume}.${stale.includes("source_sha256")
@@ -99,8 +137,9 @@ export const review: PhaseHook = (context) => {
 
   const ref = projectRelative(projectRoot, context.evidence);
   const digest = sha(readFileSync(context.evidence));
-  const blocking = record.findings.filter((finding) => finding.severity === "blocking");
-  const notes = record.findings.length - blocking.length;
+  const findings = reviewEntries.flatMap((entry) => entry.findings);
+  const blocking = findings.filter((finding) => finding.severity === "blocking");
+  const notes = findings.length - blocking.length;
   const answer = run.decisions?.findLast((decision) => decision.handler === REVIEW_HANDLER && decision.status === "APPLIED"
     && decision.evidence.some((item) => item.sha256 === digest))?.answer;
   // A record the user already decided on keeps that decision, so a run in flight is not sent back.
@@ -112,10 +151,11 @@ export const review: PhaseHook = (context) => {
       `Prove each one with a command that runs the real code and record proof.level, proof.command and proof.output_sha256, or record it as severity note; then run ${resume}.`);
   }
   const rules = [...new Set(blocking.flatMap((finding) => finding.rule === undefined ? [] : [finding.rule]))].sort();
+  const reviewers = reviewEntries.map((entry) => entry.reviewer.agent).join(", ");
   // Kept on the run because the next review overwrites the findings file; the Gardener reads it as a human correction.
   const recorded = (outcome: string) => ({
     at: now(), type: "evidence-recorded", phase: "review", ref,
-    detail: `sha256=${digest}; reviewer=${record.reviewer.agent.replaceAll(";", ",")}; blocking=${blocking.length}${outcome}; notes=${notes}${rules.length ? `; rules=${rules.join(",")}` : ""}`.slice(0, 4000),
+    detail: `sha256=${digest}; reviewers=${reviewers.replaceAll(";", ",")}; blocking=${blocking.length}${outcome}; notes=${notes}${rules.length ? `; rules=${rules.join(",")}` : ""}`.slice(0, 4000),
   });
   let accepted = false;
   if (blocking.length) {

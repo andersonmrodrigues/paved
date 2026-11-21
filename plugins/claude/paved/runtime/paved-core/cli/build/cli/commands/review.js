@@ -3,6 +3,9 @@ import { join } from "node:path";
 import { checkStandaloneReview, prepareStandaloneReview, ReviewTargetError } from "../lib/standalone-review.js";
 import { projectRelative } from "../lib/workflow-gates/shared.js";
 import { resolveConsumerPath } from "../lib/safe-path.js";
+import { reviewChange } from "../lib/review-change.js";
+import { planReview } from "../lib/review-plan.js";
+import { loadReviewSensitivePatterns, ReviewPolicyError } from "../lib/review-policy.js";
 import { createDiagnostic, createResult } from "../result.js";
 /**
  * `paved review --base <ref> | --range <a..b> [--evidence <record>]`: the change-review of a
@@ -21,7 +24,38 @@ export function reviewHandler(invocation) {
                 })] });
     }
     try {
-        const prepared = prepareStandaloneReview({ projectRoot, sourceRoot, coreRoot, ...(base === undefined ? {} : { base }), ...(range === undefined ? {} : { range }) });
+        let sensitivePatterns;
+        try {
+            sensitivePatterns = loadReviewSensitivePatterns(projectRoot, coreRoot);
+        }
+        catch (error) {
+            if (!(error instanceof ReviewPolicyError))
+                throw error;
+            return createResult({ command: "review", status: "failed", diagnostics: [createDiagnostic({
+                        severity: "error", category: "config", code: "PAVED_REVIEW_POLICY_INVALID", component: "review",
+                        message: error.message,
+                        remediation: "Fix .paved/review.yaml before planning review.",
+                    })] });
+        }
+        if (invocation.selectors.length > 0) {
+            if (invocation.selectors.length !== 1 || invocation.selectors[0] !== "plan" || range !== undefined || evidence !== undefined) {
+                throw new ReviewTargetError("Use review plan with an optional --base, or review with --base or --range and optional --evidence.");
+            }
+            let files;
+            try {
+                files = reviewChange(sourceRoot, base);
+            }
+            catch (error) {
+                throw new ReviewTargetError(error instanceof Error ? error.message : "Cannot determine the review change.");
+            }
+            return createResult({ command: "review", status: "success", data: {
+                    plan: planReview(files, { sensitivePatterns }), files, base: base ?? "HEAD", includesWorkingTree: true,
+                } });
+        }
+        const prepared = prepareStandaloneReview({
+            projectRoot, sourceRoot, coreRoot, sensitivePatterns,
+            ...(base === undefined ? {} : { base }), ...(range === undefined ? {} : { range }),
+        });
         if (evidence === undefined) {
             return createResult({ command: "review", status: "success", data: { review: prepared, recorded: false, nextAction: `Start a subagent with its own context, give it only ${prepared.brief}, let it write ${prepared.record}, then run paved review ${base === undefined ? `--range ${range}` : `--base ${base}`} --evidence ${prepared.record} --json.` } });
         }

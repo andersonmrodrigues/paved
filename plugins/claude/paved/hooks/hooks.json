@@ -1,25 +1,14 @@
 {
-  "description": "Adds advisory Paved routing context for initialized repositories at session start and after compaction, and a one-line reminder on every prompt.",
+  "description": "Adds a lean session index and verifies changed files at turn end.",
   "hooks": {
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/paved-prompt-submit.mjs\" --host claude-code",
-            "timeout": 450
-          }
-        ]
-      }
-    ],
     "SessionStart": [
       {
-        "matcher": "startup|resume|compact|clear",
+        "matcher": "startup|resume|compact|clear|fork",
         "hooks": [
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/paved-prompt-submit.mjs\" --host claude-code",
-            "timeout": 450
+            "timeout": 330
           }
         ]
       },
@@ -47,6 +36,15 @@
       }
     ],
     "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/paved-prompt-submit.mjs\" --host claude-code",
+            "timeout": 120
+          }
+        ]
+      },
       {
         "hooks": [
           {

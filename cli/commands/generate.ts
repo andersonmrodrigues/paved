@@ -85,6 +85,7 @@ function summarizeExecution(execution: Execution): Record<string, unknown> {
     version: execution.version,
     status: execution.status,
     outputs: execution.outputs,
+    changedOutputs: execution.changedOutputs,
     proposals: execution.proposals,
     warnings: execution.warnings,
     errors: execution.errors,

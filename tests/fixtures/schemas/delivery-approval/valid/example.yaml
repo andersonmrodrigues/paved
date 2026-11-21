@@ -1,0 +1,8 @@
+apiVersion: paved/v1
+kind: DeliveryApproval
+target: main
+change: "42"
+head: 4f2c9e1b7a3d8c21e5f60a9b2d4c6e8f01a3b5c7
+patch_id: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+approved_by: maintainer
+approved_at: "2026-11-21T00:00:00.000Z"

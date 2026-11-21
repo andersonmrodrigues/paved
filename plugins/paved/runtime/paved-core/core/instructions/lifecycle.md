@@ -3,11 +3,29 @@
 Two lifecycles matter to an agent: the lifecycle of a **task** (what you do, in order)
 and the lifecycle of the **repository's Paved installation** (whether you can trust it).
 
-## Task lifecycle
+## Default task path
 
-Every workflow is a selection of these phases, always in this order. A workflow may omit
-a phase that does not apply, but `verification`, `evidence` and `completion` are never
-omitted or skipped (the workflow schema enforces this).
+Ordinary work is direct, not a workflow run:
+
+1. State the goal and the smallest useful change; for non-product ambiguity, state an
+   assumption and proceed.
+2. Read only the relevant code, project rules and context.
+3. Keep small work in the conversation. Use `paved task` when a multi-step task needs a
+   durable handoff across sessions or context compaction.
+4. Run relevant project checks; in an initialized repository, use
+   `paved verify --changed` to select and record applicable checks.
+5. Report what changed, what ran, and any gaps.
+
+Ask a person only for product decisions, conflicting rules, irreversible or
+high-impact actions, or a verification failure that persists after two distinct fixes.
+Do not require plan approval for ordinary implementation.
+
+## Explicit workflow lifecycle
+
+Use the phase-based workflow only when the user explicitly requests a governed workflow
+or a project rule requires one. A workflow is a selection of phases, always in this order.
+A workflow may omit a phase that does not apply, but `verification`, `evidence` and
+`completion` are never omitted or skipped (the workflow schema enforces this).
 
 | Phase | Question it answers | Leaves behind |
 |---|---|---|
@@ -21,11 +39,10 @@ omitted or skipped (the workflow schema enforces this).
 | `review` | Does the change respect rules and patterns, and is anything unexplained? | Review findings resolved or recorded |
 | `completion` | Are all completion criteria met? | Final status: complete, incomplete or blocked |
 
-**Validation vs verification.** Validation is the inner loop you run while working: build,
-type-check, lint, targeted tests. It catches mistakes early but is necessary, not
-sufficient. Verification selects checks from the project's profile by the claims the
-change makes and records their results as evidence. Plan the verification in `planning`:
-deciding how to prove a change after writing it invites proving whatever was written.
+**Validation vs verification.** For direct work, run the relevant project checks and use
+`paved verify --changed` when initialized; it selects checks by the changed paths and
+records their evidence. An explicit workflow separates fast validation from its
+profile-based verification and plans those checks before implementation.
 
 **Gates.** A workflow phase can declare gates: conditions that must hold before the
 phase ends. A gate with `approval` requires an explicit decision from a person; the
@@ -40,8 +57,8 @@ failure with its code, and report the task as `blocked` or `failed`. Do not skip
 
 ## Repository states
 
-Check the repository's state before starting a task. The CLI (`paved status`,
-`paved doctor`) reports it; until the CLI exists, infer it from the files.
+When installation state affects the task, inspect it with `paved status` or
+`paved doctor`; until the CLI exists, infer it from the files.
 
 | State | How to recognise it | What to do |
 |---|---|---|

@@ -1,0 +1,15 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: urn:paved:schema:review-policy:v1
+title: Paved review policy
+description: Additional project-specific sensitive path patterns for review planning.
+type: object
+additionalProperties: false
+required: [apiVersion, kind, sensitive_paths]
+properties:
+  apiVersion: { const: paved/v1 }
+  kind: { const: ReviewPolicy }
+  sensitive_paths:
+    type: array
+    uniqueItems: true
+    maxItems: 100
+    items: { type: string, minLength: 1, maxLength: 512 }

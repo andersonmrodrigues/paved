@@ -1,0 +1,13 @@
+apiVersion: paved/v1
+kind: Skill
+id: core.gardener.reflect
+version: 0.1.0
+status: experimental
+category: gardener
+context:
+  required: []
+verification:
+  required: []
+evidence:
+  required: []
+references: [references/playbook.md]

@@ -2,13 +2,13 @@ apiVersion: paved/v1
 kind: Adapter
 id: technology/angular
 title: Angular
-version: 0.2.0
+version: 0.3.0
 summary: Static evidence about Angular workspaces, dependencies and routes.
 requires:
-  core: ^1.0.0 || ^2.0.0
+  core: ^1.0.0 || ^2.0.0 || ^3.0.0
   adapters:
     - id: technology/typescript
-      version: ^0.1.0
+      version: ^0.2.0
 detect:
   all_files: [angular.json, package.json]
   file_contains:
@@ -57,4 +57,4 @@ sources:
   - title: Angular routing guide
     url: https://angular.dev/guide/routing
     retrieved_at: 2026-09-27
-reviewed_at: 2026-09-27
+reviewed_at: 2026-11-21

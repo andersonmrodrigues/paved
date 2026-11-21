@@ -2,10 +2,10 @@ apiVersion: paved/v1
 kind: Adapter
 id: infrastructure/aws
 title: Amazon Web Services
-version: 0.1.0
+version: 0.2.0
 summary: Static evidence and working guidance for repositories that define or call AWS resources.
 requires:
-  core: ^2.0.0
+  core: ^2.0.0 || ^3.0.0
 detect:
   file_contains:
     - glob: cdk.json
@@ -115,4 +115,4 @@ sources:
   - title: AWS Well-Architected Framework
     url: https://docs.aws.amazon.com/wellarchitected/latest/framework/welcome.html
     retrieved_at: 2026-11-13
-reviewed_at: 2026-11-13
+reviewed_at: 2026-11-21

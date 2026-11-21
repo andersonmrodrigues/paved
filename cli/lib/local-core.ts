@@ -21,7 +21,7 @@ export function hashLocalFile(root: string, path: string): string {
   return sha256(readFileSync(safe(root, path)));
 }
 
-export function hashLocalTree(root: string, paths: readonly string[]): string {
+export function hashLocalTree(root: string, paths: readonly string[], excludeFile?: (path: string) => boolean): string {
   const entries: string[] = [];
 
   function collect(path: string): void {
@@ -32,7 +32,7 @@ export function hashLocalTree(root: string, paths: readonly string[]): string {
       for (const child of readdirSync(full).sort()) collect(`${path}/${child}`);
       return;
     }
-    entries.push(`${path.replace(/\\/g, "/")}\0${hashLocalFile(root, path)}`);
+    if (!excludeFile?.(path)) entries.push(`${path.replace(/\\/g, "/")}\0${hashLocalFile(root, path)}`);
   }
 
   for (const path of [...paths].sort()) collect(path);
@@ -40,5 +40,6 @@ export function hashLocalTree(root: string, paths: readonly string[]): string {
 }
 
 export function hashLocalCore(root: string): string {
-  return hashLocalTree(root, LOCAL_CORE_DIGEST_PATHS);
+  return hashLocalTree(root, LOCAL_CORE_DIGEST_PATHS,
+    (path) => path.startsWith("core/skills/") && !path.endsWith(".yaml"));
 }

@@ -1,9 +1,11 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { loadYaml } from "../lib/documents.ts";
 import { resolveConsumerPath, resolveSafePath } from "../lib/safe-path.ts";
 import { readRun, runBelongsTo, runSourceRoot, writeRun, type Run } from "../lib/workflow-runs.ts";
 import { approvedPlanDigest, approveDelegation, changedSinceSnapshot, delegationSpecDigest, digest, readDelegation, readyTasks, validateDelegationPlan, workspaceSnapshot, writeDelegation, type DelegationPlan, type DelegationTask, type DelegationAttempt } from "../lib/delegation.ts";
 import { createDiagnostic, createResult, type CommandResult } from "../result.ts";
+import { createRegistry } from "../lib/schemas.ts";
 import type { CommandInvocation } from "../runtime.ts";
 
 const completed = (task: DelegationTask) => task.status === "completed";
@@ -68,7 +70,25 @@ export function delegationHandler(invocation: CommandInvocation): CommandResult 
   const [operation] = invocation.selectors;
   const { projectRoot, coreRoot } = invocation.paths;
   const runId = invocation.flags.run;
-  if (!operation || invocation.selectors.length !== 1) return failure("Choose one operation: plan, approve, ready, start, finish, recover or capabilities.", "Run paved delegation --help to see the operation and its required flags.");
+  if (!operation || invocation.selectors.length !== 1) return failure("Choose one operation: check, plan, approve, ready, start, finish, recover or capabilities.", "Run paved delegation --help to see the operation and its required flags.");
+  if (operation === "check") {
+    try {
+      if (!invocation.flags.file || runId) throw new Error("check requires --file and does not use --run.");
+      const path = resolveConsumerPath(projectRoot, invocation.paths.sourceRoot, invocation.flags.file);
+      if (statSync(path).size > 1024 * 1024) throw new Error("Result exceeds one megabyte.");
+      const document = loadYaml(path);
+      const validation = createRegistry(join(coreRoot, "schemas"), ["paved/v1"]).validate(document);
+      if (!validation.valid || (document as { kind?: unknown })?.kind !== "DelegationResult") {
+        throw new Error(`Invalid DelegationResult: ${validation.errors.join("; ")}`);
+      }
+      return createResult({ command: "delegation", status: "success", data: {
+        valid: true, file: invocation.flags.file,
+        note: "The result format is valid; its claims and evidence have not been independently verified.",
+      } });
+    } catch (error) {
+      return failure(error instanceof Error ? error.message : "The result cannot be read.", "Provide a valid DelegationResult with --file.");
+    }
+  }
   if (operation === "capabilities") {
     const host = invocation.flags.host;
     if (host !== "claude-code" && host !== "codex") return failure("capabilities requires --host codex or --host claude-code.", "Pass the host you are currently using.");

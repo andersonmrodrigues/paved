@@ -5,6 +5,39 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Breaking
+
+- Core 3.0.0 defaults agent work to direct task execution instead of mandatory
+  workflow-phase sequencing. Existing workflows remain available for explicit use
+  and project policies can still require governed steps.
+- Updating from Core 2 archives legacy generated workflow runs under
+  `.paved/archive/v2/` and updates incompatible bundled adapter ranges. Custom
+  adapter selections and human-owned project state are preserved.
+
+### Added
+
+- `paved task start|note|resume|done` manages a persistent task handoff without a
+  workflow run. `paved verify --task <slug>` attaches evidence to an open task.
+- `paved context "<topic or path>"` retrieves matching feature-map summaries and
+  applicable rules with a conservative byte budget and an explicit truncation flag.
+- `paved context refresh [--areas <area,...>]` refreshes only stale generated context
+  by default, or the named areas and their required generator dependencies. Human-edited
+  artifacts remain protected by the generator conflict/proposal flow.
+- `paved review plan [--base <ref>]` recommends independent reviewer lenses by
+  change size and sensitive paths, treating binary changes conservatively. Projects
+  can add sensitive path globs in `.paved/review.yaml`.
+- `paved delegation check --file <path>` checks the structure of a subagent result
+  without a workflow run; it does not verify its claims.
+- `paved doctor --quick` provides a read-only lifecycle and context-drift diagnosis,
+  reporting unknown when launcher or provenance evidence is unavailable.
+- `paved verify --changed` selects declared checks by staged, unstaged and untracked
+  files, runs checks without scope, and records skipped checks in the evidence. Changes
+  to tracked Paved configuration trigger all checks. `--base <ref>` includes
+  committed branch changes since the merge base.
+- `paved delivery approve|merge` binds delivery approval to the exact target, change
+  request, head revision and verified patch. The GitHub adapter routes merges through
+  this boundary and still requires the repository host's confirmation and protections.
+
 ## [2.30.0] - 2026-11-16
 
 ### Added

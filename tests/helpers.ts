@@ -11,7 +11,7 @@ export const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const CORE_VERSION = readFileSync(join(ROOT, "VERSION"), "utf8").trim();
 const [coreMajor, coreMinor, corePatch] = CORE_VERSION.split(".").map(Number) as [number, number, number];
 export const NEXT_PATCH_VERSION = `${coreMajor}.${coreMinor}.${corePatch + 1}`;
-export const NEXT_MAJOR_VERSION = `${coreMajor + 1}.0.0`;
+export const UNSUPPORTED_MAJOR_VERSION = `${coreMajor + 2}.0.0`;
 
 /** Integrity of an unpacked runtime, computed independently of the build and the launcher. */
 export function treeIntegrity(directory: string): string {
@@ -138,15 +138,24 @@ export function formatErrors(file: string, errors: string[]): string {
   return `${file}:\n  ${errors.join("\n  ")}`;
 }
 
-/** Writes the findings an isolated reviewer would, from the review block of a CLI result that stopped at review. */
-export function writeIsolatedReview(projectRoot: string, stdout: string): string {
-  const data = (JSON.parse(stdout) as { data: { run: string; review?: { independent?: { record: string; reviewed: Record<string, string> } } } }).data;
+/** Writes findings for required isolated lenses; returns no CLI arguments when review is not required. */
+export function writeIsolatedReview(projectRoot: string, stdout: string): string[] {
+  const data = (JSON.parse(stdout) as {
+    data: {
+      run: string;
+      review?: { independent?: { record: string; reviewed: Record<string, string>; requiredLenses: string[] } };
+    };
+  }).data;
   const independent = data.review?.independent;
-  if (!independent) throw new Error(`The result has no independent review block: ${stdout}`);
+  if (!independent) return [];
   mkdirSync(dirname(join(projectRoot, independent.record)), { recursive: true });
   writeFileSync(join(projectRoot, independent.record), stringify({
-    apiVersion: "paved/v1", kind: "ChangeReview", run: data.run, reviewer: { agent: "test reviewer", isolated: true },
-    reviewed: independent.reviewed, passes: ["diff"], findings: [],
+    apiVersion: "paved/v1", kind: "ChangeReviewBundle", run: data.run,
+    reviewed: independent.reviewed,
+    reviews: independent.requiredLenses.map((lens, index) => ({
+      reviewer: { agent: `test reviewer ${index + 1}`, isolated: true, lens },
+      passes: ["rules", "diff", "change"], findings: [],
+    })),
   }));
-  return independent.record;
+  return ["--evidence", independent.record];
 }

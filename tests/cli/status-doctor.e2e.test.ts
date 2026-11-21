@@ -8,7 +8,10 @@ import { initializeConsumer } from "../../cli/lib/generator-runtime.ts";
 import { dispatchCli } from "../../cli/runtime.ts";
 
 const core = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const LEGACY_BLOCK = readFileSync(join(core, "core/templates/AGENTS.md"), "utf8").replace(/Change code through Paved:[\s\S]*?available\.\n/, "Change code through the Paved commands (`/paved:feature`, `/paved:fix`,\n`/paved:refactor`, `/paved:verify`; `/paved:status` shows what is available) so project\nrules and verification apply.\n");
+const LEGACY_BLOCK = readFileSync(join(core, "core/templates/AGENTS.md"), "utf8").replace(
+  "Default to direct, outcome-focused work with Paved:",
+  "Use the mandatory intent, plan, and execute workflow for all changes:",
+);
 
 async function withConsumer(setup: (project: string) => void, check: (project: string) => Promise<void>) {
   const project = mkdtempSync(join(tmpdir(), "paved-status-"));

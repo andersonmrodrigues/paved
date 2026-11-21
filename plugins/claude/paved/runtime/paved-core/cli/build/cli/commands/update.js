@@ -9,6 +9,8 @@ import { runGenerators } from "../lib/generator-runtime.js";
 import { applyConsumerUpdate } from "../lib/update-transaction.js";
 import { ConsumerOperationLockedError } from "../lib/operation-lock.js";
 import { applyDocumentMigrations } from "../lib/document-migrations.js";
+import { applyV2ToV3Migration } from "../lib/core-migration.js";
+import { ensureModelsConfig } from "../lib/models-config.js";
 import { createRegistry } from "../lib/schemas.js";
 import { createDiagnostic, createResult } from "../result.js";
 function statusFor(diagnostics) {
@@ -54,6 +56,7 @@ function updateData(plan, dryRun, generation, lifecycleState) {
         plannedWrites,
         plannedGeneratorIds: plan.plannedGeneratorIds,
         migrations: plan.plannedMigrations,
+        ...(plan.coreMigration === undefined ? {} : { coreMigration: plan.coreMigration }),
         proposals: generation?.executions.flatMap((execution) => execution.proposals) ?? [],
         conflicts: generation?.executions.filter((execution) => execution.status === "conflict").map((execution) => execution.generator) ?? [],
         ...(generation === undefined ? {} : { generation: generateData(generation, dryRun) }),
@@ -109,6 +112,9 @@ export function updateHandler(invocation) {
         const shared = invocation.paths.sourceRoot !== invocation.paths.projectRoot;
         const staged = applyConsumerUpdate(invocation.paths.projectRoot, (stagedRoot) => {
             applyDocumentMigrations(stagedRoot, plan.plannedMigrations, registry);
+            if (plan.coreMigration !== undefined)
+                applyV2ToV3Migration(stagedRoot, plan.coreMigration);
+            ensureModelsConfig(stagedRoot, registry);
             const generation = plan.plannedGeneratorIds.length === 0 ? undefined : runGenerators(invocation.paths.coreRoot, stagedRoot, {
                 ...(shared ? { sourceRoot: invocation.paths.sourceRoot } : {}),
                 generators: [...plan.plannedGeneratorIds],

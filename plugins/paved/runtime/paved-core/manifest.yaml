@@ -19,6 +19,7 @@ schemas:
   WorkflowFragment: schemas/workflow-fragment.schema.yaml
   WorkflowRun: schemas/workflow-run.schema.yaml
   DelegationPlan: schemas/delegation-plan.schema.yaml
+  DelegationResult: schemas/delegation-result.schema.yaml
   HarnessEvaluation: schemas/harness-evaluation.schema.yaml
   Tool: schemas/tool.schema.yaml
   ToolImplementation: schemas/tool-implementation.schema.yaml
@@ -38,6 +39,10 @@ schemas:
   AgentIntegration: schemas/agent-integration.schema.yaml
   PreviewReview: schemas/preview-review.schema.yaml
   ChangeReview: schemas/change-review.schema.yaml
+  ChangeReviewBundle: schemas/change-review-bundle.schema.yaml
+  DeliveryApproval: schemas/delivery-approval.schema.yaml
+  ReviewPolicy: schemas/review-policy.schema.yaml
+  ModelPolicy: schemas/model-policy.schema.yaml
   PerformanceMeasurement: schemas/performance-measurement.schema.yaml
   AutoUpdateConfig: schemas/auto-update-config.schema.yaml
   AutoUpdateState: schemas/auto-update-state.schema.yaml
@@ -235,6 +240,22 @@ consumer_layout:
     required: false
     committed: true
     description: Typed, reasoned adjustments to inherited content (overrides.yaml, schema Overrides, plus addenda).
+  - path: .paved/review.yaml
+    ownership: human-owned
+    required: false
+    committed: true
+    schema: ReviewPolicy
+    description: Additional sensitive paths that require scaled review.
+  - path: .paved/models.yaml
+    ownership: human-owned
+    required: false
+    committed: true
+    description: Host-informed ordered model preferences for delegated roles. Human edits are preserved.
+  - path: .paved/tasks/
+    ownership: project-owned
+    required: false
+    committed: true
+    description: Markdown handoffs for active work, managed by the task command.
   - path: .paved/generated/
     ownership: disposable
     required: false
