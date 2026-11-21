@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-11-21
+
 ### Added
 
 - `paved verify` reuses the newest verified evidence record when the revision, working
