@@ -37,17 +37,29 @@ function readyMigrationCore(): string {
   return coreRoot;
 }
 
-function copyCoreForV3(): string {
-  const fakeCore = join(work, "core");
+function copyCoreAtVersion(version: string): string {
+  const fakeCore = join(work, `core-${version}`);
   mkdirSync(fakeCore, { recursive: true });
   for (const entry of ["VERSION", "manifest.yaml", "package.json", "adapters", "cli", "core", "generators", "schemas"]) {
     cpSync(join(root, entry), join(fakeCore, entry), { recursive: true });
   }
   rmSync(join(fakeCore, V2_TO_V3_MIGRATION_READY), { force: true });
-  writeFileSync(join(fakeCore, "VERSION"), "3.0.0\n");
+  writeFileSync(join(fakeCore, "VERSION"), `${version}\n`);
   const manifestPath = join(fakeCore, "manifest.yaml");
-  writeFileSync(manifestPath, readFileSync(manifestPath, "utf8").replace(/^version: .+$/m, "version: 3.0.0"));
+  writeFileSync(manifestPath, readFileSync(manifestPath, "utf8").replace(/^version: .+$/m, `version: ${version}`));
+  const packagePath = join(fakeCore, "package.json");
+  const packageManifest = JSON.parse(readFileSync(packagePath, "utf8")) as { version: string };
+  packageManifest.version = version;
+  writeFileSync(packagePath, `${JSON.stringify(packageManifest, null, 2)}\n`);
   return fakeCore;
+}
+
+function copyCoreForV2(): string {
+  return copyCoreAtVersion("2.30.0");
+}
+
+function copyCoreForV3(): string {
+  return copyCoreAtVersion("3.0.0");
 }
 
 function markV3MigrationReady(coreRoot: string): void {
@@ -168,7 +180,7 @@ test("v2 to v3 preflight resolves adapters with the planned migrated ranges", ()
   mkdirSync(project, { recursive: true });
   writeFileSync(join(project, "README.md"), "# Adapter migration consumer\n");
   writeFileSync(join(project, "pom.xml"), "<project><modelVersion>4.0.0</modelVersion></project>\n");
-  initializeConsumer(root, project, "adapter-migration-consumer");
+  initializeConsumer(copyCoreForV2(), project, "adapter-migration-consumer");
   const manifestPath = join(project, ".paved/manifest.yaml");
   const manifest = parse(readFileSync(manifestPath, "utf8")) as {
     adapters: { id: string; version: string }[];
@@ -257,14 +269,15 @@ test("v2 to v3 does not claim migration support for unrelated major transitions"
 
 test("current Core 2.30.0 keeps legacy runs in place and does not plan a v3 archive", () => {
   const project = join(work, "current-v2-consumer");
+  const core = copyCoreForV2();
   mkdirSync(project, { recursive: true });
   writeFileSync(join(project, "README.md"), "# Current Core consumer\n");
-  initializeConsumer(root, project, "current-v2-consumer");
+  initializeConsumer(core, project, "current-v2-consumer");
   const run = join(project, ".paved/generated/runs/legacy-run.yaml");
   mkdirSync(join(project, ".paved/generated/runs"), { recursive: true });
   writeFileSync(run, "legacy data\n");
 
-  const plan = planConsumerUpdate({ projectRoot: project, coreRoot: root });
+  const plan = planConsumerUpdate({ projectRoot: project, coreRoot: core });
   assert.equal(plan.currentLock?.core?.version, "2.30.0");
   assert.equal(plan.coreMigration, undefined);
   assert.ok(!plan.plannedWrites.some((path) => path.startsWith(".paved/archive/v2/")));
@@ -274,9 +287,10 @@ test("current Core 2.30.0 keeps legacy runs in place and does not plan a v3 arch
 test("update refuses to archive v2 runs until the v3 routing-and-gates readiness marker exists", async () => {
   const project = join(work, "upgrade-consumer");
   const fakeCore = copyCoreForV3();
+  const oldCore = copyCoreForV2();
   mkdirSync(project, { recursive: true });
   writeFileSync(join(project, "README.md"), "# Migration consumer\n");
-  initializeConsumer(root, project, "migration-consumer");
+  initializeConsumer(oldCore, project, "migration-consumer");
   const run = "apiVersion: paved/v1\nkind: WorkflowRun\nid: legacy-run\nphases: []\n";
   mkdirSync(join(project, ".paved/generated/runs"), { recursive: true });
   writeFileSync(join(project, ".paved/generated/runs/legacy-run.yaml"), run);
