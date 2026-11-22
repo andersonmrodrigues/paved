@@ -31,6 +31,7 @@ context → discovery → planning → implementation → validation → verific
 | `verification` | `required` and `recommended` check types run in the phase |
 | `gates` | Conditions that must hold before leaving the phase; `when` makes one conditional, `approval` makes it a human decision |
 | `skip_when` | The only condition under which the phase may be skipped |
+| `skip_in_lanes` | Lanes (`trivial`, `standard`, `risky`) whose runs skip the phase |
 | `retry` | `class` and, for `retryable`, `max_attempts` (1-5; default 2) |
 
 ## Ordering
@@ -40,7 +41,8 @@ Order is deterministic: phases appear in canonical order, each at most once
 (`assessRun`: no phase starts before every earlier phase is completed or skipped). A
 workflow omits what never applies to its class of change (the `refactor` workflow has no
 gate in `context`). A phase
-present in the workflow is always run unless its `skip_when` holds.
+present in the workflow is always run unless its `skip_when` holds or the run's lane
+skips it.
 
 ## Skipping
 
@@ -51,7 +53,30 @@ Skipping is a declared deviation, never a silent one:
   holds, and a `phase-skipped` event;
 - `verification`, `evidence` and `completion` cannot declare `skip_when` (schema).
 
-The Core catalog uses no skip.
+The Core catalog uses no `skip_when`.
+
+### Lane skips
+
+A run may carry a lane, chosen with its workflow and the same evidence. A phase that
+lists the run's lane in `skip_in_lanes` is recorded as `skipped` with
+`skipped_in_lane` and a `skip_reason` quoting the lane's evidence, and `assessRun`
+accepts the skip only when the workflow declares it for that lane. The schema forbids
+`skip_in_lanes` on `implementation`, `verification`, `evidence` and `completion`, and
+forbids `risky` on `planning`; the quality check forbids a lane skip on any other phase
+with a human-approval gate. A run escalated to `risky` cannot keep its planning
+skipped. A run without a lane skips nothing.
+
+| Core workflow | `trivial` skips | `standard` skips |
+|---|---|---|
+| `feature` | `context`, `discovery`, `planning` | `planning` |
+| `bug`, `refactor`, `performance` | `context`, `planning` | `planning` |
+| `investigation` | `context` | nothing |
+
+`discovery` stays in every lane for a bug, refactor or performance run, because it
+records the reproduction or baseline that later phases prove against. A phase's optional
+`routing_by_lane` overrides `capacity` and `reasoning_effort` for a lane (never `mode`);
+the Core workflows route trivial implementation and review to the economy tier and risky
+implementation and review to frontier at high effort.
 
 ## Deviations from the canonical flow
 

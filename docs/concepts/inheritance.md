@@ -83,6 +83,12 @@ through an override.
 `.paved/workflows/`. Adapters cannot add workflows in `paved/v1`: a technology
 changes how phases are carried out (skills, checks), not which phases a task has.
 
+**Can a project limit the lanes agents choose?** Through the optional `flow` section
+of the overrides: `protected_paths` (repository-relative globs) and `max_trivial_files`
+(default 5). It only tightens: a run whose diff touches a protected path, or a trivial
+run past the file limit, completes only after it is escalated to `risky` and its plan is
+approved ([workflow state](workflow-state.md#plan-approval)).
+
 **What happens when the Core changes?** Overrides record the digest of their target
 (`target_sha256`). When the target changes after an update:
 

@@ -48,7 +48,7 @@ short and workflows cannot disagree about what `blocked` means.
 | Inputs | `inputs[] {id, description, required}` | A missing required input stops the run (`input-missing`); inputs are never invented |
 | Context | `context {required, optional}` | Context areas, resolved through the manifest's `context_areas` |
 | Preconditions | `preconditions[] {id, condition}` | Workflow-specific; the standard ones apply to every run |
-| Execution configuration | `phases[]`: `phase`, `goal`, `skills`, `tools`, `verification`, `gates`, `skip_when`, `retry`, optional `routing`, `fragments`, `tool_policies` | [Workflow stages](workflow-stages.md) |
+| Execution configuration | `phases[]`: `phase`, `goal`, `skills`, `tools`, `verification`, `gates`, `skip_when`, `skip_in_lanes`, `retry`, optional `routing`, `routing_by_lane`, `fragments`, `tool_policies` | [Workflow stages](workflow-stages.md) |
 | Automation preference | Optional `autonomy.default_profile` | Default for a new run; never an approval or permission grant |
 | Tool policies | Optional workflow-local `tool_policies[] {id, allow, ask, deny}` | Phases select local policy ids; see below |
 | Rules | `rules[]` | Rules every run respects, besides those selected by `applies_to` |
