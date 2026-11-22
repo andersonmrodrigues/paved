@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [3.2.1] - 2026-11-22
+
 ### Changed
 
 - In a repository without Paved, the session guidance now tells the agent to ask once,
