@@ -25,6 +25,9 @@ An integration discovers Paved without inspecting implementation directories:
 The packaged CLI may be selected explicitly with the documented `--project`
 option. A missing manifest is an uninitialized consumer, not an invitation to
 infer project configuration.
+In an uninitialized repository, the plugin's `SessionStart` hook asks the agent to
+offer Paved once per session, before the first code change, and to initialize only on
+the user's yes ([ADR 0054](../decisions/0054-offer-paved-in-uninitialized-repositories.md)).
 
 ## Public operations
 
