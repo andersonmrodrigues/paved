@@ -75,6 +75,8 @@ export interface CliFlags {
   readonly correctionEvidence: readonly string[];
   /** `status --stale-after <hours>`: how long an open run may go without an event. */
   readonly staleAfterHours?: number;
+  /** `verify --lock-wait <seconds>`: how long to wait for another operation's lock. */
+  readonly lockWaitSeconds?: number;
   readonly toolCommand?: readonly string[];
   readonly task?: string;
   readonly file?: string;
@@ -239,7 +241,7 @@ function commandUsage(command: CommandName | undefined): string {
     if (rule.dryRun) commandOptions.push("  --dry-run        Plan without writes.");
     if (rule.noGenerate) commandOptions.push("  --no-generate    Initialize without running generators.");
     if (command === "test") commandOptions.push("  --inputs <json>  Supply declared Tool inputs as a JSON object.");
-    if (command === "verify") commandOptions.push("  --changed [--base <ref>]  Scope checks to changed files, optionally including commits since the merge base.", "  --task <slug>  Attach verification evidence to an open task.");
+    if (command === "verify") commandOptions.push("  --changed [--base <ref>]  Scope checks to changed files, optionally including commits since the merge base.", "  --task <slug>  Attach verification evidence to an open task.", "  --lock-wait <seconds>  Wait for another operation's lock; reuse its run when it verified the same change.");
     if (command === "context") commandOptions.push(
       "  <topic-or-path> [--budget <bytes>]  Retrieve matching project context and rules.",
       "  refresh [--areas <area,...>]        Refresh stale context areas, or the named areas.",
@@ -371,6 +373,7 @@ function parse(argv: readonly string[]): Parsed {
   let text: string | undefined;
   const correctionEvidence: string[] = [];
   let staleAfterHours: number | undefined;
+  let lockWaitSeconds: number | undefined;
   let toolCommand: string[] | undefined;
   let task: string | undefined;
   let file: string | undefined;
@@ -447,6 +450,16 @@ function parse(argv: readonly string[]): Parsed {
       const value = takeValue(argv, index, token, command);
       if (typeof value !== "string") return { kind: "error", result: value };
       scope = value;
+      index += 1;
+      continue;
+    }
+
+    if (token === "--lock-wait") {
+      if (command !== "verify") return { kind: "error", result: usage(command ?? "cli", "--lock-wait is supported only by verify.") };
+      const value = takeValue(argv, index, token, command);
+      if (typeof value !== "string") return { kind: "error", result: value };
+      if (!/^\d+$/.test(value) || Number(value) > 3600) return { kind: "error", result: usage(command, "--lock-wait must be between 0 and 3600 seconds.") };
+      lockWaitSeconds = Number(value);
       index += 1;
       continue;
     }
@@ -776,6 +789,7 @@ function parse(argv: readonly string[]): Parsed {
     ...(text === undefined ? {} : { text }),
     correctionEvidence,
     ...(staleAfterHours === undefined ? {} : { staleAfterHours }),
+    ...(lockWaitSeconds === undefined ? {} : { lockWaitSeconds }),
     ...(toolCommand === undefined ? {} : { toolCommand }),
     ...(task === undefined ? {} : { task }),
     ...(file === undefined ? {} : { file }),

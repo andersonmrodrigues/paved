@@ -55,6 +55,23 @@ function signalGroup(child, signal) {
   }
 }
 
+function git(sourceRoot, args) {
+  const child = spawnSync("git", args, { cwd: sourceRoot, encoding: "utf8", timeout: 5000, shell: false, env: { ...process.env, LC_ALL: "C" } });
+  return child.error || child.status !== 0 ? undefined : child.stdout.trim();
+}
+
+// The branch this work will merge into: the remote's default branch, else a local or remote
+// main or master. A committed change is then still compared with where it started.
+function defaultBase(sourceRoot) {
+  const remoteDefault = git(sourceRoot, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
+  const candidates = [remoteDefault, "main", "master", "origin/main", "origin/master"].filter(Boolean);
+  for (const ref of candidates) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(ref)) continue;
+    if (git(sourceRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]) && git(sourceRoot, ["merge-base", "HEAD", ref])) return ref;
+  }
+  return undefined;
+}
+
 // The launcher runs the runtime as a child, so a timeout must stop the whole process group:
 // killing only the launcher would leave the runtime running and holding the operation lock.
 function invokeVerify(repository, sourceRoot, timeout) {
@@ -62,11 +79,16 @@ function invokeVerify(repository, sourceRoot, timeout) {
       !existsSync(join(repository, ".paved", "runtime", "selection.json"))) return Promise.resolve({ kind: "unavailable" });
   const launcher = join(dirname(dirname(fileURLToPath(import.meta.url))), "scripts", "paved.mjs");
   if (!existsSync(launcher)) return Promise.resolve({ kind: "unavailable" });
+  const base = defaultBase(sourceRoot);
+  // Up to half the budget goes to waiting for another operation's lock; a verify holding it
+  // for the same change leaves a record that is reused instead of run again.
+  const lockWait = Math.floor(timeout / 2000);
+  const args = ["verify", "--changed", ...(base ? ["--base", base] : []), "--lock-wait", String(lockWait), "--json", "--project", sourceRoot];
   return new Promise((resolveRun) => {
     const chunks = [];
     let bytes = 0;
     let timedOut = false;
-    const child = spawn(process.execPath, [launcher, "verify", "--changed", "--json", "--project", sourceRoot], {
+    const child = spawn(process.execPath, [launcher, ...args], {
       cwd: sourceRoot, shell: false, stdio: ["ignore", "pipe", "ignore"], detached: process.platform !== "win32",
     });
     child.stdout.on("data", (chunk) => {
@@ -99,7 +121,66 @@ function verificationFailure(outcome, timeout) {
     return "NOT VERIFIED: another Paved operation holds the project lock, so paved verify --changed could not start. " +
       "Wait for it to finish, then run `paved verify --changed`.";
   }
-  return "NOT VERIFIED: paved verify --changed failed or could not complete. Inspect its output and correct or report the failure.";
+  const failing = failingChecks(outcome.result);
+  if (failing.length > 0) {
+    return clip(["NOT VERIFIED: paved verify --changed found failing checks. Fix them, or report why they cannot pass.", ...failing].join("\n"), 2000);
+  }
+  const codes = [...new Set(diagnostics.map((item) => item?.code).filter((code) => typeof code === "string" && /^[A-Z0-9_]+$/.test(code)))].slice(0, 5);
+  return "NOT VERIFIED: paved verify --changed failed or could not complete" + (codes.length ? ` (${codes.join(", ")})` : "") +
+    ". Inspect its output and correct or report the failure.";
+}
+
+const MAX_LISTED = 6;
+const EXCERPT_LINES = 8;
+const EXCERPT_CHARS = 800;
+
+function clip(text, max) {
+  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
+
+function safe(value, max = 160) {
+  return typeof value === "string" ? clip(value.replace(/[\u0000-\u001f\u007f]+/g, " ").trim(), max) : undefined;
+}
+
+// One entry per failing or blocked check, sharing a single excerpt budget so a long run
+// stays a short message.
+function failingChecks(result) {
+  const checks = Array.isArray(result?.data?.checks) ? result.data.checks : [];
+  const tolerated = new Set((Array.isArray(result?.data?.unproven) ? result.data.unproven : []).map((item) => item?.id));
+  const failing = checks.filter((check) => ["failed", "error", "blocked"].includes(check?.status) && typeof check.id === "string")
+    .sort((a, b) => Number(tolerated.has(a.id)) - Number(tolerated.has(b.id)));
+  let lines = 0;
+  let chars = 0;
+  const entries = failing.slice(0, MAX_LISTED).map((check) => {
+    const note = tolerated.has(check.id) ? (check.pre_existing ? ", pre-existing" : ", unproven") : "";
+    const reason = safe(check.reason);
+    const output = safe(check.output_ref, 200);
+    const entry = [`- ${safe(check.id, 120)} (${check.status}${note})${reason ? `: ${reason}` : ""}${output ? ` Output: ${output}` : ""}`];
+    for (const raw of Array.isArray(check.excerpt) ? check.excerpt : []) {
+      const line = safe(raw, 200);
+      if (!line || lines >= EXCERPT_LINES || chars + line.length > EXCERPT_CHARS) break;
+      entry.push(`    ${line}`);
+      lines += 1;
+      chars += line.length;
+    }
+    return entry.join("\n");
+  });
+  if (failing.length > MAX_LISTED) entries.push(`- and ${failing.length - MAX_LISTED} more`);
+  return entries;
+}
+
+// A warning proves everything except failures the base already had and checks this
+// environment cannot run; it does not block, but says which ones.
+function warningNote(result) {
+  const unproven = Array.isArray(result?.data?.unproven) ? result.data.unproven.filter((item) => typeof item?.id === "string") : [];
+  if (unproven.length === 0) return undefined;
+  const group = (reason) => unproven.filter((item) => item.reason === reason).map((item) => safe(item.id, 120));
+  const parts = [
+    ["pre-existing on the base", group("pre-existing")],
+    ["environment unavailable", group("environment-unavailable")],
+    ["blocked by those", group("dependency-unproven")],
+  ].filter(([, ids]) => ids.length > 0).map(([label, ids]) => `${label}: ${ids.slice(0, MAX_LISTED).join(", ")}${ids.length > MAX_LISTED ? ` and ${ids.length - MAX_LISTED} more` : ""}`);
+  return clip(`Paved verify: warning, not blocking; unproven checks (${parts.join("; ")}).`, 600);
 }
 
 function openTasks(repository) {
@@ -157,7 +238,9 @@ try {
     const result = outcome.kind === "completed" && [0, 1].includes(outcome.code) ? outcome.result : undefined;
     const verified = result?.command === "verify" && ["success", "warning"].includes(result.status) &&
       result.data?.completion?.status === "complete" && result.data?.completion?.verification === "verified";
-    if (!verified) {
+    const note = result?.command === "verify" && result.status === "warning" && !verified ? warningNote(result) : undefined;
+    if (note) emit({ systemMessage: note });
+    else if (!verified) {
       const reason = verificationFailure(outcome, timeout);
       emit(event.stop_hook_active === true ? { systemMessage: reason } : { decision: "block", reason });
     }

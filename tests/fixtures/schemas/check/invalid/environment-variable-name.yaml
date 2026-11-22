@@ -1,0 +1,14 @@
+# expect-error: /environment/requires/variables/0 must match pattern
+apiVersion: paved/v1
+kind: Check
+id: project.test.integration
+title: Integration tests pass
+purpose: Services still integrate.
+type: integration
+tool: project.test.run-integration
+environment:
+  requires:
+    variables: ["DATABASE_URL=postgres://localhost"]
+expected: { description: Every test passes., exit_code: 0 }
+failure: A test failed; read the output.
+determinism: { class: deterministic }
