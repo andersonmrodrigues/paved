@@ -9,7 +9,7 @@ import { runDecisionGate, toProjection, type DecisionCandidate, type DecisionSto
 import { decisionId, transition, type Decision } from "../lib/decisions/record.ts";
 import { listDecisions } from "../lib/decisions/store.ts";
 import {
-  applyClassificationAnswer, classificationCandidate, createIntentRun, intentDocumentPath, IntentError, missingInputs, normalizeWorkflow, parseInputs, writeIntentDocument,
+  applyClassificationAnswer, classificationCandidate, createIntentRun, escalate, intentDocumentPath, IntentError, missingInputs, normalizeWorkflow, parseInputs, parseLane, writeIntentDocument,
 } from "../lib/intent.ts";
 import { resolveSafePath } from "../lib/safe-path.ts";
 import { readDelegation } from "../lib/delegation.ts";
@@ -19,10 +19,10 @@ import { relaysAnswers, runPhase, type PhaseOutcome } from "../lib/workflow-gate
 import { REVIEW_RECORD_CODES } from "../lib/workflow-gates/review.ts";
 import { fingerprint, now, projectRelative, readApproval, reopenImplementation, sha, sharedPhase, sourceUnchanged } from "../lib/workflow-gates/shared.ts";
 import {
-  activePhase, amendmentPending, isOpen, loadContract, ownerOf, owningStep, planGate, readRun, runBelongsTo, runSourceRoot, scanRuns, runCommand, runPath, TERMINAL_STATUSES, writeRun,
+  activePhase, amendmentPending, isOpen, loadContract, ownerOf, owningStep, planGate, planSkipped, readRun, runBelongsTo, runSourceRoot, scanRuns, runCommand, runPath, startPhaseFrom, TERMINAL_STATUSES, writeRun,
   WorkflowToolPolicyError, type Failure, type Phase, type Run, type Step,
 } from "../lib/workflow-runs.ts";
-import { AMENDED_RETRY, attemptRounds, phaseContext, PRE_EXISTING_HANDLER, resolvePhaseToolPolicies, RECOVER_HANDLER, recoveriesFor, recoveryQuestion, REVIEW_HANDLER, UNCHANGED_HANDLER, type WorkflowContract } from "../lib/workflows.ts";
+import { AMENDED_RETRY, attemptRounds, effectiveRouting, phaseContext, skippedInLane, PRE_EXISTING_HANDLER, resolvePhaseToolPolicies, RECOVER_HANDLER, recoveriesFor, recoveryQuestion, REVIEW_HANDLER, UNCHANGED_HANDLER, type WorkflowContract } from "../lib/workflows.ts";
 import { createDiagnostic, createResult, type CommandResult, type DecisionProjection, type Diagnostic } from "../result.ts";
 import type { CommandInvocation } from "../runtime.ts";
 import { initHandler } from "./init.ts";
@@ -64,6 +64,9 @@ function nextStepAction(run: Run): string {
   if (phase.phase === "review") return "Have the change reviewed by a reviewer that did not write it.";
   if (readOnly(run) && owner === "execute") {
     return `The answer is recorded. Run paved execute --run ${run.id} --auto --json to verify its citations and that nothing changed, then report it; a recommended change starts a new run with paved intent.`;
+  }
+  if (phase.phase === "implementation" && planSkipped(run)) {
+    return `Lane ${run.classification?.lane} skips planning: implement the request in the Intent document (${intentDocumentPath(run.id)}), then run paved execute --run ${run.id} --auto --note <what was implemented> --json. If the change turns out larger or riskier, escalate first with paved execute --run ${run.id} --lane risky --because "<evidence>" --json.`;
   }
   if (phase.phase === "implementation") {
     return `Implement the whole approved plan; record each finished part with paved execute --run ${run.id} --checkpoint --note <part> --json. Advancing starts validation, so run paved execute --run ${run.id} --auto --note <what was implemented> --json only when everything is done.`;
@@ -266,7 +269,30 @@ function selectRun(invocation: CommandInvocation, step: Step): Selection {
   return { run: load(invocation, chosen), answers: invocation.flags.answers.filter((answer) => answerId(answer) !== id) };
 }
 
-function startIntent(invocation: CommandInvocation): CommandResult {
+/** What a new run tells the agent to do next, by the command that started it. */
+function startedAction(entry: Step, run: Run): string {
+  const lane = run.classification?.lane === undefined ? "" : ` in lane ${run.classification.lane}`;
+  const classified = `Classified as ${run.workflow!.id}${lane}.`;
+  if (entry === "intent") return `${classified} paved intent stops here: report the classification. When the user asks to go on, ${nextStepAction(run)}`;
+  if (entry === "plan") return `${classified} paved plan stops once the plan is approved. ${nextStepAction(run)}`;
+  return `${classified} ${nextStepAction(run)}`;
+}
+
+/** A plan entry exists to produce a plan, so its workflow and lane must keep planning. */
+function planEntryProblem(coreRoot: string, run: Run): IntentError | undefined {
+  const planning = run.workflow === undefined ? undefined : loadContract(coreRoot, run.workflow.id).phases.find((phase) => phase.phase === "planning");
+  if (run.workflow === undefined) return undefined;
+  if (planning === undefined) {
+    return new IntentError("PAVED_PLAN_UNAVAILABLE", `${run.workflow.id} has no planning phase.`, `Start it with paved intent or paved execute instead.`);
+  }
+  if (skippedInLane(planning, run.classification?.lane)) {
+    return new IntentError("PAVED_LANE_SKIPS_PLANNING", `Lane ${run.classification?.lane} skips planning, and paved plan was asked for a plan.`,
+      "Drop --lane, or pass --lane risky; use paved execute for a change that needs no plan.");
+  }
+  return undefined;
+}
+
+function startIntent(invocation: CommandInvocation, entry: Step = "intent"): CommandResult {
   const { projectRoot, coreRoot } = invocation.paths;
   const flags = invocation.flags;
   const lifecycle = inspectConsumer({ projectRoot, sourceRoot: invocation.paths.sourceRoot, coreRoot }).lifecycleState;
@@ -279,10 +305,15 @@ function startIntent(invocation: CommandInvocation): CommandResult {
   const run = createIntentRun(projectRoot, coreRoot, {
     request: invocation.selectors.join(" "), parts: flags.parts, inputs: flags.intentInputs,
     ...(flags.workflow === undefined ? {} : { workflow: flags.workflow }),
+    ...(flags.lane === undefined ? {} : { lane: flags.lane }),
     ...(flags.autonomy === undefined ? {} : { autonomy: flags.autonomy }),
     ...(flags.recommend === undefined ? {} : { recommend: flags.recommend }),
     ...(flags.because === undefined ? {} : { because: flags.because }),
   }, revision(invocation.paths.sourceRoot), linkedWorktree(invocation));
+  if (entry === "plan") {
+    const problem = planEntryProblem(coreRoot, run);
+    if (problem) throw problem;
+  }
   const baseId = run.id;
   for (let attempt = 2; existsSync(runPath(projectRoot, run.id)); attempt += 1) {
     const other = readRun(projectRoot, coreRoot, run.id);
@@ -300,10 +331,10 @@ function startIntent(invocation: CommandInvocation): CommandResult {
     }
     return result(projectRoot, coreRoot, "intent", existing, nextStepAction(existing));
   }
-  writeIntentDocument(projectRoot, run);
+  writeIntentDocument(projectRoot, run, coreRoot);
   if (run.workflow) {
     writeRun(projectRoot, coreRoot, run);
-    return result(projectRoot, coreRoot, "intent", run, nextStepAction(run));
+    return result(projectRoot, coreRoot, "intent", run, startedAction(entry, run));
   }
   const recommend = flags.recommend === undefined ? undefined : normalizeWorkflow(projectRoot, coreRoot, flags.recommend);
   resolveRunDecisions(invocation, run, [], [classificationCandidate(projectRoot, coreRoot, run, recommend, flags.because)]);
@@ -329,7 +360,7 @@ function startWork(invocation: CommandInvocation): CommandResult {
     if (updated.status === "failed") {
       if (remediationFor(lifecycle) !== undefined) return updated;
       // Only drifted context was being refreshed. No gate reads it, so a failed refresh must not stop the request.
-      const started = startIntent(invocation);
+      const started = startIntent(invocation, "execute");
       const reason = updated.diagnostics.find((item) => item.severity === "error")?.message ?? "the update failed";
       return { ...started, diagnostics: [...started.diagnostics, createDiagnostic({
         severity: "warning", category: "findings", code: CONTEXT_DRIFT_CODE, component: "workflow.runtime",
@@ -337,23 +368,24 @@ function startWork(invocation: CommandInvocation): CommandResult {
         remediation: "Work is not blocked. Run paved update --json to see why regeneration failed, or paved status to see the drifted generators.",
       })] };
     }
-    const started = startIntent(invocation);
+    const started = startIntent(invocation, "execute");
     return { ...started, data: { ...(started.data as Record<string, unknown>), updated: true }, diagnostics: [...updated.diagnostics, ...started.diagnostics] };
   }
-  if (lifecycle !== "UNINITIALIZED" && !initPending) return startIntent(invocation);
+  if (lifecycle !== "UNINITIALIZED" && !initPending) return startIntent(invocation, "execute");
   const initialized = initHandler({ ...invocation, command: "init", selectors: [] });
   if (initialized.status === "failed") return initialized;
   if (initialized.status === "awaiting_input") {
     const request = JSON.stringify(invocation.selectors.join(" "));
     return { ...initialized, data: { ...(initialized.data as Record<string, unknown>), nextAction: `Paved was initialized for this request and needs these answers first. Present the decisions, then repeat paved execute ${request} with the same flags plus --answer <id>=<value> --answered-by <you> --json.` } };
   }
-  const started = startIntent(invocation);
+  const started = startIntent(invocation, "execute");
   return { ...started, data: { ...(started.data as Record<string, unknown>), initialized: true }, diagnostics: [...initialized.diagnostics, ...started.diagnostics] };
 }
 
 /** Whether a repeated intent asks for a classification the open run does not have. */
 function contradicts(existing: Run, requested: Run): boolean {
   if (requested.workflow !== undefined && requested.workflow.id !== existing.workflow?.id) return true;
+  if (requested.classification?.lane !== undefined && requested.classification.lane !== existing.classification?.lane) return true;
   const parts = requested.classification?.parts;
   return parts !== undefined && JSON.stringify(parts) !== JSON.stringify(existing.classification?.parts);
 }
@@ -365,7 +397,7 @@ function finishClassification(invocation: CommandInvocation, run: Run): CommandR
   const outcome = applyClassificationAnswer(projectRoot, coreRoot, run, decision);
   if (outcome.split) {
     writeRun(projectRoot, coreRoot, run);
-    writeIntentDocument(projectRoot, run);
+    writeIntentDocument(projectRoot, run, coreRoot);
     const commands = outcome.split.map((part) => `paved intent ${JSON.stringify(part)} --json`).join("; ");
     return result(projectRoot, coreRoot, "intent", run, `The request was split. Start each part on its own: ${commands}.`);
   }
@@ -375,7 +407,7 @@ function finishClassification(invocation: CommandInvocation, run: Run): CommandR
     return blocked("intent", "PAVED_WORKFLOW_INPUT_MISSING", `${run.workflow!.id} requires: ${missing.join(", ")}.`, `Ask the user, then resume with paved intent --run ${run.id} --answer ${decision.id}=${String(decision.answer)} --input ${missing[0]}=<value> --json.`, { run: run.id });
   }
   writeRun(projectRoot, coreRoot, run);
-  writeIntentDocument(projectRoot, run);
+  writeIntentDocument(projectRoot, run, coreRoot);
   return result(projectRoot, coreRoot, "intent", run, `Classified as ${run.workflow!.id}. ${nextStepAction(run)}`);
 }
 
@@ -396,17 +428,10 @@ function evidencePath(invocation: CommandInvocation): string | undefined {
   return path;
 }
 
-function completeAndStartNext(run: Run, phase: Phase): void {
+function completeAndStartNext(run: Run, phase: Phase, workflow: WorkflowContract): void {
   phase.status = "completed";
   run.events.push({ at: now(), type: "phase-completed", phase: phase.phase });
-  const next = run.phases[run.phases.indexOf(phase) + 1];
-  if (next) {
-    next.status = "running"; next.attempts = (next.attempts ?? 0) + 1;
-    run.events.push({ at: now(), type: "phase-started", phase: next.phase });
-  } else {
-    run.status = "completed"; run.ended_at = now();
-    run.events.push({ at: now(), type: "run-completed" });
-  }
+  startPhaseFrom(run, workflow, run.phases.indexOf(phase) + 1);
 }
 
 function failRun(run: Run, phase: Phase, reason: string, nextAction: string): void {
@@ -610,7 +635,7 @@ async function resume(invocation: CommandInvocation, step: Step, run: Run, answe
   }
   const current = run.workflow ? activePhase(run) : undefined;
   const owner: Step | undefined = run.workflow ? (current ? ownerOf(current.phase) : undefined) : "intent";
-  if (step === "execute" && run.workflow && !readOnly(run) && !planApproved(run)) {
+  if (step === "execute" && run.workflow && !readOnly(run) && !planSkipped(run) && !planApproved(run)) {
     return blocked(step, "PAVED_WORKFLOW_PLAN_UNAPPROVED", `Run ${run.id} has no approved plan.`, nextStepAction(run), { run: run.id });
   }
   if (owner !== step) return outOfRange(step, run, current?.phase, owner);
@@ -729,7 +754,7 @@ async function resume(invocation: CommandInvocation, step: Step, run: Run, answe
       writeRun(projectRoot, coreRoot, run);
       return result(projectRoot, coreRoot, step, run, outcome.nextAction);
     case "pass": {
-      completeAndStartNext(run, phase);
+      completeAndStartNext(run, phase, workflow);
       writeRun(projectRoot, coreRoot, run);
       if (run.status !== "completed") return result(projectRoot, coreRoot, step, run, nextStepAction(run), outcome.warnings ?? []);
       // Advisory only: a gardener failure or proposal never changes the outcome.
@@ -808,10 +833,12 @@ function withPhaseContext(invocation: CommandInvocation, outcome: CommandResult)
     const workflow = loadContract(coreRoot, run.workflow.id);
     const resolved = workflow.phases.find((item) => item.phase === phase.phase);
     if (resolved === undefined) return enriched;
+    const routing = effectiveRouting(resolved, run.classification?.lane);
     return { ...enriched, data: {
       ...(enriched.data as Record<string, unknown>),
       phaseContext: phaseContext(workflow, resolved),
-      ...(resolved.routing === undefined ? {} : { routing: { phase: resolved.phase, ...resolved.routing } }),
+      ...(run.classification?.lane === undefined ? {} : { lane: run.classification.lane }),
+      ...(routing === undefined ? {} : { routing: { phase: resolved.phase, ...routing } }),
     } };
   } catch (error) {
     // Policy failures must remain blocking even when encountered while enriching a result.
@@ -837,22 +864,53 @@ export async function stepHandler(invocation: CommandInvocation): Promise<Comman
   } finally { release?.(); }
 }
 
+/** paved plan ends with the approved plan; implementing it is a separate request to execute. */
+function stopAtPlan(outcome: CommandResult): CommandResult {
+  const data = outcome.data as Record<string, unknown> | undefined;
+  if (outcome.status !== "success" || data?.currentPhase !== "implementation" || typeof data.run !== "string") return outcome;
+  return { ...outcome, data: { ...data, nextAction: `The plan is approved and paved plan stops here. When the user asks to implement it: ${String(data.nextAction)}` } };
+}
+
+/** `--run <id> --lane risky --because`: the agent found the change riskier than its lane. */
+function escalateRun(invocation: CommandInvocation, step: Step, run: Run): CommandResult {
+  const { projectRoot, coreRoot } = invocation.paths;
+  const because = invocation.flags.because?.trim();
+  if (parseLane(invocation.flags.lane) !== "risky") {
+    throw new IntentError("PAVED_LANE_ESCALATION_INVALID", "A run's lane only moves up, to risky.", "Pass --lane risky, or continue the run in its lane.");
+  }
+  if (!because) {
+    throw new IntentError("PAVED_INTENT_RATIONALE_REQUIRED", "Escalating a run needs the evidence that makes it risky.", "Add --because \"<what makes the change risky>\".");
+  }
+  if (TERMINAL_STATUSES.has(run.status)) {
+    throw new IntentError("PAVED_LANE_ESCALATION_INVALID", `Run ${run.id} is ${run.status}.`, "Start new work with paved execute \"<request>\" --lane risky instead.");
+  }
+  if (readOnly(run)) {
+    throw new IntentError("PAVED_LANE_ESCALATION_INVALID", `${run.workflow!.id} is read-only; it changes nothing to escalate.`, "Start a change workflow for the change.");
+  }
+  escalate(coreRoot, run, because);
+  writeRun(projectRoot, coreRoot, run);
+  writeIntentDocument(projectRoot, run, coreRoot);
+  return result(projectRoot, coreRoot, step, run, `Run escalated to the risky lane; its plan needs approval before completion. ${nextStepAction(run)}`);
+}
+
 async function dispatchStep(invocation: CommandInvocation): Promise<CommandResult> {
   const step = invocation.command as Step;
   let selectedRunId: string | undefined;
   try {
-    if (step === "intent" && !invocation.flags.run && invocation.selectors.length > 0) return startIntent(invocation);
+    if ((step === "intent" || step === "plan") && !invocation.flags.run && invocation.selectors.length > 0) return startIntent(invocation, step);
     if (step === "execute" && !invocation.flags.run && invocation.selectors.length > 0) return startWork(invocation);
     const flags = invocation.flags;
-    if (step === "execute" && invocation.selectors.length > 0) {
+    if (invocation.selectors.length > 0) {
       return blocked(step, "PAVED_EXECUTE_REQUEST_WITH_RUN", "A request starts new work; it does not change an existing run.", "Drop --run to start the request, or drop the request to continue the run.");
     }
-    if ((step === "intent" || step === "execute") && (flags.workflow !== undefined || flags.recommend !== undefined || flags.because !== undefined || flags.parts.length > 0)) {
-      return blocked(step, "PAVED_INTENT_FLAGS_INVALID", "--workflow, --recommend, --because and --part start a new intent; they do not change an existing run.", "Answer the run's classification decision instead: paved intent --run <id> --answer <id>=<value> --answered-by <you> --json.");
+    const escalating = flags.lane !== undefined && flags.workflow === undefined && flags.recommend === undefined && flags.parts.length === 0;
+    if (!escalating && (flags.workflow !== undefined || flags.recommend !== undefined || flags.because !== undefined || flags.parts.length > 0 || flags.lane !== undefined)) {
+      return blocked(step, "PAVED_INTENT_FLAGS_INVALID", "--workflow, --recommend, --because and --part start a new intent; they do not change an existing run.", "Answer the run's classification decision instead: paved intent --run <id> --answer <id>=<value> --answered-by <you> --json; to escalate a run, pass only --lane risky --because \"<evidence>\".");
     }
     const selected = selectRun(invocation, step);
     if ("result" in selected) return selected.result;
     selectedRunId = selected.run.id;
+    if (escalating) return escalateRun(invocation, step, selected.run);
     if (flags.autonomy !== undefined && flags.autonomy !== selected.run.autonomy_profile) {
       return blocked(step, "PAVED_AUTONOMY_PROFILE_IMMUTABLE", `Run ${selected.run.id} autonomy profile cannot change after creation.`, "Resume without --autonomy; a new profile needs a new run.", { run: selected.run.id });
     }
@@ -863,7 +921,8 @@ async function dispatchStep(invocation: CommandInvocation): Promise<CommandResul
       return await resume({ ...invocation, command: owner }, owner, selected.run, selected.answers);
     }
     if (step === "execute" && flags.auto) return await deliver(invocation, selected.run, selected.answers);
-    return await resume(invocation, step, selected.run, selected.answers);
+    const outcome = await resume(invocation, step, selected.run, selected.answers);
+    return step === "plan" ? stopAtPlan(outcome) : outcome;
   } catch (error) {
     const data = selectedRunId === undefined ? undefined : { run: selectedRunId };
     if (error instanceof IntentError) return blocked(step, error.code, error.message, error.remediation, data);

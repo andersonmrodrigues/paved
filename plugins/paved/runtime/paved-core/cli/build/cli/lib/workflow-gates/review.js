@@ -8,7 +8,7 @@ import { planReview } from "../review-plan.js";
 import { loadReviewSensitivePatterns } from "../review-policy.js";
 import { reviewBundleProblem } from "../review-bundle.js";
 import { REVIEW_FIX, REVIEW_HANDLER, SOURCE_CHANGED_AFTER_VERIFICATION } from "../workflows.js";
-import { runSourceRoot } from "../workflow-runs.js";
+import { intentDocumentPath, planSkipped, runSourceRoot } from "../workflow-runs.js";
 import { blocked, fingerprint, now, projectRelative, reopenImplementation, sha, sourceChangedAction, sourceMovedSinceVerification } from "./shared.js";
 export const reviewBriefPath = (runId) => `.paved/generated/reviews/${runId}-brief.md`;
 export const reviewRecordPath = (runId) => `.paved/generated/reviews/${runId}-findings.yaml`;
@@ -26,7 +26,8 @@ export const REVIEW_RECORD_CODES = new Set([
 export const planRef = (run) => run.events.findLast((event) => event.type === "approval-requested" && event.phase === "planning")?.ref;
 /** What a review must have read to count for the run as it is now. */
 export function reviewedState(projectRoot, run) {
-    const plan = planRef(run);
+    // A lane that skips planning reviews against the request it recorded instead.
+    const plan = planRef(run) ?? (planSkipped(run) ? intentDocumentPath(run.id) : undefined);
     if (!plan || !run.evidence)
         return undefined;
     const planPath = resolveSafePath(projectRoot, plan);

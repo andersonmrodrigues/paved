@@ -117,7 +117,8 @@ properties:
   phases:
     description: >
       Phases in canonical order, each at most once (tests enforce the order).
-      `verification`, `evidence` and `completion` are mandatory and cannot be skipped.
+      `verification`, `evidence` and `completion` are mandatory and cannot be skipped;
+      `implementation` cannot be skipped by a lane either.
     type: array
     minItems: 1
     items: { $ref: "#/$defs/phase" }
@@ -257,11 +258,33 @@ $defs:
           capacity: { enum: [economy, balanced, frontier] }
           reasoning_effort: { enum: [low, medium, high] }
           rationale: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      routing_by_lane:
+        description: >
+          Per-lane overrides of `routing`: a run in that lane uses its `capacity` and
+          `reasoning_effort` instead, so trivial work stays at the economy tier and risky
+          work gets the strongest reviewer. `mode` never changes with the lane. A run
+          without a lane resolves as `standard`.
+        type: object
+        additionalProperties: false
+        minProperties: 1
+        properties:
+          trivial: { $ref: "#/$defs/laneRouting" }
+          standard: { $ref: "#/$defs/laneRouting" }
+          risky: { $ref: "#/$defs/laneRouting" }
       skip_when:
         description: >
           The only condition under which this phase may be skipped. A phase without it
           always runs. A skipped phase is recorded with the reason.
         $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+      skip_in_lanes:
+        description: >
+          Lanes whose runs skip this phase. The skip is recorded on the run with the lane
+          and the evidence that chose it. Implementation, verification, evidence and
+          completion run in every lane, and planning always runs in `risky`.
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/lane" }
       retry:
         description: >
           How a failed attempt of this phase may be retried. Defaults: `retryable` with
@@ -276,10 +299,31 @@ $defs:
           properties: { class: { enum: [non-retryable, requires-human] } }
         then:
           not: { required: [max_attempts] }
-    if:
-      properties: { phase: { enum: [verification, evidence, completion] } }
-    then:
-      not: { required: [skip_when] }
+    dependentRequired:
+      routing_by_lane: [routing]
+    allOf:
+      - if:
+          properties: { phase: { enum: [verification, evidence, completion] } }
+        then:
+          not: { required: [skip_when] }
+      - if:
+          properties: { phase: { enum: [implementation, verification, evidence, completion] } }
+        then:
+          not: { required: [skip_in_lanes] }
+      - if:
+          properties: { phase: { const: planning } }
+        then:
+          properties:
+            skip_in_lanes: { type: array, not: { contains: { const: risky } } }
+  laneRouting:
+    type: object
+    additionalProperties: false
+    required: [rationale]
+    minProperties: 2
+    properties:
+      capacity: { enum: [economy, balanced, frontier] }
+      reasoning_effort: { enum: [low, medium, high] }
+      rationale: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
   contextAreas:
     type: array
     uniqueItems: true

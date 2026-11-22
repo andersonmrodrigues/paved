@@ -8,12 +8,15 @@ import type { DecisionCandidate } from "./decisions/gate.ts";
 import type { Decision } from "./decisions/record.ts";
 import { executableWorkflows } from "./workflow-gates/index.ts";
 import { fingerprint, now, sha } from "./workflow-gates/shared.ts";
-import type { AutonomyProfile } from "./workflows.ts";
-import { coreWorkflowIds, loadContract, type Run, type RunInput } from "./workflow-runs.ts";
+import { ESCALATED, LANES, skippedInLane, type AutonomyProfile, type Lane } from "./workflows.ts";
+import { coreWorkflowIds, intentDocumentPath, loadContract, startPhaseFrom, type Run, type RunInput } from "./workflow-runs.ts";
+
+export { intentDocumentPath };
 
 export interface IntentRequest {
   readonly request: string;
   readonly workflow?: string;
+  readonly lane?: string;
   readonly autonomy?: string;
   readonly recommend?: string;
   readonly because?: string;
@@ -91,8 +94,16 @@ function firstRequiredInput(coreRoot: string, workflowId: string): string {
   return input.id;
 }
 
-/** Gives a pending or new run its workflow, phases and request input. */
-export function classify(coreRoot: string, run: Run, workflowId: string, because: string, decidedBy: "agent" | "human", decision?: string): void {
+export function parseLane(value: string | undefined): Lane | undefined {
+  if (value === undefined) return undefined;
+  if (!(LANES as readonly string[]).includes(value)) {
+    throw new IntentError("PAVED_LANE_INVALID", `Unknown lane: ${value}.`, `Choose one of: ${LANES.join(", ")}.`);
+  }
+  return value as Lane;
+}
+
+/** Gives a pending or new run its workflow, lane, phases and request input. */
+export function classify(coreRoot: string, run: Run, workflowId: string, because: string, decidedBy: "agent" | "human", decision?: string, lane?: Lane): void {
   const contract = loadContract(coreRoot, workflowId);
   if (run.autonomy_profile === undefined && contract.autonomy !== undefined) run.autonomy_profile = contract.autonomy.default_profile;
   const request = run.inputs.find((input) => input.id === "request") ?? run.inputs[0]!;
@@ -103,10 +114,49 @@ export function classify(coreRoot: string, run: Run, workflowId: string, because
     workflow: contract.id, because, decided_by: decidedBy,
     ...(decision === undefined ? {} : { decision }),
     ...(run.classification?.parts === undefined ? {} : { parts: run.classification.parts }),
+    ...(lane === undefined ? {} : { lane, lane_because: because }),
   };
-  run.phases = contract.phases.map((phase, index) => ({ phase: phase.phase, status: index === 0 ? "running" : "pending", ...(index === 0 ? { attempts: 1 } : {}) }));
+  run.phases = contract.phases.map((phase) => ({ phase: phase.phase, status: "pending" }));
   run.status = "running";
-  run.events.push({ at: now(), type: "phase-started", phase: contract.phases[0]!.phase });
+  startPhaseFrom(run, contract, 0);
+}
+
+/**
+ * Moves a run to the risky lane. Planning a lower lane skipped is reopened and everything
+ * after it goes back to pending, so the plan is approved before the change is implemented,
+ * verified and reviewed again. Phases before planning keep their recorded outcome.
+ */
+export function escalate(coreRoot: string, run: Run, because: string): void {
+  if (!run.workflow || run.classification?.workflow === undefined) {
+    throw new IntentError("PAVED_LANE_ESCALATION_INVALID", `Run ${run.id} is not classified yet.`, "Answer its classification decision first.");
+  }
+  if (run.classification.lane === "risky") {
+    throw new IntentError("PAVED_LANE_ESCALATION_INVALID", `Run ${run.id} is already in the risky lane.`, "Continue the run; its plan needs approval before completion.");
+  }
+  const planning = run.phases.findIndex((phase) => phase.phase === "planning");
+  if (planning < 0) {
+    throw new IntentError("PAVED_LANE_ESCALATION_INVALID", `${run.workflow.id} has no planning phase, so a risky lane adds nothing to it.`, "Continue the run as it is, or start a change workflow for the change.");
+  }
+  if (run.status === "awaiting-input" || run.status === "awaiting-approval") {
+    throw new IntentError("PAVED_LANE_ESCALATION_INVALID", `Run ${run.id} is ${run.status}.`, "Answer the open decision or approval first, then escalate.");
+  }
+  const from = run.classification.lane;
+  run.classification = { ...run.classification, lane: "risky", lane_because: because };
+  run.events.push({ at: now(), type: "lane-escalated", detail: `from=${from ?? "none"}; ${because}`.slice(0, 4000) });
+  if (run.phases[planning]!.status !== "skipped") return;
+  for (const phase of run.phases.slice(planning)) {
+    if (phase.status === "pending") continue;
+    if (phase.status !== "skipped") run.events.push({ at: now(), type: "phase-reopened", phase: phase.phase, detail: ESCALATED });
+    phase.status = "pending";
+    delete phase.gates; delete phase.failure; delete phase.skip_reason; delete phase.skipped_in_lane;
+  }
+  if (run.delegation) {
+    run.events.push({ at: now(), type: "delegation-superseded", phase: "implementation", ref: run.delegation.path, detail: ESCALATED });
+    delete run.delegation;
+  }
+  delete run.failure; delete run.ended_at;
+  run.status = "running";
+  startPhaseFrom(run, loadContract(coreRoot, run.workflow.id), planning);
 }
 
 /** `worktree` is the linked worktree the run works on when it shares the state of projectRoot. */
@@ -116,6 +166,10 @@ export function createIntentRun(projectRoot: string, coreRoot: string, input: In
   }
   const request = input.request.trim();
   if (!request) throw new IntentError("PAVED_WORKFLOW_INPUT_REQUIRED", "intent requires the user's request.", "Run paved intent \"<request>\" --json.");
+  const lane = parseLane(input.lane);
+  if (lane !== undefined && input.workflow === undefined) {
+    throw new IntentError("PAVED_INTENT_FLAGS_INVALID", "A lane is chosen together with the workflow, and no --workflow was given.", "Add --workflow <id> --because \"<evidence>\", or drop --lane and let the user classify the request.");
+  }
   if ((input.workflow !== undefined || input.recommend !== undefined) && !input.because?.trim()) {
     throw new IntentError("PAVED_INTENT_RATIONALE_REQUIRED", "A workflow choice or recommendation needs the evidence behind it.", "Add --because \"<what in the request or repository shows it>\".");
   }
@@ -142,16 +196,15 @@ export function createIntentRun(projectRoot: string, coreRoot: string, input: In
   };
   if (workflowId !== undefined) {
     run.inputs.push(...parseInputs(coreRoot, workflowId, input.inputs));
-    classify(coreRoot, run, workflowId, input.because!.trim(), "agent");
+    classify(coreRoot, run, workflowId, input.because!.trim(), "agent", undefined, lane);
     const missing = missingInputs(coreRoot, workflowId, run.inputs);
     if (missing.length) throw new IntentError("PAVED_WORKFLOW_INPUT_MISSING", `${workflowId} requires: ${missing.join(", ")}.`, `Ask the user, then pass --input ${missing[0]}=<value>.`);
   }
   return run;
 }
 
-export const intentDocumentPath = (runId: string): string => `.paved/documents/intents/${runId}.md`;
-
-export function writeIntentDocument(projectRoot: string, run: Run): string {
+/** `coreRoot` lets the document name every phase the run's lane skips, not only those skipped so far. */
+export function writeIntentDocument(projectRoot: string, run: Run, coreRoot?: string): string {
   const relative = intentDocumentPath(run.id);
   const classification = run.classification ?? {};
   const lines = [
@@ -159,7 +212,11 @@ export function writeIntentDocument(projectRoot: string, run: Run): string {
     "## Request", "", ...run.inputs.filter((input) => input === run.inputs[0]).map((input) => `> ${input.value.replaceAll("\n", "\n> ")}`), "",
     "## Classification", "",
     ...(classification.workflow
-      ? [`- Workflow: \`${classification.workflow}\``, `- Decided by: ${classification.decided_by}`, `- Because: ${classification.because}`, ...(classification.decision ? [`- Decision: \`${classification.decision}\``] : [])]
+      ? [`- Workflow: \`${classification.workflow}\``, `- Decided by: ${classification.decided_by}`, `- Because: ${classification.because}`, ...(classification.decision ? [`- Decision: \`${classification.decision}\``] : []),
+        ...(classification.lane
+          ? [`- Lane: \`${classification.lane}\``, ...(classification.lane_because !== classification.because ? [`- Lane because: ${classification.lane_because}`] : []),
+            ...skippedPhases(run, coreRoot)]
+          : ["- Lane: none chosen; every phase runs."])]
       : run.status === "cancelled" ? ["- Split into separate intents (see below)."]
         : [`- Pending: a classification decision is open in \`.paved/generated/runs/${run.id}.yaml\`.`]),
     "",
@@ -170,6 +227,15 @@ export function writeIntentDocument(projectRoot: string, run: Run): string {
   mkdirSync(dirname(path), { recursive: true });
   atomicWriteFileSync(path, `${lines.join("\n")}\n`);
   return relative;
+}
+
+function skippedPhases(run: Run, coreRoot: string | undefined): string[] {
+  const lane = run.classification?.lane;
+  const contract = coreRoot === undefined || run.workflow === undefined ? undefined : loadContract(coreRoot, run.workflow.id);
+  const skipped = run.phases.filter((phase) => phase.skipped_in_lane !== undefined
+    || (phase.status === "pending" && contract?.phases.some((item) => item.phase === phase.phase && skippedInLane(item, lane)) === true))
+    .map((phase) => `\`${phase.phase}\``);
+  return skipped.length ? [`- Skipped by the lane: ${skipped.join(", ")}`] : [];
 }
 
 export function classificationCandidate(projectRoot: string, coreRoot: string, run: Run, recommend?: string, because?: string): DecisionCandidate {

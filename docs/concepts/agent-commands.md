@@ -19,9 +19,9 @@ Paved projects seven agent commands:
 |---|---|---|---|---|
 | `init` | Bootstrap and initialize Paved; no input | `UNINITIALIZED`; repository evidence | Acquires a pinned runtime, initializes `.paved/`, asks which detected checks gate verification, which detected module test commands workflows run, which observed conventions become rules, maintains the `AGENTS.md` block, then generates context | Never resets existing state; malformed or unverified runtime state fails. |
 | `status` | Inspect Paved state and offer repairs; answer a repair decision with `--answer` | Any lifecycle; manifest and lock | Lifecycle, lock, adapters, context, verification profile, open runs, diagnostics and repair decisions. Read-only unless the user answers a repair decision | Reports missing/invalid state without writes; no repair is applied without the user's answer. |
-| `intent` | The user's request, verbatim; `--workflow <feature\|bug\|refactor> --because "<evidence>"` when the evidence shows the kind of change | `RESOLVED`, `GENERATED`, `VALIDATED`, or `READY`; project context, rules and the Core workflows | Creates the run and its Intent document, settles the classification (or asks the user), and runs `context` and `discovery`, including a bug's failing regression test and a refactor's baseline | A workflow without evidence is refused; uncertainty becomes a decision; Paved never guesses. |
-| `plan` | The run, when several are open (`--run <id>`) | Same development states; the run's workflow and verification profile | Records the plan at `.paved/documents/plans/<run-id>.md`, opens it in the preview, and records the approval the user gives in the conversation (`--approve`) | A changed plan needs a new approval; only the user approves. |
-| `execute` | A new request, or the run when several are open (`--run <id>`) | Any state that `init` or `update` resolves (it runs them first); the run's workflow, verification profile and tool bindings | Implementation, tests, verification, evidence, independent review, completion, and new gardener proposals | Nothing is implemented before the user approves the plan; failed tests or verification fail the phase within bounded retries; gardener proposals never block completion. |
+| `intent` | The user's request, verbatim; `--workflow <feature\|bug\|refactor> [--lane <trivial\|standard\|risky>] --because "<evidence>"` when the evidence shows the kind of change | `RESOLVED`, `GENERATED`, `VALIDATED`, or `READY`; project context, rules and the Core workflows | Creates the run and its Intent document, settles the classification (or asks the user), and runs `context` and `discovery`, including a bug's failing regression test and a refactor's baseline | A workflow without evidence is refused; uncertainty becomes a decision; Paved never guesses. |
+| `plan` | A new request, classified like `intent`; or the run, when several are open (`--run <id>`) | Same development states; the run's workflow and verification profile | Records the plan at `.paved/documents/plans/<run-id>.md`, opens it in the preview, and records the approval the user gives in the conversation (`--approve`) | A changed plan needs a new approval; only the user approves. |
+| `execute` | A new request, or the run when several are open (`--run <id>`) | Any state that `init` or `update` resolves (it runs them first); the run's workflow, verification profile and tool bindings | Implementation, tests, verification, evidence, independent review, completion, and new gardener proposals | Nothing is implemented before the user approves the plan, unless the run's lane skips planning; failed tests or verification fail the phase within bounded retries; gardener proposals never block completion. |
 | `preview` | Review a Markdown file, or a folder of them, with selected-text comments | Same development states; Markdown file or folder | Loopback preview and comments with received, working and resolved status | A comment on a stale document is refused; the preview approves nothing. |
 | `update` | Update local Core/adapters/inputs; no input | Initialized lifecycle; manifest and lock | Uses the existing safe update transaction, then rewrites an outdated managed `AGENTS.md` block | Unknown compatibility, migrations and ownership conflicts stop unsafe writes; remote update is unsupported. |
 
@@ -78,9 +78,19 @@ plan is approved.
 no Paved state it runs `init` first, and when `init` needs answers it returns them and
 asks for the same call to be repeated with `--answer`. When the state needs `paved update`
 (initialized but not generated, stale or incompatible), it runs `update` first. It then records the request as
-`intent "<request>"` does, with the same `--workflow`, `--because`, `--recommend`,
-`--part` and `--input` options. A request together with `--run` is refused
-(`PAVED_EXECUTE_REQUEST_WITH_RUN`). The agent supplies observations and code changes; the runtime checks phase
+`intent "<request>"` does, with the same `--workflow`, `--lane`, `--because`, `--recommend`,
+`--part` and `--input` options, and runs only the phases the lane keeps. A request together with `--run` is refused
+(`PAVED_EXECUTE_REQUEST_WITH_RUN`).
+
+`intent "<request>"` stops after classification, and `plan "<request>"` starts a run the
+same way and stops once its plan is approved. `plan` refuses a lane that skips planning
+(`PAVED_LANE_SKIPS_PLANNING`) and a workflow without planning (`PAVED_PLAN_UNAVAILABLE`).
+On an open run, `--lane risky --because "<evidence>"` with any of the three steps
+escalates it: a skipped `planning` reopens and the plan needs approval before
+completion; any other lane change is refused (`PAVED_LANE_ESCALATION_INVALID`).
+`--lane` requires `--workflow` on a new request (`PAVED_INTENT_FLAGS_INVALID`) and is
+covered by its `--because`. [Workflow stages](workflow-stages.md#lane-skips) lists what
+each lane skips. The agent supplies observations and code changes; the runtime checks phase
 order and plan approval, calls the testing Tool, runs authoritative Paved verification,
 and requires matching workflow evidence before completion. When those return decisions
 of their own, the step returns them and passes the user's answers through when it resumes.

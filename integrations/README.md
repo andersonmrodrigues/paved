@@ -40,9 +40,16 @@ SessionStart supplies a short index and checks for plugin updates only when a pi
 runtime selection already exists. The update command is inert unless the user has
 explicitly configured automatic updates; Paved never initializes a project from a
 hook. Stop runs `verify --changed` synchronously within a 110 s budget and requests
-continuation on failure. A run that exceeds the budget is stopped with its whole
+continuation on failure. It passes `--base` with the default branch (`origin/HEAD`,
+else `main` or `master`), so committed work is still verified and a failure the base
+already has is reported as pre-existing. The NOT VERIFIED reason names each failing
+or blocked check with its status, output reference and a short excerpt (at most 8
+lines and 800 characters across checks). A `warning` result does not block; it adds a
+one-line note listing the pre-existing and environment-blocked checks. A run that exceeds the budget is stopped with its whole
 process group, so no runtime is left holding the operation lock, and the reason says
-so; a lock already held by another Paved operation is reported as such. Because
+so. When another Paved operation holds the lock, Stop waits for it within half the
+budget and reuses what that run recorded for the same change; otherwise the held lock
+is reported as such. Because
 `verify` reuses a verified record for an unchanged tree, running `paved verify
 --changed` directly lets the next Stop pass without repeating a slow suite. If Stop
 already continued the turn, it reports NOT VERIFIED instead of blocking again,

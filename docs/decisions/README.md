@@ -57,6 +57,7 @@ writing a new record that supersedes it, not by editing the old one.
 | [0050](0050-governed-change-delivery.md) | Governed change delivery and patch-identity evidence | Accepted |
 | [0051](0051-stated-corrections-and-run-less-review.md) | Stated corrections become rule proposals; review works without a run | Accepted |
 | [0052](0052-patch-bound-delivery-approval.md) | Patch-bound approval at the delivery boundary | Accepted |
+| [0053](0053-adaptive-lanes-and-honest-verification.md) | Adaptive lanes and honest verification | Accepted |
 
 ## Format
 

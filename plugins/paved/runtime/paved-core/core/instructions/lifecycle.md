@@ -5,7 +5,23 @@ and the lifecycle of the **repository's Paved installation** (whether you can tr
 
 ## Default task path
 
-Ordinary work is direct, not a workflow run:
+A change request goes through `paved execute "<request>" --workflow <id> --lane <lane>
+--because "<evidence>"`, and the lane sets how much of the lifecycle below runs:
+
+- `trivial` skips `context` and `discovery` where the workflow allows it, and
+  `planning`; implementation and review route to the economy tier.
+- `standard` skips `planning` and uses the workflow's own routing.
+- `risky` skips nothing: the plan needs approval, and implementation and review route
+  to the frontier tier.
+
+Implementation, verification, evidence and completion run in every lane. A bug,
+refactor or performance run keeps `discovery` in every lane, because it records the
+reproduction or baseline the later phases prove against. Without `--lane` every phase
+runs. Escalate an open run with `--lane risky --because "<evidence>"` when the change
+turns out larger or riskier; completion refuses a change to a protected path, or a
+trivial run past its file limit, until it is escalated and its plan approved.
+
+Work the user asks to do without a workflow stays direct:
 
 1. State the goal and the smallest useful change; for non-product ambiguity, state an
    assumption and proceed.
@@ -18,12 +34,11 @@ Ordinary work is direct, not a workflow run:
 
 Ask a person only for product decisions, conflicting rules, irreversible or
 high-impact actions, or a verification failure that persists after two distinct fixes.
-Do not require plan approval for ordinary implementation.
+Only a risky run waits for plan approval.
 
-## Explicit workflow lifecycle
+## Workflow lifecycle
 
-Use the phase-based workflow only when the user explicitly requests a governed workflow
-or a project rule requires one. A workflow is a selection of phases, always in this order.
+A workflow is a selection of phases, always in this order.
 A workflow may omit a phase that does not apply, but `verification`, `evidence` and
 `completion` are never omitted or skipped (the workflow schema enforces this).
 

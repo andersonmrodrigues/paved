@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
-import { dirname, join, sep } from "node:path";
+import { closeSync, constants, copyFileSync, existsSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve, sep } from "node:path";
 import { parse as parseYaml, stringify } from "yaml";
 import { createDiagnostic } from "../result.js";
 import { globRegex } from "./adapters.js";
@@ -9,7 +10,9 @@ import { loadYaml } from "./documents.js";
 import { assessEvidence, evaluateCompletion, loadEvidenceRegistry, } from "./evidence.js";
 import { createRegistry } from "./schemas.js";
 import { atomicWriteFileSync } from "./atomic-write.js";
-import { acquireConsumerOperationLock } from "./operation-lock.js";
+import { acquireConsumerOperationLock, ConsumerOperationLockedError } from "./operation-lock.js";
+import { failureExcerpt, isPreExisting, ROOT_PLACEHOLDER, withBaseWorktree } from "./verification-baseline.js";
+import { orderChecks } from "./verification-order.js";
 import { resolveSafePath } from "./safe-path.js";
 import { authorizeTool, buildArgv, captureToolExecution, resolveTool, sanitizeToolOutput, sensitiveArgvInputNames, toEvidenceCheck, validateImplementation, validateTool, validateToolInputs, validateToolResult, } from "./tools.js";
 const OUTPUT_LIMIT_BYTES = 16 * 1024;
@@ -38,11 +41,15 @@ export const verificationEnvironmentAllowlist = new Set([
     "GRADLE_USER_HOME",
     "CHROME_BIN",
 ]);
-/** The environment a governed check runs in: allowlisted variables and a non-interactive CI mode. */
-export function verificationEnvironment(source = process.env) {
+/**
+ * The environment a governed check runs in: allowlisted variables, the variables the check
+ * itself declares in `environment.requires`, and a non-interactive CI mode.
+ */
+export function verificationEnvironment(source = process.env, required = []) {
     const env = {};
+    const declared = new Set(required);
     for (const [name, value] of Object.entries(source)) {
-        if (value !== undefined && verificationEnvironmentAllowlist.has(name.toUpperCase()))
+        if (value !== undefined && (verificationEnvironmentAllowlist.has(name.toUpperCase()) || declared.has(name)))
             env[name] = value;
     }
     // Test runners that would otherwise watch for changes or prompt exit after one run.
@@ -357,16 +364,82 @@ export function fingerprintWorktree(projectRoot) {
     }
     return { revision, uncommitted: true, worktreeSha: digest.digest("hex") };
 }
-function collectChunk(chunks, next, state) {
-    if (state.bytes >= OUTPUT_LIMIT_BYTES) {
-        state.truncated = true;
-        return;
+/**
+ * The Git tree id of the content under `sourceRoot` as it is on disk, staged or not,
+ * without generated Paved state. It is computed in a temporary copy of the index, so the
+ * real index is untouched, and it equals the tree of a commit that captures the same
+ * content. Undefined outside Git or when Git cannot compute it.
+ */
+export function contentTreeId(sourceRoot) {
+    const git = (args, env = {}) => spawnSync("git", args, {
+        cwd: sourceRoot, encoding: "utf8", shell: false, maxBuffer: 16 * 1024 * 1024, timeout: 120_000,
+        env: { ...process.env, LC_ALL: "C", ...env },
+    });
+    const located = git(["rev-parse", "--git-path", "index", "--show-prefix"]);
+    if (located.error || located.status !== 0)
+        return undefined;
+    const [indexPath, prefix = ""] = located.stdout.split("\n");
+    if (!indexPath)
+        return undefined;
+    const scratch = mkdtempSync(join(tmpdir(), "paved-tree-"));
+    try {
+        const index = join(scratch, "index");
+        // Starting from the real index keeps Git's stat cache, so unchanged files are not hashed again.
+        if (existsSync(resolve(sourceRoot, indexPath)))
+            copyFileSync(resolve(sourceRoot, indexPath), index);
+        const env = { GIT_INDEX_FILE: index };
+        // Git refuses an exclusion that names an ignored path, and add skips ignored paths anyway.
+        const exclusions = [".paved/generated", ".paved/tasks", ".paved-operation-lock"]
+            .filter((path) => git(["check-ignore", "-q", "--", path]).status !== 0)
+            .map((path) => `:(exclude)${path}`);
+        const added = git(["add", "--all", "--", ".", ...exclusions], env);
+        if (added.error || added.status !== 0)
+            return undefined;
+        const written = git(["write-tree"], env);
+        if (written.error || written.status !== 0)
+            return undefined;
+        const root = written.stdout.trim();
+        const subtree = prefix.trim() === "" ? { stdout: root, status: 0 } : git(["rev-parse", `${root}:${prefix.trim().replace(/\/$/, "")}`]);
+        const id = subtree.status === 0 ? subtree.stdout.trim() : "";
+        return /^[0-9a-f]{40}([0-9a-f]{24})?$/.test(id) ? id : undefined;
     }
-    const remaining = OUTPUT_LIMIT_BYTES - state.bytes;
-    chunks.push(next.length <= remaining ? next : next.subarray(0, remaining));
-    state.bytes += Math.min(next.length, remaining);
-    if (next.length > remaining)
-        state.truncated = true;
+    finally {
+        rmSync(scratch, { recursive: true, force: true });
+    }
+}
+/**
+ * Keeps the start and the end of one output stream within its share of the limit. Test
+ * runners and builds print their failure summary last, so the end matters most.
+ */
+class BoundedOutput {
+    head = [];
+    headBytes = 0;
+    tail = Buffer.alloc(0);
+    total = 0;
+    headLimit = OUTPUT_LIMIT_BYTES / 8;
+    tailLimit = (OUTPUT_LIMIT_BYTES * 3) / 8;
+    add(chunk) {
+        this.total += chunk.length;
+        let rest = chunk;
+        if (this.headBytes < this.headLimit) {
+            const taken = rest.subarray(0, this.headLimit - this.headBytes);
+            this.head.push(taken);
+            this.headBytes += taken.length;
+            rest = rest.subarray(taken.length);
+        }
+        if (rest.length > 0) {
+            const joined = Buffer.concat([this.tail, rest]);
+            this.tail = joined.length > this.tailLimit ? joined.subarray(joined.length - this.tailLimit) : joined;
+        }
+    }
+    get truncated() {
+        return this.total > this.headBytes + this.tail.length;
+    }
+    text() {
+        const omitted = this.total - this.headBytes - this.tail.length;
+        const head = Buffer.concat(this.head).toString("utf8");
+        return omitted > 0 ? `${head}\n[... ${omitted} bytes omitted ...]\n${this.tail.toString("utf8")}` : head + this.tail.toString("utf8");
+    }
 }
 function evidenceCheckId(checkId) {
     const prefix = checkId.toLowerCase().replaceAll(".", "_").replace(/[^a-z0-9_-]/g, "-").slice(0, 220).replace(/[-_]+$/g, "") || "check";
@@ -388,11 +461,10 @@ export function signalProcessGroup(child, signal) {
     }
 }
 export async function spawnApproved(args) {
-    const env = verificationEnvironment();
+    const env = verificationEnvironment(process.env, args.requiredVariables ?? []);
     return new Promise((resolveRun) => {
-        const stdout = [];
-        const stderr = [];
-        const state = { bytes: 0, truncated: false };
+        const stdout = new BoundedOutput();
+        const stderr = new BoundedOutput();
         let settled = false;
         let timedOut = false;
         const child = spawn(args.executable, args.argv, {
@@ -431,9 +503,9 @@ export async function spawnApproved(args) {
             resolveRun({
                 kind: kind ?? (timedOut ? "timeout" : "completed"),
                 ...(code === null ? {} : { exitCode: code }),
-                stdout: Buffer.concat(stdout).toString("utf8"),
-                stderr: Buffer.concat(stderr).toString("utf8"),
-                truncated: state.truncated,
+                stdout: stdout.text(),
+                stderr: stderr.text(),
+                truncated: stdout.truncated || stderr.truncated,
             });
         };
         const timer = setTimeout(() => {
@@ -442,8 +514,8 @@ export async function spawnApproved(args) {
                 setTimeout(() => signalGroup("SIGKILL"), 1_000);
             finish(null);
         }, Math.max(1, args.timeoutSeconds) * 1_000);
-        child.stdout.on("data", (chunk) => collectChunk(stdout, chunk, state));
-        child.stderr.on("data", (chunk) => collectChunk(stderr, chunk, state));
+        child.stdout.on("data", (chunk) => stdout.add(chunk));
+        child.stderr.on("data", (chunk) => stderr.add(chunk));
         child.on("error", () => {
             finish(null, "launch-error");
         });
@@ -523,12 +595,14 @@ function buildEvidence(args) {
             profile: ".paved/verification/profile.yaml",
             profile_sha256: args.profileSha,
             configuration_sha256: args.configurationSha,
+            ...(args.baseRevision === undefined ? {} : { base_revision: args.baseRevision }),
         },
         retention: "local",
         change: {
             summary: "Local Paved verification run.",
             revision: change.revision,
             ...(change.uncommitted ? { uncommitted_changes: true, worktree_sha256: change.worktreeSha ?? sha("unknown-worktree") } : {}),
+            ...(args.treeId === undefined ? {} : { tree_id: args.treeId }),
         },
         plan: {
             required: checkTypes,
@@ -602,8 +676,35 @@ function unresolvedTool(checkId, reason) {
         ...(reason === undefined ? {} : { remediation: reason }),
     });
 }
-/** A Check the change does not concern, recorded as skipped rather than run. */
-function skippedCheck(args) {
+/** What a Check's `environment.requires` names and is absent from `root` or the process environment. Never reads a file or a value. */
+function missingEnvironment(check, root, env = process.env) {
+    const requires = check.environment?.requires;
+    if (requires === undefined)
+        return undefined;
+    // The schema rejects absolute paths and parent traversal, so each path stays inside root.
+    const files = (requires.files ?? []).filter((path) => !existsSync(join(root, path)));
+    const variables = (requires.variables ?? []).filter((name) => env[name] === undefined || env[name] === "");
+    if (files.length === 0 && variables.length === 0)
+        return undefined;
+    return { ...(files.length ? { files } : {}), ...(variables.length ? { variables } : {}) };
+}
+function describeMissing(missing) {
+    return [
+        ...(missing.files?.length ? [`missing file${missing.files.length > 1 ? "s" : ""} ${missing.files.join(", ")}`] : []),
+        ...(missing.variables?.length ? [`missing variable${missing.variables.length > 1 ? "s" : ""} ${missing.variables.join(", ")}`] : []),
+    ].join("; ");
+}
+function environmentDiagnostic(checkId, missing) {
+    return diagnostic({
+        code: "PAVED_CHECK_ENVIRONMENT_UNAVAILABLE",
+        category: "findings",
+        component: "verification.runner",
+        message: `Check ${checkId} could not run here: ${describeMissing(missing)}.`,
+        remediation: "Provide what is missing in this checkout (Paved never copies it), or run the check where it is available.",
+    });
+}
+/** A Check recorded without running: skipped when the change does not concern it, blocked when it cannot run. */
+function notRunCheck(args) {
     const resolution = resolveTool(args.check.tool, [...args.tools], [...args.implementations], "local");
     if (resolution.status !== "resolved" || resolution.tool === undefined || resolution.implementation === undefined) {
         return { diagnostic: unresolvedTool(args.check.id, resolution.reason) };
@@ -615,12 +716,19 @@ function skippedCheck(args) {
         status: "blocked", output: "", inputs: args.check.inputs ?? {}, errors: [args.reason],
     });
     const blocked = toEvidenceCheck(captured, args.check, evidenceCheckId(args.check.id));
-    return { evidenceCheck: { ...blocked, status: "skipped", reason: args.reason } };
+    return { evidenceCheck: { ...blocked, status: args.status, reason: args.reason, ...args.extra } };
 }
 async function executeCheck(args) {
     const resolution = resolveTool(args.check.tool, [...args.tools], [...args.implementations], "local");
     if (resolution.status !== "resolved" || resolution.tool === undefined || resolution.implementation === undefined) {
         return { diagnostic: unresolvedTool(args.check.id, resolution.reason) };
+    }
+    const missing = missingEnvironment(args.check, args.sourceRoot);
+    if (missing !== undefined) {
+        // Reported with the other unproven Checks once the record is complete.
+        return notRunCheck({
+            ...args, status: "blocked", reason: `Environment unavailable: ${describeMissing(missing)}.`, extra: { missing_environment: missing },
+        });
     }
     if (args.check.preconditions && args.check.preconditions.length > 0) {
         const now = new Date().toISOString();
@@ -722,12 +830,17 @@ async function executeCheck(args) {
         ? args.sourceRoot
         : safe(args.sourceRoot, invocation.working_directory);
     const started = new Date().toISOString();
-    const execution = await spawnApproved({ executable: command.executable, argv: command.argv, cwd, timeoutSeconds });
+    const requiredVariables = args.check.environment?.requires?.variables ?? [];
+    const execution = await spawnApproved({ executable: command.executable, argv: command.argv, cwd, timeoutSeconds, requiredVariables });
     const finished = new Date().toISOString();
-    const secretValues = resolution.tool.inputs
-        .filter((input) => input.sensitive)
-        .map((input) => validation.values[input.name])
-        .filter((value) => typeof value === "string");
+    const secretValues = [
+        ...resolution.tool.inputs
+            .filter((input) => input.sensitive)
+            .map((input) => validation.values[input.name]),
+        // Declared variables reach the process, so their values never reach the record. Very short
+        // values (a flag such as 1) are left alone: scrubbing them would garble the whole log.
+        ...requiredVariables.map((name) => process.env[name]).filter((value) => value !== undefined && value.length >= 4),
+    ].filter((value) => typeof value === "string" && value !== "");
     const sanitizedOutput = [
         `stdout:\n${sanitizeToolOutput(execution.stdout, secretValues)}`,
         `stderr:\n${sanitizeToolOutput(execution.stderr, secretValues)}`,
@@ -776,7 +889,7 @@ async function executeCheck(args) {
         ],
     });
     const evidenceCheck = toEvidenceCheck(captured, args.check, evidenceCheckId(args.check.id));
-    const outputRef = `.paved/generated/evidence/${evidenceCheck.id}.log`;
+    const outputRef = args.outputRef ?? `.paved/generated/evidence/${evidenceCheck.id}.log`;
     evidenceCheck.output_ref = outputRef;
     return {
         ...(malformedOutput ? {
@@ -822,58 +935,285 @@ function writeValidatedEvidence(args) {
 }
 // Records are named by creation time, so the newest few are enough to find the latest run for a tree.
 const REUSE_SCAN_LIMIT = 20;
-/**
- * The newest record made for exactly this change and configuration, when it is verified.
- * The newest matching record decides, so a later failure is never hidden by an earlier pass.
- */
-function reusableVerification(args) {
-    const evidenceDir = safe(args.projectRoot, ".paved/generated/evidence");
+/** The newest evidence records, newest first; unreadable ones are left out. */
+function recentRecords(projectRoot) {
+    const evidenceDir = safe(projectRoot, ".paved/generated/evidence");
     let names;
     try {
         names = readdirSync(evidenceDir).filter((name) => /^verify-[a-z0-9-]+\.yaml$/.test(name)).sort().reverse().slice(0, REUSE_SCAN_LIMIT);
     }
     catch {
-        return undefined;
+        return [];
     }
-    for (const name of names) {
+    return names.flatMap((name) => {
         const file = join(evidenceDir, name);
-        let record;
         try {
             if (!lstatSync(file).isFile())
-                continue;
-            record = parseYaml(readFileSync(file, "utf8"));
+                return [];
+            const record = parseYaml(readFileSync(file, "utf8"));
+            return record !== null && typeof record === "object" && Array.isArray(record.checks) ? [{ file, record }] : [];
         }
         catch {
+            return [];
+        }
+    });
+}
+function readLog(projectRoot, outputRef) {
+    try {
+        const path = safe(projectRoot, outputRef);
+        return lstatSync(path).isFile() ? readFileSync(path, "utf8") : undefined;
+    }
+    catch {
+        return undefined;
+    }
+}
+/**
+ * Checks that did not pass for a reason outside the change: a pre-existing failure, an
+ * unavailable environment, or a dependency blocked for one of those reasons. Everything
+ * else that did not pass or skip is `other`.
+ */
+function classifyUnproven(checks) {
+    const reasons = new Map();
+    const unproven = [];
+    const other = [];
+    for (const check of checks) {
+        if (check.status === "passed" || check.status === "skipped")
+            continue;
+        const reason = check.status === "failed" && check.pre_existing === true ? "pre-existing"
+            : check.status === "blocked" && check.missing_environment !== undefined ? "environment-unavailable"
+                : check.status === "blocked" && check.blocked_by?.length && check.blocked_by.every((id) => reasons.has(id)) ? "dependency-unproven"
+                    : undefined;
+        if (reason === undefined) {
+            other.push(check);
             continue;
         }
-        if (record?.verification?.configuration_sha256 !== args.configurationSha ||
+        reasons.set(check.check, reason);
+        unproven.push({
+            id: check.check, status: check.status, reason,
+            ...(check.output_ref === undefined ? {} : { output_ref: check.output_ref }),
+            ...(check.baseline?.output_ref === undefined ? {} : { base_output_ref: check.baseline.output_ref }),
+            ...(check.missing_environment === undefined ? {} : { missing: check.missing_environment }),
+            ...(check.blocked_by === undefined ? {} : { blocked_by: check.blocked_by }),
+        });
+    }
+    return { unproven, other };
+}
+/**
+ * The unproven Checks when they are the record's only problems, so that verification is a
+ * `warning` rather than a failure: every other Check passed or was skipped, and the record
+ * without the unproven Checks is complete and verified.
+ */
+function warningVerdict(record, registryData, policy, definitions) {
+    const { unproven, other } = classifyUnproven(record.checks);
+    if (unproven.length === 0 || other.length > 0)
+        return undefined;
+    const excluded = new Set(unproven.map((item) => item.id));
+    const remaining = record.checks.filter((check) => !excluded.has(check.check));
+    const passed = remaining.filter((check) => check.status === "passed").map((check) => check.id);
+    if (passed.length === 0)
+        return unproven;
+    const ids = new Set(remaining.map((check) => check.id));
+    const reduced = {
+        ...record,
+        checks: remaining,
+        plan: { ...record.plan, required: [...new Set(remaining.filter((check) => check.status === "passed").map((check) => check.type))].sort() },
+        claims: record.claims.map((claim) => ({ ...claim, supported_by: claim.supported_by.filter((ref) => ids.has(ref) || !record.checks.some((check) => check.id === ref)) })),
+        completion: { ...record.completion, criteria: [{ met: true, supported_by: passed }] },
+    };
+    const evaluation = evaluateCompletion(reduced, registryData, policy, definitions);
+    return evaluation.status === "complete" && evaluation.verification === "verified" ? unproven : undefined;
+}
+function unprovenDiagnostics(unproven, baseRevision) {
+    return unproven.map((item) => {
+        if (item.reason === "environment-unavailable")
+            return environmentDiagnostic(item.id, item.missing ?? {});
+        if (item.reason === "pre-existing") {
+            return diagnostic({
+                code: "PAVED_VERIFY_PRE_EXISTING_FAILURE",
+                category: "findings",
+                component: "verification.runner",
+                message: `Check ${item.id} fails the same way on the base revision ${baseRevision?.slice(0, 12) ?? "(unknown)"}; the change did not introduce this failure.`,
+                remediation: `It still does not pass. Compare ${item.output_ref ?? "the head output"} with ${item.base_output_ref ?? "the base output"} and fix it separately.`,
+            });
+        }
+        return diagnostic({
+            code: "PAVED_VERIFY_DEPENDENCY_UNPROVEN",
+            category: "findings",
+            component: "verification.runner",
+            message: `Check ${item.id} did not run because ${item.blocked_by?.join(", ") ?? "a dependency"} could not be proven here.`,
+        });
+    });
+}
+function incompleteDiagnostic(evaluation) {
+    return diagnostic({
+        code: "PAVED_VERIFY_INCOMPLETE",
+        category: "verification",
+        component: "verification.evidence",
+        message: "Configured verification did not complete successfully.",
+        remediation: [...evaluation.blocking, ...evaluation.warnings].join("; "),
+    });
+}
+/** What a caller needs to act on each Check: its output, why it did not run, and a short failure excerpt. */
+function checkSummaries(projectRoot, checks) {
+    return checks.map((check) => {
+        const failing = check.status === "failed" || check.status === "error";
+        const log = failing && check.output_ref !== undefined ? readLog(projectRoot, check.output_ref) : undefined;
+        const excerpt = log === undefined ? [] : failureExcerpt(log);
+        return {
+            id: check.check, status: check.status, type: check.type,
+            ...(check.output_ref === undefined ? {} : { output_ref: check.output_ref }),
+            ...(check.reason === undefined ? {} : { reason: check.reason }),
+            ...(excerpt.length > 0 ? { excerpt } : {}),
+            ...(check.pre_existing === true ? { pre_existing: true } : {}),
+            ...(check.baseline?.output_ref === undefined ? {} : { base_output_ref: check.baseline.output_ref }),
+        };
+    });
+}
+function sameChange(record, change, treeId) {
+    const exact = record.change?.revision === change.revision &&
+        (record.change.uncommitted_changes === true) === change.uncommitted &&
+        record.change.worktree_sha256 === change.worktreeSha;
+    return exact || (treeId !== undefined && record.change?.tree_id === treeId);
+}
+/**
+ * The newest record made for exactly this content and configuration, when it can stand
+ * for a new run: a verified record always; a warning record when it compared failures with
+ * the same base; and, after waiting for another run's lock, whatever that run recorded.
+ * The newest matching record decides, so a later failure is never hidden by an earlier pass.
+ * The content matches by working tree fingerprint, or by tree id, so a record made before a
+ * commit also serves the commit that captures exactly that tree.
+ */
+function reusableVerification(args) {
+    for (const { file, record } of recentRecords(args.projectRoot)) {
+        if (record.verification?.configuration_sha256 !== args.configurationSha ||
             record.verification.profile_sha256 !== args.profileSha)
             continue;
-        if (record.change?.revision !== args.change.revision ||
-            (record.change.uncommitted_changes === true) !== args.change.uncommitted ||
-            record.change.worktree_sha256 !== args.change.worktreeSha)
+        if (!sameChange(record, args.change, args.treeId))
             continue;
-        if (record.completion?.status !== "complete" || record.completion.verification !== "verified")
-            return undefined;
         const definitions = new Map(args.checks.map((check) => [check.id, check]));
         const registryData = loadEvidenceRegistry(join(args.coreRoot, "core/verification/registry.yaml"));
         if (!registry(args.coreRoot).validate(record).valid ||
             assessEvidence(record, registryData, args.policy ?? {}, definitions).length > 0)
             return undefined;
         const evaluation = evaluateCompletion(record, registryData, args.policy ?? {}, definitions);
-        if (evaluation.status !== "complete" || evaluation.verification !== "verified")
+        const reused = { evidenceFiles: [file], evidence: record, evaluation, checks: checkSummaries(args.projectRoot, record.checks), reused: true };
+        if (record.completion?.status === "complete" && evaluation.status === "complete" && evaluation.verification === "verified") {
+            return { status: "success", diagnostics: args.diagnostics, ...reused };
+        }
+        if (record.verification.base_revision !== args.baseRevision)
             return undefined;
-        return {
-            status: "success",
-            diagnostics: args.diagnostics,
-            evidenceFiles: [file],
-            evidence: record,
-            evaluation,
-            checks: record.checks.map((check) => ({ id: check.check, status: check.status, type: check.type })),
-            reused: true,
-        };
+        const { unproven } = classifyUnproven(record.checks);
+        const warning = warningVerdict(record, registryData, args.policy ?? {}, definitions);
+        if (warning !== undefined) {
+            return { status: "warning", diagnostics: [...args.diagnostics, ...unprovenDiagnostics(warning, args.baseRevision)], unproven: warning, ...reused };
+        }
+        if (args.recordedSince !== undefined && Date.parse(record.created_at) >= args.recordedSince) {
+            return {
+                status: "failed",
+                diagnostics: [...args.diagnostics, ...unprovenDiagnostics(unproven, args.baseRevision), incompleteDiagnostic(evaluation)],
+                ...(unproven.length > 0 ? { unproven } : {}),
+                ...reused,
+            };
+        }
+        return undefined;
     }
     return undefined;
+}
+/** The base outcome of a Check recorded by an earlier run, when its output is still intact. */
+function recordedBaseline(projectRoot, checkId, definitionSha, baseRevision) {
+    for (const { record } of recentRecords(projectRoot)) {
+        for (const check of record.checks) {
+            if (check.check !== checkId || check.definition_sha256 !== definitionSha)
+                continue;
+            const baseline = check.baseline;
+            if (baseline?.revision === baseRevision && (baseline.status === "passed" || baseline.status === "failed") &&
+                baseline.output_ref !== undefined && baseline.output_sha256 !== undefined) {
+                const output = readLog(projectRoot, baseline.output_ref);
+                if (output !== undefined && sha(output) === baseline.output_sha256) {
+                    const { reused_from: _earlier, ...kept } = baseline;
+                    return { ...kept, reused_from: record.id, output };
+                }
+            }
+            // A run on the base commit itself is the base outcome.
+            if (record.change?.revision === baseRevision && record.change.uncommitted_changes !== true &&
+                (check.status === "passed" || check.status === "failed") && check.output_ref !== undefined) {
+                const output = readLog(projectRoot, check.output_ref);
+                const artifact = record.artifacts?.find((item) => item.source?.location === check.output_ref);
+                if (output !== undefined && artifact?.source?.sha256 === sha(output)) {
+                    return {
+                        revision: baseRevision, status: check.status, ...(check.exit_code === undefined ? {} : { exit_code: check.exit_code }),
+                        output_ref: check.output_ref, output_sha256: sha(output), reused_from: record.id, output,
+                    };
+                }
+            }
+        }
+    }
+    return undefined;
+}
+/**
+ * Compares each failed Check with the same Check on the base revision and marks the
+ * failure `pre_existing` when the base fails the same way. Only failed Checks run there,
+ * each within its own timeout, in a temporary worktree removed afterwards; a base outcome
+ * an earlier run recorded for the same Check is reused instead. Returns the base logs.
+ */
+async function classifyFailures(args) {
+    const failed = args.evidenceChecks.filter((check) => check.status === "failed" && check.exit_code !== undefined && check.output_ref !== undefined);
+    if (failed.length === 0)
+        return [];
+    const definitions = new Map(args.checks.map((check) => [check.id, check]));
+    const baselines = new Map();
+    const baseLogs = [];
+    if (!args.change.uncommitted && args.change.revision === args.baseRevision) {
+        // Nothing changed since the base: what failed here failed there.
+        for (const check of failed) {
+            const output = args.logs.get(check.output_ref) ?? "";
+            baselines.set(check.check, { revision: args.baseRevision, status: check.status, exit_code: check.exit_code, output_ref: check.output_ref, output_sha256: sha(output), output });
+        }
+    }
+    else {
+        const pending = [];
+        for (const check of failed) {
+            const recorded = check.definition_sha256 === undefined ? undefined : recordedBaseline(args.projectRoot, check.check, check.definition_sha256, args.baseRevision);
+            if (recorded !== undefined)
+                baselines.set(check.check, recorded);
+            else
+                pending.push(definitions.get(check.check));
+        }
+        if (pending.length > 0) {
+            await withBaseWorktree(args.sourceRoot, args.baseRevision, async (baseRoot) => {
+                const roots = [...new Set([baseRoot, realpathSync(baseRoot)])];
+                for (const check of pending) {
+                    const outputRef = `.paved/generated/evidence/${evidenceCheckId(check.id)}-base.log`;
+                    const run = await executeCheck({ check, tools: args.tools, implementations: args.implementations, sourceRoot: baseRoot, revision: args.baseRevision, outputRef });
+                    const status = run.evidenceCheck?.status;
+                    if (status === undefined || status === "skipped")
+                        continue;
+                    const content = run.log === undefined ? undefined : roots.reduce((text, root) => text.split(root).join(ROOT_PLACEHOLDER), run.log.content);
+                    if (content !== undefined)
+                        baseLogs.push({ relativePath: outputRef, content });
+                    baselines.set(check.id, {
+                        revision: args.baseRevision, status,
+                        ...(run.evidenceCheck?.exit_code === undefined ? {} : { exit_code: run.evidenceCheck.exit_code }),
+                        ...(content === undefined ? {} : { output_ref: outputRef, output_sha256: sha(content) }),
+                        output: content ?? "",
+                    });
+                }
+            });
+        }
+    }
+    const roots = [...new Set([args.sourceRoot, realpathSync(args.sourceRoot)])];
+    for (const check of failed) {
+        const baseline = baselines.get(check.check);
+        if (baseline === undefined)
+            continue;
+        const { output, ...recorded } = baseline;
+        check.baseline = recorded;
+        const head = { status: check.status, exit_code: check.exit_code, output: args.logs.get(check.output_ref) ?? "" };
+        if (isPreExisting(head, { status: baseline.status, ...(baseline.exit_code === undefined ? {} : { exit_code: baseline.exit_code }), output }, roots)) {
+            check.pre_existing = true;
+        }
+    }
+    return baseLogs;
 }
 /** Loads and validates the profile and everything it references, without running anything. */
 function resolveVerification(input) {
@@ -917,7 +1257,7 @@ function resolveVerification(input) {
         };
     }
     const roots = contentRoots(input);
-    const checks = profile.checks
+    const listed = profile.checks
         .map((id) => {
         const check = findDocument(roots.checks, id, "Check", schemaRegistry, diagnostics);
         if (check === undefined && !diagnostics.some((item) => item.message.includes(id))) {
@@ -934,9 +1274,29 @@ function resolveVerification(input) {
     if (diagnostics.some((item) => item.category === "config")) {
         return { status: "failed", checks: [], evidenceFiles: [], diagnostics };
     }
-    if (checks.length !== profile.checks.length) {
+    if (listed.length !== profile.checks.length) {
         return { status: "failed", checks: [], evidenceFiles: [], diagnostics };
     }
+    const order = orderChecks(listed);
+    if (!("ordered" in order)) {
+        diagnostics.push("cycle" in order
+            ? diagnostic({
+                code: "PAVED_VERIFY_CHECK_DEPENDENCY_CYCLE",
+                category: "config",
+                component: "verification.config",
+                message: `Check dependencies form a cycle: ${order.cycle.join(" -> ")}.`,
+                remediation: "Remove one depends_on entry of the cycle so every check can run after the checks it needs.",
+            })
+            : diagnostic({
+                code: "PAVED_VERIFY_CHECK_DEPENDENCY_UNRESOLVED",
+                category: "config",
+                component: "verification.config",
+                message: order.unresolved.map(({ check, dependency }) => `Check ${check} depends on ${dependency}, which the verification profile does not list.`).join(" "),
+                remediation: "List every dependency in .paved/verification/profile.yaml or remove it from depends_on.",
+            }));
+        return { status: "failed", checks: [], evidenceFiles: [], diagnostics };
+    }
+    const checks = order.ordered;
     const tools = [];
     const implementations = [];
     for (const toolId of [...new Set(checks.map((check) => check.tool))]) {
@@ -991,7 +1351,14 @@ export function inspectVerificationConfig(input) {
     const resolved = resolveVerification(input);
     return resolved.diagnostics.filter((item) => item.code !== "PAVED_VERIFY_NO_CHECKS");
 }
-async function runVerificationUnlocked(input) {
+/** Which of a Check's declared environment entries are present: names and booleans only. */
+function environmentPresence(checks, sourceRoot) {
+    return Object.fromEntries(checks.flatMap((check) => {
+        const missing = missingEnvironment(check, sourceRoot);
+        return missing === undefined ? [] : [[check.id, missing]];
+    }));
+}
+async function runVerificationUnlocked(input, recordedSince) {
     const resolved = resolveVerification(input);
     if (!("profilePath" in resolved))
         return resolved;
@@ -1010,46 +1377,66 @@ async function runVerificationUnlocked(input) {
     catch {
         return fingerprintFailure("Cannot fingerprint the working tree before verification.");
     }
+    const treeId = change.revision === "unversioned" ? undefined : contentTreeId(sourceRoot);
     const revision = change.revision;
     const profileSha = sha(readFileSync(profilePath));
+    const relevant = checks.filter((check) => irrelevance(check, input.changedFiles) === undefined);
+    const definitionSha = new Map(checks.map((check) => [check.id, sha(JSON.stringify({
+            check,
+            tool: tools.find((tool) => tool.id === check.tool) ?? null,
+            implementations: implementations.filter((implementation) => implementation.tool === check.tool),
+        }))]));
     // Anything that can change which Checks run, or how, is part of the configuration a record is reused for.
     const configurationSha = sha(JSON.stringify({
         checks,
         tools,
         implementations,
-        changedFiles: input.changedFiles === undefined ? null : [...input.changedFiles].sort(),
+        selected: relevant.map((check) => check.id),
+        environment: environmentPresence(relevant, sourceRoot),
     }));
+    const policy = profile.policy === undefined ? {} : { policy: profile.policy };
     const reused = reusableVerification({
         projectRoot: input.projectRoot,
         coreRoot: input.coreRoot,
         change,
+        ...(treeId === undefined ? {} : { treeId }),
         profileSha,
         configurationSha,
+        ...(input.baseRevision === undefined ? {} : { baseRevision: input.baseRevision }),
         checks,
-        ...(profile.policy === undefined ? {} : { policy: profile.policy }),
+        ...policy,
         diagnostics,
+        ...(recordedSince === undefined ? {} : { recordedSince }),
     });
     if (reused !== undefined)
         return reused;
     // Resolve the complete set first: an ask or deny on a later Check must not partially run verification.
-    input.beforeRun?.(checks.filter((check) => irrelevance(check, input.changedFiles) === undefined).flatMap((check) => {
+    input.beforeRun?.(relevant.flatMap((check) => {
         const selected = resolveTool(check.tool, tools, implementations, "local");
         return selected.status === "resolved" && selected.tool && selected.implementation
             ? [{ tool: selected.tool, implementation: selected.implementation, inputs: check.inputs ?? {} }] : [];
     }));
     const evidenceChecks = [];
     const logs = [];
+    const outcomes = new Map();
     for (const check of checks) {
         const skipped = irrelevance(check, input.changedFiles);
-        const result = skipped === undefined
-            ? await executeCheck({ check, tools, implementations, sourceRoot, revision })
-            : skippedCheck({ check, tools, implementations, revision, reason: skipped });
+        const unmet = (check.depends_on ?? []).filter((id) => !["passed", "skipped"].includes(outcomes.get(id) ?? "error"));
+        const result = skipped !== undefined
+            ? notRunCheck({ check, tools, implementations, revision, status: "skipped", reason: skipped })
+            : unmet.length > 0
+                ? notRunCheck({
+                    check, tools, implementations, revision, status: "blocked", extra: { blocked_by: unmet },
+                    reason: `Not run on stale inputs: ${unmet.map((id) => `${id} is ${outcomes.get(id) ?? "error"}`).join(", ")}.`,
+                })
+                : await executeCheck({ check, tools, implementations, sourceRoot, revision });
         if (result.diagnostic)
             diagnostics.push(result.diagnostic);
         if (result.evidenceCheck)
-            evidenceChecks.push(result.evidenceCheck);
+            evidenceChecks.push({ ...result.evidenceCheck, definition_sha256: definitionSha.get(check.id) });
         if (result.log)
             logs.push(result.log);
+        outcomes.set(check.id, result.evidenceCheck?.status ?? "error");
     }
     try {
         const after = fingerprintWorktree(sourceRoot);
@@ -1060,6 +1447,10 @@ async function runVerificationUnlocked(input) {
     catch {
         return fingerprintFailure("Cannot fingerprint the working tree after verification.");
     }
+    const baseLogs = input.baseRevision === undefined ? [] : await classifyFailures({
+        projectRoot: input.projectRoot, sourceRoot, baseRevision: input.baseRevision, change, checks, tools, implementations,
+        evidenceChecks, logs: new Map(logs.map((log) => [log.relativePath, log.content])),
+    });
     const built = buildEvidence({
         projectRoot: input.projectRoot,
         sourceRoot,
@@ -1067,45 +1458,69 @@ async function runVerificationUnlocked(input) {
         profilePath,
         profileSha,
         configurationSha,
-        ...(profile.policy === undefined ? {} : { policy: profile.policy }),
+        ...policy,
         checks,
         evidenceChecks,
         outputLogs: logs,
         change,
+        ...(treeId === undefined ? {} : { treeId }),
+        ...(input.baseRevision === undefined ? {} : { baseRevision: input.baseRevision }),
     });
     const definitions = new Map(checks.map((check) => [check.id, check]));
     const evidenceFiles = writeValidatedEvidence({
         projectRoot: input.projectRoot,
         coreRoot: input.coreRoot,
         record: built.record,
-        logs,
+        logs: [...logs, ...baseLogs],
         definitions,
-        ...(profile.policy === undefined ? {} : { policy: profile.policy }),
+        ...policy,
         diagnostics,
     });
+    const record = built.record;
+    const { unproven } = classifyUnproven(record.checks);
+    diagnostics.push(...unprovenDiagnostics(unproven, input.baseRevision));
     const blocking = built.evaluation.status !== "complete" || built.evaluation.verification !== "verified";
-    if (blocking) {
-        diagnostics.push(diagnostic({
-            code: "PAVED_VERIFY_INCOMPLETE",
-            category: "verification",
-            component: "verification.evidence",
-            message: "Configured verification did not complete successfully.",
-            remediation: [...built.evaluation.blocking, ...built.evaluation.warnings].join("; "),
-        }));
-    }
+    const registryData = loadEvidenceRegistry(join(input.coreRoot, "core/verification/registry.yaml"));
+    const warning = blocking && !diagnostics.some((item) => item.category !== "findings") &&
+        warningVerdict(record, registryData, profile.policy ?? {}, definitions) !== undefined;
+    if (blocking && !warning)
+        diagnostics.push(incompleteDiagnostic(built.evaluation));
     return {
-        status: diagnostics.some((item) => item.category !== "findings") ? "failed" : "success",
+        status: diagnostics.some((item) => item.category !== "findings") ? "failed" : warning ? "warning" : "success",
         diagnostics,
         evidenceFiles,
         evidence: built.record,
         evaluation: built.evaluation,
-        checks: evidenceChecks.map((check) => ({ id: check.check, status: check.status, type: check.type })),
+        checks: checkSummaries(input.projectRoot, record.checks),
+        ...(unproven.length > 0 ? { unproven } : {}),
     };
 }
+const LOCK_POLL_MS = 500;
+const WAITABLE_LOCKS = new Set(["running", "acquiring", "reclaiming"]);
+/**
+ * Runs the configured Checks under the operation lock. With `lockWaitMs`, a lock held by a
+ * running operation is waited for; when that operation recorded a run for this same change
+ * and configuration, its record is returned instead of running the Checks again.
+ */
 export async function runVerification(input) {
-    const release = acquireConsumerOperationLock(input.projectRoot, "verify");
+    const startedAt = Date.now();
+    const deadline = startedAt + Math.max(0, input.lockWaitMs ?? 0);
+    let waited = false;
+    let release;
+    for (;;) {
+        try {
+            release = acquireConsumerOperationLock(input.projectRoot, "verify");
+            break;
+        }
+        catch (error) {
+            if (!(error instanceof ConsumerOperationLockedError) || !WAITABLE_LOCKS.has(error.reason) || Date.now() >= deadline)
+                throw error;
+            waited = true;
+            await new Promise((resolveWait) => setTimeout(resolveWait, Math.min(LOCK_POLL_MS, Math.max(1, deadline - Date.now()))));
+        }
+    }
     try {
-        return await runVerificationUnlocked(input);
+        return await runVerificationUnlocked(input, waited ? startedAt : undefined);
     }
     finally {
         release();

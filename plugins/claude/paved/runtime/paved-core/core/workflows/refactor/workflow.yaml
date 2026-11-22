@@ -6,7 +6,7 @@ description: >-
   Changes the structure of code while preserving its behavior, in small verified steps.
   Use when code must be renamed, moved, split, merged or simplified and nothing it does
   should change.
-version: 0.3.1
+version: 0.3.2
 status: experimental
 change_type: refactor
 inputs:
@@ -28,6 +28,7 @@ phases:
       capacity: balanced
       reasoning_effort: low
       rationale: "Restating the request needs the conversation, which only the primary session holds, and it is short work."
+    skip_in_lanes: [trivial]
     skills: [core.discovery.context-discovery]
   - phase: discovery
     goal: Map the code in scope, its callers, and the invariants its tests pin.
@@ -51,6 +52,7 @@ phases:
       capacity: frontier
       reasoning_effort: high
       rationale: "The plan is what the user approves; it needs the whole conversation and the strongest reasoning available."
+    skip_in_lanes: [trivial, standard]
     skills: [core.development.refactoring]
     gates:
       - id: plan-approved
@@ -63,6 +65,9 @@ phases:
       capacity: balanced
       reasoning_effort: medium
       rationale: "The primary session owns the change against the approved plan; independent, mechanical parts go to subagents through a DelegationPlan at economy capacity."
+    routing_by_lane:
+      trivial: { capacity: economy, reasoning_effort: low, rationale: "A trivial change is small and local; an economy model makes it." }
+      risky: { capacity: frontier, reasoning_effort: high, rationale: "A risky change carries the most cost when it is wrong." }
     skills: [core.development.refactoring]
     retry: { class: retryable, max_attempts: 3 }
   - phase: validation
@@ -98,6 +103,9 @@ phases:
       capacity: balanced
       reasoning_effort: high
       rationale: "Independence needs a separate context; a balanced model at high effort finds defects at a fraction of a frontier model's cost."
+    routing_by_lane:
+      trivial: { capacity: economy, reasoning_effort: low, rationale: "A trivial diff is short; a cheap independent reader is enough to catch a slip." }
+      risky: { capacity: frontier, reasoning_effort: high, rationale: "A risky change gets the strongest independent reviewer available." }
     skills: [core.code-review.change-review]
   - phase: completion
     goal: Confirm the structural goal and non-regression.

@@ -1,0 +1,16 @@
+apiVersion: paved/v1
+kind: Check
+id: project.test.integration
+title: Integration tests pass
+purpose: Services still integrate with the local configuration in place.
+type: integration
+tool: project.test.run-integration
+depends_on: [project.build.install]
+environment:
+  kinds: [local]
+  requires:
+    files: [.env]
+    variables: [DATABASE_URL]
+expected: { description: Every test passes., exit_code: 0 }
+failure: A test failed; read the output.
+determinism: { class: deterministic }

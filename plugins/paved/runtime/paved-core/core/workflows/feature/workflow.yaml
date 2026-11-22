@@ -5,7 +5,7 @@ title: Feature
 description: >-
   Adds behavior or changes existing behavior on purpose, from request to reviewed,
   verified change. Use when a task asks the software to do something it does not do yet.
-version: 0.5.1
+version: 0.5.2
 status: experimental
 change_type: feature
 inputs:
@@ -30,6 +30,7 @@ phases:
       capacity: balanced
       reasoning_effort: low
       rationale: "Restating the request needs the conversation, which only the primary session holds, and it is short work."
+    skip_in_lanes: [trivial]
     skills: [core.discovery.context-discovery]
     gates:
       - id: scope-clear
@@ -41,6 +42,7 @@ phases:
       capacity: economy
       reasoning_effort: low
       rationale: "Locating code is search-heavy and output-light: a subagent keeps file contents out of the primary context, and a light model suffices when it returns paths and findings."
+    skip_in_lanes: [trivial]
     fragments:
       - id: core.fragment.context-discovery
         with:
@@ -52,6 +54,7 @@ phases:
       capacity: frontier
       reasoning_effort: high
       rationale: "The plan is what the user approves; it needs the whole conversation and the strongest reasoning available."
+    skip_in_lanes: [trivial, standard]
     skills: [core.development.feature-development, core.development.frontend-design]
     gates:
       - id: claims-planned
@@ -70,6 +73,9 @@ phases:
       capacity: balanced
       reasoning_effort: medium
       rationale: "The primary session owns the change against the approved plan; independent, mechanical parts go to subagents through a DelegationPlan at economy capacity."
+    routing_by_lane:
+      trivial: { capacity: economy, reasoning_effort: low, rationale: "A trivial change is small and local; an economy model makes it." }
+      risky: { capacity: frontier, reasoning_effort: high, rationale: "A risky change carries the most cost when it is wrong." }
     skills: [core.development.feature-development, core.development.frontend-design]
   - phase: validation
     goal: Build, lint and run targeted tests while working.
@@ -104,6 +110,9 @@ phases:
       capacity: balanced
       reasoning_effort: high
       rationale: "Independence needs a separate context; a balanced model at high effort finds defects at a fraction of a frontier model's cost."
+    routing_by_lane:
+      trivial: { capacity: economy, reasoning_effort: low, rationale: "A trivial diff is short; a cheap independent reader is enough to catch a slip." }
+      risky: { capacity: frontier, reasoning_effort: high, rationale: "A risky change gets the strongest independent reviewer available." }
     skills: [core.code-review.change-review]
   - phase: completion
     goal: Confirm every completion criterion and report the outcome.

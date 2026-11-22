@@ -6,7 +6,7 @@ description: >-
   Answers a question about the code with cited claims and changes nothing. Use when the
   user asks how something works, why it is built the way it is, or whether a statement
   about the code holds, and wants an answer rather than a change.
-version: 0.1.0
+version: 0.1.1
 status: experimental
 change_type: investigation
 inputs:
@@ -41,6 +41,7 @@ phases:
       capacity: balanced
       reasoning_effort: low
       rationale: "Restating the question needs the conversation, which only the primary session holds, and it is short work."
+    skip_in_lanes: [trivial]
     skills: [core.discovery.context-discovery]
     tool_policies: [read-only]
     gates:
@@ -53,6 +54,9 @@ phases:
       capacity: balanced
       reasoning_effort: medium
       rationale: "Reading is search-heavy and its file contents belong in a separate context; the answer needs judgment, so a balanced model returns cited findings."
+    routing_by_lane:
+      trivial: { capacity: economy, reasoning_effort: low, rationale: "A trivial question is answered by a short search; an economy model returns the citations." }
+      risky: { capacity: frontier, reasoning_effort: high, rationale: "An answer someone will act on in a risky area needs the strongest reasoning." }
     tool_policies: [read-only]
     fragments:
       - id: core.fragment.context-discovery

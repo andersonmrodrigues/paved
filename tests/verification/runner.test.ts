@@ -385,9 +385,12 @@ describe("verification runner", () => {
     }
   });
 
-  it("runs again when the tree, the Check configuration or the change scope differs", async () => {
+  it("runs again when the tree, the Check configuration or the Checks the scope selects differ", async () => {
     const project = sandbox("reuse-invalidated");
     try {
+      const marker = parse(readFileSync(join(project, ".paved/verification/checks/marker.yaml"), "utf8")) as Record<string, unknown>;
+      writeFileSync(join(project, ".paved/verification/checks/docs.yaml"), stringify({ ...marker, id: "project.verify.docs", applies_to: ["docs/**"] }));
+      writeProfile(project, ["project.verify.marker", "project.verify.docs"]);
       assert.equal((await runVerification({ projectRoot: project, coreRoot: ROOT })).status, "success");
 
       writeFileSync(join(project, "changed.txt"), "new content\n");
@@ -401,6 +404,10 @@ describe("verification runner", () => {
       const scoped = await runVerification({ projectRoot: project, coreRoot: ROOT, changedFiles: ["changed.txt"] });
       assert.equal(scoped.reused, undefined);
       assert.equal(evidenceFiles(project).length, 4);
+
+      // A different scope that selects the same Checks proves the same thing.
+      const sameSelection = await runVerification({ projectRoot: project, coreRoot: ROOT, changedFiles: ["changed.txt", "other.txt"] });
+      assert.equal(sameSelection.reused, true);
     } finally {
       rmSync(project, { recursive: true, force: true });
     }

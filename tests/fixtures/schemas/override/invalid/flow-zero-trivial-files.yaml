@@ -1,0 +1,5 @@
+# expect-error: /flow/max_trivial_files must be >= 1
+apiVersion: paved/v1
+kind: Overrides
+flow:
+  max_trivial_files: 0

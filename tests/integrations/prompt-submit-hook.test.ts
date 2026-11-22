@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -168,6 +168,80 @@ describe("lean lifecycle hooks", () => {
       { command: "verify", status: "failed", diagnostics: [{ code: "PAVED_OPERATION_IN_PROGRESS", message: "locked" }] }, "claude-code", 8);
     assert.equal(JSON.parse(result.stdout).decision, "block");
     assert.match(JSON.parse(result.stdout).reason, /another Paved operation holds the project lock/);
+  });
+
+  it("compares with the merge base of the default branch and waits within the budget for the lock", () => {
+    const f = fixture();
+    rmSync(join(f.cwd, ".git"), { recursive: true });
+    const git = (...args: string[]) => execFileSync("git", ["-C", f.cwd, "-c", "user.name=T", "-c", "user.email=t@example.com", ...args], { encoding: "utf8" });
+    git("init", "-q", "-b", "master");
+    git("commit", "-q", "--allow-empty", "-m", "base");
+    git("checkout", "-qb", "feature");
+    const verified = { command: "verify", status: "success", data: { completion: { status: "complete", verification: "verified" } } };
+    const verifyCall = () => readFileSync(f.log, "utf8").trim().split("\n").map((line) => JSON.parse(line) as string[]).at(-1);
+
+    run(f, { hook_event_name: "Stop" }, verified, "claude-code", 0, { PAVED_HOOK_VERIFY_TIMEOUT_MS: "20000" });
+    assert.deepEqual(verifyCall(), ["verify", "--changed", "--base", "master", "--lock-wait", "10", "--json", "--project", f.cwd]);
+
+    git("update-ref", "refs/remotes/origin/trunk", "HEAD");
+    git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk");
+    run(f, { hook_event_name: "Stop" }, verified);
+    assert.deepEqual(verifyCall()?.slice(0, 6), ["verify", "--changed", "--base", "origin/trunk", "--lock-wait", "55"]);
+  });
+
+  it("verifies only the working tree when no default branch is known", () => {
+    const f = fixture();
+    run(f, { hook_event_name: "Stop" }, { command: "verify", status: "success", data: { completion: { status: "complete", verification: "verified" } } },
+      "claude-code", 0, { GIT_CEILING_DIRECTORIES: dirname(f.cwd) });
+    assert.doesNotMatch(readFileSync(f.log, "utf8"), /--base/);
+  });
+
+  it("names each failing check with its output and a bounded excerpt", () => {
+    const f = fixture();
+    const checks = Array.from({ length: 9 }, (_, index) => ({
+      id: `project.verify.check-${index}`, status: index === 1 ? "blocked" : "failed", type: "unit",
+      output_ref: `.paved/generated/evidence/check-${index}.log`,
+      ...(index === 1 ? { reason: "Not run on stale inputs: project.verify.check-0 is failed." } : {}),
+      excerpt: Array.from({ length: 6 }, (_, line) => `FAIL spec ${index}.${line} ${"x".repeat(60)}`),
+    }));
+    const result = run(f, { hook_event_name: "Stop", stop_hook_active: false },
+      { command: "verify", status: "failed", data: { checks: [{ id: "project.verify.green", status: "passed" }, ...checks] } }, "claude-code", 7);
+    const reason = JSON.parse(result.stdout).reason as string;
+    assert.match(reason, /^NOT VERIFIED/);
+    assert.match(reason, /project\.verify\.check-0 \(failed\) Output: \.paved\/generated\/evidence\/check-0\.log/);
+    assert.match(reason, /project\.verify\.check-1 \(blocked\): Not run on stale inputs/);
+    assert.match(reason, /and 3 more/);
+    assert.doesNotMatch(reason, /project\.verify\.green/);
+    const excerpt = reason.split("\n").filter((line) => line.startsWith("    "));
+    assert.equal(excerpt.length, 8);
+    assert.ok(excerpt.join("").length <= 800 + 8 * 4);
+    assert.ok(reason.length <= 2000);
+  });
+
+  it("falls back to diagnostic codes when no check is reported", () => {
+    const f = fixture();
+    const result = run(f, { hook_event_name: "Stop" },
+      { command: "verify", status: "failed", diagnostics: [{ code: "PAVED_VERIFY_CHECK_DEPENDENCY_CYCLE", message: "cycle" }] }, "claude-code", 4);
+    assert.match(JSON.parse(result.stdout).reason, /PAVED_VERIFY_CHECK_DEPENDENCY_CYCLE/);
+  });
+
+  it("does not block a warning and lists its pre-existing and environment-blocked checks on one line", () => {
+    const f = fixture();
+    const result = run(f, { hook_event_name: "Stop", stop_hook_active: false }, {
+      command: "verify", status: "warning",
+      data: {
+        completion: { status: "incomplete", verification: "unverified" },
+        unproven: [
+          { id: "project.verify.front", status: "failed", reason: "pre-existing" },
+          { id: "project.verify.integration", status: "blocked", reason: "environment-unavailable" },
+          { id: "project.verify.e2e", status: "blocked", reason: "dependency-unproven" },
+        ],
+      },
+    }, "claude-code", 1);
+    const output = JSON.parse(result.stdout);
+    assert.equal(output.decision, undefined);
+    assert.equal(output.systemMessage.split("\n").length, 1);
+    assert.match(output.systemMessage, /pre-existing on the base: project\.verify\.front; environment unavailable: project\.verify\.integration; blocked by those: project\.verify\.e2e/);
   });
 
   it("removes per-prompt routing and ignores malformed input", () => {

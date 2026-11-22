@@ -9,7 +9,7 @@ import { dispatchCli } from "../../cli/runtime.ts";
 
 const core = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const LEGACY_BLOCK = readFileSync(join(core, "core/templates/AGENTS.md"), "utf8").replace(
-  "Default to direct, outcome-focused work with Paved:",
+  "Route a change request through",
   "Use the mandatory intent, plan, and execute workflow for all changes:",
 );
 

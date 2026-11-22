@@ -7,7 +7,7 @@ description: >-
   changing behavior, from a recorded baseline to a repeated after measurement. Use when
   the user reports measured slowness or asks to improve a metric, and the claim must be
   backed by numbers.
-version: 0.1.0
+version: 0.1.1
 status: experimental
 change_type: performance
 inputs:
@@ -32,6 +32,7 @@ phases:
       capacity: balanced
       reasoning_effort: low
       rationale: "Restating the request needs the conversation, which only the primary session holds, and it is short work."
+    skip_in_lanes: [trivial]
     skills: [core.discovery.context-discovery]
   - phase: discovery
     goal: Measure the baseline with repeated runs before any change, profile it and form one hypothesis.
@@ -53,6 +54,7 @@ phases:
       capacity: frontier
       reasoning_effort: high
       rationale: "The plan is what the user approves; it needs the whole conversation and the strongest reasoning available."
+    skip_in_lanes: [trivial, standard]
     skills: [core.performance.backend-performance, core.performance.frontend-performance]
     gates:
       - id: plan-approved
@@ -65,6 +67,9 @@ phases:
       capacity: balanced
       reasoning_effort: medium
       rationale: "The primary session owns the change against the approved plan and takes the after measurement on the code it changed."
+    routing_by_lane:
+      trivial: { capacity: economy, reasoning_effort: low, rationale: "A trivial change is small and local; an economy model makes it." }
+      risky: { capacity: frontier, reasoning_effort: high, rationale: "A risky change carries the most cost when it is wrong." }
     skills: [core.performance.backend-performance, core.performance.frontend-performance]
     gates:
       - id: after-measured
@@ -104,6 +109,9 @@ phases:
       capacity: balanced
       reasoning_effort: high
       rationale: "Independence needs a separate context; a balanced model at high effort finds defects at a fraction of a frontier model's cost."
+    routing_by_lane:
+      trivial: { capacity: economy, reasoning_effort: low, rationale: "A trivial diff is short; a cheap independent reader is enough to catch a slip." }
+      risky: { capacity: frontier, reasoning_effort: high, rationale: "A risky change gets the strongest independent reviewer available." }
     skills: [core.code-review.change-review]
   - phase: completion
     goal: Report baseline, result, the improvement and what limits it.

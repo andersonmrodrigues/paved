@@ -5,6 +5,40 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Added
+
+- Adaptive lanes ([ADR 0053](docs/decisions/0053-adaptive-lanes-and-honest-verification.md)).
+  Classifying a request may pick a lane, `trivial`, `standard` or `risky`, with
+  `--lane` and the same `--because` evidence rule as the workflow. Phases declare
+  `skip_in_lanes` and `routing_by_lane`. Trivial and standard runs skip planning, and
+  the skip is recorded as `skipped_in_lane`. Risky runs plan and need approval.
+  Without `--lane` nothing changes.
+- `intent`, `plan` and `execute` each work as an entry point: `paved plan "<request>"`
+  starts a run and stops at the approved plan. `--run <id> --lane risky --because`
+  escalates an open run and reopens planning.
+- The optional overrides section `flow` sets `protected_paths` and `max_trivial_files`
+  (default 5). A run whose diff touches a protected path, or a trivial run past the
+  limit, cannot complete until it is escalated and its plan approved.
+- A Check may declare `environment.requires` (`files`, `variables`). When one is
+  missing, the Check is `blocked` with `PAVED_CHECK_ENVIRONMENT_UNAVAILABLE` and names
+  what is missing. Values are never read or recorded.
+- A Check may declare `depends_on`. Checks run in dependency order, cycles are
+  rejected, and dependents of a failed or blocked dependency are blocked, not run.
+- When a Check fails and a base revision is known, Paved reruns it on the base in a
+  temporary detached worktree, or reuses that tree's evidence, and marks matching
+  failures `pre_existing`. Verify reports the new overall status `warning` (exit 1)
+  when every remaining problem is pre-existing or environment-blocked.
+- `paved verify --lock-wait <seconds>` waits for a held operation lock.
+
+### Changed
+
+- The managed project instructions route change requests through `paved execute`,
+  which picks the lane.
+- The Stop hook verifies against the merge base with the default branch. It waits for
+  a held lock and reuses that run's evidence for the same tree. Its NOT VERIFIED
+  message names each failing or blocked Check with its output reference and a short
+  excerpt. A `warning` does not block; the hook surfaces it as a one-line note.
+
 ## [3.1.0] - 2026-11-21
 
 ### Added

@@ -42,6 +42,7 @@ test("the repository's fast and E2E profiles partition every test file", () => {
     "tests/workflows/bug.e2e.test.ts",
     "tests/workflows/delivery.e2e.test.ts",
     "tests/workflows/investigation-performance.e2e.test.ts",
+    "tests/workflows/lanes.e2e.test.ts",
   ]);
   assert.deepEqual([...fast, ...e2e].sort(), all);
   assert.deepEqual(selectE2ETestFiles(all), e2e);

@@ -1,0 +1,36 @@
+apiVersion: paved/v1
+kind: WorkflowRun
+id: 2026-11-22-lane
+workflow:
+  id: core.feature
+  version: 0.5.2
+classification:
+  workflow: core.feature
+  because: One constant changes in one file.
+  decided_by: agent
+  lane: trivial
+  lane_because: One constant changes in one file.
+revision: 3f2a9c1
+started_at: 2026-11-22T10:00:00Z
+status: running
+inputs:
+  - id: request
+    value: Raise the retry limit to three.
+    source: human
+phases:
+  - phase: context
+    status: skipped
+    skip_reason: "Lane trivial: One constant changes in one file."
+    skipped_in_lane: trivial
+  - phase: implementation
+    status: running
+    attempts: 1
+events:
+  - at: 2026-11-22T10:00:00Z
+    type: run-started
+  - at: 2026-11-22T10:00:00Z
+    type: phase-skipped
+    phase: context
+  - at: 2026-11-22T10:00:00Z
+    type: phase-started
+    phase: implementation

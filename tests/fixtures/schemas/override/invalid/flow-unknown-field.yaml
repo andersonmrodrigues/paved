@@ -1,0 +1,6 @@
+# expect-error: /flow must NOT have additional properties
+apiVersion: paved/v1
+kind: Overrides
+flow:
+  protected_paths: ["migrations/**"]
+  skip_review: true

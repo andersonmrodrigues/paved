@@ -5,7 +5,7 @@ import { atomicWriteFileSync } from "./atomic-write.js";
 import { loadMarkdown, loadYaml } from "./documents.js";
 import { resolveSafePath } from "./safe-path.js";
 import { createRegistry } from "./schemas.js";
-import { assessReadOnlyTools, assessWorkflowToolPolicies, assessRun, isReadOnly, resolveWorkflowFragments } from "./workflows.js";
+import { assessReadOnlyTools, assessWorkflowToolPolicies, assessRun, isReadOnly, resolveWorkflowFragments, skippedInLane } from "./workflows.js";
 import { indexArtifacts, resolveReferences } from "./references.js";
 /** `failed` is not terminal: a failed phase may be retried. */
 export const TERMINAL_STATUSES = new Set(["completed", "completed-with-warnings", "blocked", "cancelled"]);
@@ -193,6 +193,37 @@ export const STEP_PHASES = {
 };
 const STEPS = Object.keys(STEP_PHASES);
 export const ownerOf = (phase) => STEPS.find((step) => STEP_PHASES[step].includes(phase));
+export const intentDocumentPath = (runId) => `.paved/documents/intents/${runId}.md`;
+/**
+ * Starts the first phase at or after `index` that the run's lane keeps, recording each
+ * phase the lane skips with the lane and the evidence that chose it. The run completes
+ * when nothing is left.
+ */
+export function startPhaseFrom(run, workflow, index) {
+    const lane = run.classification?.lane;
+    for (let at = index; at < run.phases.length; at++) {
+        const phase = run.phases[at];
+        const contract = workflow.phases.find((item) => item.phase === phase.phase);
+        if (contract !== undefined && skippedInLane(contract, lane)) {
+            phase.status = "skipped";
+            phase.skip_reason = `Lane ${lane}: ${run.classification?.lane_because ?? "chosen at classification"}`.slice(0, 2000);
+            phase.skipped_in_lane = lane;
+            run.events.push({ at: new Date().toISOString(), type: "phase-skipped", phase: phase.phase, detail: `lane=${lane}` });
+            continue;
+        }
+        phase.status = "running";
+        phase.attempts = (phase.attempts ?? 0) + 1;
+        run.events.push({ at: new Date().toISOString(), type: "phase-started", phase: phase.phase });
+        return;
+    }
+    run.status = "completed";
+    run.ended_at = new Date().toISOString();
+    run.events.push({ at: new Date().toISOString(), type: "run-completed" });
+}
+/** Planning that the run's lane skipped: the run has no plan to approve. */
+export function planSkipped(run) {
+    return run.phases.find((phase) => phase.phase === "planning")?.status === "skipped";
+}
 export function activePhase(run) {
     return run.phases.find((phase) => phase.status === "running") ?? run.phases.find((phase) => phase.status === "failed");
 }

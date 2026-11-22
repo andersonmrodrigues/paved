@@ -20,8 +20,9 @@ execution metadata. The host agent owns native session creation and coordination
 | `autonomy_profile` | Optional `guided`, `balanced` or `autonomous` choice; immutable per run once selected |
 | `revision`, `started_at`, `ended_at` | Where and when; `ended_at` required for terminal statuses |
 | `status` | `running`, `awaiting-approval`, `awaiting-input`, `completed`, `completed-with-warnings`, `failed`, `blocked`, `cancelled` |
+| `classification` | How the workflow was chosen: `workflow`, `because`, `decided_by`, optional `decision` and `parts`, and the optional `lane` with its `lane_because` |
 | `inputs[]` | Every input as understood, with `source` (`human`, `ticket`, `repository`) |
-| `phases[]` | One per workflow phase, in order: `status` (`pending`, `running`, `completed`, `skipped`, `failed`, `blocked`), `attempts`, `skip_reason`, `skills[]`, `gates[]`, `failure` |
+| `phases[]` | One per workflow phase, in order: `status` (`pending`, `running`, `completed`, `skipped`, `failed`, `blocked`), `attempts`, `skip_reason`, `skipped_in_lane`, `skills[]`, `gates[]`, `failure` |
 | `failure` | The failure that ended or holds the run ([workflow failure](workflow-failure.md)) |
 | `warnings[]` | Required when `completed-with-warnings` |
 | `evidence` | Path of the evidence record; required when completed |
@@ -84,7 +85,8 @@ The schema checks field-level rules (a failed or blocked run has a failure; a sk
 phase has a reason; a decided gate names a person). `assessRun` checks the record
 against its workflow: the same version and phases in the same order, required inputs
 present once work started, no phase started before earlier ones are done, skips only
-where `skip_when` exists, attempts within the retry limit, gates known and satisfied the
+where `skip_when` exists or the workflow's `skip_in_lanes` names the recorded lane, no
+planning left skipped in a `risky` run, attempts within the retry limit, gates known and satisfied the
 right way, at most one running phase, and failure codes consistent with status and retry
 class.
 
@@ -101,7 +103,8 @@ class.
 | `approval-requested`, `approval-decided` | A human decision was asked for or made |
 | `decision-raised`, `decision-asked`, `decision-answered`, `decision-applied`, `decision-superseded` | A run-scoped decision changes state |
 | `retry-started` | A new attempt of a phase began |
-| `phase-reopened` | A plan amendment, review fix, stale measurement or source change after verification returned a phase to `pending`; the run goes back to implementation |
+| `phase-reopened` | A plan amendment, review fix, stale measurement, source change after verification or escalation to `risky` returned a phase to `pending` |
+| `lane-escalated` | The run moved to the `risky` lane (`detail`: the previous lane and the evidence) |
 | `delegation-registered`, `delegation-task-started`, `delegation-task-completed`, `delegation-task-blocked`, `delegation-task-failed`, `delegation-superseded` | Delegation graph and task lifecycle observations |
 
 ## Plan approval
@@ -117,6 +120,15 @@ and recorded gate on every resume, and `--approve` refuses when the plan changed
 the request. The record rests on the agent following the instruction to approve only
 after an explicit yes; teams requiring adversarial approval separation need an external
 identity or signature authority.
+
+A run whose lane skipped `planning` has no plan and no approval; it is implemented
+from its Intent document, and its independent review binds that document's digest where
+a plan's would be. Completion still asks for an approved plan when the diff touches a
+`flow.protected_paths` glob in `.paved/overrides/overrides.yaml`, or when a `trivial`
+run changed more than `flow.max_trivial_files` files (5 by default): it stops with
+`PAVED_WORKFLOW_ESCALATION_REQUIRED` until `--run <run-id> --lane risky --because
+"<evidence>"` reopens planning and the plan is approved. An invalid `flow` section stops
+completion with `PAVED_FLOW_POLICY_INVALID` rather than lifting the limits.
 
 For workflow Markdown plans, the canonical file is
 `.paved/documents/plans/<run-id>.md`; `paved preview start

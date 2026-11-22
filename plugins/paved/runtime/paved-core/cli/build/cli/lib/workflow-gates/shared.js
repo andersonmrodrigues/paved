@@ -10,9 +10,10 @@ import { resolveSafePath } from "../safe-path.js";
 import { createRegistry } from "../schemas.js";
 import { ENVIRONMENT_UNAVAILABLE, isTestingToolEvidence } from "../test-runner.js";
 import { sanitizeToolOutput } from "../tools.js";
-import { ACCEPTED_PRE_EXISTING, writeWorkflowEvidence } from "../workflow-evidence.js";
+import { ACCEPTED_PRE_EXISTING, changedFiles, writeWorkflowEvidence } from "../workflow-evidence.js";
+import { flowViolation, FlowPolicyError, loadFlowPolicy } from "../flow-guards.js";
 import { assessWorkflowEvidence, PRE_EXISTING_HANDLER, UNCHANGED_HANDLER } from "../workflows.js";
-import { runSourceRoot } from "../workflow-runs.js";
+import { planGate, runSourceRoot } from "../workflow-runs.js";
 import { createDiagnostic } from "../../result.js";
 import { previewTarget } from "../preview-review.js";
 import { stopPreview } from "../preview-server.js";
@@ -526,9 +527,35 @@ const evidence = (context) => {
     run.events.push({ at: now(), type: "evidence-recorded", phase: "evidence", ref: run.evidence, detail: `sha256=${sha(readFileSync(path))}` });
     return { kind: "pass" };
 };
+/**
+ * The lane is the agent's call; this is the deterministic check behind it. A change that
+ * touches a protected path, or a trivial run that grew past its file limit, needs an
+ * approved plan before it can complete.
+ */
+function flowGuard(context) {
+    const { run, projectRoot, coreRoot } = context;
+    if (!run.phases.some((phase) => phase.phase === "implementation") || planGate(run)?.status === "approved")
+        return undefined;
+    let policy;
+    try {
+        policy = loadFlowPolicy(projectRoot, coreRoot);
+    }
+    catch (error) {
+        if (!(error instanceof FlowPolicyError))
+            throw error;
+        return blocked("PAVED_FLOW_POLICY_INVALID", error.message, "Fix the flow section of .paved/overrides/overrides.yaml; Paved does not complete runs against limits it cannot read.");
+    }
+    const violation = flowViolation(run, changedFiles(projectRoot, run) ?? [], policy);
+    if (violation === undefined)
+        return undefined;
+    return blocked("PAVED_WORKFLOW_ESCALATION_REQUIRED", `${violation.message} The run needs an approved plan before it completes.`, `Escalate with paved execute --run ${run.id} --lane risky --because "<why the change is risky>" --json, then write the plan and ask the user to approve it.`);
+}
 const completion = (context) => {
     if (!context.run.evidence)
         return blocked("PAVED_WORKFLOW_EVIDENCE_MISSING", "The run cannot complete without verified evidence.", "Run Paved verification and record its evidence.");
+    const guarded = flowGuard(context);
+    if (guarded)
+        return guarded;
     context.phase.gates = [{ id: "criteria-met", status: "passed" }];
     return { kind: "pass" };
 };
