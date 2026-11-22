@@ -9,7 +9,7 @@ import { inspectAgentsBlock, refreshAgentsBlock } from "../../cli/lib/agents-blo
 const core = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const template = readFileSync(join(core, "core/templates/AGENTS.md"), "utf8").trimEnd();
 const legacy = template.replace(
-  "Default to direct, outcome-focused work with Paved:",
+  "Route a change request through",
   "Use the mandatory intent, plan, and execute workflow for all changes:",
 );
 let project = "";

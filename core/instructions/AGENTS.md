@@ -1,28 +1,31 @@
 # Paved: instructions for agents
 
 Paved gives you project context, constraints and verification. Use its lean router and
-playbooks as needed; default to direct, outcome-focused work rather than a phase-based
-workflow.
+playbooks as needed, and let Paved choose how much ceremony a change gets.
 
 Use `paved status` when you need to understand installation state, `paved context
 "<topic or path>"` for relevant project rules and feature summaries, and
 `paved verify --changed` to run checks for the current change. Use `paved task` only
-when a task needs a durable handoff across multiple steps or sessions. Keep small
-changes direct; for larger changes, keep the plan in that handoff instead of creating
-extra planning documents.
+when a task needs a durable handoff across multiple steps or sessions.
 
-Use `paved intent`, `paved plan` and `paved execute` only when the user explicitly
-requests a governed workflow or a project rule requires one. When resuming such a
-workflow, continue only the matching run. Investigation-only and planning-only requests
-stay read-only and stop at their requested outcome. Do not require plan approval for
-ordinary implementation. Ask a person for product decisions, conflicting rules,
+Route a change request through `paved execute "<request>" --workflow <id> --lane
+<trivial|standard|risky> --because "<evidence>"`. The lane decides which phases run: a
+trivial change skips context, discovery and planning, a standard change skips planning,
+and a risky change plans and waits for approval. Choose it from what you observed, not
+from how the request is phrased, and escalate an open run with `--lane risky --because`
+as soon as the change turns out larger or riskier. Questions are answered directly, or
+with `paved intent "<question>" --workflow investigation` when a cited answer is wanted;
+they start no change. When resuming a workflow, continue only the matching run.
+
+Explicit user direction wins: a request for only a plan uses `paved plan "<request>"`,
+for only a classification `paved intent "<request>"`, and a request to work without a
+workflow is honored. Ask a person for product decisions, conflicting rules,
 irreversible actions, or persistent verification failures after two distinct fixes.
 Respect explicit user direction and never treat autonomy or a plan as permission for a
 high-impact operation.
 
-The intent/plan/execute commands remain available for explicit workflow runs. They share
-one run with phase-specific gates; `workflows.md` explains that optional path. Projected
-commands are generated from `paved agent commands --json`; do not install an unpinned
+The intent, plan and execute commands share one run with phase-specific gates;
+`workflows.md` explains them. Projected commands are generated from `paved agent commands --json`; do not install an unpinned
 runtime or substitute arbitrary shell commands when the Paved launcher is unavailable.
 
 Load only what the current task needs. This file is the map, not the territory:
@@ -46,9 +49,9 @@ Paths starting with `.paved/` are in the repository you are working on. Other pa
    budget. A truncated result is incomplete; narrow the query or raise the budget before
    relying on it.
 3. Read the source code you will touch, and code that already solves a similar problem.
-4. Load a workflow and `workflows.md` only when the user explicitly requests a governed
-   workflow or a project rule requires one. Its phases, gates and approvals do not apply
-   to ordinary direct work.
+4. Load the run's workflow and `workflows.md` when a change goes through
+   `paved execute`; the phases its lane keeps are the ones that apply. Work the user
+   asked to do without a workflow follows only this file.
 
 The code is the source of truth for what the system does; Project Context explains it.
 When they disagree, trust the code and report the discrepancy. Read every context

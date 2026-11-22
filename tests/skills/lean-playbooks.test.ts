@@ -80,13 +80,14 @@ describe("lean playbooks", () => {
     assert.match(canonical.get("verify")!, /VERIFIED[\s\S]*NOT VERIFIED[\s\S]*INFERRED/);
   });
 
-  it("uses direct execution by default instead of requiring a workflow plan", () => {
+  it("routes changes through execute with a lane instead of requiring a workflow plan", () => {
     const instructions = readFileSync(at("core", "instructions", "AGENTS.md"), "utf8");
     const template = readFileSync(at("core", "templates", "AGENTS.md"), "utf8");
     for (const text of [instructions, template]) {
-      assert.match(text, /default to direct/i);
+      assert.match(text, /paved execute "<request>"[\s\S]*--lane/);
       assert.match(text, /paved verify --changed/);
-      assert.match(text, /only when[\s\S]*workflow/i);
+      assert.match(text, /Explicit user direction wins/);
+      assert.match(text, /questions?[\s\S]*start no (run|change)/i);
       assert.doesNotMatch(text, /start every repository change with .*intent/i);
       assert.doesNotMatch(text, /Implementation requires explicit human approval of the current plan/i);
     }
