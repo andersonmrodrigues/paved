@@ -8,7 +8,7 @@ import { planReview } from "../review-plan.ts";
 import { loadReviewSensitivePatterns } from "../review-policy.ts";
 import { reviewBundleProblem, type ChangeReviewBundle, type ReviewLens } from "../review-bundle.ts";
 import { REVIEW_FIX, REVIEW_HANDLER, SOURCE_CHANGED_AFTER_VERIFICATION } from "../workflows.ts";
-import { runSourceRoot, type Run } from "../workflow-runs.ts";
+import { intentDocumentPath, planSkipped, runSourceRoot, type Run } from "../workflow-runs.ts";
 import type { PhaseHook } from "./index.ts";
 import { blocked, fingerprint, now, projectRelative, reopenImplementation, sha, sourceChangedAction, sourceMovedSinceVerification } from "./shared.ts";
 
@@ -44,7 +44,8 @@ export const planRef = (run: Run): string | undefined => run.events.findLast((ev
 
 /** What a review must have read to count for the run as it is now. */
 export function reviewedState(projectRoot: string, run: Run): ReviewedState | undefined {
-  const plan = planRef(run);
+  // A lane that skips planning reviews against the request it recorded instead.
+  const plan = planRef(run) ?? (planSkipped(run) ? intentDocumentPath(run.id) : undefined);
   if (!plan || !run.evidence) return undefined;
   const planPath = resolveSafePath(projectRoot, plan);
   const evidencePath = resolveSafePath(projectRoot, run.evidence);

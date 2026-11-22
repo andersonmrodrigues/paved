@@ -28,6 +28,16 @@ export interface PhaseRouting {
   rationale: string;
 }
 
+export type Lane = "trivial" | "standard" | "risky";
+export const LANES: readonly Lane[] = ["trivial", "standard", "risky"];
+
+/** A lane's override of a phase's routing tier; the mode never changes with the lane. */
+export interface LaneRouting {
+  capacity?: PhaseRouting["capacity"];
+  reasoning_effort?: PhaseRouting["reasoning_effort"];
+  rationale: string;
+}
+
 /** Host-neutral recommendations; allow is never an execution permission. */
 export interface WorkflowToolPolicy {
   id: string;
@@ -45,8 +55,10 @@ export interface WorkflowPhase {
   verification?: { required?: string[]; recommended?: string[]; optional?: string[] };
   gates?: Gate[];
   skip_when?: string;
+  skip_in_lanes?: Lane[];
   retry?: { class: string; max_attempts?: number };
   routing?: PhaseRouting;
+  routing_by_lane?: Partial<Record<Lane, LaneRouting>>;
   fragments?: { id: string; with?: Record<string, string> }[];
 }
 
@@ -254,6 +266,17 @@ export function phaseContext(workflow: WorkflowContract, phase: ResolvedWorkflow
   };
 }
 
+/** The routing a run in `lane` uses for the phase; a run without a lane resolves as standard. */
+export function effectiveRouting(phase: Pick<WorkflowPhase, "routing" | "routing_by_lane">, lane: Lane | undefined): PhaseRouting | undefined {
+  if (phase.routing === undefined) return undefined;
+  const override = phase.routing_by_lane?.[lane ?? "standard"];
+  return override === undefined ? phase.routing : { ...phase.routing, ...override };
+}
+
+/** Whether a run in `lane` skips the phase. A run without a lane skips nothing. */
+export const skippedInLane = (phase: Pick<WorkflowPhase, "skip_in_lanes">, lane: Lane | undefined): boolean =>
+  lane !== undefined && (phase.skip_in_lanes ?? []).includes(lane);
+
 /** Policy checks shared by authoring quality assessment and runtime workflow loading. */
 export function assessWorkflowToolPolicies(
   contract: WorkflowContract,
@@ -392,6 +415,14 @@ export function assessWorkflowQuality(files: WorkflowFiles, context: WorkflowCon
     }
   }
 
+  // A lane may drop the plan and its approval, never another human decision.
+  for (const phase of phases) {
+    if ((phase.skip_in_lanes ?? []).length === 0 || phase.phase === "planning") continue;
+    for (const gate of phase.gates ?? []) {
+      if (gate.approval !== undefined) problems.push(`phase ${phase.phase} has approval gate ${gate.id} and cannot be skipped by a lane`);
+    }
+  }
+
   const approval = HIGH_RISK[contract.change_type];
   if (approval !== undefined && !phases.some((p) => (p.gates ?? []).some((g) => g.approval === approval))) {
     problems.push(`a ${contract.change_type} workflow needs a gate with approval "${approval}"`);
@@ -429,6 +460,7 @@ export function assessWorkflowQuality(files: WorkflowFiles, context: WorkflowCon
 
 export interface WorkflowRunRecord {
   autonomy_profile?: AutonomyProfile;
+  classification?: { lane?: Lane };
   workflow: { id: string; version: string };
   status: string;
   inputs: { id: string }[];
@@ -436,6 +468,7 @@ export interface WorkflowRunRecord {
     phase: string;
     status: string;
     attempts?: number;
+    skipped_in_lane?: Lane;
     gates?: { id: string; status: string }[];
     failure?: RunFailure;
   }[];
@@ -453,6 +486,7 @@ export const REVIEW_HANDLER = "run.review";
 export const REVIEW_FIX = "review findings";
 export const SOURCE_CHANGED_AFTER_VERIFICATION = "source changed after verification";
 export const MEASUREMENT_STALE = "measured code changed";
+export const ESCALATED = "escalated to risky";
 
 export function recoveryQuestion(phase: string, attempts: number): string {
   return `The ${phase} phase failed ${attempts} times. How should Paved continue?`;
@@ -471,7 +505,7 @@ export function recoveriesFor<T extends NonNullable<WorkflowRunRecord["decisions
  * the amendment is approved, so it is counted there and not twice.
  */
 export function attemptRounds(run: Pick<WorkflowRunRecord, "decisions" | "events">, phase: string): number {
-  const amended = (run.events ?? []).filter((event) => (event.type === "retry-started" || event.type === "phase-reopened") && event.phase === phase && [AMENDED_RETRY, REVIEW_FIX, MEASUREMENT_STALE, SOURCE_CHANGED_AFTER_VERIFICATION].includes(event.detail ?? "")).length;
+  const amended = (run.events ?? []).filter((event) => (event.type === "retry-started" || event.type === "phase-reopened") && event.phase === phase && [AMENDED_RETRY, REVIEW_FIX, MEASUREMENT_STALE, SOURCE_CHANGED_AFTER_VERIFICATION, ESCALATED].includes(event.detail ?? "")).length;
   return 1 + recoveriesFor(run.decisions, phase).filter((decision) => decision.answer === "retry").length + amended;
 }
 
@@ -515,8 +549,17 @@ export function assessRun(run: WorkflowRunRecord, workflow: WorkflowContract): s
     if (record.status !== "pending" && !run.phases.slice(0, i).every((p) => DONE.has(p.status))) {
       problems.push(`phase ${record.phase} is ${record.status} although an earlier phase is not completed or skipped`);
     }
-    if (record.status === "skipped" && phase.skip_when === undefined) {
-      problems.push(`phase ${record.phase} was skipped but the workflow does not allow skipping it`);
+    if (record.status === "skipped") {
+      const lane = record.skipped_in_lane;
+      if (lane === undefined ? phase.skip_when === undefined : !skippedInLane(phase, lane)) {
+        problems.push(lane === undefined
+          ? `phase ${record.phase} was skipped but the workflow does not allow skipping it`
+          : `phase ${record.phase} was skipped in lane ${lane}, which does not skip it`);
+      }
+      // Escalation reopens planning, so a risky run never keeps it skipped.
+      if (lane !== undefined && run.classification?.lane === "risky" && (phase.gates ?? []).some((gate) => gate.approval !== undefined)) {
+        problems.push(`phase ${record.phase} needs a human approval in a risky run and cannot stay skipped`);
+      }
     }
 
     const retry = phase.retry ?? DEFAULT_RETRY;

@@ -2,14 +2,13 @@ import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.ts";
 import { loadYaml } from "./documents.ts";
-import { intentDocumentPath } from "./intent.ts";
 import { resolveSafePath } from "./safe-path.ts";
 import {
   findingLocation, planRef, requiredReviewLenses, reviewBriefPath, reviewedState, reviewRecordCommand, reviewRecordPath, type ChangeReview, type ReviewedState, type ReviewFinding,
 } from "./workflow-gates/review.ts";
 import type { ChangeReviewBundle, ReviewLens } from "./review-bundle.ts";
-import { loadContract, type Run } from "./workflow-runs.ts";
-import { phaseContext, type PhaseRouting, type ResolvedWorkflowPhase } from "./workflows.ts";
+import { intentDocumentPath, loadContract, planSkipped, type Run } from "./workflow-runs.ts";
+import { effectiveRouting, phaseContext, type PhaseRouting, type ResolvedWorkflowPhase } from "./workflows.ts";
 
 /**
  * Where a separate reviewer reads its brief and writes its findings, what it must have read,
@@ -89,7 +88,7 @@ export function writeReviewDocument(projectRoot: string, run: Run): string {
     `# Review of ${run.id}`, "",
     "Generated from the run's evidence record; the record stays the source of truth.", "",
     `- Workflow: \`${run.workflow?.id ?? "unclassified"}\``,
-    `- Approved plan: ${plan ? `\`${plan}\`` : "none recorded"}`,
+    `- Approved plan: ${plan ? `\`${plan}\`` : planSkipped(run) ? `none; lane ${run.classification?.lane} skips planning` : "none recorded"}`,
     `- Evidence record: ${run.evidence ? `\`${run.evidence}\`` : "none recorded"}`, "",
     "## Change", "", evidence.change?.summary ?? "No summary recorded.", "",
     "## Checks", "", ...(evidence.checks?.length ? ["| Check | Type | Status | Summary |", "|---|---|---|---|", ...evidence.checks.map((check) => `| ${check.check ?? check.id} | ${check.type ?? ""} | ${check.status ?? ""} | ${check.summary ?? ""} |`)] : ["No checks recorded."]), "",
@@ -133,7 +132,7 @@ export function writeReviewBrief(projectRoot: string, run: Run, reviewed: Review
     "You are reviewing a change you did not write. Work only from the files below, not from the",
     "conversation that produced the change. Review only the lens assigned to you.", "",
     ...(existsSync(resolveSafePath(projectRoot, intent)) ? [`- Request: \`${intent}\``] : []),
-    `- Approved plan: ${plan ? `\`${plan}\`` : "none recorded"}`,
+    `- Approved plan: ${plan ? `\`${plan}\`` : planSkipped(run) ? `none; lane ${run.classification?.lane} skips planning` : "none recorded"}`,
     `- Evidence record: ${run.evidence ? `\`${run.evidence}\`` : "none recorded"}`,
     `- Diff: ${diff ? `\`${diff}\`` : "see the evidence record"}`,
     `- Rules in scope: ${evidence.rules?.length ? evidence.rules.map((rule) => `\`${rule.id}\``).join(", ") : "none recorded"}`, "",
@@ -179,7 +178,7 @@ export function reviewFor(projectRoot: string, run: Run, coreRoot: string): Revi
     const reviewed = reviewedState(projectRoot, run);
     const requiredLenses = requiredReviewLenses(projectRoot, coreRoot, run);
     const resolved = activeReviewPhase(coreRoot, run);
-    const routing = resolved.phase?.routing;
+    const routing = resolved.phase === undefined ? undefined : effectiveRouting(resolved.phase, run.classification?.lane);
     const independent = reviewed && requiredLenses.length > 0 ? {
       brief: writeReviewBrief(projectRoot, run, reviewed, coreRoot, resolved), record: reviewRecordPath(run.id), reviewed,
       requiredLenses,

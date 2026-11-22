@@ -54,6 +54,8 @@ export interface CliFlags {
   readonly answeredBy?: string;
   readonly decision?: string;
   readonly workflow?: string;
+  /** `intent`, `plan`, `execute --lane <lane>`: the lane chosen with the workflow, or `risky` to escalate a run. */
+  readonly lane?: string;
   readonly autonomy?: string;
   readonly hostToolApproval?: string;
   readonly because?: string;
@@ -165,7 +167,7 @@ const COMMAND_RULES: Record<CommandName, CommandRule> = {
   task: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   delivery: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   intent: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
-  plan: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
+  plan: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
   execute: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
 };
 
@@ -230,7 +232,7 @@ function commandUsage(command: CommandName | undefined): string {
   if (command !== undefined) {
     const selectors = command === "generate" ? " [generator-id...]" : command === "agent"
       ? " <operation> [integration|command-name]" : command === "preview" ? " <start|serve|status|wait|working|resolve|stop> <file.md|folder> [cursor|comment-id]" : command === "workbench" ? " <start|serve|status|stop>"
-      : command === "tool" ? " add <check-type> [label] [--scope <dir>] -- <executable> [args...]" : command === "delegation" ? " <plan|approve|ready|start|finish|recover|capabilities>" : command === "delivery" ? " <approve|merge>" : command === "execute" ? " [request]" : "";
+      : command === "tool" ? " add <check-type> [label] [--scope <dir>] -- <executable> [args...]" : command === "delegation" ? " <plan|approve|ready|start|finish|recover|capabilities>" : command === "delivery" ? " <approve|merge>" : command === "execute" || command === "plan" ? " [request]" : "";
     const commandOptions: string[] = [];
     const rule = COMMAND_RULES[command];
     if (rule.adapters) commandOptions.push("  --adapter <id>   Select an adapter for status, doctor, or verification content resolution; repeatable.");
@@ -246,11 +248,13 @@ function commandUsage(command: CommandName | undefined): string {
     if (command === "doctor") commandOptions.push("  --quick         Return a read-only maintenance diagnosis.");
     if (command === "decision") commandOptions.push("  --decision <json>  Raise an agent-authored question.", "  --reason <text>   Explain a revision.");
     if (command === "preview") commandOptions.push("  --reply <text>   With resolve, tell the reviewer what changed.");
-    if (command === "intent" || command === "execute") commandOptions.push("  --workflow <feature|bug|refactor|performance|investigation> --because <evidence>  Classify the request.", "  --recommend <workflow> --because <evidence>  Suggest a workflow and let the user decide.", "  --part <request>  Propose one part of a split; repeat per part.", "  --input <id>=<value>  Supply another declared workflow input; repeatable.", "  --autonomy <guided|balanced|autonomous>  Select a profile for the new run; fixed on resume.");
+    if (STEP_COMMANDS.includes(command)) commandOptions.push("  --workflow <feature|bug|refactor|performance|investigation> --because <evidence>  Classify the request.",
+      "  --lane <trivial|standard|risky>  With --workflow, the lane whose phases the run follows (covered by --because); without one every phase runs.",
+      "  --run <id> --lane risky --because <evidence>  Escalate a run: reopen planning and require its approval before completion.", "  --recommend <workflow> --because <evidence>  Suggest a workflow and let the user decide.", "  --part <request>  Propose one part of a split; repeat per part.", "  --input <id>=<value>  Supply another declared workflow input; repeatable.", "  --autonomy <guided|balanced|autonomous>  Select a profile for the new run; fixed on resume.");
     if (STEP_COMMANDS.includes(command)) commandOptions.push("  --host-tool-approval <id>  Acknowledge the exact suspended Tool invocation after host mediation; grants no host permission.");
     if (STEP_COMMANDS.includes(command)) commandOptions.push("  --run <id> --advance --note <text> --evidence <path>  Advance the run within this step's phases. --evidence takes the phase's record: a Markdown plan or answer, a failing-test Evidence record at bug discovery, or the ChangeReview at review; never a log.");
     if (STEP_COMMANDS.includes(command)) commandOptions.push("  --run <id> --abandon [--note <reason>]  Cancel the run so the same request can start again.");
-    if (command === "plan") commandOptions.push("  --approve        Record the user's approval of the current plan, given in the conversation.", "  --run <id> --amend --note <change> [--evidence <plan>]  Ask approval for a revised plan mid-run.");
+    if (command === "plan") commandOptions.push("  \"<request>\"      Start new work and stop once its plan is approved.", "  --approve        Record the user's approval of the current plan, given in the conversation.", "  --run <id> --amend --note <change> [--evidence <plan>]  Ask approval for a revised plan mid-run.");
     if (command === "execute") commandOptions.push("  \"<request>\"      Start new work: initialize Paved if needed and record the request.", "  --approve        Record the user's approval of the current plan, given in the conversation.", "  --auto           Advance through every phase that needs no human input.", "  --run <id> --checkpoint --note <progress>  Record a finished part of the plan without leaving implementation.");
     if (command === "status") commandOptions.push("  --base <ref>     Report whether the latest completed run's evidence still matches the patch HEAD proposes against this target.", "  --stale-after <hours>  Warn about open runs without an event for this many hours (default 24).");
     if (command === "delivery") commandOptions.push(
@@ -352,6 +356,7 @@ function parse(argv: readonly string[]): Parsed {
   let answeredBy: string | undefined;
   let decision: string | undefined;
   let workflow: string | undefined;
+  let lane: string | undefined;
   let autonomy: string | undefined;
   let hostToolApproval: string | undefined;
   let because: string | undefined;
@@ -585,10 +590,14 @@ function parse(argv: readonly string[]): Parsed {
       continue;
     }
 
-    if (["--workflow", "--because", "--recommend", "--part", "--input", "--autonomy"].includes(token)) {
-      if (command !== "intent" && command !== "execute") return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by intent and execute.`) };
+    if (["--workflow", "--lane", "--because", "--recommend", "--part", "--input", "--autonomy"].includes(token)) {
+      if (!command || !STEP_COMMANDS.includes(command)) return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by intent, plan and execute.`) };
       const value = takeValue(argv, index, token, command);
       if (typeof value !== "string") return { kind: "error", result: value };
+      if (token === "--lane") {
+        if (!["trivial", "standard", "risky"].includes(value)) return { kind: "error", result: usage(command, "--lane must be trivial, standard or risky.") };
+        lane = value;
+      }
       if (token === "--autonomy") {
         if (!["guided", "balanced", "autonomous"].includes(value)) return { kind: "error", result: usage(command, "--autonomy must be guided, balanced or autonomous.") };
         autonomy = value;
@@ -746,6 +755,7 @@ function parse(argv: readonly string[]): Parsed {
     parts,
     intentInputs,
     ...(workflow === undefined ? {} : { workflow }),
+    ...(lane === undefined ? {} : { lane }),
     ...(autonomy === undefined ? {} : { autonomy }),
     ...(hostToolApproval === undefined ? {} : { hostToolApproval }),
     ...(because === undefined ? {} : { because }),

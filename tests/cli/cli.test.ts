@@ -649,8 +649,8 @@ describe("CLI executable entry point", () => {
 
 
 describe("CLI autonomy selection", () => {
-  it("parses the three profiles only for intent and execute", async () => {
-    for (const command of ["intent", "execute"] as const) {
+  it("parses the three profiles only for the commands that start runs", async () => {
+    for (const command of ["intent", "plan", "execute"] as const) {
       for (const profile of ["guided", "balanced", "autonomous"]) {
         const invocations: CommandInvocation[] = [];
         const result = await dispatchCli({ argv: [command, "Add a format", "--autonomy", profile], cwd: ROOT,
@@ -659,7 +659,7 @@ describe("CLI autonomy selection", () => {
         assert.equal((invocations[0]!.flags as unknown as { autonomy?: string }).autonomy, profile);
       }
     }
-    for (const argv of [["intent", "request", "--autonomy", "unchecked"], ["intent", "request", "--autonomy"], ["plan", "--autonomy", "guided"]]) {
+    for (const argv of [["intent", "request", "--autonomy", "unchecked"], ["intent", "request", "--autonomy"], ["status", "--autonomy", "guided"]]) {
       const result = await dispatchCli({ argv, cwd: ROOT });
       assert.equal(result.status, "failed", JSON.stringify(result));
       assert.equal(primaryCategory(result), "usage");

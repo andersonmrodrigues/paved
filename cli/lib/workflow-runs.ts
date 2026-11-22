@@ -5,15 +5,15 @@ import { atomicWriteFileSync } from "./atomic-write.ts";
 import { loadMarkdown, loadYaml } from "./documents.ts";
 import { resolveSafePath } from "./safe-path.ts";
 import { createRegistry, type SchemaRegistry } from "./schemas.ts";
-import { assessReadOnlyTools, assessWorkflowToolPolicies, assessRun, isReadOnly, resolveWorkflowFragments, type AutonomyProfile, type ResolvedWorkflowContract, type WorkflowContract, type WorkflowFragmentContract, type WorkflowFragmentMetadata, type WorkflowRunRecord } from "./workflows.ts";
+import { assessReadOnlyTools, assessWorkflowToolPolicies, assessRun, isReadOnly, resolveWorkflowFragments, skippedInLane, type AutonomyProfile, type Lane, type ResolvedWorkflowContract, type WorkflowContract, type WorkflowFragmentContract, type WorkflowFragmentMetadata, type WorkflowRunRecord } from "./workflows.ts";
 import { indexArtifacts, resolveReferences, type LabeledDocument } from "./references.ts";
 import type { SkillContract } from "./skills.ts";
 import type { Decision } from "./decisions/record.ts";
 
-export type PhaseStatus = "pending" | "running" | "completed" | "failed" | "blocked";
+export type PhaseStatus = "pending" | "running" | "completed" | "skipped" | "failed" | "blocked";
 export interface Gate { id: string; status: string; reason?: string; requested_at?: string; decided_by?: string; decided_at?: string }
 export interface Failure { code: string; phase: string; reason: string; retry: string; next_action: string }
-export interface Phase { phase: string; status: PhaseStatus; attempts?: number; gates?: Gate[]; failure?: Failure }
+export interface Phase { phase: string; status: PhaseStatus; attempts?: number; skip_reason?: string; skipped_in_lane?: Lane; gates?: Gate[]; failure?: Failure }
 export interface RunEvent { at: string; type: string; phase?: string; ref?: string; detail?: string }
 export interface DelegationApproval { graph_sha256: string; decided_by: string; decided_at: string }
 export interface DelegationRef { path: string; sha256: string; plan_sha256: string; approval?: DelegationApproval }
@@ -22,7 +22,10 @@ export interface RunHandoff {
   changed_paths: string[]; next_action?: string;
 }
 export interface RunInput { id: string; value: string; source: "human" | "ticket" | "repository" }
-export interface Classification { workflow?: string; because?: string; decided_by?: "agent" | "human"; decision?: string; parts?: string[] }
+export interface Classification {
+  workflow?: string; because?: string; decided_by?: "agent" | "human"; decision?: string; parts?: string[];
+  lane?: Lane; lane_because?: string;
+}
 export interface Run {
   apiVersion: "paved/v1"; kind: "WorkflowRun"; id: string;
   workflow?: { id: string; version: string };
@@ -218,6 +221,38 @@ export const STEP_PHASES: Readonly<Record<Step, readonly string[]>> = {
 };
 const STEPS = Object.keys(STEP_PHASES) as Step[];
 export const ownerOf = (phase: string): Step | undefined => STEPS.find((step) => STEP_PHASES[step].includes(phase));
+
+export const intentDocumentPath = (runId: string): string => `.paved/documents/intents/${runId}.md`;
+
+/**
+ * Starts the first phase at or after `index` that the run's lane keeps, recording each
+ * phase the lane skips with the lane and the evidence that chose it. The run completes
+ * when nothing is left.
+ */
+export function startPhaseFrom(run: Run, workflow: Pick<WorkflowContract, "phases">, index: number): void {
+  const lane = run.classification?.lane;
+  for (let at = index; at < run.phases.length; at++) {
+    const phase = run.phases[at]!;
+    const contract = workflow.phases.find((item) => item.phase === phase.phase);
+    if (contract !== undefined && skippedInLane(contract, lane)) {
+      phase.status = "skipped";
+      phase.skip_reason = `Lane ${lane}: ${run.classification?.lane_because ?? "chosen at classification"}`.slice(0, 2000);
+      phase.skipped_in_lane = lane!;
+      run.events.push({ at: new Date().toISOString(), type: "phase-skipped", phase: phase.phase, detail: `lane=${lane}` });
+      continue;
+    }
+    phase.status = "running"; phase.attempts = (phase.attempts ?? 0) + 1;
+    run.events.push({ at: new Date().toISOString(), type: "phase-started", phase: phase.phase });
+    return;
+  }
+  run.status = "completed"; run.ended_at = new Date().toISOString();
+  run.events.push({ at: new Date().toISOString(), type: "run-completed" });
+}
+
+/** Planning that the run's lane skipped: the run has no plan to approve. */
+export function planSkipped(run: Run): boolean {
+  return run.phases.find((phase) => phase.phase === "planning")?.status === "skipped";
+}
 
 export function activePhase(run: Run): Phase | undefined {
   return run.phases.find((phase) => phase.status === "running") ?? run.phases.find((phase) => phase.status === "failed");
