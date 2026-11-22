@@ -77,11 +77,47 @@ properties:
       - required: [exit_code]
       - required: [measurement]
   timeout_seconds: { type: integer, minimum: 1, maximum: 86400 }
+  depends_on:
+    description: >
+      Checks of the same profile that must run first, for example a build that installs
+      a module this check compiles against. The runner orders checks by dependency and
+      rejects a cycle. A check whose dependency did not pass or skip is `blocked` instead
+      of running on stale inputs.
+    type: array
+    uniqueItems: true
+    minItems: 1
+    items: { $ref: "urn:paved:schema:common:v1#/$defs/checkRef" }
   environment:
-    description: Where the check may run and what must be recorded about the environment beyond the standard facts.
+    description: >
+      Where the check may run, what must be recorded about the environment beyond the
+      standard facts, and what must be present before it can run.
     type: object
     additionalProperties: false
     properties:
+      requires:
+        description: >
+          Files and environment variables the check cannot run without, such as a
+          git-ignored local configuration file. Paved only tests that each file exists and
+          that each variable is set and not empty; it never reads a file or a value. When
+          one is missing the check is `blocked` (PAVED_CHECK_ENVIRONMENT_UNAVAILABLE) with
+          what is missing, instead of failing. The named variables are passed to the
+          check's process, and their values are scrubbed from its recorded output.
+        type: object
+        additionalProperties: false
+        minProperties: 1
+        properties:
+          files:
+            description: Paths relative to the directory the check runs in.
+            type: array
+            uniqueItems: true
+            minItems: 1
+            items: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+          variables:
+            description: Environment variable names.
+            type: array
+            uniqueItems: true
+            minItems: 1
+            items: { type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]*$" }
       kinds:
         type: array
         uniqueItems: true
