@@ -18,8 +18,9 @@ Run `paved verify --changed` to validate changed files, and use `paved task` onl
 durable handoffs.
 
 Explicit user direction wins: when the user asks for a plan, only a classification or
-no workflow, do that instead. Ask a person for product decisions, conflicting rules,
-irreversible actions, or persistent verification failures after two distinct fixes.
+no workflow, do that instead; planning-only and investigation-only requests stay
+read-only. Ask a person for product decisions, conflicting rules, irreversible actions,
+or persistent verification failures after two distinct fixes.
 Respect host permissions and never infer authorization from a plan or autonomy setting.
 
 Do not edit this block by hand; `paved init` and `paved update` maintain it. Write
