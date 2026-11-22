@@ -868,7 +868,7 @@ export async function stepHandler(invocation: CommandInvocation): Promise<Comman
 function stopAtPlan(outcome: CommandResult): CommandResult {
   const data = outcome.data as Record<string, unknown> | undefined;
   if (outcome.status !== "success" || data?.currentPhase !== "implementation" || typeof data.run !== "string") return outcome;
-  return { ...outcome, data: { ...data, nextAction: `The plan is approved and paved plan stops here. When the user asks to implement it, run paved execute --run ${data.run} --json.` } };
+  return { ...outcome, data: { ...data, nextAction: `The plan is approved and paved plan stops here. When the user asks to implement it: ${String(data.nextAction)}` } };
 }
 
 /** `--run <id> --lane risky --because`: the agent found the change riskier than its lane. */
