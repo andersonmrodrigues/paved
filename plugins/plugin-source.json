@@ -1,6 +1,6 @@
 {
   "name": "paved",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "displayName": "Paved",
   "description": "Direct task work and project context for coding agents, with declared Tools, verification, evidence, optional governed workflows and a pinned project-local runtime.",
   "shortDescription": "Direct-first coding agent",
