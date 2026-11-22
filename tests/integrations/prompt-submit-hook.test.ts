@@ -87,6 +87,17 @@ describe("lean lifecycle hooks", () => {
     assert.throws(() => readFileSync(f.log, "utf8"));
   });
 
+  it("asks once per session before the first code change in an uninitialized repository", () => {
+    const f = fixture(false);
+    const result = run(f, { hook_event_name: "SessionStart", source: "startup" }, {});
+    const text = JSON.parse(result.stdout).hookSpecificOutput.additionalContext as string;
+    assert.match(text, /ask the user once whether to use Paved/);
+    assert.match(text, /do not ask again this session/);
+    assert.match(text, /Never initialize without the user's yes/);
+    assert.doesNotMatch(text, /Open tasks/);
+    assert.ok(text.length <= 1200);
+  });
+
   it("reports incomplete state as broken without bootstrapping", () => {
     const f = fixture(false);
     mkdirSync(join(f.cwd, ".paved"));

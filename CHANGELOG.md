@@ -5,6 +5,13 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Changed
+
+- In a repository without Paved, the session guidance now tells the agent to ask once,
+  before the first code change, whether to use Paved; "not now" holds for the session
+  ([ADR 0054](docs/decisions/0054-offer-paved-in-uninitialized-repositories.md)).
+  Paved still never initializes without the user's yes.
+
 ## [3.2.0] - 2026-11-22
 
 ### Added

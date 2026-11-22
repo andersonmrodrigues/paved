@@ -221,7 +221,12 @@ try {
     const status = !initialized ? (existsSync(join(repository, ".paved")) ? "broken" : "uninitialized") :
       typeof diagnosis?.data?.status === "string" && /^[a-z-]+$/.test(diagnosis.data.status) ? diagnosis.data.status : "unknown";
     const tasks = initialized ? openTasks(repository) : [];
-    const lines = [
+    const lines = status === "uninitialized" ? [
+      "Paved: uninitialized.",
+      "Before the first code change in this session (feature, bug fix, refactor), ask the user once whether to use Paved here.",
+      "Yes: run the Paved init command, then continue the request through Paved. Not now: work directly and do not ask again this session.",
+      "Questions, investigation and operational tasks proceed without asking. Never initialize without the user's yes.",
+    ] : [
       `Paved: ${status}.`,
       tasks.length ? `Open task files: ${tasks.join(", ")} (select explicitly).` : "Open tasks: none listed.",
       "Rules: .paved/rules/; context: paved context <topic>.",
