@@ -154,6 +154,15 @@ $defs:
     description: Task lifecycle phase, in canonical order (core/instructions/lifecycle.md).
     enum: [context, discovery, planning, implementation, validation, verification, evidence, review, completion]
 
+  lane:
+    description: >
+      How much ceremony a workflow run gets, chosen with its workflow and the same evidence.
+      `trivial`: a small, local change; phases that declare it in `skip_in_lanes` are
+      skipped and routing drops to the economy tier. `standard`: an ordinary change.
+      `risky`: a change that needs an approved plan and the strongest review. A run
+      without a lane runs every phase.
+    enum: [trivial, standard, risky]
+
   approvalCategory:
     description: >
       Why a gate needs a human decision. `implementation-plan`: approval of the
