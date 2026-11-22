@@ -33,18 +33,25 @@ properties:
   classification:
     description: >
       How the run's workflow was chosen. `workflow` is absent while the choice is
-      pending; `parts` holds the proposed split of a mixed request.
+      pending; `parts` holds the proposed split of a mixed request. `lane` is the lane
+      the run runs in and `lane_because` the evidence for it, which changes only when the
+      run is escalated. Without `lane` every phase runs.
     type: object
     additionalProperties: false
     properties:
       workflow: { $ref: "urn:paved:schema:common:v1#/$defs/workflowRef" }
       because: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      lane: { $ref: "urn:paved:schema:common:v1#/$defs/lane" }
+      lane_because: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
       decided_by: { enum: [agent, human] }
       decision: { type: string, pattern: "^d-[a-f0-9]{20}$" }
       parts:
         type: array
         minItems: 2
         items: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+    dependentRequired:
+      lane: [workflow, lane_because]
+      lane_because: [lane]
     allOf:
       - if: { required: [workflow] }
         then: { required: [because, decided_by] }
@@ -194,6 +201,7 @@ properties:
             - decision-superseded
             - retry-started
             - phase-reopened
+            - lane-escalated
             - run-completed
             - run-failed
             - run-blocked
@@ -251,8 +259,11 @@ $defs:
         type: integer
         minimum: 0
       skip_reason:
-        description: How the phase's `skip_when` condition holds.
+        description: How the phase's `skip_when` condition holds, or the lane evidence that skipped it.
         $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+      skipped_in_lane:
+        description: The lane whose `skip_in_lanes` skipped the phase; absent for a `skip_when` skip.
+        $ref: "urn:paved:schema:common:v1#/$defs/lane"
       skills:
         description: Skills this phase activated or continued, or recorded as not applicable.
         type: array
@@ -274,7 +285,7 @@ $defs:
         then:
           required: [skip_reason]
         else:
-          not: { required: [skip_reason] }
+          not: { anyOf: [{ required: [skip_reason] }, { required: [skipped_in_lane] }] }
       - if:
           properties: { status: { enum: [failed, blocked] } }
         then:

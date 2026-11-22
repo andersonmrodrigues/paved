@@ -49,7 +49,7 @@ const COMMAND_RULES = {
     task: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
     delivery: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
     intent: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
-    plan: { adapters: false, dryRun: false, noGenerate: false, selectors: false },
+    plan: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
     execute: { adapters: false, dryRun: false, noGenerate: false, selectors: true },
 };
 function usage(command, message, remediation = "Run paved --help to see supported commands and flags.") {
@@ -109,7 +109,7 @@ function commandUsage(command) {
     if (command !== undefined) {
         const selectors = command === "generate" ? " [generator-id...]" : command === "agent"
             ? " <operation> [integration|command-name]" : command === "preview" ? " <start|serve|status|wait|working|resolve|stop> <file.md|folder> [cursor|comment-id]" : command === "workbench" ? " <start|serve|status|stop>"
-            : command === "tool" ? " add <check-type> [label] [--scope <dir>] -- <executable> [args...]" : command === "delegation" ? " <plan|approve|ready|start|finish|recover|capabilities>" : command === "delivery" ? " <approve|merge>" : command === "execute" ? " [request]" : "";
+            : command === "tool" ? " add <check-type> [label] [--scope <dir>] -- <executable> [args...]" : command === "delegation" ? " <plan|approve|ready|start|finish|recover|capabilities>" : command === "delivery" ? " <approve|merge>" : command === "execute" || command === "plan" ? " [request]" : "";
         const commandOptions = [];
         const rule = COMMAND_RULES[command];
         if (rule.adapters)
@@ -121,7 +121,7 @@ function commandUsage(command) {
         if (command === "test")
             commandOptions.push("  --inputs <json>  Supply declared Tool inputs as a JSON object.");
         if (command === "verify")
-            commandOptions.push("  --changed [--base <ref>]  Scope checks to changed files, optionally including commits since the merge base.", "  --task <slug>  Attach verification evidence to an open task.");
+            commandOptions.push("  --changed [--base <ref>]  Scope checks to changed files, optionally including commits since the merge base.", "  --task <slug>  Attach verification evidence to an open task.", "  --lock-wait <seconds>  Wait for another operation's lock; reuse its run when it verified the same change.");
         if (command === "context")
             commandOptions.push("  <topic-or-path> [--budget <bytes>]  Retrieve matching project context and rules.", "  refresh [--areas <area,...>]        Refresh stale context areas, or the named areas.");
         if (command === "task")
@@ -132,8 +132,8 @@ function commandUsage(command) {
             commandOptions.push("  --decision <json>  Raise an agent-authored question.", "  --reason <text>   Explain a revision.");
         if (command === "preview")
             commandOptions.push("  --reply <text>   With resolve, tell the reviewer what changed.");
-        if (command === "intent" || command === "execute")
-            commandOptions.push("  --workflow <feature|bug|refactor|performance|investigation> --because <evidence>  Classify the request.", "  --recommend <workflow> --because <evidence>  Suggest a workflow and let the user decide.", "  --part <request>  Propose one part of a split; repeat per part.", "  --input <id>=<value>  Supply another declared workflow input; repeatable.", "  --autonomy <guided|balanced|autonomous>  Select a profile for the new run; fixed on resume.");
+        if (STEP_COMMANDS.includes(command))
+            commandOptions.push("  --workflow <feature|bug|refactor|performance|investigation> --because <evidence>  Classify the request.", "  --lane <trivial|standard|risky>  With --workflow, the lane whose phases the run follows (covered by --because); without one every phase runs.", "  --run <id> --lane risky --because <evidence>  Escalate a run: reopen planning and require its approval before completion.", "  --recommend <workflow> --because <evidence>  Suggest a workflow and let the user decide.", "  --part <request>  Propose one part of a split; repeat per part.", "  --input <id>=<value>  Supply another declared workflow input; repeatable.", "  --autonomy <guided|balanced|autonomous>  Select a profile for the new run; fixed on resume.");
         if (STEP_COMMANDS.includes(command))
             commandOptions.push("  --host-tool-approval <id>  Acknowledge the exact suspended Tool invocation after host mediation; grants no host permission.");
         if (STEP_COMMANDS.includes(command))
@@ -141,7 +141,7 @@ function commandUsage(command) {
         if (STEP_COMMANDS.includes(command))
             commandOptions.push("  --run <id> --abandon [--note <reason>]  Cancel the run so the same request can start again.");
         if (command === "plan")
-            commandOptions.push("  --approve        Record the user's approval of the current plan, given in the conversation.", "  --run <id> --amend --note <change> [--evidence <plan>]  Ask approval for a revised plan mid-run.");
+            commandOptions.push("  \"<request>\"      Start new work and stop once its plan is approved.", "  --approve        Record the user's approval of the current plan, given in the conversation.", "  --run <id> --amend --note <change> [--evidence <plan>]  Ask approval for a revised plan mid-run.");
         if (command === "execute")
             commandOptions.push("  \"<request>\"      Start new work: initialize Paved if needed and record the request.", "  --approve        Record the user's approval of the current plan, given in the conversation.", "  --auto           Advance through every phase that needs no human input.", "  --run <id> --checkpoint --note <progress>  Record a finished part of the plan without leaving implementation.");
         if (command === "status")
@@ -240,6 +240,7 @@ function parse(argv) {
     let answeredBy;
     let decision;
     let workflow;
+    let lane;
     let autonomy;
     let hostToolApproval;
     let because;
@@ -254,6 +255,7 @@ function parse(argv) {
     let text;
     const correctionEvidence = [];
     let staleAfterHours;
+    let lockWaitSeconds;
     let toolCommand;
     let task;
     let file;
@@ -331,6 +333,18 @@ function parse(argv) {
             if (typeof value !== "string")
                 return { kind: "error", result: value };
             scope = value;
+            index += 1;
+            continue;
+        }
+        if (token === "--lock-wait") {
+            if (command !== "verify")
+                return { kind: "error", result: usage(command ?? "cli", "--lock-wait is supported only by verify.") };
+            const value = takeValue(argv, index, token, command);
+            if (typeof value !== "string")
+                return { kind: "error", result: value };
+            if (!/^\d+$/.test(value) || Number(value) > 3600)
+                return { kind: "error", result: usage(command, "--lock-wait must be between 0 and 3600 seconds.") };
+            lockWaitSeconds = Number(value);
             index += 1;
             continue;
         }
@@ -496,12 +510,17 @@ function parse(argv) {
             confirmedStopped = true;
             continue;
         }
-        if (["--workflow", "--because", "--recommend", "--part", "--input", "--autonomy"].includes(token)) {
-            if (command !== "intent" && command !== "execute")
-                return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by intent and execute.`) };
+        if (["--workflow", "--lane", "--because", "--recommend", "--part", "--input", "--autonomy"].includes(token)) {
+            if (!command || !STEP_COMMANDS.includes(command))
+                return { kind: "error", result: usage(command ?? "cli", `${token} is supported only by intent, plan and execute.`) };
             const value = takeValue(argv, index, token, command);
             if (typeof value !== "string")
                 return { kind: "error", result: value };
+            if (token === "--lane") {
+                if (!["trivial", "standard", "risky"].includes(value))
+                    return { kind: "error", result: usage(command, "--lane must be trivial, standard or risky.") };
+                lane = value;
+            }
             if (token === "--autonomy") {
                 if (!["guided", "balanced", "autonomous"].includes(value))
                     return { kind: "error", result: usage(command, "--autonomy must be guided, balanced or autonomous.") };
@@ -672,6 +691,7 @@ function parse(argv) {
         parts,
         intentInputs,
         ...(workflow === undefined ? {} : { workflow }),
+        ...(lane === undefined ? {} : { lane }),
         ...(autonomy === undefined ? {} : { autonomy }),
         ...(hostToolApproval === undefined ? {} : { hostToolApproval }),
         ...(because === undefined ? {} : { because }),
@@ -692,6 +712,7 @@ function parse(argv) {
         ...(text === undefined ? {} : { text }),
         correctionEvidence,
         ...(staleAfterHours === undefined ? {} : { staleAfterHours }),
+        ...(lockWaitSeconds === undefined ? {} : { lockWaitSeconds }),
         ...(toolCommand === undefined ? {} : { toolCommand }),
         ...(task === undefined ? {} : { task }),
         ...(file === undefined ? {} : { file }),

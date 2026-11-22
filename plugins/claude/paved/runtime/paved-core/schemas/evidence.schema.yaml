@@ -41,10 +41,16 @@ properties:
       profile_sha256: { $ref: "urn:paved:schema:common:v1#/$defs/sha256" }
       configuration_sha256:
         description: >
-          Digest of the resolved Checks, Tools, ToolImplementations and change scope. A
-          later run reuses a verified record only when this, the profile digest and the
-          change fingerprint all match.
+          Digest of the resolved Checks, Tools and ToolImplementations, the Checks the
+          change scope selects, and which `environment.requires` entries are present. A
+          later run reuses a record only when this, the profile digest and the change
+          fingerprint or tree id all match.
         $ref: "urn:paved:schema:common:v1#/$defs/sha256"
+      base_revision:
+        description: >
+          The base commit failures were compared with to classify them as pre-existing.
+          Absent when no base was known.
+        $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
   supersedes:
     description: >
       Ids of earlier records for this task (usually on earlier revisions). A new
@@ -72,6 +78,13 @@ properties:
       worktree_sha256:
         description: Digest of the uncommitted changes (for example of the diff against `revision`). Required when `uncommitted_changes`.
         $ref: "urn:paved:schema:common:v1#/$defs/sha256"
+      tree_id:
+        description: >
+          Git tree id of the verified content, excluding generated Paved state. A working
+          tree and the commit that captures it exactly share it, so evidence recorded
+          before a commit can be reused after it.
+        type: string
+        pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$"
       base_ref: { type: string }
       head_ref: { type: string }
       files:
@@ -310,6 +323,55 @@ $defs:
       output_ref:
         description: Where the full output is stored (path or CI artifact URL). Kept for failed checks so work can continue from it.
         type: string
+      definition_sha256:
+        description: >
+          Digest of the resolved Check, Tool and ToolImplementations the result was
+          produced with, so a later run can tell whether it ran the same check.
+        $ref: "urn:paved:schema:common:v1#/$defs/sha256"
+      missing_environment:
+        description: >
+          What the check's `environment.requires` named and was absent, for a check
+          blocked because its environment is unavailable. Names only, never values.
+        type: object
+        additionalProperties: false
+        minProperties: 1
+        properties:
+          files:
+            type: array
+            minItems: 1
+            items: { $ref: "urn:paved:schema:common:v1#/$defs/relativePath" }
+          variables:
+            type: array
+            minItems: 1
+            items: { type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]*$" }
+      blocked_by:
+        description: Checks this one `depends_on` that did not pass, for a check blocked instead of run.
+        type: array
+        uniqueItems: true
+        minItems: 1
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/checkRef" }
+      pre_existing:
+        description: >
+          The failure already occurs on the base revision: the base run failed with the
+          same exit code and the head output has no failure line the base output lacks.
+          A pre-existing failure is still a failure; it does not support a claim.
+        type: boolean
+      baseline:
+        description: The same check's outcome on the base revision, when a failure was compared with it.
+        type: object
+        additionalProperties: false
+        required: [revision, status]
+        properties:
+          revision:
+            description: The base commit the check ran against.
+            $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString"
+          status: { enum: [passed, failed, error, blocked, inconclusive] }
+          exit_code: { type: integer }
+          output_ref: { type: string }
+          output_sha256: { $ref: "urn:paved:schema:common:v1#/$defs/sha256" }
+          reused_from:
+            description: Id of the earlier evidence record the base outcome was taken from instead of rerunning it.
+            $ref: "#/$defs/localId"
       observations:
         description: Short, structured facts the run observed (counts, values, messages).
         type: array
@@ -354,6 +416,22 @@ $defs:
           anyOf:
             - required: [output_ref]
             - required: [observations]
+      - if:
+          required: [pre_existing]
+          properties: { pre_existing: { const: true } }
+        then:
+          required: [baseline]
+          properties:
+            status: { const: failed }
+            baseline: { type: object, properties: { status: { const: failed } } }
+      - if:
+          required: [missing_environment]
+        then:
+          properties: { status: { const: blocked } }
+      - if:
+          required: [blocked_by]
+        then:
+          properties: { status: { const: blocked } }
       - if:
           properties: { status: { const: passed } }
         then:

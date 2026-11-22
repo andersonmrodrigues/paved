@@ -129,6 +129,24 @@ properties:
         anyOf:
           - required: [add_gates]
           - required: [require_checks]
+  flow:
+    description: >
+      Deterministic limits on the lane an agent picks. When a run completes, Paved
+      compares its diff with them: a change touching a `protected_paths` glob, or a
+      `trivial` run that changed more than `max_trivial_files` files, cannot complete
+      until the run is escalated to `risky` and its plan is approved. Paths are
+      repository-relative globs (`*`, `**`, `?`). Without this section no path is
+      protected and a trivial run may change 5 files.
+    type: object
+    additionalProperties: false
+    minProperties: 1
+    properties:
+      protected_paths:
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items: { $ref: "urn:paved:schema:common:v1#/$defs/nonEmptyString" }
+      max_trivial_files: { type: integer, minimum: 1, maximum: 1000 }
 $defs:
   owner:
     description: Person or team accountable for the exception, who re-confirms it when its target changes.

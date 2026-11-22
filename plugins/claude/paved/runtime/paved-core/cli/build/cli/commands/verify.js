@@ -36,6 +36,7 @@ export async function verifyHandler(invocation, beforeRun, scope = {}) {
     }
     try {
         let changedFiles = scope.changedFiles;
+        let baseRevision;
         if (invocation.flags.changed) {
             const status = spawnSync("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames"], {
                 cwd: invocation.paths.sourceRoot, encoding: "utf8", maxBuffer: 64 * 1024 * 1024,
@@ -75,6 +76,7 @@ export async function verifyHandler(invocation, beforeRun, scope = {}) {
                                 message: "The requested base and HEAD must be commits with a common ancestor.",
                             })],
                     });
+                baseRevision = base;
                 const diff = spawnSync("git", ["diff", "--name-only", "-z", "--no-renames", "--relative", base], {
                     cwd: invocation.paths.sourceRoot, encoding: "utf8", maxBuffer: 64 * 1024 * 1024,
                 });
@@ -89,7 +91,7 @@ export async function verifyHandler(invocation, beforeRun, scope = {}) {
             }
             const configurationChanged = paths.some((path) => path.startsWith(".paved/") &&
                 !path.startsWith(".paved/generated/") && !path.startsWith(".paved/tasks/"));
-            changedFiles = configurationChanged ? undefined : paths
+            changedFiles = configurationChanged ? undefined : [...new Set(paths)]
                 .filter((path) => path !== ".paved" && !path.startsWith(".paved/") &&
                 path !== ".paved-operation-lock" && !path.startsWith(".paved.update-backup/"));
         }
@@ -124,6 +126,8 @@ export async function verifyHandler(invocation, beforeRun, scope = {}) {
             coreRoot: invocation.paths.coreRoot,
             adapterSelections: invocation.flags.adapters,
             ...(changedFiles === undefined ? {} : { changedFiles }),
+            ...(baseRevision === undefined ? {} : { baseRevision }),
+            ...(invocation.flags.lockWaitSeconds === undefined ? {} : { lockWaitMs: invocation.flags.lockWaitSeconds * 1000 }),
             ...(beforeRun ? { beforeRun: (selected) => {
                     const stopped = beforeRun(selected);
                     if (stopped)
@@ -167,6 +171,7 @@ export async function verifyHandler(invocation, beforeRun, scope = {}) {
             checks: result.checks,
             evidence,
             ...(result.reused ? { reused: true } : {}),
+            ...(result.unproven === undefined ? {} : { unproven: result.unproven }),
             completion: result.evaluation === undefined
                 ? undefined
                 : {

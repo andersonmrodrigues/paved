@@ -9,17 +9,18 @@ This repository uses Paved for agent context, rules and verification.
 - Verification profile: `.paved/verification/profile.yaml`
 - Overrides: `.paved/overrides/overrides.yaml`
 
-Default to direct, outcome-focused work with Paved: load `paved context "<topic or path>"` when project
-context helps, keep small changes direct, use `paved task` only for durable handoffs,
-and run `paved verify --changed` to validate changed files. For multi-step work, keep
-the plan in the task handoff rather than creating extra planning documents.
+Route a change request through `paved execute "<request>" --workflow <id> --lane
+<trivial|standard|risky> --because "<evidence>" --json`: Paved picks the phases for the
+lane, so a trivial change skips planning and a risky one waits for plan approval. Choose
+the lane from what you observed, and escalate with `--lane risky` if the change grows.
+Answer questions directly or with `paved context "<topic or path>"`; they start no run.
+Run `paved verify --changed` to validate changed files, and use `paved task` only for
+durable handoffs.
 
-Use `paved intent`, `paved plan` and `paved execute` only when the user explicitly
-requests a governed workflow or a project rule requires one. Planning-only and
-investigation-only requests remain read-only. Plan approval is not required for ordinary
-implementation; ask a person for product decisions, conflicting rules, irreversible
-actions, or persistent verification failures after two distinct fixes. Respect host
-permissions and never infer authorization from a plan or autonomy setting.
+Explicit user direction wins: when the user asks for a plan, only a classification or
+no workflow, do that instead. Ask a person for product decisions, conflicting rules,
+irreversible actions, or persistent verification failures after two distinct fixes.
+Respect host permissions and never infer authorization from a plan or autonomy setting.
 
 Do not edit this block by hand; `paved init` and `paved update` maintain it. Write
 project-specific instructions for agents outside it.

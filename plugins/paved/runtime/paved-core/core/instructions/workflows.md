@@ -15,7 +15,12 @@ nothing and gives the owning step's command as `data.nextCommand`; run that next
 | `paved plan` | `planning` |
 | `paved execute` | `implementation` through `completion` |
 
-Pass the user's request to `intent` verbatim. Add
+Each step can also start a request on its own: `paved intent "<request>"` stops after
+classification, `paved plan "<request>"` runs through context and discovery and stops
+once the plan is approved, and `paved execute "<request>"` runs every phase the run's
+lane keeps.
+
+Pass the user's request verbatim. Add
 `--workflow <feature|bug|refactor|performance|investigation> --because "<evidence>"` only
 when the evidence shows the kind of change; otherwise omit it (optionally
 `--recommend <id> --because "<evidence>"`) and present the returned decision. A question
@@ -27,6 +32,34 @@ on the only open run, or on `--run <id>`; with several open runs they ask which 
 bug's failing regression test, a refactor's passing baseline and a performance baseline
 run inside `intent`; tests and verification run inside `execute`. When a step returns
 their decisions, present them and repeat the same call with the answers.
+
+## Lanes
+
+Choose a lane with the workflow, covered by the same `--because`:
+`--lane <trivial|standard|risky>`. Phases that list the lane in `skip_in_lanes` are
+recorded as skipped with the lane and the evidence (`skipped_in_lane`, `skip_reason`),
+and `routing_by_lane` changes the recommended capacity and effort; `data.routing` and
+`data.lane` report what applies. In the Core workflows `trivial` skips `context`
+(and `discovery` for a feature), `standard` and `trivial` skip `planning`, and `risky`
+skips nothing. Implementation, verification, evidence, review and completion always
+run. Without `--lane` no lane skips anything.
+
+A run without planning is implemented from its Intent document, and its review is bound
+to that document instead of a plan. `paved plan "<request>"` refuses a lane that skips
+planning (`PAVED_LANE_SKIPS_PLANNING`) and a workflow without one
+(`PAVED_PLAN_UNAVAILABLE`).
+
+When the change turns out larger or riskier than its lane, escalate the open run:
+`paved execute --run <id> --lane risky --because "<evidence>" --json`. A skipped
+`planning` reopens, every later phase returns to pending, and the plan needs approval
+before the change is verified and reviewed again. A run only moves up to `risky`
+(`PAVED_LANE_ESCALATION_INVALID` otherwise).
+
+Completion enforces the limits in the `flow` section of `.paved/overrides/overrides.yaml`
+(`protected_paths`, and `max_trivial_files`, 5 by default). A run whose diff touches a
+protected path, or a trivial run that changed more files than the limit, stops with
+`PAVED_WORKFLOW_ESCALATION_REQUIRED` until it is escalated and its plan approved; an
+invalid `flow` section stops it with `PAVED_FLOW_POLICY_INVALID`.
 
 An `investigation` has no `planning` or `implementation` phase, so it needs no plan and
 no approval: after `intent` records the cited answer, run `paved execute --run <id> --auto`

@@ -3,6 +3,7 @@
 // whether a run record is consistent with its workflow. Run after schema validation and
 // reference resolution. See docs/concepts/workflows.md.
 import { dependencyCycles, duplicatedSentences, genericityProblems, planCoverageProblems, saysWhenToUse, } from "./skills.js";
+export const LANES = ["trivial", "standard", "risky"];
 /** Resolve one level of guidance; no expressions, recursive templates or host execution. */
 export function resolveWorkflowFragments(workflow, fragments) {
     const problems = [];
@@ -140,6 +141,15 @@ export function phaseContext(workflow, phase) {
         fragments: (phase.fragments ?? []).map(({ id, body }) => ({ id, body })),
     };
 }
+/** The routing a run in `lane` uses for the phase; a run without a lane resolves as standard. */
+export function effectiveRouting(phase, lane) {
+    if (phase.routing === undefined)
+        return undefined;
+    const override = phase.routing_by_lane?.[lane ?? "standard"];
+    return override === undefined ? phase.routing : { ...phase.routing, ...override };
+}
+/** Whether a run in `lane` skips the phase. A run without a lane skips nothing. */
+export const skippedInLane = (phase, lane) => lane !== undefined && (phase.skip_in_lanes ?? []).includes(lane);
 /** Policy checks shared by authoring quality assessment and runtime workflow loading. */
 export function assessWorkflowToolPolicies(contract, context) {
     const problems = [];
@@ -272,6 +282,15 @@ export function assessWorkflowQuality(files, context) {
             }
         }
     }
+    // A lane may drop the plan and its approval, never another human decision.
+    for (const phase of phases) {
+        if ((phase.skip_in_lanes ?? []).length === 0 || phase.phase === "planning")
+            continue;
+        for (const gate of phase.gates ?? []) {
+            if (gate.approval !== undefined)
+                problems.push(`phase ${phase.phase} has approval gate ${gate.id} and cannot be skipped by a lane`);
+        }
+    }
     const approval = HIGH_RISK[contract.change_type];
     if (approval !== undefined && !phases.some((p) => (p.gates ?? []).some((g) => g.approval === approval))) {
         problems.push(`a ${contract.change_type} workflow needs a gate with approval "${approval}"`);
@@ -316,6 +335,7 @@ export const REVIEW_HANDLER = "run.review";
 export const REVIEW_FIX = "review findings";
 export const SOURCE_CHANGED_AFTER_VERIFICATION = "source changed after verification";
 export const MEASUREMENT_STALE = "measured code changed";
+export const ESCALATED = "escalated to risky";
 export function recoveryQuestion(phase, attempts) {
     return `The ${phase} phase failed ${attempts} times. How should Paved continue?`;
 }
@@ -331,7 +351,7 @@ export function recoveriesFor(decisions, phase) {
  * the amendment is approved, so it is counted there and not twice.
  */
 export function attemptRounds(run, phase) {
-    const amended = (run.events ?? []).filter((event) => (event.type === "retry-started" || event.type === "phase-reopened") && event.phase === phase && [AMENDED_RETRY, REVIEW_FIX, MEASUREMENT_STALE, SOURCE_CHANGED_AFTER_VERIFICATION].includes(event.detail ?? "")).length;
+    const amended = (run.events ?? []).filter((event) => (event.type === "retry-started" || event.type === "phase-reopened") && event.phase === phase && [AMENDED_RETRY, REVIEW_FIX, MEASUREMENT_STALE, SOURCE_CHANGED_AFTER_VERIFICATION, ESCALATED].includes(event.detail ?? "")).length;
     return 1 + recoveriesFor(run.decisions, phase).filter((decision) => decision.answer === "retry").length + amended;
 }
 const DONE = new Set(["completed", "skipped"]);
@@ -367,8 +387,17 @@ export function assessRun(run, workflow) {
         if (record.status !== "pending" && !run.phases.slice(0, i).every((p) => DONE.has(p.status))) {
             problems.push(`phase ${record.phase} is ${record.status} although an earlier phase is not completed or skipped`);
         }
-        if (record.status === "skipped" && phase.skip_when === undefined) {
-            problems.push(`phase ${record.phase} was skipped but the workflow does not allow skipping it`);
+        if (record.status === "skipped") {
+            const lane = record.skipped_in_lane;
+            if (lane === undefined ? phase.skip_when === undefined : !skippedInLane(phase, lane)) {
+                problems.push(lane === undefined
+                    ? `phase ${record.phase} was skipped but the workflow does not allow skipping it`
+                    : `phase ${record.phase} was skipped in lane ${lane}, which does not skip it`);
+            }
+            // Escalation reopens planning, so a risky run never keeps it skipped.
+            if (lane !== undefined && run.classification?.lane === "risky" && (phase.gates ?? []).some((gate) => gate.approval !== undefined)) {
+                problems.push(`phase ${record.phase} needs a human approval in a risky run and cannot stay skipped`);
+            }
         }
         const retry = phase.retry ?? DEFAULT_RETRY;
         const limit = (retry.class === "retryable" ? (retry.max_attempts ?? DEFAULT_RETRY.max_attempts) : 1) * attemptRounds(run, record.phase);
