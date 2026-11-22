@@ -28,8 +28,8 @@ arguments.
   change runs all checks; generated state is excluded. Pass `--base <ref>` with
   `--changed` to include commits since the merge base. Without it, committed branch
   changes are not included. A Git working tree is required. With `--base`, a failing
-  Check is also compared with the merge base; see
-  [pre-existing failures](../../../docs/concepts/verification-failure.md#pre-existing-failures).
+  Check is also compared with the merge base (see "Pre-existing failures" in the
+  verification failure concept).
 - `--lock-wait <seconds>`: when another operation holds the project lock, wait up to
   this long (0 to 3600) instead of failing at once. If the holder recorded a run for
   the same change and configuration, that record is returned instead of running the
