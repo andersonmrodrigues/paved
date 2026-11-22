@@ -14,7 +14,13 @@ A check whose tool runs more than one kind of test, such as a build that runs un
 integration tests together, lists the further types in `covers`. A pass then counts for
 each of them, and a failure fails each of them.
 
-Preconditions are evaluated before execution. `blocked` means a relevant check could not
+Preconditions are evaluated before execution. `environment.requires` lists the project
+files and environment variables a check needs, such as a local `.env` or a service
+token; when one is absent the check is `blocked` with the missing names, and is not run.
+Only presence is tested, never contents or values. `depends_on` lists checks that must
+pass first: they run earlier, and a check whose dependency failed or was blocked is
+itself `blocked` instead of running on stale inputs. Dependencies must be in the same
+profile and must not form a cycle. `blocked` means a relevant check could not
 run; `skipped` means it did not apply. Neither can be reported as passed. The check's
 expected result must permit an objective verdict, such as an exit code or a measurement
 against a project threshold. Results record the concrete tool version and environment.
