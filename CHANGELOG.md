@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-11-22
+
 ### Added
 
 - Adaptive lanes ([ADR 0053](docs/decisions/0053-adaptive-lanes-and-honest-verification.md)).
