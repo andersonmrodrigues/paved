@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-11-23
+
 ### Fixed
 
 - The Stop hook no longer runs verification Checks itself, so a turn ends in seconds
