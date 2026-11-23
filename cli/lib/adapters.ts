@@ -200,6 +200,10 @@ function governingProvider(resolution: CapabilityResolution, path: string): stri
   for (const scope of resolution.ambiguousScopes) if (contains(scope, path) && (!best || depth(scope) > best.depth)) best = { depth: depth(scope) };
   return best?.provider;
 }
+// Evidence is bounded per file and per capability. A routing or controller file routinely declares
+// dozens of entries, so the per-file bound must not cut off ordinary applications.
+const MAX_EVIDENCE_PER_SOURCE = 100;
+const MAX_EVIDENCE_PER_CAPABILITY = 200;
 export function collectEvidence(root: string, sources: RepositorySource[], detection: Detection, capability: string): AdapterEvidence[] {
   const rules = detection.adapter.provides?.capabilities?.find(c => c.id === capability)?.evidence ?? [];
   const out: AdapterEvidence[] = [];
@@ -215,11 +219,11 @@ export function collectEvidence(root: string, sources: RepositorySource[], detec
         if (value !== undefined && (!/^[a-zA-Z0-9_./:{}@^~-]{1,120}$/.test(value) || /secret|token|password|credential|private|api.?key/i.test(value))) continue;
         if (out.some(item => item.source.path === source.path && item.statement === rule.statement && item.value === value)) continue;
         out.push({ adapter: detection.adapter.id, adapterVersion: detection.adapter.version, capability, source, statement: rule.statement, ...(value ? { value } : {}), detectionConfidence: detection.confidence, detectionEvidence: detection.evidence, classification: 'observed' });
-        if (++count >= 20 || out.length >= 200) break;
+        if (++count >= MAX_EVIDENCE_PER_SOURCE || out.length >= MAX_EVIDENCE_PER_CAPABILITY) break;
       }
-      if (out.length >= 200) break;
+      if (out.length >= MAX_EVIDENCE_PER_CAPABILITY) break;
     }
-    if (out.length >= 200) break;
+    if (out.length >= MAX_EVIDENCE_PER_CAPABILITY) break;
   }
   return out.sort((a,b) => `${a.source.path}:${a.statement}:${a.value ?? ''}`.localeCompare(`${b.source.path}:${b.statement}:${b.value ?? ''}`, 'en'));
 }

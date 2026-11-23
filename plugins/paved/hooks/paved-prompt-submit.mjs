@@ -25,25 +25,75 @@ function stateRepository(repository) {
   } catch { return repository; }
 }
 
-function invoke(repository, sourceRoot, args, timeout, allowedStatuses = [0, 1]) {
-  // Never bootstrap a missing selection implicitly from a lifecycle hook.
+const MAX_OUTPUT_BYTES = 256 * 1024;
+const KILL_GRACE_MS = 2000;
+const STDIN_TIMEOUT_MS = 5000;
+
+// Never bootstrap a missing selection implicitly from a lifecycle hook.
+function launcherFor(repository) {
   if (!existsSync(join(repository, ".paved", "paved.lock")) ||
       !existsSync(join(repository, ".paved", "runtime", "selection.json"))) return undefined;
   const launcher = join(dirname(dirname(fileURLToPath(import.meta.url))), "scripts", "paved.mjs");
-  if (!existsSync(launcher)) return undefined;
-  const child = spawnSync(process.execPath, [launcher, ...args, "--json", "--project", sourceRoot], {
-    cwd: sourceRoot, encoding: "utf8", timeout, maxBuffer: 256 * 1024, shell: false,
-  });
-  if (child.error || child.status === null || !allowedStatuses.includes(child.status)) return undefined;
-  try { return JSON.parse(child.stdout); } catch { return undefined; }
+  return existsSync(launcher) ? launcher : undefined;
 }
 
-const VERIFY_TIMEOUT_MS = 110000;
+// The launcher runs the runtime as a child that shares its stdout, so a timeout must stop the
+// whole process group: killing only the launcher would leave the runtime holding the operation
+// lock and the pipe this hook waits on. The result settles at the deadline plus a short grace
+// even if some process keeps the pipe open, so the hook always returns within its budget.
+function runLauncher(launcher, sourceRoot, args, timeout) {
+  return new Promise((resolveRun) => {
+    const chunks = [];
+    let bytes = 0;
+    let settled = false;
+    let timedOut = false;
+    const settle = (outcome) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.stdout?.destroy();
+      resolveRun(outcome);
+    };
+    const child = spawn(process.execPath, [launcher, ...args, "--json", "--project", sourceRoot], {
+      cwd: sourceRoot, shell: false, stdio: ["ignore", "pipe", "ignore"], detached: process.platform !== "win32",
+    });
+    child.stdout.on("data", (chunk) => {
+      if (bytes < MAX_OUTPUT_BYTES) chunks.push(chunk);
+      bytes += chunk.length;
+    });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      signalGroup(child, "SIGTERM");
+      setTimeout(() => {
+        signalGroup(child, "SIGKILL");
+        settle({ kind: "timeout" });
+      }, KILL_GRACE_MS);
+    }, timeout);
+    child.on("error", () => settle({ kind: "unavailable" }));
+    child.on("close", (code) => {
+      if (timedOut) return settle({ kind: "timeout" });
+      let result;
+      try { result = bytes <= MAX_OUTPUT_BYTES ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : undefined; } catch { result = undefined; }
+      settle({ kind: "completed", code, result });
+    });
+  });
+}
 
-function stopVerifyTimeout() {
+async function invoke(repository, sourceRoot, args, timeout, allowedStatuses = [0, 1]) {
+  const launcher = launcherFor(repository);
+  if (!launcher) return undefined;
+  const outcome = await runLauncher(launcher, sourceRoot, args, timeout);
+  return outcome.kind === "completed" && allowedStatuses.includes(outcome.code) ? outcome.result : undefined;
+}
+
+// Stop only reads the recorded verification for the current change; Checks never run inside the
+// hook, so a turn ends in seconds however slow the suite is. The host allows 30 s.
+const STOP_TIMEOUT_MS = 20000;
+
+function stopTimeout() {
   // Lowering the budget is allowed (tests, slow hosts); raising it past the host's hook timeout is not.
   const requested = Number(process.env.PAVED_HOOK_VERIFY_TIMEOUT_MS);
-  return Number.isInteger(requested) && requested > 0 ? Math.min(requested, VERIFY_TIMEOUT_MS) : VERIFY_TIMEOUT_MS;
+  return Number.isInteger(requested) && requested > 0 ? Math.min(requested, STOP_TIMEOUT_MS) : STOP_TIMEOUT_MS;
 }
 
 function signalGroup(child, signal) {
@@ -72,61 +122,34 @@ function defaultBase(sourceRoot) {
   return undefined;
 }
 
-// The launcher runs the runtime as a child, so a timeout must stop the whole process group:
-// killing only the launcher would leave the runtime running and holding the operation lock.
-function invokeVerify(repository, sourceRoot, timeout) {
-  if (!existsSync(join(repository, ".paved", "paved.lock")) ||
-      !existsSync(join(repository, ".paved", "runtime", "selection.json"))) return Promise.resolve({ kind: "unavailable" });
-  const launcher = join(dirname(dirname(fileURLToPath(import.meta.url))), "scripts", "paved.mjs");
-  if (!existsSync(launcher)) return Promise.resolve({ kind: "unavailable" });
-  const base = defaultBase(sourceRoot);
-  // Up to half the budget goes to waiting for another operation's lock; a verify holding it
-  // for the same change leaves a record that is reused instead of run again.
-  const lockWait = Math.floor(timeout / 2000);
-  const args = ["verify", "--changed", ...(base ? ["--base", base] : []), "--lock-wait", String(lockWait), "--json", "--project", sourceRoot];
-  return new Promise((resolveRun) => {
-    const chunks = [];
-    let bytes = 0;
-    let timedOut = false;
-    const child = spawn(process.execPath, [launcher, ...args], {
-      cwd: sourceRoot, shell: false, stdio: ["ignore", "pipe", "ignore"], detached: process.platform !== "win32",
-    });
-    child.stdout.on("data", (chunk) => {
-      if (bytes < 256 * 1024) chunks.push(chunk);
-      bytes += chunk.length;
-    });
-    const timer = setTimeout(() => {
-      timedOut = true;
-      signalGroup(child, "SIGTERM");
-      setTimeout(() => signalGroup(child, "SIGKILL"), 2000).unref();
-    }, timeout);
-    child.on("error", () => { clearTimeout(timer); resolveRun({ kind: "unavailable" }); });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (timedOut) return resolveRun({ kind: "timeout" });
-      let result;
-      try { result = bytes <= 256 * 1024 ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : undefined; } catch { result = undefined; }
-      resolveRun({ kind: "completed", code, result });
-    });
-  });
+function verifyCommand(base) {
+  return `paved verify --changed${base ? ` --base ${base}` : ""}`;
 }
 
-function verificationFailure(outcome, timeout) {
+function hasCode(result, code) {
+  return Array.isArray(result?.diagnostics) && result.diagnostics.some((item) => item?.code === code);
+}
+
+function verificationFailure(outcome, timeout, base) {
+  const command = verifyCommand(base);
   if (outcome.kind === "timeout") {
-    return `NOT VERIFIED: paved verify --changed did not finish within the ${Math.round(timeout / 1000)} s Stop hook budget and was stopped. ` +
-      "Run `paved verify --changed` directly; a verified result for the same working tree is reused at the next Stop.";
+    return `NOT VERIFIED: Paved could not read the recorded verification within the ${Math.round(timeout / 1000)} s Stop hook budget. ` +
+      `Run \`${command}\` directly; its result for the same working tree is reused at the next Stop.`;
   }
   const diagnostics = Array.isArray(outcome.result?.diagnostics) ? outcome.result.diagnostics : [];
-  if (outcome.result?.command === "verify" && diagnostics.some((item) => item?.code === "PAVED_OPERATION_IN_PROGRESS")) {
-    return "NOT VERIFIED: another Paved operation holds the project lock, so paved verify --changed could not start. " +
-      "Wait for it to finish, then run `paved verify --changed`.";
+  if (outcome.result?.command === "verify" && hasCode(outcome.result, "PAVED_VERIFY_NOT_RECORDED")) {
+    return `NOT VERIFIED: no verification is recorded for the current changes. Run \`${command}\`, then fix or report any failing check.`;
+  }
+  if (outcome.result?.command === "verify" && hasCode(outcome.result, "PAVED_OPERATION_IN_PROGRESS")) {
+    return "NOT VERIFIED: another Paved operation holds the project lock, so the recorded verification could not be read. " +
+      `Wait for it to finish, then run \`${command}\`.`;
   }
   const failing = failingChecks(outcome.result);
   if (failing.length > 0) {
-    return clip(["NOT VERIFIED: paved verify --changed found failing checks. Fix them, or report why they cannot pass.", ...failing].join("\n"), 2000);
+    return clip([`NOT VERIFIED: ${command} found failing checks. Fix them, or report why they cannot pass.`, ...failing].join("\n"), 2000);
   }
   const codes = [...new Set(diagnostics.map((item) => item?.code).filter((code) => typeof code === "string" && /^[A-Z0-9_]+$/.test(code)))].slice(0, 5);
-  return "NOT VERIFIED: paved verify --changed failed or could not complete" + (codes.length ? ` (${codes.join(", ")})` : "") +
+  return `NOT VERIFIED: ${command} failed or could not complete` + (codes.length ? ` (${codes.join(", ")})` : "") +
     ". Inspect its output and correct or report the failure.";
 }
 
@@ -196,15 +219,27 @@ function openTasks(repository) {
   } catch { return []; }
 }
 
+let output = "";
+
 function emit(value) {
-  process.stdout.write(`${JSON.stringify(value)}\n`);
+  output = `${JSON.stringify(value)}\n`;
+}
+
+// A host that never closes stdin must not keep the hook waiting.
+async function readInput() {
+  process.stdin.setEncoding("utf8");
+  let input = "";
+  const guard = setTimeout(() => process.stdin.destroy(), STDIN_TIMEOUT_MS);
+  try {
+    for await (const chunk of process.stdin) input += chunk;
+  } finally {
+    clearTimeout(guard);
+  }
+  return input;
 }
 
 try {
-  process.stdin.setEncoding("utf8");
-  let input = "";
-  for await (const chunk of process.stdin) input += chunk;
-  const event = JSON.parse(input);
+  const event = JSON.parse(await readInput());
   if (!event || typeof event !== "object" || typeof event.cwd !== "string") process.exit(0);
   if (!["SessionStart", "Stop"].includes(event.hook_event_name)) process.exit(0);
   const sourceRoot = nearestRepository(event.cwd);
@@ -215,9 +250,9 @@ try {
   if (event.hook_event_name === "SessionStart") {
     const host = process.argv[2] === "--host" ? process.argv[3] : undefined;
     const update = initialized && ["claude-code", "codex"].includes(host)
-      ? invoke(repository, sourceRoot, ["auto-update", "check", "--host", host], 300000, [0, 5])
+      ? await invoke(repository, sourceRoot, ["auto-update", "check", "--host", host], 300000, [0, 5])
       : undefined;
-    const diagnosis = initialized ? invoke(repository, sourceRoot, ["doctor", "--quick"], 10000) : undefined;
+    const diagnosis = initialized ? await invoke(repository, sourceRoot, ["doctor", "--quick"], 10000) : undefined;
     const status = !initialized ? (existsSync(join(repository, ".paved")) ? "broken" : "uninitialized") :
       typeof diagnosis?.data?.status === "string" && /^[a-z-]+$/.test(diagnosis.data.status) ? diagnosis.data.status : "unknown";
     const tasks = initialized ? openTasks(repository) : [];
@@ -238,18 +273,29 @@ try {
   } else if (initialized) {
     const host = process.argv[2] === "--host" ? process.argv[3] : undefined;
     if (!["claude-code", "codex"].includes(host)) process.exit(0);
-    const timeout = stopVerifyTimeout();
-    const outcome = await invokeVerify(repository, sourceRoot, timeout);
+    const launcher = launcherFor(repository);
+    const timeout = stopTimeout();
+    const base = launcher ? defaultBase(sourceRoot) : undefined;
+    const outcome = launcher
+      ? await runLauncher(launcher, sourceRoot, ["verify", "--changed", ...(base ? ["--base", base] : []), "--recorded"], timeout)
+      : { kind: "unavailable" };
     const result = outcome.kind === "completed" && [0, 1].includes(outcome.code) ? outcome.result : undefined;
     const verified = result?.command === "verify" && ["success", "warning"].includes(result.status) &&
       result.data?.completion?.status === "complete" && result.data?.completion?.verification === "verified";
     const note = result?.command === "verify" && result.status === "warning" && !verified ? warningNote(result) : undefined;
-    if (note) emit({ systemMessage: note });
+    if (outcome.kind === "completed" && hasCode(outcome.result, "PAVED_CLI_USAGE")) {
+      // A runtime pinned before this hook's flags rejects them; that says nothing about the change.
+      emit({ systemMessage: "Paved: the runtime pinned by this project cannot report recorded verification at turn end. " +
+        `Run \`paved update\` to adopt the plugin's runtime; until then run \`${verifyCommand(base)}\` yourself.` });
+    } else if (note) emit({ systemMessage: note });
     else if (!verified) {
-      const reason = verificationFailure(outcome, timeout);
+      const reason = verificationFailure(outcome, timeout, base);
       emit(event.stop_hook_active === true ? { systemMessage: reason } : { decision: "block", reason });
     }
   }
 } catch {
   // Hooks must not crash the host on malformed input or filesystem errors.
 }
+
+// Nothing may keep the process alive after the answer: flush it and exit.
+process.stdout.write(output, () => process.exit(0));

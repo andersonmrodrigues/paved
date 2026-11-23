@@ -371,3 +371,40 @@ test('generation refuses to write through a symlinked output directory', () => {
   assert.ok(result.errors.some(error => /symbolic link/i.test(error)));
   assert.equal(existsSync(join(outside, 'overview.md')), false);
 });
+
+test('every route of a large routing file reaches the feature map', () => {
+  const dir = fixture();
+  const routes = Array.from({ length: 30 }, (_, i) => `  { path: 'route-${String(i).padStart(2, '0')}', component: Page },`).join('\n');
+  writeFileSync(join(dir, 'web/src/app-routing.module.ts'), `const routes = [\n${routes}\n];\n`);
+  initializeConsumer(core, dir, 'example');
+  assert.deepEqual(runGenerators(core, dir).errors, []);
+  const files = readdirSync(join(dir, '.paved/project/feature-map'));
+  assert.equal(files.length, 30);
+  assert.ok(files.includes('web-route-29.yaml'));
+});
+
+test('a Feature whose route disappeared is removed unless a human edited or reviewed it', () => {
+  const dir = fixture();
+  writeFileSync(join(dir, 'web/src/app-routing.module.ts'), "const routes = [{ path: 'courses' }, { path: 'grades' }, { path: 'reports' }];\n");
+  initializeConsumer(core, dir, 'example');
+  assert.deepEqual(runGenerators(core, dir).errors, []);
+  const map = join(dir, '.paved/project/feature-map');
+  const reviewedPath = join(map, 'web-reports.yaml');
+  const reviewed = parse(readFileSync(reviewedPath, 'utf8'));
+  reviewed.provenance.review = { status: 'reviewed', by: 'Project owner', at: '2026-11-22' };
+  writeFileSync(reviewedPath, stringify(reviewed));
+  writeFileSync(join(dir, 'web/src/app-routing.module.ts'), "const routes = [{ path: 'courses' }];\n");
+
+  const dryRun = runGenerators(core, dir, { generators: ['project-context/feature-map'], dryRun: true });
+  assert.ok(dryRun.executions.find(e => e.generator === 'project-context/feature-map')?.changedOutputs.includes('.paved/project/feature-map/web-grades.yaml'));
+  assert.ok(existsSync(join(map, 'web-grades.yaml')));
+
+  const result = runGenerators(core, dir, { generators: ['project-context/feature-map'] });
+  const execution = result.executions.find(e => e.generator === 'project-context/feature-map');
+  assert.deepEqual(readdirSync(map).sort(), ['web-courses.yaml', 'web-reports.yaml']);
+  assert.ok(execution?.changedOutputs.includes('.paved/project/feature-map/web-grades.yaml'));
+  assert.ok(!execution?.outputs.includes('.paved/project/feature-map/web-grades.yaml'));
+  assert.ok(execution?.warnings.some(w => w.includes('web-reports.yaml')));
+  const courses = parse(readFileSync(join(map, 'web-courses.yaml'), 'utf8'));
+  assert.equal(courses.provenance.sources[0].sha256, hashSource(dir, 'web/src/app-routing.module.ts'));
+});

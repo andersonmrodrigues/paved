@@ -184,7 +184,7 @@ describe("generated plugins", () => {
       assert.deepEqual(restored.filter((item) => item.matcher).map((item) => [item.matcher, item.hooks[0]!.command]), [["startup|resume|compact|clear|fork", command]]);
       const stop = hooks.hooks.Stop![0]!.hooks[0]!;
       assert.equal(stop.command, command);
-      assert.equal(stop.timeout, 120);
+      assert.equal(stop.timeout, 30);
       assert.notEqual(stop.async, true);
       assert.deepEqual(files.get("hooks/paved-prompt-submit.mjs"), readFileSync(join(ROOT, "integrations", "shared", "prompt-submit-hook.mjs")));
       const activity = hooks.hooks as unknown as Record<string, { hooks: { command: string; async?: boolean; timeout: number }[] }[]>;

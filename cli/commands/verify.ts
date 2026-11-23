@@ -126,6 +126,7 @@ export async function verifyHandler(invocation: CommandInvocation, beforeRun?: T
       ...(changedFiles === undefined ? {} : { changedFiles }),
       ...(baseRevision === undefined ? {} : { baseRevision }),
       ...(invocation.flags.lockWaitSeconds === undefined ? {} : { lockWaitMs: invocation.flags.lockWaitSeconds * 1000 }),
+      ...(invocation.flags.recorded ? { recordedOnly: true } : {}),
       ...(beforeRun ? { beforeRun: (selected) => {
         const stopped = beforeRun(selected);
         if (stopped) throw new ToolInvocationStopped(stopped);

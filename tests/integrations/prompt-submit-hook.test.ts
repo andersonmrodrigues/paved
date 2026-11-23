@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,7 +31,13 @@ import { appendFileSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 const args = process.argv.slice(2);
 appendFileSync(process.env.TEST_LOG, JSON.stringify(args) + "\\n");
-if (process.env.TEST_HANG) {
+if (process.env.TEST_ESCAPE) {
+  // A process outside the launcher's group that inherited its stdout keeps the pipe open after the group is gone.
+  const stray = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: ["ignore", "inherit", "ignore"], detached: true });
+  writeFileSync(process.env.TEST_ESCAPE, String(stray.pid));
+  stray.unref();
+  process.exit(0);
+} else if (process.env.TEST_HANG) {
   // Stands in for the runtime the real launcher waits on: it must not outlive a timed-out hook.
   const runtime = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
   writeFileSync(process.env.TEST_HANG, String(runtime.pid));
@@ -167,10 +173,58 @@ describe("lean lifecycle hooks", () => {
     assert.equal(result.status, 0, result.stderr);
     const output = JSON.parse(result.stdout);
     assert.equal(output.decision, "block");
-    assert.match(output.reason, /did not finish within the 1 s Stop hook budget/);
+    assert.match(output.reason, /could not read the recorded verification within the 1 s Stop hook budget/);
     const runtime = Number(readFileSync(pidFile, "utf8"));
     for (let attempt = 0; attempt < 50 && alive(runtime); attempt += 1) await new Promise((done) => setTimeout(done, 100));
     assert.equal(alive(runtime), false, "the runtime child must not outlive the hook");
+  });
+
+  it("settles at its budget even when a process outside the group keeps the pipe open", { skip: process.platform === "win32" }, async () => {
+    const f = fixture();
+    const pidFile = join(dirname(f.log), "stray.pid");
+    const started = Date.now();
+    try {
+      const result = run(f, { hook_event_name: "Stop", stop_hook_active: false }, {}, "claude-code", 0,
+        { TEST_ESCAPE: pidFile, PAVED_HOOK_VERIFY_TIMEOUT_MS: "300" });
+      assert.equal(result.status, 0, result.stderr);
+      assert.ok(Date.now() - started < 8000, "the hook must not wait for the stray pipe holder");
+      assert.match(JSON.parse(result.stdout).reason, /Stop hook budget/);
+    } finally {
+      try { process.kill(Number(readFileSync(pidFile, "utf8")), "SIGKILL"); } catch { /* already gone */ }
+    }
+  });
+
+  it("exits when the host never closes stdin", async () => {
+    const f = fixture();
+    const child = spawn(process.execPath, [f.hook, "--host", "claude-code"], { stdio: ["pipe", "pipe", "ignore"] });
+    child.stdin.write(JSON.stringify({ cwd: f.cwd, hook_event_name: "Stop" }));
+    let stdout = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    const code = await new Promise<number | null>((done) => {
+      const kill = setTimeout(() => { child.kill("SIGKILL"); done(null); }, 15000);
+      child.on("exit", (exitCode) => { clearTimeout(kill); done(exitCode); });
+    });
+    assert.equal(code, 0);
+    assert.equal(stdout, "");
+  });
+
+  it("asks the agent to verify when nothing is recorded for the change", () => {
+    const f = fixture();
+    const result = run(f, { hook_event_name: "Stop", stop_hook_active: false },
+      { command: "verify", status: "failed", diagnostics: [{ code: "PAVED_VERIFY_NOT_RECORDED", message: "none" }] }, "claude-code", 7);
+    const output = JSON.parse(result.stdout);
+    assert.equal(output.decision, "block");
+    assert.match(output.reason, /no verification is recorded for the current changes\. Run `paved verify --changed( --base \S+)?`/);
+  });
+
+  it("notes an older pinned runtime that rejects the hook's flags without blocking", () => {
+    const f = fixture();
+    const result = run(f, { hook_event_name: "Stop", stop_hook_active: false },
+      { command: "verify", status: "failed", diagnostics: [{ code: "PAVED_CLI_USAGE", message: "Unknown flag: --changed." }] }, "claude-code", 2);
+    const output = JSON.parse(result.stdout);
+    assert.equal(output.decision, undefined);
+    assert.match(output.systemMessage, /paved update/);
+    assert.doesNotMatch(output.systemMessage, /NOT VERIFIED/);
   });
 
   it("says when another Paved operation holds the lock", () => {
@@ -181,7 +235,7 @@ describe("lean lifecycle hooks", () => {
     assert.match(JSON.parse(result.stdout).reason, /another Paved operation holds the project lock/);
   });
 
-  it("compares with the merge base of the default branch and waits within the budget for the lock", () => {
+  it("only reads the recorded verification, compared with the merge base of the default branch", () => {
     const f = fixture();
     rmSync(join(f.cwd, ".git"), { recursive: true });
     const git = (...args: string[]) => execFileSync("git", ["-C", f.cwd, "-c", "user.name=T", "-c", "user.email=t@example.com", ...args], { encoding: "utf8" });
@@ -192,12 +246,12 @@ describe("lean lifecycle hooks", () => {
     const verifyCall = () => readFileSync(f.log, "utf8").trim().split("\n").map((line) => JSON.parse(line) as string[]).at(-1);
 
     run(f, { hook_event_name: "Stop" }, verified, "claude-code", 0, { PAVED_HOOK_VERIFY_TIMEOUT_MS: "20000" });
-    assert.deepEqual(verifyCall(), ["verify", "--changed", "--base", "master", "--lock-wait", "10", "--json", "--project", f.cwd]);
+    assert.deepEqual(verifyCall(), ["verify", "--changed", "--base", "master", "--recorded", "--json", "--project", f.cwd]);
 
     git("update-ref", "refs/remotes/origin/trunk", "HEAD");
     git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk");
     run(f, { hook_event_name: "Stop" }, verified);
-    assert.deepEqual(verifyCall()?.slice(0, 6), ["verify", "--changed", "--base", "origin/trunk", "--lock-wait", "55"]);
+    assert.deepEqual(verifyCall()?.slice(0, 5), ["verify", "--changed", "--base", "origin/trunk", "--recorded"]);
   });
 
   it("verifies only the working tree when no default branch is known", () => {

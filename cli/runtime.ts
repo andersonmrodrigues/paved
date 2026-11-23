@@ -35,6 +35,8 @@ export interface CliFlags {
   readonly json: boolean;
   readonly noGenerate: boolean;
   readonly changed?: boolean;
+  /** `verify --recorded`: report the recorded result for the current change without running a Check. */
+  readonly recorded?: boolean;
   readonly quick?: boolean;
   readonly budget?: number;
   readonly areas: readonly string[];
@@ -241,7 +243,7 @@ function commandUsage(command: CommandName | undefined): string {
     if (rule.dryRun) commandOptions.push("  --dry-run        Plan without writes.");
     if (rule.noGenerate) commandOptions.push("  --no-generate    Initialize without running generators.");
     if (command === "test") commandOptions.push("  --inputs <json>  Supply declared Tool inputs as a JSON object.");
-    if (command === "verify") commandOptions.push("  --changed [--base <ref>]  Scope checks to changed files, optionally including commits since the merge base.", "  --task <slug>  Attach verification evidence to an open task.", "  --lock-wait <seconds>  Wait for another operation's lock; reuse its run when it verified the same change.");
+    if (command === "verify") commandOptions.push("  --changed [--base <ref>]  Scope checks to changed files, optionally including commits since the merge base.", "  --task <slug>  Attach verification evidence to an open task.", "  --lock-wait <seconds>  Wait for another operation's lock; reuse its run when it verified the same change.", "  --recorded  Report the recorded result for the current change; never run a Check.");
     if (command === "context") commandOptions.push(
       "  <topic-or-path> [--budget <bytes>]  Retrieve matching project context and rules.",
       "  refresh [--areas <area,...>]        Refresh stale context areas, or the named areas.",
@@ -338,6 +340,7 @@ function parse(argv: readonly string[]): Parsed {
   let dryRun = false;
   let noGenerate = false;
   let changed = false;
+  let recorded = false;
   let quick = false;
   let budget: number | undefined;
   let inputs: string | undefined;
@@ -406,6 +409,12 @@ function parse(argv: readonly string[]): Parsed {
     if (token === "--changed") {
       if (command !== "verify") return { kind: "error", result: usage(command ?? "cli", "--changed is supported only by verify.") };
       changed = true;
+      continue;
+    }
+
+    if (token === "--recorded") {
+      if (command !== "verify") return { kind: "error", result: usage(command ?? "cli", "--recorded is supported only by verify.") };
+      recorded = true;
       continue;
     }
 
@@ -755,6 +764,7 @@ function parse(argv: readonly string[]): Parsed {
     json,
     noGenerate,
     ...(changed ? { changed } : {}),
+    ...(recorded ? { recorded } : {}),
     ...(quick ? { quick } : {}),
     ...(budget === undefined ? {} : { budget }),
     areas,

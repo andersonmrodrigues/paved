@@ -111,6 +111,12 @@ export interface VerificationRunInput {
   readonly baseRevision?: string;
   /** How long to wait for another operation's lock before giving up; a run it finishes for the same change is reused. */
   readonly lockWaitMs?: number;
+  /**
+   * Never run a Check: return the newest record for this change and configuration, passing or
+   * not, or PAVED_VERIFY_NOT_RECORDED. A change no Check applies to is still recorded, since
+   * nothing runs. Lets a lifecycle hook answer in seconds however slow the suite is.
+   */
+  readonly recordedOnly?: boolean;
 }
 
 /** Why the change does not concern the check, or undefined when it does. */
@@ -1663,9 +1669,18 @@ async function runVerificationUnlocked(input: VerificationRunInput, recordedSinc
     checks,
     ...policy,
     diagnostics,
-    ...(recordedSince === undefined ? {} : { recordedSince }),
+    ...(input.recordedOnly ? { recordedSince: 0 } : recordedSince === undefined ? {} : { recordedSince }),
   });
   if (reused !== undefined) return reused;
+  if (input.recordedOnly && relevant.length > 0) {
+    return {
+      status: "failed", checks: [], evidenceFiles: [], diagnostics: [...diagnostics, diagnostic({
+        code: "PAVED_VERIFY_NOT_RECORDED", category: "verification", component: "verification.evidence",
+        message: "No verification is recorded for the current change and configuration; no Check was run.",
+        remediation: "Run paved verify (with the same --changed and --base scope) to verify the change.",
+      })],
+    };
+  }
   // Resolve the complete set first: an ask or deny on a later Check must not partially run verification.
   input.beforeRun?.(relevant.flatMap((check) => {
     const selected = resolveTool(check.tool, tools, implementations, "local");

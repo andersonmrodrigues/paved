@@ -128,6 +128,7 @@ export async function verifyHandler(invocation, beforeRun, scope = {}) {
             ...(changedFiles === undefined ? {} : { changedFiles }),
             ...(baseRevision === undefined ? {} : { baseRevision }),
             ...(invocation.flags.lockWaitSeconds === undefined ? {} : { lockWaitMs: invocation.flags.lockWaitSeconds * 1000 }),
+            ...(invocation.flags.recorded ? { recordedOnly: true } : {}),
             ...(beforeRun ? { beforeRun: (selected) => {
                     const stopped = beforeRun(selected);
                     if (stopped)

@@ -1406,10 +1406,19 @@ async function runVerificationUnlocked(input, recordedSince) {
         checks,
         ...policy,
         diagnostics,
-        ...(recordedSince === undefined ? {} : { recordedSince }),
+        ...(input.recordedOnly ? { recordedSince: 0 } : recordedSince === undefined ? {} : { recordedSince }),
     });
     if (reused !== undefined)
         return reused;
+    if (input.recordedOnly && relevant.length > 0) {
+        return {
+            status: "failed", checks: [], evidenceFiles: [], diagnostics: [...diagnostics, diagnostic({
+                    code: "PAVED_VERIFY_NOT_RECORDED", category: "verification", component: "verification.evidence",
+                    message: "No verification is recorded for the current change and configuration; no Check was run.",
+                    remediation: "Run paved verify (with the same --changed and --base scope) to verify the change.",
+                })],
+        };
+    }
     // Resolve the complete set first: an ask or deny on a later Check must not partially run verification.
     input.beforeRun?.(relevant.flatMap((check) => {
         const selected = resolveTool(check.tool, tools, implementations, "local");
