@@ -34,6 +34,11 @@ arguments.
   this long (0 to 3600) instead of failing at once. If the holder recorded a run for
   the same change and configuration, that record is returned instead of running the
   Checks again; otherwise the Checks run once the lock is free.
+- `--recorded`: never run a Check. Return the newest record for the current change and
+  configuration (see "Reuse"), passing or failing, or fail with
+  `PAVED_VERIFY_NOT_RECORDED` (exit `7`) when there is none. A change no Check applies
+  to is still recorded, since nothing runs. The Stop hook uses this so a turn ends in
+  seconds however slow the suite is.
 - `--task <slug>`: attach the resulting evidence paths and status to an explicitly
   selected open task. Verification fails before running checks if the task is absent
   or completed, and fails if evidence cannot be attached.

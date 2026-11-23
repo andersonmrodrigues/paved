@@ -239,7 +239,7 @@ function readme(source: PluginSource, runtime: RuntimeArtifact, hosts: string, d
     `- Runtime: \`paved-core@${runtime.version}\` unpacked at \`${RUNTIME_DIRECTORY}/\`; ${dependencies}`,
     `- Runtime integrity: \`${runtime.integrity}\`, checked over the runtime and its dependencies before activation`,
     `- Launcher: \`${LAUNCHER_DIRECTORY}/paved.mjs\``,
-    "- Lifecycle hooks: `hooks/hooks.json` adds a short session index and requests continuation when changed-file verification fails on supported, trusted hosts.",
+    "- Lifecycle hooks: `hooks/hooks.json` adds a short session index and at turn end requests continuation when the changes have no passing recorded verification, without running checks itself, on supported, trusted hosts.",
     `- Optional update helper: from an initialized project, explicitly run \`node "<plugin>/scripts/paved.mjs" auto-update configure --host ${hosts === "Claude Code" ? "claude-code" : "codex"} --mode auto --interval-hours 24 --json\`; use \`auto-update status --json\`, \`auto-update check --host <host> --json\`, or configure \`--mode off\` / \`--mode notify\`. Defaults are off. SessionStart checks due updates only after explicit authorization; UserPromptSubmit is not used. Cursor remains manual.`,
     "- Workbench: `paved workbench start` opens the local run dashboard; optional lifecycle hooks show recent agent activity only while it is running.",
     `- Skills: ${skills}`,

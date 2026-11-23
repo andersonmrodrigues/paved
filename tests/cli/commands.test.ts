@@ -576,6 +576,8 @@ describe("status and doctor commands", () => {
       const result = await run(project, "doctor", ["--answer", `${decision.id}=apply`, "--answered-by", "tester@example.com"]);
       assert.ok(result.status !== "failed", JSON.stringify(result));
       assert.ok(!codes(result).includes("PAVED_DECISION_ANSWER_INVALID"), JSON.stringify(result.diagnostics));
+      // The answering call itself reports the repaired state.
+      assert.ok(!codes(result).includes("PAVED_GENERATED_CONTEXT_STALE"), JSON.stringify(result.diagnostics));
       assert.equal(existsSync(join(project, ".paved/approvals")), false);
       const record = parse(readFileSync(join(project, ".paved/decisions", `${decision.id}.yaml`), "utf8")) as { status: string; answer_source: string };
       assert.equal(record.status, "APPLIED");

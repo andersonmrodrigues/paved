@@ -441,6 +441,8 @@ export function inspectVerificationGuides(projectRoot: string, coreRoot: string)
 
 /** `status` and the `doctor` CLI subcommand share this; repairs keep the `doctor` decision ids. */
 export function diagnose(invocation: CommandInvocation, command: "status" | "doctor"): CommandResult {
+  // Answers apply first so the result describes the project after the repair, not before it.
+  const outcome = repairs(invocation);
   const inspection = inspectConsumer({
     projectRoot: invocation.paths.projectRoot,
     sourceRoot: invocation.paths.sourceRoot,
@@ -448,7 +450,6 @@ export function diagnose(invocation: CommandInvocation, command: "status" | "doc
     adapterSelections: invocation.flags.adapters,
     ...(invocation.paths.manifestPath === undefined ? {} : { manifestPath: invocation.paths.manifestPath }),
   });
-  const outcome = repairs(invocation);
   const decisionDiagnostics = outcome.problems.map((message) => createDiagnostic({
     severity: "error", category: "usage", code: "PAVED_DECISION_ANSWER_INVALID",
     component: `cli.${command}`, message,

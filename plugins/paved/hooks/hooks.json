@@ -1,5 +1,5 @@
 {
-  "description": "Adds a lean session index and verifies changed files at turn end.",
+  "description": "Adds a lean session index and checks recorded verification of changed files at turn end.",
   "hooks": {
     "SessionStart": [
       {
@@ -41,7 +41,7 @@
           {
             "type": "command",
             "command": "node \"${PLUGIN_ROOT}/hooks/paved-prompt-submit.mjs\" --host codex",
-            "timeout": 120
+            "timeout": 30
           }
         ]
       },

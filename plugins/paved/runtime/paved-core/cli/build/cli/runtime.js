@@ -121,7 +121,7 @@ function commandUsage(command) {
         if (command === "test")
             commandOptions.push("  --inputs <json>  Supply declared Tool inputs as a JSON object.");
         if (command === "verify")
-            commandOptions.push("  --changed [--base <ref>]  Scope checks to changed files, optionally including commits since the merge base.", "  --task <slug>  Attach verification evidence to an open task.", "  --lock-wait <seconds>  Wait for another operation's lock; reuse its run when it verified the same change.");
+            commandOptions.push("  --changed [--base <ref>]  Scope checks to changed files, optionally including commits since the merge base.", "  --task <slug>  Attach verification evidence to an open task.", "  --lock-wait <seconds>  Wait for another operation's lock; reuse its run when it verified the same change.", "  --recorded  Report the recorded result for the current change; never run a Check.");
         if (command === "context")
             commandOptions.push("  <topic-or-path> [--budget <bytes>]  Retrieve matching project context and rules.", "  refresh [--areas <area,...>]        Refresh stale context areas, or the named areas.");
         if (command === "task")
@@ -220,6 +220,7 @@ function parse(argv) {
     let dryRun = false;
     let noGenerate = false;
     let changed = false;
+    let recorded = false;
     let quick = false;
     let budget;
     let inputs;
@@ -285,6 +286,12 @@ function parse(argv) {
             if (command !== "verify")
                 return { kind: "error", result: usage(command ?? "cli", "--changed is supported only by verify.") };
             changed = true;
+            continue;
+        }
+        if (token === "--recorded") {
+            if (command !== "verify")
+                return { kind: "error", result: usage(command ?? "cli", "--recorded is supported only by verify.") };
+            recorded = true;
             continue;
         }
         if (token === "--quick") {
@@ -678,6 +685,7 @@ function parse(argv) {
         json,
         noGenerate,
         ...(changed ? { changed } : {}),
+        ...(recorded ? { recorded } : {}),
         ...(quick ? { quick } : {}),
         ...(budget === undefined ? {} : { budget }),
         areas,

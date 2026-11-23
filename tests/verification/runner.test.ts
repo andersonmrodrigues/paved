@@ -413,6 +413,50 @@ describe("verification runner", () => {
     }
   });
 
+  it("reports only a recorded result with --recorded and never runs a Check", async () => {
+    const project = sandbox("recorded-only");
+    try {
+      const missing = await runCli(project, ["--recorded"]);
+      assert.equal(missing.status, "failed");
+      assert.equal(exitCode(missing), 7);
+      assert.ok(missing.diagnostics.some((item) => item.code === "PAVED_VERIFY_NOT_RECORDED"), resultText(missing));
+      assert.equal(existsSync(markerPath(project)), false, "--recorded must not run a Check");
+      assert.equal(evidenceFiles(project).length, 0);
+
+      assert.equal((await runVerification({ projectRoot: project, coreRoot: ROOT })).status, "success");
+      rmSync(markerPath(project));
+      const recorded = await runCli(project, ["--recorded"]);
+      assert.equal(recorded.status, "success", resultText(recorded));
+      assert.equal((recorded.data as { reused?: unknown }).reused, true);
+      assert.equal(existsSync(markerPath(project)), false);
+
+      writeMarkerMode(project, "fail");
+      assert.equal((await runVerification({ projectRoot: project, coreRoot: ROOT })).status, "failed");
+      rmSync(markerPath(project));
+      const failed = await runVerification({ projectRoot: project, coreRoot: ROOT, recordedOnly: true });
+      assert.equal(failed.status, "failed");
+      assert.equal(failed.reused, true, "the newest failing record is reported, not hidden");
+      assert.ok(failed.checks.some((check) => check.status === "failed"));
+      assert.equal(existsSync(markerPath(project)), false);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("records a change no Check applies to under --recorded, since nothing runs", async () => {
+    const project = sandbox("recorded-irrelevant");
+    try {
+      const path = join(project, ".paved/verification/checks/marker.yaml");
+      const check = parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+      writeFileSync(path, stringify({ ...check, applies_to: ["src/**"] }));
+      const result = await runVerification({ projectRoot: project, coreRoot: ROOT, changedFiles: ["docs/readme.md"], recordedOnly: true });
+      assert.ok(!result.diagnostics.some((item) => item.code === "PAVED_VERIFY_NOT_RECORDED"), resultText(result));
+      assert.equal(existsSync(markerPath(project)), false);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
   it("never reuses an earlier pass when the newest record for the same change is not verified", async () => {
     const project = sandbox("reuse-newest-decides");
     try {

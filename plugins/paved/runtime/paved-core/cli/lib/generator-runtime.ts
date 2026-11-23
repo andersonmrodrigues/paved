@@ -261,6 +261,25 @@ function ruleProposals(contract: Contract, sources: Source[], root: string, sour
   }
   return outputs;
 }
+// A Feature whose entrypoint is gone keeps citing the old source hash, so the context reports drift
+// forever. Untouched, unreviewed generated entries are removed; edited or reviewed ones stay for a human.
+function pruneOrphanFeatures(root: string, generator: string, current: ReadonlySet<string>, dryRun: boolean): { removed: string[]; kept: string[] } {
+  const dir = safe(root, '.paved/project/feature-map'); const removed: string[] = []; const kept: string[] = [];
+  if (!existsSync(dir)) return { removed, kept };
+  for (const name of readdirSync(dir).filter(n => n.endsWith('.yaml')).sort()) {
+    const path = `.paved/project/feature-map/${name}`;
+    if (current.has(path)) continue;
+    let doc: Record<string, unknown>;
+    try { doc = parse(readFileSync(safe(root, path), 'utf8')) as Record<string, unknown>; } catch { continue; }
+    const p = doc?.provenance as { generator?: string; output_sha256?: string; review?: { status?: string } } | undefined;
+    if (p?.generator !== generator) continue;
+    const semantic = { ...doc }; delete semantic.provenance;
+    if (p.review?.status !== 'unreviewed' || p.output_sha256 !== sha(stringify(semantic))) { kept.push(path); continue; }
+    if (!dryRun) rmSync(safe(root, path));
+    removed.push(path);
+  }
+  return { removed, kept };
+}
 function writeOutput(root: string, output: Output, registry: Registry, info: ReturnType<typeof coreManifest>, generator: string, dryRun = false): WriteOutputResult {
   const result = (status: WriteOutputStatus, finalContent: string): WriteOutputResult => ({ status, finalContent, sha256: outputHash(output.schema, finalContent) });
   const owner = [...info.consumer_layout].sort((a, b) => b.path.length - a.path.length).find(x => output.path.startsWith(x.path))?.ownership;
@@ -461,6 +480,12 @@ function runGeneratorsUnlocked(core: string, consumer: string, options: RunGener
           if (status === 'proposed') entry.proposals.push(output.path);
           if (entry.status !== 'conflict' && status !== 'unchanged') entry.status = status;
         }
+      }
+      if (contract.id.endsWith('/feature-map')) {
+        const orphans = pruneOrphanFeatures(consumer, contract.id, new Set(outputs.map(o => o.path)), options.dryRun === true);
+        entry.changedOutputs.push(...orphans.removed);
+        if (orphans.removed.length && entry.status === 'unchanged') entry.status = 'written';
+        for (const path of orphans.kept) entry.warnings.push(`${path} no longer matches an observed entrypoint but was edited or reviewed; review or remove it.`);
       }
       completed.add(contract.id);
     } catch (error) { entry.status = 'failed'; entry.errors.push(String(error)); result.errors.push(`${contract.id}: ${String(error)}`); }

@@ -5,6 +5,25 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Fixed
+
+- The Stop hook no longer runs verification Checks itself, so a turn ends in seconds
+  instead of waiting up to two minutes on build and test suites. It reads the recorded
+  result for the current change with the new `paved verify --recorded`; without one it
+  asks the agent once to run `paved verify --changed --base <branch>`. Its host timeout
+  drops from 120 s to 30 s, a timed-out lookup always settles even if a process keeps its
+  pipe open, stdin and the SessionStart runtime calls are bounded the same way, and the
+  hook exits as soon as it has answered. A pinned runtime that predates the hook's flags
+  now gets a non-blocking note to run `paved update` instead of a NOT VERIFIED block.
+- Adapter evidence kept only the first 20 matches per file, so routing files with more
+  routes lost the rest. The bound is now 100 per file (200 per capability).
+- The feature map now removes generated Features whose route no longer exists, when they
+  are unedited and unreviewed; edited or reviewed ones are kept with a warning. Before,
+  such a file kept citing the old source hash and `PAVED_GENERATED_CONTEXT_STALE` never
+  cleared.
+- `paved status --answer <id>=apply` reports the project after the repair instead of
+  the drift it just repaired.
+
 ## [3.2.1] - 2026-11-22
 
 ### Changed
