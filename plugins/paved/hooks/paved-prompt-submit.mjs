@@ -256,17 +256,19 @@ try {
     const status = !initialized ? (existsSync(join(repository, ".paved")) ? "broken" : "uninitialized") :
       typeof diagnosis?.data?.status === "string" && /^[a-z-]+$/.test(diagnosis.data.status) ? diagnosis.data.status : "unknown";
     const tasks = initialized ? openTasks(repository) : [];
-    const lines = status === "uninitialized" ? [
-      "Paved: uninitialized.",
-      "Before the first code change in this session (feature, bug fix, refactor), ask the user once whether to use Paved here.",
-      "Yes: run the Paved init command, then continue the request through Paved. Not now: work directly and do not ask again this session.",
-      "Questions, investigation and operational tasks proceed without asking. Never initialize without the user's yes.",
-    ] : [
-      `Paved: ${status}.`,
-      tasks.length ? `Open task files: ${tasks.join(", ")} (select explicitly).` : "Open tasks: none listed.",
-      "Rules: .paved/rules/; context: paved context <topic>.",
-      "Work directly; respect user limits. Initialization is never automatic; updates require explicit authorization.",
+    const offer = (state, question) => [
+      `Paved: ${state}.`,
+      `Before the first code change in this session (feature, bug fix, refactor), ask the user once whether to ${question}.`,
+      "Yes: run the Paved execute command with the request; it sets Paved up as needed, then applies rules and verification. Not now: work directly and do not ask again this session.",
+      "Questions, investigation and operational tasks proceed without asking. Never initialize or repair without the user's yes.",
     ];
+    const lines = status === "uninitialized" ? offer("uninitialized", "use Paved here") :
+      status === "broken" ? offer("broken (.paved/ exists without a manifest)", "repair Paved and use it") : [
+        `Paved: ${status}.`,
+        tasks.length ? `Open task files: ${tasks.join(", ")} (select explicitly).` : "Open tasks: none listed.",
+        "Rules: .paved/rules/; context: paved context <topic>.",
+        "Route code changes (feature, bug fix, refactor) through the Paved execute command; answer questions directly. Explicit user direction wins. Updates require explicit authorization.",
+      ];
     if (update?.data?.restartRequired === true) lines.push("Paved plugin updated; Restart this agent session.");
     else if (update?.status === "failed") lines.push("Paved plugin update did not complete; inspect `paved auto-update status` before retrying.");
     emit({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: lines.join("\n") } });

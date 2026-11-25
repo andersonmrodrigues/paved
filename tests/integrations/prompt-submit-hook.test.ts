@@ -98,8 +98,9 @@ describe("lean lifecycle hooks", () => {
     const result = run(f, { hook_event_name: "SessionStart", source: "startup" }, {});
     const text = JSON.parse(result.stdout).hookSpecificOutput.additionalContext as string;
     assert.match(text, /ask the user once whether to use Paved/);
+    assert.match(text, /run the Paved execute command with the request/);
     assert.match(text, /do not ask again this session/);
-    assert.match(text, /Never initialize without the user's yes/);
+    assert.match(text, /Never initialize or repair without the user's yes/);
     assert.doesNotMatch(text, /Open tasks/);
     assert.ok(text.length <= 1200);
   });
@@ -110,6 +111,28 @@ describe("lean lifecycle hooks", () => {
     const result = run(f, { hook_event_name: "SessionStart", source: "resume" }, {});
     assert.match(result.stdout, /broken/);
     assert.throws(() => readFileSync(f.log, "utf8"));
+  });
+
+  it("asks once per session to repair a broken repository through execute", () => {
+    const f = fixture(false);
+    mkdirSync(join(f.cwd, ".paved"));
+    const result = run(f, { hook_event_name: "SessionStart", source: "startup" }, {});
+    const text = JSON.parse(result.stdout).hookSpecificOutput.additionalContext as string;
+    assert.match(text, /ask the user once whether to repair Paved and use it/);
+    assert.match(text, /run the Paved execute command with the request/);
+    assert.match(text, /do not ask again this session/);
+    assert.doesNotMatch(text, /Work directly;/);
+    assert.ok(text.length <= 1200);
+  });
+
+  it("routes code changes through execute in an initialized repository", () => {
+    const f = fixture();
+    const result = run(f, { hook_event_name: "SessionStart", source: "startup" }, { data: { status: "healthy" } });
+    const text = JSON.parse(result.stdout).hookSpecificOutput.additionalContext as string;
+    assert.match(text, /Route code changes .* through the Paved execute command/);
+    assert.match(text, /Explicit user direction wins/);
+    assert.doesNotMatch(text, /Work directly/);
+    assert.ok(text.length <= 1200);
   });
 
   it("lists open tasks without selecting one for verification", () => {

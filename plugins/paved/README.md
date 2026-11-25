@@ -8,7 +8,7 @@ This directory is the installable plugin for Codex and Cursor. It is generated b
 
 - Plugin package version: `3.3.0`
 - Runtime: `paved-core@3.3.0` unpacked at `runtime/paved-core/`; its dependencies are bundled in its `node_modules/`.
-- Runtime integrity: `sha512-KklBTec5fLib4TLs5pbQhdXAMP5wz0FiW3/RfLtFfTT5vtlmV27D6OemUfvqZjL62+p3X41p49GBPw463d0okw==`, checked over the runtime and its dependencies before activation
+- Runtime integrity: `sha512-G/6tMHC1NT9U9lnnA10SDRa5eKFbqmc7zPpagLzmt/78EYXr8ulOzW3aSafF43KmIy7MjOzYpwwg55Vkv6Fphw==`, checked over the runtime and its dependencies before activation
 - Launcher: `scripts/paved.mjs`
 - Lifecycle hooks: `hooks/hooks.json` adds a short session index and at turn end requests continuation when the changes have no passing recorded verification, without running checks itself, on supported, trusted hosts.
 - Optional update helper: from an initialized project, explicitly run `node "<plugin>/scripts/paved.mjs" auto-update configure --host codex --mode auto --interval-hours 24 --json`; use `auto-update status --json`, `auto-update check --host <host> --json`, or configure `--mode off` / `--mode notify`. Defaults are off. SessionStart checks due updates only after explicit authorization; UserPromptSubmit is not used. Cursor remains manual.

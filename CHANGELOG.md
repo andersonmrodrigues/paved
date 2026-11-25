@@ -5,6 +5,15 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Changed
+
+- The `SessionStart` hook no longer tells agents to "work directly". In a broken
+  repository (`.paved/` without a manifest) it asks the user once per session, before the
+  first code change, whether to repair Paved and use it; in an uninitialized one the offer
+  now points to the execute command, which sets Paved up as needed; in an initialized one
+  it routes code changes through execute. Nothing is initialized or repaired without the
+  user's yes (ADR 0055).
+
 ## [3.3.0] - 2026-11-23
 
 ### Fixed
