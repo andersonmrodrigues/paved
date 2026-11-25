@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-11-25
+
 ### Changed
 
 - The `SessionStart` hook no longer tells agents to "work directly". In a broken
