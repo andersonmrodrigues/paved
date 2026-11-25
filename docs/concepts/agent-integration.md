@@ -28,6 +28,10 @@ infer project configuration.
 In an uninitialized repository, the plugin's `SessionStart` hook asks the agent to
 offer Paved once per session, before the first code change, and to initialize only on
 the user's yes ([ADR 0054](../decisions/0054-offer-paved-in-uninitialized-repositories.md)).
+A broken repository gets the same once-per-session offer, phrased as a repair, and both
+point to the execute command, which sets Paved up as needed. In an initialized
+repository the hook routes code changes through execute
+([ADR 0055](../decisions/0055-route-code-changes-through-execute.md)).
 
 ## Public operations
 
