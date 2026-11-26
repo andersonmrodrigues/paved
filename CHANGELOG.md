@@ -5,6 +5,15 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+### Fixed
+
+- The Stop hook compares a branch with the branch it was cut from, not always with the
+  default branch. It now considers the branch's upstream and the reflog's "Created from"
+  entry next to the remote's default branch and main or master, and picks the one HEAD has
+  the fewest commits of its own over. A branch cut from a staging branch (for example
+  `hom`) is no longer asked for `paved verify --changed --base origin/main`, which counted
+  every commit between staging and main as part of the change.
+
 ## [3.4.0] - 2026-11-25
 
 ### Changed
