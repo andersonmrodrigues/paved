@@ -5,6 +5,8 @@ releases, not the development sequence used to build them.
 
 ## [Unreleased]
 
+## [3.4.1] - 2026-11-26
+
 ### Fixed
 
 - The Stop hook compares a branch with the branch it was cut from, not always with the
