@@ -110,16 +110,29 @@ function git(sourceRoot, args) {
   return child.error || child.status !== 0 ? undefined : child.stdout.trim();
 }
 
-// The branch this work will merge into: the remote's default branch, else a local or remote
-// main or master. A committed change is then still compared with where it started.
+// The branch this work will merge into. Git records where a branch came from: the branch it
+// tracks, and the reflog's "Created from" entry. Those join the remote's default branch and
+// main or master as candidates, and the one HEAD has the fewest commits of its own over wins,
+// so a branch cut from a staging or release branch is not compared with the default branch
+// and blamed for everything between them. Ties keep this order.
 function defaultBase(sourceRoot) {
+  const branch = git(sourceRoot, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
+  const upstream = branch ? git(sourceRoot, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"]) : undefined;
+  const created = branch
+    ? /^branch: Created from (\S+)$/.exec(git(sourceRoot, ["reflog", "show", "--format=%gs", `refs/heads/${branch}`])?.split("\n").at(-1) ?? "")?.[1]
+    : undefined;
   const remoteDefault = git(sourceRoot, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
-  const candidates = [remoteDefault, "main", "master", "origin/main", "origin/master"].filter(Boolean);
+  // A branch's own remote copy (origin/<branch>) is where it is pushed, not what it merges into.
+  const isOwnCopy = (ref) => ref === branch || ref.split("/").slice(1).join("/") === branch;
+  const candidates = [...new Set([upstream, created, remoteDefault, "main", "master", "origin/main", "origin/master"])]
+    .filter((ref) => ref && ref !== "HEAD" && /^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(ref) && !isOwnCopy(ref));
+  let best;
   for (const ref of candidates) {
-    if (!/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(ref)) continue;
-    if (git(sourceRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]) && git(sourceRoot, ["merge-base", "HEAD", ref])) return ref;
+    if (!git(sourceRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]) || !git(sourceRoot, ["merge-base", "HEAD", ref])) continue;
+    const ahead = Number(git(sourceRoot, ["rev-list", "--count", `${ref}..HEAD`]));
+    if (Number.isInteger(ahead) && (best === undefined || ahead < best.ahead)) best = { ref, ahead };
   }
-  return undefined;
+  return best?.ref;
 }
 
 function verifyCommand(base) {

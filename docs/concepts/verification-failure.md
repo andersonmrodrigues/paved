@@ -21,7 +21,8 @@ for a record whose only blocking problems are required checks that could not run
 ## Pre-existing failures
 
 When a base revision is known (`paved verify --changed --base <ref>`, which the Stop
-hook passes with the default branch), a failed check is compared with the same check
+hook passes with the branch the change was cut from: its upstream, its reflog's
+"Created from" entry or the default branch, whichever is closest), a failed check is compared with the same check
 on the merge base. The base outcome comes from an earlier record for that base and the
 same check definition, or the failed checks alone are run once more, each within its
 timeout, in a temporary detached worktree of the base that is always removed. The

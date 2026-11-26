@@ -277,6 +277,66 @@ describe("lean lifecycle hooks", () => {
     assert.deepEqual(verifyCall()?.slice(0, 5), ["verify", "--changed", "--base", "origin/trunk", "--recorded"]);
   });
 
+  describe("a branch cut from another integration branch", () => {
+    const verified = { command: "verify", status: "success", data: { completion: { status: "complete", verification: "verified" } } };
+
+    function staging() {
+      const f = fixture();
+      rmSync(join(f.cwd, ".git"), { recursive: true });
+      const git = (...args: string[]) => execFileSync("git", ["-C", f.cwd, "-c", "user.name=T", "-c", "user.email=t@example.com", ...args], { encoding: "utf8" });
+      git("init", "-q", "-b", "main");
+      git("remote", "add", "origin", f.cwd);
+      git("commit", "-q", "--allow-empty", "-m", "base");
+      git("update-ref", "refs/remotes/origin/main", "HEAD");
+      git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
+      git("checkout", "-qb", "hom");
+      for (const n of [1, 2, 3]) git("commit", "-q", "--allow-empty", "-m", `staging ${n}`);
+      git("update-ref", "refs/remotes/origin/hom", "HEAD");
+      git("checkout", "-q", "main");
+      const baseOfStop = () => {
+        run(f, { hook_event_name: "Stop" }, verified);
+        const call = readFileSync(f.log, "utf8").trim().split("\n").map((line) => JSON.parse(line) as string[]).at(-1)!;
+        return call[call.indexOf("--base") + 1];
+      };
+      return { f, git, baseOfStop };
+    }
+
+    it("uses the branch it was created from, not the default branch", () => {
+      const { git, baseOfStop } = staging();
+      git("checkout", "-q", "--no-track", "-b", "feature", "origin/hom");
+      git("commit", "-q", "--allow-empty", "-m", "change");
+
+      assert.equal(baseOfStop(), "origin/hom");
+    });
+
+    it("uses the branch it tracks when the reflog does not say", () => {
+      const { git, baseOfStop } = staging();
+      git("checkout", "-q", "--no-track", "-b", "feature", "origin/hom");
+      git("reflog", "expire", "--expire=now", "--all");
+      git("branch", "-q", "--set-upstream-to=origin/hom");
+
+      assert.equal(baseOfStop(), "origin/hom");
+    });
+
+    it("ignores the branch's own remote copy and keeps the closest integration branch", () => {
+      const { git, baseOfStop } = staging();
+      git("checkout", "-q", "--no-track", "-b", "feature", "origin/hom");
+      git("commit", "-q", "--allow-empty", "-m", "change");
+      git("update-ref", "refs/remotes/origin/feature", "HEAD");
+      git("branch", "-q", "--set-upstream-to=origin/feature");
+
+      assert.equal(baseOfStop(), "origin/hom");
+    });
+
+    it("keeps the default branch for a branch cut from it", () => {
+      const { git, baseOfStop } = staging();
+      git("checkout", "-q", "--no-track", "-b", "feature", "origin/main");
+      git("commit", "-q", "--allow-empty", "-m", "change");
+
+      assert.equal(baseOfStop(), "origin/main");
+    });
+  });
+
   it("verifies only the working tree when no default branch is known", () => {
     const f = fixture();
     run(f, { hook_event_name: "Stop" }, { command: "verify", status: "success", data: { completion: { status: "complete", verification: "verified" } } },
